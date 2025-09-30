@@ -52,10 +52,6 @@ export default class SelectNumberPage {
           <div id="results-section" class="hidden" style="margin-top: 2rem;">
             <h3>Available Numbers</h3>
             <div id="numbers-list"></div>
-
-            <button class="btn btn-primary btn-full mt-3" id="confirm-btn" disabled>
-              Confirm Selection
-            </button>
           </div>
         </div>
       </div>
@@ -66,7 +62,6 @@ export default class SelectNumberPage {
 
   attachEventListeners() {
     const searchBtn = document.getElementById('search-btn');
-    const confirmBtn = document.getElementById('confirm-btn');
     const errorMessage = document.getElementById('error-message');
     const successMessage = document.getElementById('success-message');
     const resultsSection = document.getElementById('results-section');
@@ -116,46 +111,12 @@ export default class SelectNumberPage {
         searchBtn.textContent = 'Search Available Numbers';
       }
     });
-
-    confirmBtn.addEventListener('click', async () => {
-      if (!this.selectedNumber) return;
-
-      confirmBtn.disabled = true;
-      confirmBtn.textContent = 'Provisioning number...';
-      errorMessage.classList.add('hidden');
-      successMessage.classList.add('hidden');
-
-      try {
-        // In production, call Supabase Edge Function to provision number via SignalWire
-        const result = await this.provisionNumber(this.selectedNumber);
-
-        // Update user profile with service number
-        const { user } = await getCurrentUser();
-        await User.setServiceNumber(user.id, this.selectedNumber);
-
-        successMessage.className = 'alert alert-success';
-        successMessage.textContent = 'Service number purchased successfully! Redirecting...';
-
-        setTimeout(() => {
-          navigateTo('/dashboard');
-        }, 1500);
-      } catch (error) {
-        console.error('Provision error:', error);
-        errorMessage.className = 'alert alert-error';
-        errorMessage.textContent = error.message || 'Failed to provision number. Please try again.';
-
-        // Log full error details for debugging
-        console.error('Full error details:', error);
-
-        confirmBtn.disabled = false;
-        confirmBtn.textContent = 'Confirm Selection';
-      }
-    });
   }
 
   renderNumbersList() {
     const numbersList = document.getElementById('numbers-list');
-    const confirmBtn = document.getElementById('confirm-btn');
+    const errorMessage = document.getElementById('error-message');
+    const successMessage = document.getElementById('success-message');
 
     numbersList.innerHTML = this.availableNumbers
       .map(
@@ -173,7 +134,20 @@ export default class SelectNumberPage {
               <div style="font-size: 1.125rem; font-weight: 600;">${this.formatPhoneNumber(number.phone_number)}</div>
               <div class="text-sm text-muted">${number.locality}, ${number.region}</div>
             </div>
-            <div class="text-sm" style="color: var(--primary-color);">
+            <button class="purchase-btn" style="
+              background: var(--primary-color);
+              color: white;
+              border: none;
+              padding: 0.5rem 1rem;
+              border-radius: var(--radius-sm);
+              font-size: 0.875rem;
+              cursor: pointer;
+              transition: all 0.2s ease;
+              display: none;
+            ">
+              Purchase
+            </button>
+            <div class="select-text" style="color: var(--primary-color); font-size: 0.875rem;">
               Select
             </div>
           </div>
@@ -184,22 +158,64 @@ export default class SelectNumberPage {
 
     // Add click handlers to number options
     document.querySelectorAll('.number-option').forEach((option) => {
-      option.addEventListener('click', () => {
+      const purchaseBtn = option.querySelector('.purchase-btn');
+      const selectText = option.querySelector('.select-text');
+
+      option.addEventListener('click', (e) => {
+        // Don't trigger if clicking the purchase button
+        if (e.target.classList.contains('purchase-btn')) return;
+
         // Remove selection from all options
         document.querySelectorAll('.number-option').forEach((opt) => {
           opt.style.borderColor = 'var(--border-color)';
           opt.style.backgroundColor = 'var(--bg-primary)';
+          opt.querySelector('.purchase-btn').style.display = 'none';
+          opt.querySelector('.select-text').style.display = 'block';
         });
 
-        // Highlight selected option
+        // Highlight selected option and show purchase button
         option.style.borderColor = 'var(--primary-color)';
         option.style.backgroundColor = 'rgba(99, 102, 241, 0.05)';
+        purchaseBtn.style.display = 'block';
+        selectText.style.display = 'none';
 
         // Store selection
         this.selectedNumber = option.dataset.number;
+      });
 
-        // Enable confirm button
-        confirmBtn.disabled = false;
+      // Handle purchase button click
+      purchaseBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+
+        if (!this.selectedNumber) return;
+
+        purchaseBtn.disabled = true;
+        purchaseBtn.textContent = 'Purchasing...';
+        errorMessage.classList.add('hidden');
+        successMessage.classList.add('hidden');
+
+        try {
+          // Provision number via SignalWire
+          const result = await this.provisionNumber(this.selectedNumber);
+
+          // Update user profile with service number
+          const { user } = await getCurrentUser();
+          await User.setServiceNumber(user.id, this.selectedNumber);
+
+          successMessage.className = 'alert alert-success';
+          successMessage.textContent = 'Service number purchased successfully! Redirecting...';
+
+          setTimeout(() => {
+            navigateTo('/manage-numbers');
+          }, 1500);
+        } catch (error) {
+          console.error('Provision error:', error);
+          errorMessage.className = 'alert alert-error';
+          errorMessage.textContent = error.message || 'Failed to provision number. Please try again.';
+
+          purchaseBtn.disabled = false;
+          purchaseBtn.textContent = 'Purchase';
+        }
       });
     });
   }

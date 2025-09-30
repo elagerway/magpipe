@@ -31,7 +31,27 @@ export default class InboxPage {
         <!-- Conversation List Sidebar -->
         <div class="conversation-list" id="conversation-list">
           <div class="inbox-header">
-            <h1 style="margin: 0; font-size: 1.5rem;">Conversations</h1>
+            <h1 style="margin: 0; font-size: 1rem; font-weight: 600;">Conversations</h1>
+            <button id="new-conversation-btn" style="
+              background: white;
+              color: var(--primary-color);
+              border: 2px solid transparent;
+              background-image: linear-gradient(white, white), linear-gradient(135deg, #6366f1, #8b5cf6);
+              background-origin: padding-box, border-box;
+              background-clip: padding-box, border-box;
+              border-radius: 50%;
+              width: 29px;
+              height: 29px;
+              font-size: 1rem;
+              font-weight: 300;
+              cursor: pointer;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              line-height: 1;
+              flex-shrink: 0;
+              transition: all 0.2s ease;
+            " onmouseover="this.style.backgroundImage='linear-gradient(var(--bg-secondary), var(--bg-secondary)), linear-gradient(135deg, #6366f1, #8b5cf6)'" onmouseout="this.style.backgroundImage='linear-gradient(white, white), linear-gradient(135deg, #6366f1, #8b5cf6)'">+</button>
           </div>
           <div id="conversations">
             ${this.renderConversationList()}
@@ -354,7 +374,7 @@ export default class InboxPage {
           color: var(--primary-color);
           line-height: 1;
         ">←</button>
-        <h2 style="margin: 0; font-size: 1.125rem; font-weight: 600; flex: 1;">
+        <h2 style="margin: 0; font-size: 0.88rem; font-weight: 600; flex: 1;">
           ${this.formatPhoneNumber(conv.phone)}
         </h2>
       </div>
@@ -423,7 +443,7 @@ export default class InboxPage {
           line-height: 1;
         ">←</button>
         <div style="flex: 1;">
-          <h2 style="margin: 0; font-size: 1.125rem; font-weight: 600;">
+          <h2 style="margin: 0; font-size: 0.88rem; font-weight: 600;">
             ${this.formatPhoneNumber(call.contact_phone)}
           </h2>
           <div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.125rem; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
@@ -573,8 +593,166 @@ export default class InboxPage {
     return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   }
 
+  showNewConversationModal() {
+    const threadElement = document.getElementById('message-thread');
+    threadElement.innerHTML = `
+      <div class="empty-thread">
+        <div style="max-width: 400px; width: 100%;">
+          <h2 style="margin: 0 0 1.5rem 0; font-size: 1.5rem;">New Conversation</h2>
+
+          <div id="new-conv-error" class="hidden" style="margin-bottom: 1rem;"></div>
+
+          <div style="margin-bottom: 1rem;">
+            <label style="display: block; font-weight: 600; margin-bottom: 0.5rem;">Phone Number</label>
+            <input
+              type="tel"
+              id="new-conv-phone"
+              class="form-input"
+              placeholder="+1 (555) 123-4567"
+              style="width: 100%;"
+            />
+          </div>
+
+          <div style="margin-bottom: 1.5rem;">
+            <label style="display: block; font-weight: 600; margin-bottom: 0.5rem;">Message</label>
+            <textarea
+              id="new-conv-message"
+              class="form-input"
+              placeholder="Type your message..."
+              rows="4"
+              style="width: 100%; resize: vertical;"
+            ></textarea>
+          </div>
+
+          <div style="display: flex; gap: 0.75rem;">
+            <button id="cancel-new-conv" class="btn btn-secondary" style="flex: 1;">
+              Cancel
+            </button>
+            <button id="send-new-conv" class="btn btn-primary" style="flex: 1;">
+              Send Message
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Attach listeners
+    document.getElementById('cancel-new-conv').addEventListener('click', () => {
+      this.selectedContact = null;
+      threadElement.innerHTML = this.renderEmptyState();
+    });
+
+    document.getElementById('send-new-conv').addEventListener('click', async () => {
+      await this.sendNewConversation();
+    });
+
+    // Focus phone input
+    document.getElementById('new-conv-phone').focus();
+  }
+
+  async sendNewConversation() {
+    const phoneInput = document.getElementById('new-conv-phone');
+    const messageInput = document.getElementById('new-conv-message');
+    const sendBtn = document.getElementById('send-new-conv');
+    const errorDiv = document.getElementById('new-conv-error');
+
+    const phone = phoneInput.value.trim();
+    const message = messageInput.value.trim();
+
+    if (!phone) {
+      errorDiv.className = 'alert alert-error';
+      errorDiv.textContent = 'Please enter a phone number';
+      return;
+    }
+
+    if (!message) {
+      errorDiv.className = 'alert alert-error';
+      errorDiv.textContent = 'Please enter a message';
+      return;
+    }
+
+    sendBtn.disabled = true;
+    sendBtn.textContent = 'Sending...';
+    errorDiv.classList.add('hidden');
+
+    try {
+      // Get user's service number
+      const { data: { session } } = await supabase.auth.getSession();
+      const { data: serviceNumbers } = await supabase
+        .from('service_numbers')
+        .select('phone_number')
+        .eq('user_id', session.user.id)
+        .eq('is_active', true)
+        .limit(1);
+
+      const serviceNumber = serviceNumbers?.[0]?.phone_number;
+
+      if (!serviceNumber) {
+        throw new Error('No active service number found');
+      }
+
+      // Normalize phone number
+      let normalizedPhone = phone.replace(/\D/g, '');
+      if (!normalizedPhone.startsWith('1') && normalizedPhone.length === 10) {
+        normalizedPhone = '1' + normalizedPhone;
+      }
+      if (!normalizedPhone.startsWith('+')) {
+        normalizedPhone = '+' + normalizedPhone;
+      }
+
+      // Send SMS
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const response = await fetch(`${supabaseUrl}/functions/v1/send-user-sms`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          serviceNumber,
+          contactPhone: normalizedPhone,
+          message,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to send message');
+      }
+
+      // Success - reload conversations and select this one
+      await this.loadConversations(this.userId);
+      this.selectedContact = normalizedPhone;
+      this.selectedCallId = null;
+
+      // Update UI
+      const conversationsEl = document.getElementById('conversations');
+      conversationsEl.innerHTML = this.renderConversationList();
+      this.attachConversationListeners();
+
+      const threadElement = document.getElementById('message-thread');
+      threadElement.innerHTML = this.renderMessageThread();
+      this.attachMessageInputListeners();
+
+    } catch (error) {
+      console.error('Send new conversation error:', error);
+      errorDiv.className = 'alert alert-error';
+      errorDiv.textContent = error.message || 'Failed to send message';
+      sendBtn.disabled = false;
+      sendBtn.textContent = 'Send Message';
+    }
+  }
+
   attachEventListeners() {
     this.attachConversationListeners();
+
+    // New conversation button
+    const newConvBtn = document.getElementById('new-conversation-btn');
+    if (newConvBtn) {
+      newConvBtn.addEventListener('click', () => {
+        this.showNewConversationModal();
+      });
+    }
   }
 
   attachConversationListeners() {
@@ -614,10 +792,6 @@ export default class InboxPage {
           conversationsEl.innerHTML = this.renderConversationList();
           this.attachConversationListeners();
         }
-
-        // Update selected state
-        document.querySelectorAll('.conversation-item').forEach(i => i.classList.remove('selected'));
-        item.classList.add('selected');
 
         // Update thread view
         const threadElement = document.getElementById('message-thread');

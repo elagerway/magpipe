@@ -110,32 +110,62 @@ serve(async (req) => {
       }
     } else {
       // Search by location (city/state)
-      const searchParams = new URLSearchParams()
-      searchParams.append('Contains', searchQuery)
-      searchParams.append('PageSize', '20')
-
-      const url = `https://${signalwireSpaceUrl}/api/laml/2010-04-01/Accounts/${signalwireProjectId}/AvailablePhoneNumbers/US/Local.json?${searchParams.toString()}`
-
-      console.log('Searching by location:', url)
-
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Authorization': 'Basic ' + btoa(`${signalwireProjectId}:${signalwireToken}`),
-        },
-      })
-
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.error('SignalWire error:', errorText)
-        return new Response(
-          JSON.stringify({ error: 'Failed to search phone numbers' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
+      // Map common city names to their primary area codes
+      const cityAreaCodes: Record<string, string[]> = {
+        'san francisco': ['415', '628'],
+        'sf': ['415', '628'],
+        'los angeles': ['213', '323', '310'],
+        'la': ['213', '323', '310'],
+        'new york': ['212', '646', '917'],
+        'nyc': ['212', '646', '917'],
+        'vancouver': ['604', '236', '778'],
       }
 
-      const result = await response.json()
-      allNumbers = result.available_phone_numbers || []
+      const normalizedQuery = searchQuery.toLowerCase()
+      let areaCodesToSearch: string[] = []
+
+      // Try to match common city names
+      for (const [city, codes] of Object.entries(cityAreaCodes)) {
+        if (normalizedQuery.includes(city)) {
+          areaCodesToSearch = codes
+          break
+        }
+      }
+
+      // If no match, try using InRegion parameter (state abbreviation)
+      if (areaCodesToSearch.length === 0) {
+        // Extract potential state code (last 2 letters if present)
+        const stateMatch = searchQuery.match(/\b([A-Z]{2})\b/i)
+        if (stateMatch) {
+          const searchParams = new URLSearchParams()
+          searchParams.append('InRegion', stateMatch[1].toUpperCase())
+          searchParams.append('PageSize', '20')
+
+          const url = `https://${signalwireSpaceUrl}/api/laml/2010-04-01/Accounts/${signalwireProjectId}/AvailablePhoneNumbers/US/Local.json?${searchParams.toString()}`
+
+          console.log('Searching by state:', url)
+
+          const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+              'Authorization': 'Basic ' + btoa(`${signalwireProjectId}:${signalwireToken}`),
+            },
+          })
+
+          if (response.ok) {
+            const result = await response.json()
+            allNumbers = result.available_phone_numbers || []
+          }
+        }
+      } else {
+        // Search by area codes we found for this city
+        console.log('Searching city area codes:', areaCodesToSearch)
+        for (const code of areaCodesToSearch) {
+          const numbers = await searchSignalWire(code)
+          allNumbers.push(...numbers)
+          if (allNumbers.length >= 20) break
+        }
+      }
     }
 
     // Transform SignalWire response to our format

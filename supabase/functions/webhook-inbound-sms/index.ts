@@ -64,12 +64,12 @@ serve(async (req) => {
       console.error('Error logging SMS:', insertError)
     } else {
       // Check for opt-out/opt-in keywords (USA SMS compliance)
-      // Only process STOP for US campaign number, not Canadian numbers
-      const { USA_CAMPAIGN_NUMBER } = await import('../_shared/sms-compliance.ts')
-      const isUSCampaignNumber = to === USA_CAMPAIGN_NUMBER
+      // Only process STOP for US numbers, not Canadian numbers
+      const { isUSNumber } = await import('../_shared/sms-compliance.ts')
+      const toIsUSNumber = await isUSNumber(to, supabase)
 
-      if (isUSCampaignNumber && isOptOutMessage(body)) {
-        console.log('Opt-out message detected from:', from, 'to US campaign number')
+      if (toIsUSNumber && isOptOutMessage(body)) {
+        console.log('Opt-out message detected from:', from, 'to US number:', to)
         await recordOptOut(supabase, from)
 
         // Send confirmation message (without additional opt-out text)
@@ -84,8 +84,8 @@ serve(async (req) => {
         })
       }
 
-      if (isUSCampaignNumber && isOptInMessage(body)) {
-        console.log('Opt-in message detected from:', from, 'to US campaign number')
+      if (toIsUSNumber && isOptInMessage(body)) {
+        console.log('Opt-in message detected from:', from, 'to US number:', to)
         await recordOptIn(supabase, from)
 
         // Send confirmation message (without additional opt-out text)
@@ -163,14 +163,14 @@ async function processAndReplySMS(
 ) {
   try {
     // Check if sender has opted out (USA SMS compliance)
-    // Only block if they opted out AND this is the US campaign number
-    const { USA_CAMPAIGN_NUMBER } = await import('../_shared/sms-compliance.ts')
-    const isUSCampaignNumber = to === USA_CAMPAIGN_NUMBER
+    // Only block if they opted out AND this is a US number
+    const { isUSNumber } = await import('../_shared/sms-compliance.ts')
+    const toIsUSNumber = await isUSNumber(to, supabase)
 
-    if (isUSCampaignNumber) {
+    if (toIsUSNumber) {
       const hasOptedOut = await isOptedOut(supabase, from)
       if (hasOptedOut) {
-        console.log('Sender has opted out from US campaign number, not sending AI reply:', from)
+        console.log('Sender has opted out from US number:', to, '- not sending AI reply to:', from)
         return // Don't respond to opted-out users
       }
     }
@@ -274,9 +274,10 @@ async function sendSMS(
     // Use USA campaign number for US recipients, otherwise use service number
     const fromNumber = await getSenderNumber(to, from, supabase)
 
-    // Add opt-out instructions (USA SMS compliance) only when sending FROM US campaign number
-    const { USA_CAMPAIGN_NUMBER } = await import('../_shared/sms-compliance.ts')
-    const shouldAddOptOutText = addOptOutText && (fromNumber === USA_CAMPAIGN_NUMBER)
+    // Add opt-out instructions (USA SMS compliance) only when sending FROM a US number
+    const { isUSNumber } = await import('../_shared/sms-compliance.ts')
+    const fromIsUSNumber = await isUSNumber(fromNumber, supabase)
+    const shouldAddOptOutText = addOptOutText && fromIsUSNumber
     const messageBody = shouldAddOptOutText ? `${body}\n\nSTOP to opt out` : body
 
     const smsData = new URLSearchParams({
