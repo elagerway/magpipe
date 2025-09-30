@@ -1,0 +1,217 @@
+openapi: 3.0.3
+info:
+  title: Pat PWA - Authentication API
+  description: Supabase Auth integration for user registration, login, and verification
+  version: 1.0.0
+
+servers:
+  - url: https://{project-id}.supabase.co/auth/v1
+    description: Supabase Auth API
+
+paths:
+  /signup:
+    post:
+      summary: Register new user with email/password
+      operationId: signUp
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, name]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@example.com
+                password:
+                  type: string
+                  minLength: 8
+                  example: SecurePass123!
+                name:
+                  type: string
+                  minLength: 1
+                  example: John Doe
+      responses:
+        '200':
+          description: User created, confirmation email sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+                  session:
+                    $ref: '#/components/schemas/Session'
+        '400':
+          description: Invalid input (weak password, invalid email)
+        '422':
+          description: User already exists
+
+  /token:
+    post:
+      summary: Login with email/password
+      operationId: signIn
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Successful authentication
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  token_type:
+                    type: string
+                    example: bearer
+                  expires_in:
+                    type: integer
+                    example: 3600
+                  refresh_token:
+                    type: string
+                  user:
+                    $ref: '#/components/schemas/User'
+        '400':
+          description: Invalid credentials
+        '401':
+          description: Email not confirmed
+
+  /verify:
+    post:
+      summary: Verify email with confirmation code
+      operationId: verifyEmail
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, token, email]
+              properties:
+                type:
+                  type: string
+                  enum: [signup]
+                token:
+                  type: string
+                  description: 6-digit confirmation code
+                  pattern: '^\d{6}$'
+                email:
+                  type: string
+                  format: email
+      responses:
+        '200':
+          description: Email verified successfully
+        '400':
+          description: Invalid or expired token
+
+  /user:
+    get:
+      summary: Get current user profile
+      operationId: getUser
+      tags: [Authentication]
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          description: Not authenticated
+
+    patch:
+      summary: Update user profile
+      operationId: updateUser
+      tags: [Authentication]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                phone_number:
+                  type: string
+                  pattern: '^\+[1-9]\d{1,14}$'
+                  description: E.164 format phone number
+      responses:
+        '200':
+          description: Profile updated
+        '400':
+          description: Invalid input
+
+  /logout:
+    post:
+      summary: Sign out current session
+      operationId: signOut
+      tags: [Authentication]
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: Successfully signed out
+
+components:
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        phone_verified:
+          type: boolean
+        phone_number:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    Session:
+      type: object
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+        expires_in:
+          type: integer
+        refresh_token:
+          type: string
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

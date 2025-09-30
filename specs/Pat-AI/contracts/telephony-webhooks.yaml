@@ -1,0 +1,285 @@
+openapi: 3.0.3
+info:
+  title: Pat PWA - Telephony Webhooks
+  description: Webhook endpoints for SignalWire and Retell.ai integration
+  version: 1.0.0
+
+servers:
+  - url: https://{project-id}.supabase.co/functions/v1
+    description: Supabase Edge Functions
+
+paths:
+  /webhooks/signalwire/inbound-call:
+    post:
+      summary: Handle inbound call from SignalWire
+      description: Receives webhook when a call arrives at the user's SignalWire number
+      operationId: handleInboundCall
+      tags: [SignalWire Webhooks]
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [CallSid, From, To, CallStatus]
+              properties:
+                CallSid:
+                  type: string
+                  description: Unique call identifier
+                From:
+                  type: string
+                  description: Caller's phone number (E.164)
+                To:
+                  type: string
+                  description: Called number (user's SignalWire number)
+                CallStatus:
+                  type: string
+                  enum: [ringing, in-progress, completed, busy, failed, no-answer]
+                Direction:
+                  type: string
+                  enum: [inbound, outbound]
+                FromCity:
+                  type: string
+                FromState:
+                  type: string
+                FromCountry:
+                  type: string
+      responses:
+        '200':
+          description: TwiML response to handle the call
+          content:
+            application/xml:
+              schema:
+                type: string
+                example: |
+                  <?xml version="1.0" encoding="UTF-8"?>
+                  <Response>
+                    <Connect>
+                      <Stream url="wss://retell.ai/websocket/{agent-id}" />
+                    </Connect>
+                  </Response>
+
+  /webhooks/signalwire/call-status:
+    post:
+      summary: Receive call status updates
+      description: Receives updates about call progress (answered, ended, etc.)
+      operationId: handleCallStatus
+      tags: [SignalWire Webhooks]
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [CallSid, CallStatus]
+              properties:
+                CallSid:
+                  type: string
+                CallStatus:
+                  type: string
+                  enum: [completed, busy, failed, no-answer]
+                CallDuration:
+                  type: string
+                  description: Duration in seconds
+                RecordingUrl:
+                  type: string
+                  description: URL to call recording if enabled
+                RecordingSid:
+                  type: string
+      responses:
+        '200':
+          description: Acknowledged
+
+  /webhooks/signalwire/inbound-sms:
+    post:
+      summary: Handle inbound SMS from SignalWire
+      operationId: handleInboundSms
+      tags: [SignalWire Webhooks]
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [MessageSid, From, To, Body]
+              properties:
+                MessageSid:
+                  type: string
+                  description: Unique message identifier
+                From:
+                  type: string
+                  description: Sender's phone number (E.164)
+                To:
+                  type: string
+                  description: Recipient number (user's SignalWire number)
+                Body:
+                  type: string
+                  description: Message content
+                  maxLength: 1600
+                NumMedia:
+                  type: string
+                  description: Number of media attachments
+                MediaUrl0:
+                  type: string
+                  description: URL to first media attachment
+      responses:
+        '200':
+          description: TwiML response with reply message
+          content:
+            application/xml:
+              schema:
+                type: string
+                example: |
+                  <?xml version="1.0" encoding="UTF-8"?>
+                  <Response>
+                    <Message>AI-generated response text here</Message>
+                  </Response>
+
+  /webhooks/retell/call-analysis:
+    post:
+      summary: Receive call analysis from Retell.ai
+      description: Receives transcript and analysis after Retell.ai finishes processing call
+      operationId: handleRetellAnalysis
+      tags: [Retell.ai Webhooks]
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [call_id, transcript, disposition]
+              properties:
+                call_id:
+                  type: string
+                  description: Retell.ai call identifier
+                agent_id:
+                  type: string
+                  description: Agent configuration used
+                transcript:
+                  type: array
+                  description: Full conversation transcript
+                  items:
+                    type: object
+                    properties:
+                      role:
+                        type: string
+                        enum: [agent, user]
+                      content:
+                        type: string
+                      timestamp:
+                        type: number
+                        description: Unix timestamp in seconds
+                duration:
+                  type: integer
+                  description: Call duration in seconds
+                disposition:
+                  type: string
+                  description: Call outcome from Retell
+                  enum: [completed, transferred, ended_by_user, technical_error]
+                call_analysis:
+                  type: object
+                  description: AI-generated call summary
+                  properties:
+                    summary:
+                      type: string
+                    topics:
+                      type: array
+                      items:
+                        type: string
+                    sentiment:
+                      type: string
+                      enum: [positive, neutral, negative]
+                    action_items:
+                      type: array
+                      items:
+                        type: string
+                metadata:
+                  type: object
+                  description: Custom metadata passed to Retell
+                  properties:
+                    user_id:
+                      type: string
+                    contact_id:
+                      type: string
+                    signalwire_call_sid:
+                      type: string
+      responses:
+        '200':
+          description: Analysis received and stored
+
+  /webhooks/signalwire/verify-number:
+    post:
+      summary: Send phone verification code
+      description: Internal endpoint to trigger verification SMS
+      operationId: sendVerificationCode
+      tags: [Phone Verification]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone_number]
+              properties:
+                phone_number:
+                  type: string
+                  pattern: '^\+[1-9]\d{1,14}$'
+                  description: Phone number to verify (E.164 format)
+      responses:
+        '200':
+          description: Verification code sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  verification_id:
+                    type: string
+                  expires_at:
+                    type: string
+                    format: date-time
+        '429':
+          description: Too many verification attempts
+
+  /webhooks/signalwire/verify-code:
+    post:
+      summary: Verify phone number with code
+      description: Internal endpoint to check verification code
+      operationId: verifyPhoneCode
+      tags: [Phone Verification]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone_number, code]
+              properties:
+                phone_number:
+                  type: string
+                code:
+                  type: string
+                  pattern: '^\d{6}$'
+                  description: 6-digit verification code
+      responses:
+        '200':
+          description: Phone verified successfully
+        '400':
+          description: Invalid or expired code
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-Retell-API-Key

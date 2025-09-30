@@ -1,0 +1,559 @@
+openapi: 3.0.3
+info:
+  title: Pat PWA - Supabase Data API
+  description: PostgREST endpoints for contacts, call records, SMS, and configurations
+  version: 1.0.0
+
+servers:
+  - url: https://{project-id}.supabase.co/rest/v1
+    description: Supabase PostgREST API
+
+paths:
+  /contacts:
+    get:
+      summary: List user's contacts
+      operationId: listContacts
+      tags: [Contacts]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: order
+          in: query
+          schema:
+            type: string
+            default: name.asc
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: List of contacts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Contact'
+
+    post:
+      summary: Create new contact
+      operationId: createContact
+      tags: [Contacts]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, phone_number]
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                phone_number:
+                  type: string
+                  pattern: '^\+[1-9]\d{1,14}$'
+                is_whitelisted:
+                  type: boolean
+                  default: true
+                notes:
+                  type: string
+      responses:
+        '201':
+          description: Contact created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contact'
+        '409':
+          description: Contact with this phone number already exists
+
+  /contacts/{id}:
+    get:
+      summary: Get contact by ID
+      operationId: getContact
+      tags: [Contacts]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Contact details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contact'
+        '404':
+          description: Contact not found
+
+    patch:
+      summary: Update contact
+      operationId: updateContact
+      tags: [Contacts]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                is_whitelisted:
+                  type: boolean
+                notes:
+                  type: string
+      responses:
+        '200':
+          description: Contact updated
+
+    delete:
+      summary: Delete contact
+      operationId: deleteContact
+      tags: [Contacts]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Contact deleted
+
+  /call_records:
+    get:
+      summary: List call history
+      operationId: listCallRecords
+      tags: [Calls]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: order
+          in: query
+          schema:
+            type: string
+            default: started_at.desc
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+        - name: contact_id
+          in: query
+          description: Filter by contact
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Call history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CallRecord'
+
+    post:
+      summary: Create call record (internal use by webhooks)
+      operationId: createCallRecord
+      tags: [Calls]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CallRecordCreate'
+      responses:
+        '201':
+          description: Call record created
+
+  /call_records/{id}:
+    get:
+      summary: Get call record details
+      operationId: getCallRecord
+      tags: [Calls]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Call record with transcript and recording
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallRecord'
+
+  /sms_messages:
+    get:
+      summary: List SMS history
+      operationId: listSmsMessages
+      tags: [SMS]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: order
+          in: query
+          schema:
+            type: string
+            default: sent_at.desc
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+        - name: contact_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: SMS history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SmsMessage'
+
+    post:
+      summary: Create SMS record (internal use by webhooks)
+      operationId: createSmsMessage
+      tags: [SMS]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SmsMessageCreate'
+      responses:
+        '201':
+          description: SMS record created
+
+  /agent_configs:
+    get:
+      summary: Get user's agent configuration
+      operationId: getAgentConfig
+      tags: [Configuration]
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Agent configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentConfig'
+
+    post:
+      summary: Create initial agent configuration
+      operationId: createAgentConfig
+      tags: [Configuration]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentConfigUpdate'
+      responses:
+        '201':
+          description: Configuration created
+
+    patch:
+      summary: Update agent configuration
+      operationId: updateAgentConfig
+      tags: [Configuration]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentConfigUpdate'
+      responses:
+        '200':
+          description: Configuration updated
+
+components:
+  schemas:
+    Contact:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        phone_number:
+          type: string
+        is_whitelisted:
+          type: boolean
+        notes:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CallRecord:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        contact_id:
+          type: string
+          format: uuid
+          nullable: true
+        caller_number:
+          type: string
+        direction:
+          type: string
+          enum: [inbound, outbound]
+        duration:
+          type: integer
+          nullable: true
+        disposition:
+          type: string
+          enum: [answered_by_pat, transferred_to_user, screened_out, voicemail, failed]
+        recording_url:
+          type: string
+          nullable: true
+        transcript:
+          type: string
+          nullable: true
+        screening_notes:
+          type: string
+          nullable: true
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    CallRecordCreate:
+      type: object
+      required: [caller_number, started_at, disposition]
+      properties:
+        contact_id:
+          type: string
+          format: uuid
+        caller_number:
+          type: string
+        direction:
+          type: string
+          default: inbound
+        duration:
+          type: integer
+        disposition:
+          type: string
+        recording_url:
+          type: string
+        transcript:
+          type: string
+        screening_notes:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          format: date-time
+
+    SmsMessage:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        contact_id:
+          type: string
+          format: uuid
+          nullable: true
+        sender_number:
+          type: string
+        recipient_number:
+          type: string
+        direction:
+          type: string
+          enum: [inbound, outbound]
+        content:
+          type: string
+        status:
+          type: string
+          enum: [sent, delivered, failed, pending]
+        sent_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    SmsMessageCreate:
+      type: object
+      required: [sender_number, recipient_number, direction, content, sent_at]
+      properties:
+        contact_id:
+          type: string
+          format: uuid
+        sender_number:
+          type: string
+        recipient_number:
+          type: string
+        direction:
+          type: string
+        content:
+          type: string
+          maxLength: 1600
+        status:
+          type: string
+          default: sent
+        sent_at:
+          type: string
+          format: date-time
+
+    AgentConfig:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        voice:
+          type: string
+          default: kate
+        greeting_template:
+          type: string
+        vetting_criteria:
+          type: object
+          properties:
+            allow_emergencies:
+              type: boolean
+            require_name:
+              type: boolean
+            require_reason:
+              type: boolean
+            auto_transfer_keywords:
+              type: array
+              items:
+                type: string
+            auto_reject_keywords:
+              type: array
+              items:
+                type: string
+        transfer_preferences:
+          type: object
+          properties:
+            always_transfer_whitelist:
+              type: boolean
+            transfer_on_request:
+              type: boolean
+            business_hours_only:
+              type: boolean
+            quiet_hours:
+              type: object
+              properties:
+                start:
+                  type: string
+                  pattern: '^\d{2}:\d{2}$'
+                end:
+                  type: string
+                  pattern: '^\d{2}:\d{2}$'
+        response_style:
+          type: string
+          enum: [professional, casual, friendly]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    AgentConfigUpdate:
+      type: object
+      properties:
+        voice:
+          type: string
+        greeting_template:
+          type: string
+        vetting_criteria:
+          type: object
+        transfer_preferences:
+          type: object
+        response_style:
+          type: string
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

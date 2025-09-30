@@ -1,0 +1,46 @@
+{
+  "name": "pat-ai-assistant",
+  "version": "1.0.0",
+  "description": "Pat AI Call & SMS Agent PWA - An AI-powered assistant that handles phone calls and SMS messages",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage",
+    "test:e2e": "playwright test",
+    "lint": "eslint src tests --ext .js",
+    "lint:fix": "eslint src tests --ext .js --fix",
+    "format": "prettier --write \"src/**/*.js\" \"tests/**/*.js\" \"public/**/*.{html,css}\"",
+    "format:check": "prettier --check \"src/**/*.js\" \"tests/**/*.js\" \"public/**/*.{html,css}\"",
+    "supabase:start": "supabase start",
+    "supabase:stop": "supabase stop",
+    "supabase:status": "supabase status",
+    "supabase:migrate": "supabase db push",
+    "supabase:reset": "supabase db reset"
+  },
+  "keywords": [
+    "pwa",
+    "ai",
+    "assistant",
+    "voip",
+    "sms",
+    "supabase"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.1",
+    "@vitest/ui": "^1.0.4",
+    "eslint": "^8.56.0",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.1.1",
+    "vite": "^5.0.10",
+    "vitest": "^1.0.4"
+  }
+}

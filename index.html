@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Pat - Your AI call and SMS assistant">
+  <meta name="theme-color" content="#6366f1">
+
+  <!-- PWA Meta Tags -->
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192x192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512x512.png">
+  <link rel="apple-touch-icon" href="/icons/icon-192x192.png">
+
+  <title>Pat - AI Assistant</title>
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="/styles/main.css">
+  <link rel="stylesheet" href="/styles/modal.css">
+  <link rel="stylesheet" href="/styles/toggle.css">
+</head>
+<body>
+  <div id="app">
+    <!-- App content will be dynamically injected here -->
+    <div class="loading-screen">
+      <div class="spinner"></div>
+      <p>Loading Pat...</p>
+    </div>
+  </div>
+
+  <!-- Main App Script -->
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
