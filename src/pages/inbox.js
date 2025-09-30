@@ -237,6 +237,15 @@ export default class InboxPage {
       }
     });
 
+    // Sort messages within each conversation (oldest first for display)
+    Object.values(smsGrouped).forEach(conv => {
+      conv.messages.sort((a, b) => {
+        const dateA = new Date(a.sent_at || a.created_at);
+        const dateB = new Date(b.sent_at || b.created_at);
+        return dateA - dateB;
+      });
+    });
+
     // Add SMS conversations to list
     conversationsList.push(...Object.values(smsGrouped));
 
