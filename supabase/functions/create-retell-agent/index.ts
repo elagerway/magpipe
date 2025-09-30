@@ -32,17 +32,52 @@ serve(async (req) => {
 
     const retellApiKey = Deno.env.get('RETELL_API_KEY')!
 
-    // Create Retell agent with custom LLM websocket
+    // Get user's agent config with system prompt
+    const { data: existingConfig } = await supabase
+      .from('agent_configs')
+      .select('system_prompt')
+      .eq('user_id', user.id)
+      .single()
+
+    const systemPrompt = existingConfig?.system_prompt || agentConfig?.prompt || 'You are a friendly, professional AI assistant that answers phone calls and text messages on behalf of your user.'
+
+    // Create Retell LLM with the system prompt
+    const llmData = {
+      model: 'gpt-4o-mini',
+      general_prompt: systemPrompt,
+      begin_message: "Hi, how can I help you today?"
+    }
+
+    const llmResponse = await fetch('https://api.retellai.com/create-retell-llm', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${retellApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(llmData),
+    })
+
+    if (!llmResponse.ok) {
+      const errorText = await llmResponse.text()
+      console.error('Failed to create Retell LLM:', errorText)
+      return new Response(
+        JSON.stringify({ error: 'Failed to create Retell LLM', details: errorText }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const llm = await llmResponse.json()
+    console.log('Retell LLM created:', llm.llm_id)
+
+    // Create Retell agent with the LLM
     const agentData = {
       agent_name: agentConfig?.name || `Pat AI - ${user.email}`,
       voice_id: agentConfig?.voice_id || '11labs-Kate',
       language: 'en-US',
       response_engine: {
-        type: 'custom-llm',
-        llm_websocket_url: `${supabaseUrl}/functions/v1/retell-llm-websocket`,
+        type: 'retell-llm',
+        llm_id: llm.llm_id,
       },
-      agent_first_speak: true,
-      begin_message: agentConfig?.begin_message || "Hello, this is Pat. How can I help you?",
     }
 
     console.log('Creating Retell agent:', agentData)
