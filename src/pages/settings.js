@@ -18,11 +18,25 @@ export default class SettingsPage {
     const { profile } = await User.getProfile(user.id);
     const { config } = await AgentConfig.getByUserId(user.id);
 
+    console.log('Profile data:', {
+      phone_number: profile?.phone_number,
+      phone_verified: profile?.phone_verified
+    });
+
     // Load notification preferences
     const { data: notifPrefs } = await supabase
       .from('notification_preferences')
       .select('*')
       .eq('user_id', user.id)
+      .single();
+
+    // Load active service number
+    const { data: serviceNumber } = await supabase
+      .from('service_numbers')
+      .select('phone_number')
+      .eq('user_id', user.id)
+      .eq('is_active', true)
+      .limit(1)
       .single();
 
     const appElement = document.getElementById('app');
@@ -67,18 +81,55 @@ export default class SettingsPage {
         <!-- Profile Section -->
         <div class="card">
           <h2>Profile</h2>
-          <div class="form-group">
-            <strong>Name:</strong> ${profile?.name || 'N/A'}
+
+          <!-- Name -->
+          <div class="form-group" style="border-bottom: 1px solid var(--border-color); padding-bottom: 1rem; margin-bottom: 1rem;">
+            <label style="font-weight: 600; margin: 0 0 0.5rem 0;">Name</label>
+            <div id="name-display" style="cursor: pointer; padding: 0.5rem; border-radius: var(--radius-sm); transition: background 0.2s;" onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='transparent'">${profile?.name || 'Click to add'}</div>
+            <div id="name-edit" style="display: none;">
+              <input type="text" id="name-input" class="form-input" value="${profile?.name || ''}" style="margin-bottom: 0.5rem;" />
+              <div style="display: flex; gap: 0.5rem;">
+                <button class="btn btn-sm btn-primary" id="save-name-btn">Save</button>
+                <button class="btn btn-sm btn-secondary" id="cancel-name-btn">Cancel</button>
+              </div>
+            </div>
           </div>
-          <div class="form-group">
-            <strong>Email:</strong> ${user.email}
+
+          <!-- Email -->
+          <div class="form-group" style="border-bottom: 1px solid var(--border-color); padding-bottom: 1rem; margin-bottom: 1rem;">
+            <label style="font-weight: 600; margin: 0 0 0.5rem 0;">Email</label>
+            <div id="email-display" style="cursor: pointer; padding: 0.5rem; border-radius: var(--radius-sm); transition: background 0.2s;" onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='transparent'">${user.email}</div>
+            <div id="email-edit" style="display: none;">
+              <input type="email" id="email-input" class="form-input" value="${user.email}" style="margin-bottom: 0.5rem;" />
+              <div style="display: flex; gap: 0.5rem;">
+                <button class="btn btn-sm btn-primary" id="save-email-btn">Save</button>
+                <button class="btn btn-sm btn-secondary" id="cancel-email-btn">Cancel</button>
+              </div>
+              <p class="text-muted" style="margin-top: 0.5rem; font-size: 0.875rem;">You'll need to verify your new email address</p>
+            </div>
           </div>
-          <div class="form-group">
-            <strong>Phone Number:</strong> ${profile?.phone_number || 'Not verified'}
-            ${profile?.phone_verified ? '<span style="color: var(--success-color); margin-left: 0.5rem;">✓ Verified</span>' : ''}
+
+          <!-- Phone Number -->
+          <div class="form-group" style="border-bottom: 1px solid var(--border-color); padding-bottom: 1rem; margin-bottom: 1rem;">
+            <label style="font-weight: 600; margin: 0 0 0.5rem 0;">Phone Number</label>
+            <div id="phone-display" style="cursor: pointer; padding: 0.5rem; border-radius: var(--radius-sm); transition: background 0.2s;" onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='transparent'">
+              ${profile?.phone_number || 'Click to add'}
+              ${profile?.phone_verified ? '<span style="color: var(--success-color); margin-left: 0.5rem;">✓ Verified</span>' : ''}
+            </div>
+            <div id="phone-edit" style="display: none;">
+              <input type="tel" id="phone-input" class="form-input" value="${profile?.phone_number || ''}" placeholder="+1 (555) 123-4567" style="margin-bottom: 0.5rem;" />
+              <div style="display: flex; gap: 0.5rem;">
+                <button class="btn btn-sm btn-primary" id="save-phone-btn">Save</button>
+                <button class="btn btn-sm btn-secondary" id="cancel-phone-btn">Cancel</button>
+              </div>
+              <p class="text-muted" style="margin-top: 0.5rem; font-size: 0.875rem;">You'll need to verify your new phone number</p>
+            </div>
           </div>
+
+          <!-- Service Number (read-only) -->
           <div class="form-group">
-            <strong>Service Number:</strong> ${profile?.service_number ? this.formatPhoneNumber(profile.service_number) : 'Not configured'}
+            <label style="font-weight: 600; margin: 0 0 0.5rem 0;">Service Number</label>
+            <div style="padding: 0.5rem;">${serviceNumber?.phone_number ? this.formatPhoneNumber(serviceNumber.phone_number) : 'Not configured'}</div>
           </div>
         </div>
 
@@ -276,6 +327,178 @@ export default class SettingsPage {
     const deleteAccountBtn = document.getElementById('delete-account-btn');
     const errorMessage = document.getElementById('error-message');
     const successMessage = document.getElementById('success-message');
+
+    // Name inline editing
+    document.getElementById('name-display').addEventListener('click', () => {
+      document.getElementById('name-display').style.display = 'none';
+      document.getElementById('name-edit').style.display = 'block';
+      document.getElementById('name-input').focus();
+    });
+
+    document.getElementById('cancel-name-btn').addEventListener('click', () => {
+      document.getElementById('name-display').style.display = 'block';
+      document.getElementById('name-edit').style.display = 'none';
+    });
+
+    document.getElementById('save-name-btn').addEventListener('click', async () => {
+      const saveBtn = document.getElementById('save-name-btn');
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+      errorMessage.classList.add('hidden');
+      successMessage.classList.add('hidden');
+
+      try {
+        const { user } = await getCurrentUser();
+        const { error } = await supabase
+          .from('users')
+          .update({
+            name: document.getElementById('name-input').value,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', user.id);
+
+        if (error) throw error;
+
+        successMessage.className = 'alert alert-success';
+        successMessage.textContent = 'Name updated successfully. Reloading...';
+
+        setTimeout(() => window.location.reload(), 1000);
+      } catch (error) {
+        console.error('Save name error:', error);
+        errorMessage.className = 'alert alert-error';
+        errorMessage.textContent = 'Failed to save name. Please try again.';
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save';
+      }
+    });
+
+    // Email inline editing
+    document.getElementById('email-display').addEventListener('click', () => {
+      document.getElementById('email-display').style.display = 'none';
+      document.getElementById('email-edit').style.display = 'block';
+      document.getElementById('email-input').focus();
+    });
+
+    document.getElementById('cancel-email-btn').addEventListener('click', () => {
+      document.getElementById('email-display').style.display = 'block';
+      document.getElementById('email-edit').style.display = 'none';
+    });
+
+    document.getElementById('save-email-btn').addEventListener('click', async () => {
+      const saveBtn = document.getElementById('save-email-btn');
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+      errorMessage.classList.add('hidden');
+      successMessage.classList.add('hidden');
+
+      try {
+        const { user } = await getCurrentUser();
+        const newEmail = document.getElementById('email-input').value;
+
+        // Update email in Supabase Auth
+        const { error: authError } = await supabase.auth.updateUser({ email: newEmail });
+        if (authError) throw authError;
+
+        // Update email in users table
+        const { error } = await supabase
+          .from('users')
+          .update({
+            email: newEmail,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', user.id);
+
+        if (error) throw error;
+
+        successMessage.className = 'alert alert-success';
+        successMessage.textContent = 'Email updated. Please check your new email for verification link...';
+
+        setTimeout(() => navigateTo('/verify-email'), 2000);
+      } catch (error) {
+        console.error('Save email error:', error);
+        errorMessage.className = 'alert alert-error';
+        errorMessage.textContent = 'Failed to save email. Please try again.';
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save';
+      }
+    });
+
+    // Phone inline editing
+    document.getElementById('phone-display').addEventListener('click', () => {
+      document.getElementById('phone-display').style.display = 'none';
+      document.getElementById('phone-edit').style.display = 'block';
+      document.getElementById('phone-input').focus();
+    });
+
+    document.getElementById('cancel-phone-btn').addEventListener('click', () => {
+      document.getElementById('phone-display').style.display = 'block';
+      document.getElementById('phone-edit').style.display = 'none';
+    });
+
+    document.getElementById('save-phone-btn').addEventListener('click', async () => {
+      const saveBtn = document.getElementById('save-phone-btn');
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+      errorMessage.classList.add('hidden');
+      successMessage.classList.add('hidden');
+
+      try {
+        const { user } = await getCurrentUser();
+        const { profile } = await User.getProfile(user.id);
+        const newPhone = document.getElementById('phone-input').value;
+
+        // Normalize phone numbers for comparison (remove all non-digits)
+        const normalizePhone = (phone) => phone ? phone.replace(/\D/g, '') : '';
+        const oldPhoneNormalized = normalizePhone(profile?.phone_number);
+        const newPhoneNormalized = normalizePhone(newPhone);
+
+        // Check if the phone number actually changed
+        const phoneChanged = oldPhoneNormalized !== newPhoneNormalized;
+
+        if (!phoneChanged) {
+          // Phone number didn't actually change
+          // If it's not verified, send to verify; otherwise just close edit mode
+          if (!profile?.phone_verified) {
+            successMessage.className = 'alert alert-success';
+            successMessage.textContent = 'Redirecting to verification...';
+            setTimeout(() => navigateTo('/verify-phone'), 1000);
+          } else {
+            // Already verified, just close edit mode
+            successMessage.className = 'alert alert-success';
+            successMessage.textContent = 'No changes made.';
+            document.getElementById('phone-display').style.display = 'block';
+            document.getElementById('phone-edit').style.display = 'none';
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save';
+            setTimeout(() => successMessage.classList.add('hidden'), 2000);
+          }
+          return;
+        }
+
+        // Phone number changed - update and mark as unverified
+        const { error } = await supabase
+          .from('users')
+          .update({
+            phone_number: newPhone,
+            phone_verified: false,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', user.id);
+
+        if (error) throw error;
+
+        successMessage.className = 'alert alert-success';
+        successMessage.textContent = 'Phone number updated. Redirecting to verification...';
+
+        setTimeout(() => navigateTo('/verify-phone'), 1500);
+      } catch (error) {
+        console.error('Save phone error:', error);
+        errorMessage.className = 'alert alert-error';
+        errorMessage.textContent = 'Failed to save phone number. Please try again.';
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save';
+      }
+    });
 
     // Sign out
     signoutBtn.addEventListener('click', async () => {

@@ -18,6 +18,25 @@ export default class VerifyPhonePage {
       return;
     }
 
+    // Check if phone is already verified (force fresh data)
+    const { data: profile, error: profileError } = await supabase
+      .from('users')
+      .select('phone_verified, phone_number')
+      .eq('id', user.id)
+      .single();
+
+    console.log('Phone verification check:', {
+      phone_verified: profile?.phone_verified,
+      phone_number: profile?.phone_number
+    });
+
+    if (profile?.phone_verified) {
+      // Already verified, redirect to settings
+      console.log('Phone already verified, redirecting to settings');
+      navigateTo('/settings');
+      return;
+    }
+
     const appElement = document.getElementById('app');
 
     appElement.innerHTML = `
@@ -179,33 +198,52 @@ export default class VerifyPhonePage {
       successMessage.classList.add('hidden');
 
       try {
-        // In production, verify code with backend
-        // For now, simulate verification
+        // Verify code with backend (backend also updates phone_verified = true)
         const isValid = await this.verifyCode(this.phoneNumber, code);
 
         if (!isValid) {
           throw new Error('Invalid verification code');
         }
 
-        // Update user profile with verified phone
         const { user } = await getCurrentUser();
-        await User.verifyPhone(user.id, this.phoneNumber);
 
-        // Create agent with default prompt
+        // Check if user already has service numbers
+        const { data: serviceNumbers } = await supabase
+          .from('service_numbers')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .limit(1);
+
         successMessage.className = 'alert alert-success';
-        successMessage.textContent = 'Phone verified! Setting up your AI assistant...';
+        successMessage.textContent = 'Phone verified successfully!';
 
-        try {
-          await this.createDefaultAgent();
-          successMessage.textContent = 'All set! Redirecting...';
-        } catch (error) {
-          console.error('Agent creation error:', error);
-          // Continue anyway - agent can be created later
+        // Wait a moment to ensure database update propagates
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        if (serviceNumbers && serviceNumbers.length > 0) {
+          // User already has service number(s), go to settings
+          successMessage.textContent = 'Phone verified! Redirecting to settings...';
+
+          setTimeout(() => {
+            window.location.href = '/settings'; // Use href to force page reload
+          }, 1000);
+        } else {
+          // New user, set up agent and select number
+          successMessage.textContent = 'Setting up your AI assistant...';
+
+          try {
+            await this.createDefaultAgent();
+            successMessage.textContent = 'All set! Redirecting...';
+          } catch (error) {
+            console.error('Agent creation error:', error);
+            // Continue anyway - agent can be created later
+          }
+
+          setTimeout(() => {
+            navigateTo('/select-number');
+          }, 1500);
         }
-
-        setTimeout(() => {
-          navigateTo('/select-number');
-        }, 1500);
       } catch (error) {
         console.error('Verify code error:', error);
         errorMessage.className = 'alert alert-error';
