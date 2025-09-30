@@ -1,9 +1,12 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { getSenderNumber, isOptedOut } from '../_shared/sms-compliance.ts'
 
 serve(async (req) => {
   try {
     const { userId, type, data } = await req.json()
+
+    console.log('SMS notification request:', { userId, type })
 
     if (!userId || !type) {
       return new Response(JSON.stringify({ error: 'Missing required fields' }), {
@@ -67,19 +70,19 @@ serve(async (req) => {
 
     switch (type) {
       case 'missed_call':
-        smsBody = `Missed call from ${data.callerNumber || 'Unknown'} at ${new Date(data.timestamp).toLocaleString()}\n\nNotification ID: ${notificationId}`
+        smsBody = `Missed call from ${data.callerNumber || 'Unknown'} at ${new Date(data.timestamp).toLocaleString()}\n\nNotification ID: ${notificationId}\n\nSTOP to opt out`
         break
 
       case 'completed_call':
-        smsBody = `Call ${data.successful ? 'completed' : 'ended'} with ${data.callerNumber || 'Unknown'} at ${new Date(data.timestamp).toLocaleString()}${data.duration ? ` (${data.duration}s)` : ''}\n\nNotification ID: ${notificationId}`
+        smsBody = `Call ${data.successful ? 'completed' : 'ended'} with ${data.callerNumber || 'Unknown'} at ${new Date(data.timestamp).toLocaleString()}${data.duration ? ` (${data.duration}s)` : ''}\n\nNotification ID: ${notificationId}\n\nSTOP to opt out`
         break
 
       case 'new_message':
-        smsBody = `New message from ${data.senderNumber || 'Unknown'}: ${data.content}\n\nNotification ID: ${notificationId}`
+        smsBody = `New message from ${data.senderNumber || 'Unknown'}: ${data.content}\n\nNotification ID: ${notificationId}\n\nSTOP to opt out`
         break
 
       case 'outbound_message':
-        smsBody = `Message sent to ${data.recipientNumber || 'Unknown'}: ${data.content}\n\nNotification ID: ${notificationId}`
+        smsBody = `Message sent to ${data.recipientNumber || 'Unknown'}: ${data.content}\n\nNotification ID: ${notificationId}\n\nSTOP to opt out`
         break
 
       default:
@@ -89,8 +92,19 @@ serve(async (req) => {
         })
     }
 
+    // Check if recipient has opted out (USA SMS compliance)
+    const hasOptedOut = await isOptedOut(supabase, prefs.sms_phone_number)
+
+    if (hasOptedOut) {
+      console.log('Recipient has opted out:', prefs.sms_phone_number)
+      return new Response(JSON.stringify({ message: 'Recipient has opted out' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+
     // Get user's service number to use as sender
-    const { data: serviceNumbers } = await supabase
+    const { data: serviceNumbers, error: serviceError } = await supabase
       .from('service_numbers')
       .select('phone_number')
       .eq('user_id', userId)
@@ -106,9 +120,12 @@ serve(async (req) => {
       })
     }
 
+    // Use USA campaign number for US recipients, otherwise use service number
+    const fromNumber = await getSenderNumber(prefs.sms_phone_number, serviceNumbers.phone_number, supabase)
+
     // Send SMS via SignalWire
     const smsData = new URLSearchParams({
-      From: serviceNumbers.phone_number,
+      From: fromNumber,
       To: prefs.sms_phone_number,
       Body: smsBody,
     })
@@ -134,7 +151,7 @@ serve(async (req) => {
 
     const smsResult = await smsResponse.json()
 
-    console.log('SMS sent successfully:', smsResult, 'Notification ID:', notificationId)
+    console.log('SMS notification sent:', { notificationId, signalwireSid: smsResult.sid })
 
     return new Response(JSON.stringify({ success: true, notificationId: notificationId, signalwireSid: smsResult.sid }), {
       status: 200,

@@ -1,5 +1,15 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import {
+  isOptOutMessage,
+  isOptInMessage,
+  recordOptOut,
+  recordOptIn,
+  getOptOutConfirmation,
+  getOptInConfirmation,
+  getSenderNumber,
+  isOptedOut
+} from '../_shared/sms-compliance.ts'
 
 serve(async (req) => {
   try {
@@ -53,6 +63,39 @@ serve(async (req) => {
     if (insertError) {
       console.error('Error logging SMS:', insertError)
     } else {
+      // Check for opt-out/opt-in keywords (USA SMS compliance)
+      if (isOptOutMessage(body)) {
+        console.log('Opt-out message detected from:', from)
+        await recordOptOut(supabase, from)
+
+        // Send confirmation message (without additional opt-out text)
+        const confirmationMessage = getOptOutConfirmation()
+        sendSMS(serviceNumber.user_id, from, to, confirmationMessage, supabase, false)
+
+        // Return early - don't process with AI or send notifications
+        const twiml = `<?xml version="1.0" encoding="UTF-8"?><Response></Response>`
+        return new Response(twiml, {
+          headers: { 'Content-Type': 'text/xml' },
+          status: 200,
+        })
+      }
+
+      if (isOptInMessage(body)) {
+        console.log('Opt-in message detected from:', from)
+        await recordOptIn(supabase, from)
+
+        // Send confirmation message (without additional opt-out text)
+        const confirmationMessage = getOptInConfirmation()
+        sendSMS(serviceNumber.user_id, from, to, confirmationMessage, supabase, false)
+
+        // Return early - don't process with AI
+        const twiml = `<?xml version="1.0" encoding="UTF-8"?><Response></Response>`
+        return new Response(twiml, {
+          headers: { 'Content-Type': 'text/xml' },
+          status: 200,
+        })
+      }
+
       // Send new message notification (fire and forget)
       console.log('Sending new message notification for user:', serviceNumber.user_id)
 
@@ -115,6 +158,13 @@ async function processAndReplySMS(
   supabase: any
 ) {
   try {
+    // Check if sender has opted out (USA SMS compliance)
+    const hasOptedOut = await isOptedOut(supabase, from)
+    if (hasOptedOut) {
+      console.log('Sender has opted out, not sending AI reply:', from)
+      return // Don't respond to opted-out users
+    }
+
     // Check if AI is paused for this conversation
     const { data: context } = await supabase
       .from('conversation_contexts')
@@ -203,17 +253,24 @@ async function sendSMS(
   to: string,
   from: string,
   body: string,
-  supabase: any
+  supabase: any,
+  addOptOutText: boolean = true
 ) {
   try {
     const signalwireProjectId = Deno.env.get('SIGNALWIRE_PROJECT_ID')!
     const signalwireApiToken = Deno.env.get('SIGNALWIRE_API_TOKEN')!
     const signalwireSpaceUrl = Deno.env.get('SIGNALWIRE_SPACE_URL')!
 
+    // Use USA campaign number for US recipients, otherwise use service number
+    const fromNumber = await getSenderNumber(to, from, supabase)
+
+    // Add opt-out instructions (USA SMS compliance) unless it's a confirmation message
+    const messageBody = addOptOutText ? `${body}\n\nSTOP to opt out` : body
+
     const smsData = new URLSearchParams({
-      From: from,
+      From: fromNumber,
       To: to,
-      Body: body,
+      Body: messageBody,
     })
 
     const auth = btoa(`${signalwireProjectId}:${signalwireApiToken}`)
@@ -241,7 +298,7 @@ async function sendSMS(
         .from('sms_messages')
         .insert({
           user_id: userId,
-          sender_number: from,
+          sender_number: fromNumber,
           recipient_number: to,
           direction: 'outbound',
           content: body,
