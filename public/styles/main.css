@@ -417,8 +417,12 @@ p {
 }
 
 .inbox-header {
-  padding: 1.5rem 1rem;
+  padding: 0.8rem 1.5rem;
   border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
 }
 
 #conversations {
@@ -443,6 +447,10 @@ p {
 .conversation-item.selected {
   background: #EEF2FF;
   border-left: 3px solid var(--primary-color);
+}
+
+.conversation-item.selected:hover {
+  background: #E0E7FF;
 }
 
 .conversation-avatar {
@@ -527,7 +535,7 @@ p {
 }
 
 .thread-header {
-  padding: 1.5rem;
+  padding: 1.13rem 1.5rem;
   border-bottom: 1px solid var(--border-color);
   background: var(--bg-primary);
 }
@@ -982,7 +990,8 @@ p {
 }
 
 .message-input-container {
-  padding: 1rem;
+  padding: 1rem 1rem 0.87rem 1rem;
+  margin-bottom: 1rem;
   border-top: 1px solid var(--border-color);
   background: var(--bg-primary);
   display: flex;
@@ -1093,7 +1102,7 @@ p {
   }
 
   .message-input-container {
-    padding: 0.75rem 1rem 1rem 1rem;
+    padding: 0.75rem 1rem 0.8rem 1rem;
   }
 
   .message-bubble {

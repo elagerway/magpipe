@@ -48,7 +48,19 @@
       "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_bwHlIh/**)",
       "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_YV5en5/**)",
       "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_kyEUyF/**)",
-      "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_rbTqL4/**)"
+      "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_rbTqL4/**)",
+      "Bash(printf:*)",
+      "Bash(source .env)",
+      "Bash(bash:*)",
+      "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_veoTox/**)",
+      "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_A02l1p/**)",
+      "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_FCft9V/**)",
+      "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_3LLRvC/**)",
+      "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_LOZDW2/**)",
+      "Bash(chmod:*)",
+      "Bash(./test-stop.sh:*)",
+      "WebFetch(domain:developer.signalwire.com)",
+      "WebSearch"
     ],
     "deny": [],
     "ask": []

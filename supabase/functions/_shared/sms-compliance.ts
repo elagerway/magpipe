@@ -158,13 +158,15 @@ export async function recordOptIn(
 
 /**
  * Get appropriate sender number based on recipient location
+ * US service numbers need to be in a campaign, so always use campaign number for US recipients
+ * Canadian numbers can be used directly for Canadian recipients
  */
 export async function getSenderNumber(
   recipientNumber: string,
   defaultNumber: string,
   supabase: SupabaseClient
 ): Promise<string> {
-  // Check env var at runtime
+  // Check if campaign routing is enabled
   const useCampaignNumber = Deno.env.get('USE_USA_CAMPAIGN_NUMBER') === 'true'
 
   // If campaign routing is disabled, always use default number
@@ -173,12 +175,18 @@ export async function getSenderNumber(
     return defaultNumber
   }
 
-  const isUS = await isUSNumber(recipientNumber, supabase)
-  const selectedNumber = isUS ? USA_CAMPAIGN_NUMBER : defaultNumber
+  // Check if recipient is US
+  const recipientIsUS = await isUSNumber(recipientNumber, supabase)
 
-  console.log(`Recipient ${recipientNumber} is ${isUS ? 'US' : 'non-US'}, using ${selectedNumber}`)
+  // For US recipients, always use campaign number (ensures 10DLC compliance)
+  if (recipientIsUS) {
+    console.log(`Recipient ${recipientNumber} is US, using campaign number ${USA_CAMPAIGN_NUMBER}`)
+    return USA_CAMPAIGN_NUMBER
+  }
 
-  return selectedNumber
+  // For non-US recipients, use service number
+  console.log(`Recipient ${recipientNumber} is non-US, using service number ${defaultNumber}`)
+  return defaultNumber
 }
 
 /**
