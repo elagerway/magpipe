@@ -31,7 +31,7 @@ export default class InboxPage {
         <!-- Conversation List Sidebar -->
         <div class="conversation-list" id="conversation-list">
           <div class="inbox-header">
-            <h1 style="margin: 0; font-size: 1.5rem;">Messages</h1>
+            <h1 style="margin: 0; font-size: 1.5rem;">Conversations</h1>
           </div>
           <div id="conversations">
             ${this.renderConversationList()}
@@ -172,64 +172,72 @@ export default class InboxPage {
       .order('started_at', { ascending: false });
 
     console.log('Calls loaded:', calls, callError);
+    console.log('Number of calls:', calls?.length || 0);
+    if (calls && calls.length > 0) {
+      console.log('First call record:', calls[0]);
+    }
 
-    // Group by contact phone number
-    const grouped = {};
+    const conversationsList = [];
 
+    // Group SMS messages by contact phone number
+    const smsGrouped = {};
     messages?.forEach(msg => {
-      // For inbound: sender_number is the contact, for outbound: recipient_number is the contact
       const phone = msg.direction === 'inbound' ? msg.sender_number : msg.recipient_number;
-      if (!grouped[phone]) {
-        grouped[phone] = {
+      if (!smsGrouped[phone]) {
+        smsGrouped[phone] = {
+          type: 'sms',
           phone,
           messages: [],
-          calls: [],
           lastActivity: new Date(msg.sent_at || msg.created_at),
           lastMessage: msg.content,
           unreadCount: 0,
         };
       }
-      grouped[phone].messages.push(msg);
+      smsGrouped[phone].messages.push(msg);
 
-      // Count unread inbound messages (messages received after last view of this conversation)
+      // Count unread inbound messages
       if (msg.direction === 'inbound') {
-        const lastViewedKey = `conversation_last_viewed_${phone}`;
+        const lastViewedKey = `conversation_last_viewed_sms_${phone}`;
         const lastViewed = localStorage.getItem(lastViewedKey);
         const msgDate = new Date(msg.sent_at || msg.created_at);
 
         if (!lastViewed || msgDate > new Date(lastViewed)) {
-          grouped[phone].unreadCount++;
+          smsGrouped[phone].unreadCount++;
         }
       }
 
       const msgDate = new Date(msg.sent_at || msg.created_at);
-      if (msgDate > grouped[phone].lastActivity) {
-        grouped[phone].lastActivity = msgDate;
-        grouped[phone].lastMessage = msg.content;
+      if (msgDate > smsGrouped[phone].lastActivity) {
+        smsGrouped[phone].lastActivity = msgDate;
+        smsGrouped[phone].lastMessage = msg.content;
       }
     });
 
+    // Add SMS conversations to list
+    conversationsList.push(...Object.values(smsGrouped));
+
+    // Add each call as a separate conversation
     calls?.forEach(call => {
-      const phone = call.contact_phone;
-      if (!grouped[phone]) {
-        grouped[phone] = {
-          phone,
-          messages: [],
-          calls: [],
-          lastActivity: new Date(call.started_at),
-          lastMessage: `${call.direction === 'inbound' ? 'Incoming' : 'Outgoing'} call`,
-        };
-      }
-      grouped[phone].calls.push(call);
-      const callDate = new Date(call.started_at);
-      if (callDate > grouped[phone].lastActivity) {
-        grouped[phone].lastActivity = callDate;
-        grouped[phone].lastMessage = `${call.direction === 'inbound' ? 'Incoming' : 'Outgoing'} call`;
-      }
+      const duration = call.duration_seconds || 0;
+      const durationText = duration > 0
+        ? `${Math.floor(duration / 60)}:${String(duration % 60).padStart(2, '0')}`
+        : '0:00';
+
+      const statusInfo = this.getCallStatusInfo(call.status);
+
+      conversationsList.push({
+        type: 'call',
+        callId: call.id,
+        phone: call.contact_phone,
+        call: call,
+        lastActivity: new Date(call.started_at),
+        lastMessage: `${call.direction === 'inbound' ? 'Incoming' : 'Outgoing'} Call • ${durationText}`,
+        statusInfo: statusInfo,
+      });
     });
 
-    // Convert to array and sort by last activity
-    this.conversations = Object.values(grouped).sort((a, b) => b.lastActivity - a.lastActivity);
+    // Sort all conversations by last activity
+    this.conversations = conversationsList.sort((a, b) => b.lastActivity - a.lastActivity);
   }
 
   renderConversationList() {
@@ -243,36 +251,63 @@ export default class InboxPage {
     }
 
     return this.conversations.map(conv => {
-      const isSelected = this.selectedContact === conv.phone;
-      return `
-        <div class="conversation-item ${isSelected ? 'selected' : ''}" data-phone="${conv.phone}">
-          <div class="conversation-avatar">
-            ${this.getInitials(conv.phone)}
-          </div>
-          <div class="conversation-content">
-            <div class="conversation-header">
-              <span class="conversation-name">${this.formatPhoneNumber(conv.phone)}</span>
-              <div style="display: flex; align-items: center; gap: 0.5rem;">
-                ${conv.unreadCount > 0 ? `<span class="conversation-unread-badge">${conv.unreadCount > 99 ? '99+' : conv.unreadCount}</span>` : ''}
+      const isSelected = (conv.type === 'sms' && this.selectedContact === conv.phone && !this.selectedCallId) ||
+                        (conv.type === 'call' && this.selectedCallId === conv.callId);
+
+      if (conv.type === 'call') {
+        return `
+          <div class="conversation-item ${isSelected ? 'selected' : ''}" data-call-id="${conv.callId}" data-type="call">
+            <div class="conversation-avatar call-avatar">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+              </svg>
+            </div>
+            <div class="conversation-content">
+              <div class="conversation-header">
+                <span class="conversation-name">${this.formatPhoneNumber(conv.phone)}</span>
                 <span class="conversation-time">${this.formatTimestamp(conv.lastActivity)}</span>
               </div>
+              <div class="conversation-preview">
+                <span class="call-status-indicator ${conv.statusInfo.class}">${conv.statusInfo.icon}</span>
+                ${conv.lastMessage}
+              </div>
             </div>
-            <div class="conversation-preview">${conv.lastMessage}</div>
           </div>
-        </div>
-      `;
+        `;
+      } else {
+        return `
+          <div class="conversation-item ${isSelected ? 'selected' : ''}" data-phone="${conv.phone}" data-type="sms">
+            <div class="conversation-avatar sms-avatar">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+              </svg>
+            </div>
+            <div class="conversation-content">
+              <div class="conversation-header">
+                <span class="conversation-name">${this.formatPhoneNumber(conv.phone)}</span>
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                  ${conv.unreadCount > 0 ? `<span class="conversation-unread-badge">${conv.unreadCount > 99 ? '99+' : conv.unreadCount}</span>` : ''}
+                  <span class="conversation-time">${this.formatTimestamp(conv.lastActivity)}</span>
+                </div>
+              </div>
+              <div class="conversation-preview">${conv.lastMessage}</div>
+            </div>
+          </div>
+        `;
+      }
     }).join('');
   }
 
   renderMessageThread() {
-    const conv = this.conversations.find(c => c.phone === this.selectedContact);
-    if (!conv) return this.renderEmptyState();
+    // Check if we're viewing a call or SMS conversation
+    if (this.selectedCallId) {
+      const conv = this.conversations.find(c => c.type === 'call' && c.callId === this.selectedCallId);
+      if (!conv) return this.renderEmptyState();
+      return this.renderCallDetailView(conv.call);
+    }
 
-    // Combine messages and calls, sort chronologically
-    const items = [
-      ...conv.messages.map(m => ({ type: 'message', data: m, timestamp: new Date(m.sent_at || m.created_at) })),
-      ...conv.calls.map(c => ({ type: 'call', data: c, timestamp: new Date(c.started_at) })),
-    ].sort((a, b) => a.timestamp - b.timestamp);
+    const conv = this.conversations.find(c => c.type === 'sms' && c.phone === this.selectedContact);
+    if (!conv) return this.renderEmptyState();
 
     return `
       <div class="thread-header" style="display: flex; align-items: center; gap: 0.75rem;">
@@ -291,7 +326,7 @@ export default class InboxPage {
         </h2>
       </div>
       <div class="thread-messages" id="thread-messages">
-        ${items.map(item => this.renderThreadItem(item)).join('')}
+        ${conv.messages.map(msg => this.renderSmsMessage(msg)).join('')}
       </div>
       <div class="message-input-container">
         <textarea
@@ -310,41 +345,163 @@ export default class InboxPage {
     `;
   }
 
-  renderThreadItem(item) {
-    if (item.type === 'message') {
-      const msg = item.data;
-      const isInbound = msg.direction === 'inbound';
-      // Check if this is an AI-generated message
-      const isAI = msg.is_ai_generated === true;
+  renderSmsMessage(msg) {
+    const isInbound = msg.direction === 'inbound';
+    const isAI = msg.is_ai_generated === true;
+    const timestamp = new Date(msg.sent_at || msg.created_at);
 
-      return `
-        <div class="message-bubble ${isInbound ? 'inbound' : 'outbound'} ${isAI ? 'ai-message' : ''}">
-          ${isAI ? `
-            <div class="ai-badge">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="11" width="18" height="10" rx="2"></rect>
-                <circle cx="8" cy="16" r="1"></circle>
-                <circle cx="16" cy="16" r="1"></circle>
-                <path d="M9 7h6"></path>
-                <path d="M12 7v4"></path>
-              </svg>
+    return `
+      <div class="message-bubble ${isInbound ? 'inbound' : 'outbound'} ${isAI ? 'ai-message' : ''}">
+        ${isAI ? `
+          <div class="ai-badge">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="11" width="18" height="10" rx="2"></rect>
+              <circle cx="8" cy="16" r="1"></circle>
+              <circle cx="16" cy="16" r="1"></circle>
+              <path d="M9 7h6"></path>
+              <path d="M12 7v4"></path>
+            </svg>
+          </div>
+        ` : ''}
+        <div class="message-content">${msg.content}</div>
+        <div class="message-time">${this.formatTime(timestamp)}</div>
+      </div>
+    `;
+  }
+
+  renderCallDetailView(call) {
+    const duration = call.duration_seconds || call.duration || 0;
+    const durationText = duration > 0
+      ? `${Math.floor(duration / 60)}:${String(duration % 60).padStart(2, '0')}`
+      : '0:00';
+    const statusInfo = this.getCallStatusInfo(call.status);
+    const messages = this.parseTranscript(call.transcript);
+
+    return `
+      <div class="thread-header" style="display: flex; align-items: center; gap: 0.75rem;">
+        <button class="back-button" id="back-button" style="
+          display: block;
+          background: none;
+          border: none;
+          font-size: 1.75rem;
+          cursor: pointer;
+          padding: 0;
+          color: var(--primary-color);
+          line-height: 1;
+        ">←</button>
+        <div style="flex: 1;">
+          <h2 style="margin: 0; font-size: 1.125rem; font-weight: 600;">
+            ${this.formatPhoneNumber(call.contact_phone)}
+          </h2>
+          <div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.125rem;">
+            ${call.direction === 'inbound' ? 'Incoming' : 'Outgoing'} Call • ${durationText}
+          </div>
+        </div>
+      </div>
+
+      <div class="thread-messages" id="thread-messages" style="overflow-y: auto;">
+        ${call.recording_url ? `
+          <div class="call-detail-recording">
+            <div class="recording-label">Call Recording</div>
+            <audio controls src="${call.recording_url}" style="width: 100%;"></audio>
+          </div>
+        ` : ''}
+
+        <div class="call-detail-info">
+          <div class="call-info-item">
+            <span class="call-info-label">Status</span>
+            <span class="call-info-value ${statusInfo.class}">${statusInfo.icon} ${statusInfo.text}</span>
+          </div>
+          <div class="call-info-item">
+            <span class="call-info-label">Time</span>
+            <span class="call-info-value">${this.formatTimestamp(new Date(call.started_at))}</span>
+          </div>
+          <div class="call-info-item">
+            <span class="call-info-label">Duration</span>
+            <span class="call-info-value">${durationText}</span>
+          </div>
+        </div>
+
+        ${messages.length > 0 ? `
+          <div class="call-detail-transcript">
+            <div class="transcript-header">Conversation Transcript</div>
+            <div class="transcript-messages">
+              ${messages.map(msg => `
+                <div class="transcript-bubble ${msg.speaker}">
+                  <div class="transcript-speaker-label">${msg.speaker === 'agent' ? 'Pat (AI)' : 'Caller'}</div>
+                  <div class="transcript-content">${msg.text}</div>
+                </div>
+              `).join('')}
             </div>
-          ` : ''}
-          <div class="message-content">${msg.content}</div>
-          <div class="message-time">${this.formatTime(item.timestamp)}</div>
-        </div>
-      `;
-    } else {
-      const call = item.data;
-      return `
-        <div class="call-indicator">
-          <span class="call-icon">${call.direction === 'inbound' ? '📞' : '📱'}</span>
-          <span>${call.direction === 'inbound' ? 'Incoming' : 'Outgoing'} call</span>
-          ${call.duration ? `<span>• ${Math.floor(call.duration / 60)}m ${call.duration % 60}s</span>` : ''}
-          <span class="call-time">${this.formatTime(item.timestamp)}</span>
-        </div>
-      `;
-    }
+          </div>
+        ` : `
+          <div class="call-detail-no-transcript">
+            <p>No transcript available for this call.</p>
+          </div>
+        `}
+      </div>
+    `;
+  }
+
+  getCallStatusInfo(status) {
+    const statusMap = {
+      'completed': {
+        icon: '✓',
+        text: 'Completed',
+        class: 'status-completed'
+      },
+      'in-progress': {
+        icon: '⟳',
+        text: 'In Progress',
+        class: 'status-progress'
+      },
+      'no-answer': {
+        icon: '⊗',
+        text: 'No Answer',
+        class: 'status-missed'
+      },
+      'failed': {
+        icon: '✕',
+        text: 'Failed',
+        class: 'status-failed'
+      },
+      'busy': {
+        icon: '⊗',
+        text: 'Busy',
+        class: 'status-busy'
+      },
+      'answered_by_pat': {
+        icon: '✓',
+        text: 'Answered by Pat',
+        class: 'status-completed'
+      },
+      'transferred_to_user': {
+        icon: '↗',
+        text: 'Transferred',
+        class: 'status-transferred'
+      },
+      'screened_out': {
+        icon: '🚫',
+        text: 'Screened Out',
+        class: 'status-screened'
+      },
+      'voicemail': {
+        icon: '💬',
+        text: 'Voicemail',
+        class: 'status-voicemail'
+      }
+    };
+
+    return statusMap[status] || {
+      icon: '•',
+      text: status || 'Unknown',
+      class: 'status-unknown'
+    };
+  }
+
+  truncateText(text, maxLength) {
+    if (!text || text.length <= maxLength) return text;
+    return text.substring(0, maxLength) + '...';
   }
 
   renderEmptyState() {
@@ -404,22 +561,32 @@ export default class InboxPage {
     // Click on conversation to view thread
     document.querySelectorAll('.conversation-item').forEach(item => {
       item.addEventListener('click', async () => {
-        this.selectedContact = item.dataset.phone;
+        const type = item.dataset.type;
 
-        // Clear unread badge when viewing a conversation
-        clearUnreadBadge();
+        if (type === 'call') {
+          // Handle call conversation click
+          this.selectedCallId = item.dataset.callId;
+          this.selectedContact = null;
+        } else {
+          // Handle SMS conversation click
+          this.selectedContact = item.dataset.phone;
+          this.selectedCallId = null;
 
-        // Mark this conversation as viewed
-        const lastViewedKey = `conversation_last_viewed_${this.selectedContact}`;
-        localStorage.setItem(lastViewedKey, new Date().toISOString());
+          // Clear unread badge when viewing a conversation
+          clearUnreadBadge();
 
-        // Clear unread count for this conversation
-        const conv = this.conversations.find(c => c.phone === this.selectedContact);
-        if (conv) {
-          conv.unreadCount = 0;
+          // Mark this conversation as viewed
+          const lastViewedKey = `conversation_last_viewed_sms_${this.selectedContact}`;
+          localStorage.setItem(lastViewedKey, new Date().toISOString());
+
+          // Clear unread count for this conversation
+          const conv = this.conversations.find(c => c.type === 'sms' && c.phone === this.selectedContact);
+          if (conv) {
+            conv.unreadCount = 0;
+          }
         }
 
-        // Update conversation list to remove badge
+        // Update conversation list to update selection
         const conversationsEl = document.getElementById('conversations');
         if (conversationsEl) {
           conversationsEl.innerHTML = this.renderConversationList();
@@ -434,31 +601,45 @@ export default class InboxPage {
         const threadElement = document.getElementById('message-thread');
         threadElement.innerHTML = this.renderMessageThread();
 
-        // Attach message input listeners
-        this.attachMessageInputListeners();
+        // Attach input listeners only for SMS threads
+        if (type === 'sms') {
+          this.attachMessageInputListeners();
+        }
 
         // Show thread on mobile
         if (isMobile) {
           threadElement.classList.add('show');
-
-          // Show back button on mobile
-          const backButton = document.getElementById('back-button');
-          if (backButton) {
-            backButton.style.display = 'block';
-            backButton.addEventListener('click', (e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              threadElement.classList.remove('show');
-            });
-          }
         }
 
-        // Scroll to bottom of messages
-        const threadMessages = document.getElementById('thread-messages');
-        if (threadMessages) {
-          setTimeout(() => {
-            threadMessages.scrollTop = threadMessages.scrollHeight;
-          }, 100);
+        // Attach back button listener
+        const backButton = document.getElementById('back-button');
+        if (backButton) {
+          backButton.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (isMobile) {
+              threadElement.classList.remove('show');
+            } else {
+              // On desktop, clear selection
+              this.selectedContact = null;
+              this.selectedCallId = null;
+              threadElement.innerHTML = this.renderEmptyState();
+
+              // Update conversation list
+              conversationsEl.innerHTML = this.renderConversationList();
+              this.attachConversationListeners();
+            }
+          });
+        }
+
+        // Scroll to bottom of messages for SMS
+        if (type === 'sms') {
+          const threadMessages = document.getElementById('thread-messages');
+          if (threadMessages) {
+            setTimeout(() => {
+              threadMessages.scrollTop = threadMessages.scrollHeight;
+            }, 100);
+          }
         }
       });
     });
@@ -500,6 +681,20 @@ export default class InboxPage {
     };
     sendButton.addEventListener('click', clickHandler);
     console.log('Event listener attached to send button');
+
+  }
+
+  parseTranscript(transcript) {
+    if (!transcript) return [];
+
+    // Simple transcript parsing - assumes alternating speakers
+    // For more sophisticated parsing, we'd need structured data from the API
+    const lines = transcript.split(/[.!?]+/).filter(line => line.trim().length > 0);
+
+    return lines.map((line, index) => ({
+      speaker: index % 2 === 0 ? 'agent' : 'user',
+      text: line.trim() + (index < lines.length - 1 ? '.' : '')
+    }));
   }
 
   async sendMessage() {
