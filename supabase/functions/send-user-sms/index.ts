@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { getSenderNumber, isOptedOut } from '../_shared/sms-compliance.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -30,15 +31,30 @@ serve(async (req) => {
       )
     }
 
+    // Check if recipient has opted out (USA SMS compliance)
+    const hasOptedOut = await isOptedOut(supabase, contactPhone)
+    if (hasOptedOut) {
+      return new Response(
+        JSON.stringify({ error: 'Recipient has opted out of SMS messages' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     // Send SMS via SignalWire
     const signalwireProjectId = Deno.env.get('SIGNALWIRE_PROJECT_ID')!
     const signalwireApiToken = Deno.env.get('SIGNALWIRE_API_TOKEN')!
     const signalwireSpaceUrl = Deno.env.get('SIGNALWIRE_SPACE_URL')!
 
+    // Use USA campaign number for US recipients, otherwise use service number
+    const fromNumber = await getSenderNumber(contactPhone, serviceNumber, supabase)
+
+    // Add opt-out instructions (USA SMS compliance)
+    const messageBody = `${message}\n\nSTOP to opt out`
+
     const smsData = new URLSearchParams({
-      From: serviceNumber,
+      From: fromNumber,
       To: contactPhone,
-      Body: message,
+      Body: messageBody,
     })
 
     const auth = btoa(`${signalwireProjectId}:${signalwireApiToken}`)
@@ -70,7 +86,7 @@ serve(async (req) => {
       .from('sms_messages')
       .insert({
         user_id: user.id,
-        sender_number: serviceNumber,
+        sender_number: fromNumber,
         recipient_number: contactPhone,
         direction: 'outbound',
         content: message,
