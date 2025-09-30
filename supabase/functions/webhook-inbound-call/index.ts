@@ -65,11 +65,15 @@ serve(async (req) => {
     // Register Retell phone call for inbound
     const retellApiKey = Deno.env.get('RETELL_API_KEY')!
 
+    // Dynamic webhook URL for this specific call
+    const webhookUrl = `${supabaseUrl}/functions/v1/webhook-retellai-analysis`
+
     const callData = {
       agent_id: agentConfig.retell_agent_id,
       from_number: from,
       to_number: to,
       direction: 'inbound',
+      webhook_override: webhookUrl,
       metadata: {
         user_id: serviceNumber.user_id,
         service_number_id: serviceNumber.id,
