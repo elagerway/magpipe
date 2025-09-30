@@ -76,6 +76,7 @@ serve(async (req) => {
         content: message,
         status: 'sent',
         sent_at: new Date().toISOString(),
+        is_ai_generated: false,
       })
 
     // Pause AI for 10 minutes

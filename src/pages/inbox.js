@@ -189,8 +189,22 @@ export default class InboxPage {
     if (item.type === 'message') {
       const msg = item.data;
       const isInbound = msg.direction === 'inbound';
+      // Check if this is an AI-generated message
+      const isAI = msg.is_ai_generated === true;
+
       return `
-        <div class="message-bubble ${isInbound ? 'inbound' : 'outbound'}">
+        <div class="message-bubble ${isInbound ? 'inbound' : 'outbound'} ${isAI ? 'ai-message' : ''}">
+          ${isAI ? `
+            <div class="ai-badge">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="10" rx="2"></rect>
+                <circle cx="8" cy="16" r="1"></circle>
+                <circle cx="16" cy="16" r="1"></circle>
+                <path d="M9 7h6"></path>
+                <path d="M12 7v4"></path>
+              </svg>
+            </div>
+          ` : ''}
           <div class="message-content">${msg.content}</div>
           <div class="message-time">${this.formatTime(item.timestamp)}</div>
         </div>
