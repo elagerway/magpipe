@@ -29,6 +29,9 @@ class App {
     // Expose router globally for navigation
     window.router = this.router;
 
+    // Expose supabase for debugging
+    window.supabase = supabase;
+
     // Register service worker for PWA
     // Temporarily disabled to avoid Chrome extension errors
     // if ('serviceWorker' in navigator) {

@@ -181,6 +181,50 @@ serve(async (req) => {
       }
     }
 
+    // Send notifications only for call_analyzed events (to avoid duplicates)
+    if (eventType === 'call_analyzed' && serviceNumber?.user_id) {
+      // Check if call was missed (short duration, not successful, or went to voicemail)
+      const isMissedCall = call_successful === false || in_voicemail === true || durationSeconds < 5
+
+      // Send notification for all calls or just missed calls
+      const shouldNotify = isMissedCall // Will check preferences in Edge Function for "all calls"
+
+      if (shouldNotify || true) { // Always send, let Edge Function decide based on preferences
+        console.log('Sending call notification for user:', serviceNumber.user_id)
+
+        const notificationData = {
+          userId: serviceNumber.user_id,
+          type: isMissedCall ? 'missed_call' : 'completed_call',
+          data: {
+            callerNumber: from_number,
+            timestamp: start_timestamp ? new Date(start_timestamp).toISOString() : new Date().toISOString(),
+            duration: durationSeconds,
+            successful: call_successful
+          }
+        }
+
+        // Send email notification (fire and forget - don't wait for response)
+        fetch(`${supabaseUrl}/functions/v1/send-notification-email`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseKey}`
+          },
+          body: JSON.stringify(notificationData)
+        }).catch(err => console.error('Failed to send email notification:', err))
+
+        // Send SMS notification (fire and forget - don't wait for response)
+        fetch(`${supabaseUrl}/functions/v1/send-notification-sms`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseKey}`
+          },
+          body: JSON.stringify(notificationData)
+        }).catch(err => console.error('Failed to send SMS notification:', err))
+      }
+    }
+
     return new Response('OK', { status: 200 })
   } catch (error) {
     console.error('Error in webhook-retellai-analysis:', error)

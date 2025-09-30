@@ -3,7 +3,7 @@
  */
 
 import { User, AgentConfig } from '../models/index.js';
-import { getCurrentUser, signOut } from '../lib/supabase.js';
+import { getCurrentUser, signOut, supabase } from '../lib/supabase.js';
 import { renderBottomNav } from '../components/BottomNav.js';
 
 export default class SettingsPage {
@@ -18,6 +18,13 @@ export default class SettingsPage {
     const { profile } = await User.getProfile(user.id);
     const { config } = await AgentConfig.getByUserId(user.id);
 
+    // Load notification preferences
+    const { data: notifPrefs } = await supabase
+      .from('notification_preferences')
+      .select('*')
+      .eq('user_id', user.id)
+      .single();
+
     const appElement = document.getElementById('app');
 
     appElement.innerHTML = `
@@ -26,6 +33,23 @@ export default class SettingsPage {
 
         <div id="error-message" class="hidden"></div>
         <div id="success-message" class="hidden"></div>
+
+        <!-- User ID -->
+        <div class="card">
+          <div class="form-group">
+            <strong>User ID:</strong>
+            <code style="
+              background: var(--bg-secondary);
+              padding: 0.25rem 0.5rem;
+              border-radius: var(--radius-sm);
+              font-size: 0.875rem;
+              color: var(--text-primary);
+              user-select: all;
+              display: inline-block;
+              margin-left: 0.5rem;
+            ">${user.id}</code>
+          </div>
+        </div>
 
         <!-- Phone Numbers -->
         <div class="card">
@@ -113,21 +137,95 @@ export default class SettingsPage {
           </div>
         </div>
 
-        <!-- Notifications (Placeholder) -->
+        <!-- Notifications -->
         <div class="card">
           <h2>Notifications</h2>
-          <div class="form-group">
-            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-              <input type="checkbox" id="email-notifications" checked />
-              <span>Email notifications for missed calls</span>
-            </label>
+          <p class="text-muted" style="margin-bottom: 1.5rem;">Receive alerts for missed calls and new messages</p>
+
+          <!-- Email Notifications -->
+          <div style="border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+              <div>
+                <h3 style="margin: 0; font-size: 1rem;">Email Notifications</h3>
+                <p class="text-muted" style="margin: 0.25rem 0 0 0; font-size: 0.875rem;">Get alerts sent to your email</p>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="email-enabled" ${notifPrefs?.email_enabled ? 'checked' : ''} />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="form-group">
+              <label for="email-address">Email Address</label>
+              <input
+                type="email"
+                id="email-address"
+                class="form-input"
+                value="${notifPrefs?.email_address || user.email}"
+                placeholder="your@email.com"
+              />
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 0.5rem; padding-left: 0.5rem;">
+              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
+                <input type="checkbox" id="email-inbound-calls" ${notifPrefs?.email_inbound_calls ? 'checked' : ''} />
+                <span>Inbound calls</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
+                <input type="checkbox" id="email-all-calls" ${notifPrefs?.email_all_calls ? 'checked' : ''} />
+                <span>All calls</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
+                <input type="checkbox" id="email-inbound-messages" ${notifPrefs?.email_inbound_messages ? 'checked' : ''} />
+                <span>Inbound messages</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
+                <input type="checkbox" id="email-all-messages" ${notifPrefs?.email_all_messages ? 'checked' : ''} />
+                <span>All messages</span>
+              </label>
+            </div>
           </div>
-          <div class="form-group">
-            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-              <input type="checkbox" id="sms-notifications" />
-              <span>SMS notifications for important messages</span>
-            </label>
+
+          <!-- SMS Notifications -->
+          <div style="border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+              <div>
+                <h3 style="margin: 0; font-size: 1rem;">SMS Notifications</h3>
+                <p class="text-muted" style="margin: 0.25rem 0 0 0; font-size: 0.875rem;">Get alerts sent to your phone</p>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="sms-enabled" ${notifPrefs?.sms_enabled ? 'checked' : ''} />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="form-group">
+              <label for="sms-phone-number">Phone Number</label>
+              <input
+                type="tel"
+                id="sms-phone-number"
+                class="form-input"
+                value="${notifPrefs?.sms_phone_number || profile?.phone_number || ''}"
+                placeholder="+1 (555) 123-4567"
+              />
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 0.5rem; padding-left: 0.5rem;">
+              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
+                <input type="checkbox" id="sms-inbound-calls" ${notifPrefs?.sms_inbound_calls ? 'checked' : ''} />
+                <span>Inbound calls</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
+                <input type="checkbox" id="sms-all-calls" ${notifPrefs?.sms_all_calls ? 'checked' : ''} />
+                <span>All calls</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
+                <input type="checkbox" id="sms-inbound-messages" ${notifPrefs?.sms_inbound_messages ? 'checked' : ''} />
+                <span>Inbound messages</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
+                <input type="checkbox" id="sms-all-messages" ${notifPrefs?.sms_all_messages ? 'checked' : ''} />
+                <span>All messages</span>
+              </label>
+            </div>
           </div>
+
           <button class="btn btn-primary" id="save-notifications-btn">
             Save Notification Settings
           </button>
@@ -194,14 +292,53 @@ export default class SettingsPage {
       }
     });
 
-    // Save notifications (placeholder)
-    saveNotificationsBtn.addEventListener('click', () => {
-      successMessage.className = 'alert alert-success';
-      successMessage.textContent = 'Notification settings saved successfully';
+    // Save notifications
+    saveNotificationsBtn.addEventListener('click', async () => {
+      saveNotificationsBtn.disabled = true;
+      saveNotificationsBtn.textContent = 'Saving...';
+      errorMessage.classList.add('hidden');
+      successMessage.classList.add('hidden');
 
-      setTimeout(() => {
-        successMessage.classList.add('hidden');
-      }, 3000);
+      try {
+        const { user } = await getCurrentUser();
+
+        const preferences = {
+          user_id: user.id,
+          email_enabled: document.getElementById('email-enabled').checked,
+          email_address: document.getElementById('email-address').value,
+          email_inbound_calls: document.getElementById('email-inbound-calls').checked,
+          email_all_calls: document.getElementById('email-all-calls').checked,
+          email_inbound_messages: document.getElementById('email-inbound-messages').checked,
+          email_all_messages: document.getElementById('email-all-messages').checked,
+          sms_enabled: document.getElementById('sms-enabled').checked,
+          sms_phone_number: document.getElementById('sms-phone-number').value,
+          sms_inbound_calls: document.getElementById('sms-inbound-calls').checked,
+          sms_all_calls: document.getElementById('sms-all-calls').checked,
+          sms_inbound_messages: document.getElementById('sms-inbound-messages').checked,
+          sms_all_messages: document.getElementById('sms-all-messages').checked,
+          updated_at: new Date().toISOString()
+        };
+
+        const { error } = await supabase
+          .from('notification_preferences')
+          .upsert(preferences, { onConflict: 'user_id' });
+
+        if (error) throw error;
+
+        successMessage.className = 'alert alert-success';
+        successMessage.textContent = 'Notification settings saved successfully';
+
+        setTimeout(() => {
+          successMessage.classList.add('hidden');
+        }, 3000);
+      } catch (error) {
+        console.error('Save notifications error:', error);
+        errorMessage.className = 'alert alert-error';
+        errorMessage.textContent = 'Failed to save notification settings. Please try again.';
+      } finally {
+        saveNotificationsBtn.disabled = false;
+        saveNotificationsBtn.textContent = 'Save Notification Settings';
+      }
     });
 
     // Reset agent config
