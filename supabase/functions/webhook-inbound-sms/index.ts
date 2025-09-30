@@ -113,7 +113,12 @@ async function processAndReplySMS(
     }
 
     // For SMS, use OpenAI to generate intelligent responses
-    const systemPrompt = agentConfig.prompt || "You are Pat, a helpful AI assistant. Respond to the user's message in a friendly and concise way suitable for SMS. Keep responses brief (1-2 sentences max)."
+    // Use SMS-specific prompt or fall back to system_prompt adapted for SMS
+    const smsPrompt = agentConfig.system_prompt
+      ? `${agentConfig.system_prompt}\n\nYou are responding to an SMS text message (not a phone call). Keep your response brief, friendly, and conversational. Limit responses to 1-2 sentences. Do not reference phone calls or calling - this is a text message conversation.`
+      : "You are Pat, a helpful AI assistant. You are responding to an SMS text message. Reply in a friendly and concise way. Keep responses brief (1-2 sentences max). Do not reference phone calls - this is a text message conversation."
+
+    const systemPrompt = smsPrompt
 
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY')!
 
