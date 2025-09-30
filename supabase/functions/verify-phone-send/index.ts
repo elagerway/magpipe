@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { getSenderNumber } from '../_shared/sms-compliance.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -64,6 +65,22 @@ serve(async (req) => {
       )
     }
 
+    // Get user's service number or use a default
+    const { data: serviceNumber } = await supabase
+      .from('service_numbers')
+      .select('phone_number')
+      .eq('user_id', user.id)
+      .eq('is_active', true)
+      .limit(1)
+      .single()
+
+    // Use default number if no service number yet (for new users)
+    const defaultNumber = '+16043377899'
+    const baseNumber = serviceNumber?.phone_number || defaultNumber
+
+    // Determine sender number based on recipient location (USA SMS compliance)
+    const fromNumber = await getSenderNumber(phoneNumber, baseNumber, supabase)
+
     // Send SMS via SignalWire
     const signalwireProjectId = Deno.env.get('SIGNALWIRE_PROJECT_ID')
     const signalwireToken = Deno.env.get('SIGNALWIRE_API_TOKEN')
@@ -71,10 +88,13 @@ serve(async (req) => {
 
     const signalwireUrl = `https://${signalwireSpaceUrl}/api/laml/2010-04-01/Accounts/${signalwireProjectId}/Messages.json`
 
+    // Add USA SMS compliance text
+    const message = `Your Pat verification code is: ${verificationCode}. This code expires in 10 minutes.\n\nSTOP to opt out`
+
     const body = new URLSearchParams({
-      From: '+16043377899',
+      From: fromNumber,
       To: phoneNumber,
-      Body: `Your Pat verification code is: ${verificationCode}. This code expires in 10 minutes.`,
+      Body: message,
     })
 
     const signalwireResponse = await fetch(signalwireUrl, {
