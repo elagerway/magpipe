@@ -129,11 +129,13 @@ serve(async (req) => {
       .from('call_records')
       .insert({
         user_id: serviceNumber.user_id,
+        caller_number: from,
         contact_phone: from,
         service_number: to,
         call_sid: callSid,
         direction: 'inbound',
         status: 'in-progress',
+        disposition: 'answered_by_pat',
         started_at: new Date().toISOString(),
       })
 

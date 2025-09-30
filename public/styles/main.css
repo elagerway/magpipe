@@ -827,10 +827,22 @@ p {
 
 .call-detail-info {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 1rem;
   padding: 1rem 1.5rem;
   border-bottom: 1px solid var(--border-color);
+}
+
+.sentiment-positive {
+  color: var(--success-color);
+}
+
+.sentiment-neutral {
+  color: var(--text-secondary);
+}
+
+.sentiment-negative {
+  color: var(--error-color);
 }
 
 .call-info-item {

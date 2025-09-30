@@ -79,6 +79,15 @@ export default class InboxPage {
         console.log('📞 New call received in inbox:', payload);
         this.handleNewCall(payload.new);
       })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'call_records',
+        filter: `user_id=eq.${this.userId}`
+      }, (payload) => {
+        console.log('📞 Call updated in inbox:', payload);
+        this.handleCallUpdate(payload.new);
+      })
       .subscribe((status) => {
         console.log('Inbox subscription status:', status);
       });
@@ -132,18 +141,33 @@ export default class InboxPage {
       this.attachConversationListeners();
     }
 
-    // If this call is for the currently selected contact, update the thread
-    if (this.selectedContact === call.contact_phone) {
+    // If viewing this call, update the thread
+    if (this.selectedCallId === call.id) {
       const threadElement = document.getElementById('message-thread');
       if (threadElement) {
         threadElement.innerHTML = this.renderMessageThread();
-        this.attachMessageInputListeners();
+      }
+    }
+  }
 
-        // Scroll to bottom
-        const threadMessages = document.getElementById('thread-messages');
-        if (threadMessages) {
-          threadMessages.scrollTop = threadMessages.scrollHeight;
-        }
+  async handleCallUpdate(call) {
+    console.log('Handling call update:', call);
+
+    // Reload conversations to update list
+    await this.loadConversations(this.userId);
+
+    // Update conversation list
+    const conversationsEl = document.getElementById('conversations');
+    if (conversationsEl) {
+      conversationsEl.innerHTML = this.renderConversationList();
+      this.attachConversationListeners();
+    }
+
+    // If viewing this call, update the thread
+    if (this.selectedCallId === call.id) {
+      const threadElement = document.getElementById('message-thread');
+      if (threadElement) {
+        threadElement.innerHTML = this.renderMessageThread();
       }
     }
   }
@@ -416,6 +440,12 @@ export default class InboxPage {
             <span class="call-info-label">Time</span>
             <span class="call-info-value">${this.formatTimestamp(new Date(call.started_at))}</span>
           </div>
+          ${call.user_sentiment ? `
+            <div class="call-info-item">
+              <span class="call-info-label">User Sentiment</span>
+              <span class="call-info-value sentiment-${call.user_sentiment.toLowerCase()}">${this.formatSentiment(call.user_sentiment)}</span>
+            </div>
+          ` : ''}
           <div class="call-info-item">
             <span class="call-info-label">Duration</span>
             <span class="call-info-value">${durationText}</span>
@@ -695,6 +725,15 @@ export default class InboxPage {
       speaker: index % 2 === 0 ? 'agent' : 'user',
       text: line.trim() + (index < lines.length - 1 ? '.' : '')
     }));
+  }
+
+  formatSentiment(sentiment) {
+    const sentimentMap = {
+      'positive': '😊 Positive',
+      'neutral': '😐 Neutral',
+      'negative': '😞 Negative'
+    };
+    return sentimentMap[sentiment.toLowerCase()] || sentiment;
   }
 
   async sendMessage() {
