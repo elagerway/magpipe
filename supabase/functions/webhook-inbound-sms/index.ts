@@ -52,6 +52,39 @@ serve(async (req) => {
 
     if (insertError) {
       console.error('Error logging SMS:', insertError)
+    } else {
+      // Send new message notification (fire and forget)
+      console.log('Sending new message notification for user:', serviceNumber.user_id)
+
+      const notificationData = {
+        userId: serviceNumber.user_id,
+        type: 'new_message',
+        data: {
+          senderNumber: from,
+          timestamp: new Date().toISOString(),
+          content: body
+        }
+      }
+
+      // Send email notification
+      fetch(`${supabaseUrl}/functions/v1/send-notification-email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseKey}`
+        },
+        body: JSON.stringify(notificationData)
+      }).catch(err => console.error('Failed to send email notification:', err))
+
+      // Send SMS notification
+      fetch(`${supabaseUrl}/functions/v1/send-notification-sms`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseKey}`
+        },
+        body: JSON.stringify(notificationData)
+      }).catch(err => console.error('Failed to send SMS notification:', err))
     }
 
     // Respond immediately to SignalWire to avoid timeout
