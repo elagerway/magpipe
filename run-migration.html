@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Run Database Migration</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 800px;
+      margin: 2rem auto;
+      padding: 2rem;
+      background: #f9fafb;
+    }
+    .card {
+      background: white;
+      padding: 2rem;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    h1 { margin-top: 0; }
+    pre {
+      background: #1f2937;
+      color: #f3f4f6;
+      padding: 1rem;
+      border-radius: 4px;
+      overflow-x: auto;
+    }
+    .steps {
+      margin-top: 2rem;
+    }
+    .step {
+      margin-bottom: 1.5rem;
+      padding-left: 2rem;
+      position: relative;
+    }
+    .step::before {
+      content: attr(data-step);
+      position: absolute;
+      left: 0;
+      top: 0;
+      background: #6366f1;
+      color: white;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: bold;
+    }
+    .link {
+      color: #6366f1;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .link:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>🔧 Database Migration Required</h1>
+    <p>To enable the avatar feature, we need to add some columns to your database. Follow these steps:</p>
+
+    <div class="steps">
+      <div class="step" data-step="1">
+        <p><strong>Go to your Supabase SQL Editor</strong></p>
+        <p><a href="https://supabase.com/dashboard/project/mtxbiyilvgwhbdptysex/sql/new" target="_blank" class="link">
+          Open SQL Editor →
+        </a></p>
+      </div>
+
+      <div class="step" data-step="2">
+        <p><strong>Copy and paste this SQL:</strong></p>
+        <pre>ALTER TABLE agent_configs
+ADD COLUMN IF NOT EXISTS prompt TEXT,
+ADD COLUMN IF NOT EXISTS retell_agent_id TEXT,
+ADD COLUMN IF NOT EXISTS agent_name TEXT,
+ADD COLUMN IF NOT EXISTS language TEXT DEFAULT 'en-US';
+
+COMMENT ON COLUMN agent_configs.prompt IS 'System prompt for the AI agent behavior';
+COMMENT ON COLUMN agent_configs.retell_agent_id IS 'Retell.ai agent ID';
+COMMENT ON COLUMN agent_configs.agent_name IS 'Display name for the agent';
+COMMENT ON COLUMN agent_configs.language IS 'Language code for the agent (e.g., en-US)';</pre>
+      </div>
+
+      <div class="step" data-step="3">
+        <p><strong>Click "Run"</strong></p>
+        <p>You should see "Success. No rows returned" at the bottom.</p>
+      </div>
+
+      <div class="step" data-step="4">
+        <p><strong>Return to your app</strong></p>
+        <p>Reload the Agent page and the avatar should appear!</p>
+      </div>
+    </div>
+
+    <p style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid #e5e7eb; color: #6b7280; font-size: 14px;">
+      This migration adds the columns needed to store your agent's system prompt, Retell agent ID, display name, and avatar URL.
+    </p>
+  </div>
+</body>
+</html>

@@ -1,0 +1,200 @@
+# Feature Specification: Pat AI Call & SMS Agent PWA
+
+**Feature Branch**: `Pat-AI`
+**Created**: 2025-09-29
+**Status**: Draft
+**Input**: User description: "Build a conversational AI agent named Pat, in the form of a dynamic Progressive Web App. The ai agent Pat will answer phone calls, and respond to SMS - sent to the number the user selects at start up. Use the existing contacts in the user's phone to white list contacts if the inbound call or SMS is coming from the phone number associated with that contact. The contacts that are not in the user's contact list should receive further vetting so we are not tranferring calls to the user if the calls are from unknown callers. Use the transcripts from past calls and SMS, to assert memory and context as it relates to conversations with the contact the AI agent is speaking with. Since we are going to have to associated the user's number with a number we provide, it's important we get the phone number for this user. For initial setup, the app should ask the user to register asking them for their name, email and password using direct input or SSO (Google, Github, Facebook, LinkedIn). Confirm their registration with an email confirmation code. Once the confirmation code is entered, log them into the app. The first view when logging in should be the phone number entry view. Send a text to the number they enter so we can confirm this is in fact their number. The next view when after confirming phone numbers via text message should be the agent (Pat) prompt. To set up the agent for the first time, the user can interface via prompt text in-app or could speak naturally to the agent using a webrtc interface in-app. When invoked for the first time the agent should speak or text first and say something along the lines of 'Welcome <user_name>, my name is Pat and I am here to answer calls and texts sent to your number' Let's use Kate as a the voice for now. I will break down further tasks later, but suffice it to say this app will need a DB (supabase), user structure, call records (date, contact name, recordings, and transcripts) and more."
+
+## Execution Flow (main)
+```
+1. Parse user description from Input
+   → If empty: ERROR "No feature description provided"
+2. Extract key concepts from description
+   → Identify: actors, actions, data, constraints
+3. For each unclear aspect:
+   → Mark with [NEEDS CLARIFICATION: specific question]
+4. Fill User Scenarios & Testing section
+   → If no clear user flow: ERROR "Cannot determine user scenarios"
+5. Generate Functional Requirements
+   → Each requirement must be testable
+   → Mark ambiguous requirements
+6. Identify Key Entities (if data involved)
+7. Run Review Checklist
+   → If any [NEEDS CLARIFICATION]: WARN "Spec has uncertainties"
+   → If implementation details found: ERROR "Remove tech details"
+8. Return: SUCCESS (spec ready for planning)
+```
+
+---
+
+## ⚡ Quick Guidelines
+- ✅ Focus on WHAT users need and WHY
+- ❌ Avoid HOW to implement (no tech stack, APIs, code structure)
+- 👥 Written for business stakeholders, not developers
+
+### Section Requirements
+- **Mandatory sections**: Must be completed for every feature
+- **Optional sections**: Include only when relevant to the feature
+- When a section doesn't apply, remove it entirely (don't leave as "N/A")
+
+---
+
+## User Scenarios & Testing
+
+### Primary User Story
+A user wants an AI assistant (Pat) to automatically answer phone calls and SMS messages on their behalf. The assistant should intelligently screen calls from unknown numbers, handle trusted contacts naturally using conversation history and context, and only transfer calls to the user when appropriate. The user sets up the service through a mobile-friendly web application, registering their account, verifying their phone number, and customizing Pat's behavior through natural conversation.
+
+### Acceptance Scenarios
+
+1. **Given** a new user visits the app for the first time, **When** they complete registration with email/password or SSO, **Then** they receive an email confirmation code and can proceed after entering it
+
+2. **Given** a registered user logs in, **When** they enter their phone number, **Then** they receive a verification SMS and can confirm ownership by entering the code
+
+3. **Given** a verified user configures Pat for the first time, **When** they interact via text or voice, **Then** Pat greets them by name and explains its purpose
+
+4. **Given** Pat receives an inbound call from a number in the user's contacts, **When** the contact engages in conversation, **Then** Pat answers using context from previous interactions with that contact
+
+5. **Given** Pat receives an inbound call from an unknown number, **When** the caller provides their information, **Then** Pat screens the call and only transfers to the user if appropriate based on vetting criteria
+
+6. **Given** Pat receives an SMS from a trusted contact, **When** the message requires a response, **Then** Pat responds appropriately using conversation history and context
+
+7. **Given** multiple calls and messages have been handled, **When** the user reviews call history, **Then** they can see date, contact name, recordings, and transcripts for each interaction
+
+### Edge Cases
+- What happens when a contact sends a message or calls but their number has changed since being added to contacts?
+- How does Pat handle a contact list with duplicate numbers or malformed entries?
+- What happens when verification SMS fails to deliver or expires?
+- How does Pat respond when an unknown caller refuses to provide information during vetting?
+- What happens if the user's phone number changes after initial setup?
+- How does the system handle simultaneous inbound calls or messages?
+- What happens when call recordings or transcripts fail to save?
+- How does Pat behave when conversation history is unavailable or corrupted?
+- What happens if SSO provider is unavailable during registration or login?
+
+## Requirements
+
+### Functional Requirements
+
+#### Authentication & Onboarding
+- **FR-001**: System MUST allow users to register using email/password or SSO providers (Google, Github, Facebook, LinkedIn)
+- **FR-002**: System MUST send email confirmation codes to verify user email addresses during registration
+- **FR-003**: System MUST require users to enter the email confirmation code before granting access to the application
+- **FR-004**: System MUST capture user name, email, and password (or SSO token) during registration
+- **FR-005**: System MUST authenticate returning users via the same method they used during registration
+
+#### Phone Number Verification
+- **FR-006**: System MUST prompt authenticated users to enter their phone number as the first post-login action
+- **FR-007**: System MUST send an SMS verification code to the entered phone number
+- **FR-008**: System MUST validate the SMS verification code entered by the user
+- **FR-009**: System MUST associate the verified phone number with the user's account
+
+#### Service Number Selection
+- **FR-010**: System MUST allow users to search for available service phone numbers by area code or region (state/province, city)
+- **FR-011**: System MUST display a list of available phone numbers matching the user's search criteria
+- **FR-012**: Users MUST be able to select their preferred service phone number from the available options
+- **FR-013**: System MUST provision the selected phone number and link it to the user's account
+- **FR-014**: System MUST display the selected service phone number to the user for confirmation
+
+#### Agent Configuration
+- **FR-015**: System MUST present an agent configuration interface after service number selection
+- **FR-016**: System MUST allow users to configure Pat through text-based prompts
+- **FR-017**: System MUST allow users to configure Pat through voice-based conversation
+- **FR-018**: Pat MUST greet new users with a personalized welcome message including their name
+- **FR-019**: Pat MUST introduce itself by name and explain its purpose during first interaction
+
+#### Contact Management & Whitelisting
+- **FR-020**: System MUST access the user's phone contacts to create a whitelist of trusted numbers
+- **FR-021**: System MUST match inbound calls and SMS against the contacts whitelist
+- **FR-022**: System MUST apply different handling rules for whitelisted vs. unknown contacts
+- **FR-023**: System MUST store contact information (name, phone number) for each whitelisted entry
+
+#### Inbound Call Handling
+- **FR-024**: Pat MUST answer inbound calls to the user's service phone number
+- **FR-025**: Pat MUST identify whether the caller's number is in the user's contacts
+- **FR-026**: Pat MUST engage in natural conversation with callers
+- **FR-027**: Pat MUST screen unknown callers using vetting criteria before transferring to the user
+- **FR-028**: Pat MUST allow transfer of vetted calls to the user's actual phone number [NEEDS CLARIFICATION: What specific vetting criteria should be used? Emergency indicators? Business vs. personal? Caller's stated purpose?]
+- **FR-029**: Pat MUST use conversation history and context when speaking with known contacts
+- **FR-030**: System MUST record all inbound calls for later review
+
+#### Inbound SMS Handling
+- **FR-031**: Pat MUST receive SMS messages sent to the user's service phone number
+- **FR-032**: Pat MUST respond to SMS from whitelisted contacts using conversation history
+- **FR-033**: Pat MUST apply vetting to SMS from unknown numbers [NEEDS CLARIFICATION: What vetting process for SMS? Auto-respond, ignore, or forward to user?]
+- **FR-034**: System MUST store all SMS messages with timestamps and sender information
+
+#### Memory & Context
+- **FR-035**: System MUST persist transcripts of all calls and SMS conversations
+- **FR-036**: System MUST retrieve relevant conversation history when Pat engages with a known contact
+- **FR-037**: Pat MUST use past interaction context to inform current responses
+- **FR-038**: System MUST associate conversation history with specific contacts
+
+#### Call & Message History
+- **FR-039**: System MUST store call records including date, contact name, audio recording, and transcript
+- **FR-040**: System MUST store SMS records including date, contact name, and message content
+- **FR-041**: Users MUST be able to view complete call and SMS history
+- **FR-042**: Users MUST be able to play back call recordings
+- **FR-043**: Users MUST be able to read call transcripts
+- **FR-044**: Users MUST be able to search and filter call/SMS history [NEEDS CLARIFICATION: What search criteria? Date range, contact name, keywords in transcript?]
+
+#### Progressive Web App
+- **FR-045**: System MUST function as a Progressive Web App accessible on mobile devices
+- **FR-046**: System MUST be installable to the user's home screen
+- **FR-047**: System MUST function offline for viewing historical data [NEEDS CLARIFICATION: Which features must work offline? Can users modify settings offline?]
+- **FR-048**: System MUST sync data when connection is restored after offline usage
+
+### Performance & Scale Requirements
+- **FR-049**: System MUST answer inbound calls within [NEEDS CLARIFICATION: acceptable ring count/seconds before answering?]
+- **FR-050**: System MUST respond to SMS within [NEEDS CLARIFICATION: acceptable delay in seconds?]
+- **FR-051**: Pat's responses during calls MUST have latency low enough for natural conversation [NEEDS CLARIFICATION: specific latency target, e.g., <500ms?]
+- **FR-052**: System MUST support [NEEDS CLARIFICATION: how many concurrent calls? 1 per user? Multiple?]
+- **FR-053**: System MUST retain call recordings and transcripts for [NEEDS CLARIFICATION: retention period - 30 days, 1 year, indefinitely?]
+
+### Security & Privacy
+- **FR-054**: System MUST encrypt user passwords before storage
+- **FR-055**: System MUST encrypt call recordings and transcripts at rest
+- **FR-056**: System MUST transmit all sensitive data over encrypted connections
+- **FR-057**: System MUST allow users to delete their account and all associated data
+- **FR-058**: System MUST comply with [NEEDS CLARIFICATION: which regulations - GDPR, CCPA, HIPAA, TCPA for auto-answering calls?]
+- **FR-059**: System MUST obtain user consent before accessing phone contacts
+- **FR-060**: System MUST clearly disclose to callers that they are speaking with an AI agent [NEEDS CLARIFICATION: timing and wording of disclosure?]
+
+### Key Entities
+
+- **User**: Represents a registered account holder; attributes include name, email, phone number (verified), authentication method, registration timestamp
+- **Contact**: Represents an entry from the user's phone contacts whitelist; attributes include name, phone number, relationship to user, trust level
+- **Call Record**: Represents a completed phone call interaction; attributes include timestamp, contact reference, duration, audio recording, transcript, disposition (answered by Pat, transferred to user, screened out)
+- **SMS Message**: Represents a text message exchange; attributes include timestamp, contact reference, message direction (inbound/outbound), message content, read status
+- **Conversation Context**: Represents accumulated knowledge about interactions with a specific contact; attributes include contact reference, key topics discussed, preferences, relationship notes, summary of previous interactions
+- **Agent Configuration**: Represents user's customization of Pat's behavior; attributes include voice selection, greeting template, vetting criteria, transfer preferences, response style
+
+---
+
+## Review & Acceptance Checklist
+
+### Content Quality
+- [x] No implementation details (languages, frameworks, APIs)
+- [x] Focused on user value and business needs
+- [x] Written for non-technical stakeholders
+- [x] All mandatory sections completed
+
+### Requirement Completeness
+- [ ] No [NEEDS CLARIFICATION] markers remain
+- [x] Requirements are testable and unambiguous
+- [x] Success criteria are measurable
+- [x] Scope is clearly bounded
+- [x] Dependencies and assumptions identified
+
+---
+
+## Execution Status
+
+- [x] User description parsed
+- [x] Key concepts extracted
+- [x] Ambiguities marked
+- [x] User scenarios defined
+- [x] Requirements generated
+- [x] Entities identified
+- [ ] Review checklist passed (pending clarifications)
+
+---

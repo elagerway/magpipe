@@ -1,0 +1,2 @@
+[webhook-inbound-sms]
+verify_jwt = false
