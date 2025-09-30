@@ -88,7 +88,7 @@ export class AgentConfig {
   /**
    * Update vetting strategy
    * @param {string} userId - User's UUID
-   * @param {string} strategy - Vetting strategy (name-and-purpose, strict, permissive)
+   * @param {string} strategy - Vetting strategy (name-and-purpose, strict, lenient)
    * @returns {Promise<{config: Object|null, error: Error|null}>}
    */
   static async updateVettingStrategy(userId, strategy) {
@@ -211,7 +211,7 @@ export class AgentConfig {
     }
 
     // Validate vetting_strategy
-    const validStrategies = ['name-and-purpose', 'strict', 'permissive'];
+    const validStrategies = ['name-and-purpose', 'strict', 'lenient'];
     if (config.vetting_strategy && !validStrategies.includes(config.vetting_strategy)) {
       errors.push(`Invalid vetting_strategy. Must be one of: ${validStrategies.join(', ')}`);
     }

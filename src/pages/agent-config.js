@@ -106,8 +106,8 @@ export default class AgentConfigPage {
                 <option value="strict" ${config?.vetting_strategy === 'strict' ? 'selected' : ''}>
                   Strict (More questions)
                 </option>
-                <option value="permissive" ${config?.vetting_strategy === 'permissive' ? 'selected' : ''}>
-                  Permissive (Basic screening)
+                <option value="lenient" ${config?.vetting_strategy === 'lenient' ? 'selected' : ''}>
+                  Lenient (Basic screening)
                 </option>
               </select>
               <p class="form-help">How Pat should screen unknown callers</p>
