@@ -1,15 +1,35 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
 serve(async (req) => {
+  console.log('Incoming request:', req.method, req.url)
+  console.log('Headers:', Object.fromEntries(req.headers))
+
   // Upgrade to WebSocket
   if (req.headers.get('upgrade') !== 'websocket') {
+    console.log('Not a websocket upgrade request')
     return new Response('Expected websocket', { status: 400 })
   }
 
+  console.log('Upgrading to WebSocket...')
   const { socket, response } = Deno.upgradeWebSocket(req)
+  console.log('WebSocket upgrade successful')
+
+  let greetingSent = false
 
   socket.onopen = () => {
     console.log('WebSocket connected')
+
+    // Use agent_interrupt to make agent speak first
+    const initialGreeting = {
+      response_type: "agent_interrupt",
+      interrupt_id: 1,
+      content: "Hello, this is Pat. How can I help you?",
+      content_complete: true,
+      no_interruption_allowed: true
+    }
+    socket.send(JSON.stringify(initialGreeting))
+    console.log('Sent agent_interrupt greeting on open:', initialGreeting)
+    greetingSent = true
   }
 
   socket.onmessage = async (event) => {
@@ -34,10 +54,10 @@ serve(async (req) => {
 
           // Send a simple response
           const response = {
+            response_type: "response",
             response_id: message.response_id,
             content: "Hi! I'm Pat, your AI assistant. How can I help you today?",
             content_complete: true,
-            end_call: false,
           }
 
           socket.send(JSON.stringify(response))
