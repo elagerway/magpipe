@@ -209,6 +209,7 @@ async function sendSMS(
           content: body,
           status: 'sent',
           sent_at: new Date().toISOString(),
+          is_ai_generated: true,
         })
     }
   } catch (error) {
