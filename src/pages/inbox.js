@@ -417,44 +417,27 @@ export default class InboxPage {
           <h2 style="margin: 0; font-size: 1.125rem; font-weight: 600;">
             ${this.formatPhoneNumber(call.contact_phone)}
           </h2>
-          <div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.125rem;">
-            ${call.direction === 'inbound' ? 'Incoming' : 'Outgoing'} Call • ${durationText}
+          <div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.125rem; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+            <span>${call.direction === 'inbound' ? 'Incoming' : 'Outgoing'} Call</span>
+            <span>•</span>
+            <span>${durationText}</span>
+            ${call.user_sentiment ? `
+              <span>•</span>
+              <span class="sentiment-${call.user_sentiment.toLowerCase()}">${this.formatSentiment(call.user_sentiment)}</span>
+            ` : ''}
           </div>
         </div>
       </div>
 
       <div class="thread-messages" id="thread-messages" style="overflow-y: auto;">
         ${call.recording_url ? `
-          <div class="call-detail-recording">
-            <div class="recording-label">Call Recording</div>
-            <audio controls src="${call.recording_url}" style="width: 100%;"></audio>
+          <div class="call-detail-recording" style="padding: 6px;">
+            <audio controls src="${call.recording_url}" style="width: 100%; height: 40px; padding: 0;"></audio>
           </div>
         ` : ''}
 
-        <div class="call-detail-info">
-          <div class="call-info-item">
-            <span class="call-info-label">Status</span>
-            <span class="call-info-value ${statusInfo.class}">${statusInfo.icon} ${statusInfo.text}</span>
-          </div>
-          <div class="call-info-item">
-            <span class="call-info-label">Time</span>
-            <span class="call-info-value">${this.formatTimestamp(new Date(call.started_at))}</span>
-          </div>
-          ${call.user_sentiment ? `
-            <div class="call-info-item">
-              <span class="call-info-label">User Sentiment</span>
-              <span class="call-info-value sentiment-${call.user_sentiment.toLowerCase()}">${this.formatSentiment(call.user_sentiment)}</span>
-            </div>
-          ` : ''}
-          <div class="call-info-item">
-            <span class="call-info-label">Duration</span>
-            <span class="call-info-value">${durationText}</span>
-          </div>
-        </div>
-
         ${messages.length > 0 ? `
           <div class="call-detail-transcript">
-            <div class="transcript-header">Conversation Transcript</div>
             <div class="transcript-messages">
               ${messages.map(msg => `
                 <div class="transcript-bubble ${msg.speaker}">
@@ -717,14 +700,24 @@ export default class InboxPage {
   parseTranscript(transcript) {
     if (!transcript) return [];
 
-    // Simple transcript parsing - assumes alternating speakers
-    // For more sophisticated parsing, we'd need structured data from the API
-    const lines = transcript.split(/[.!?]+/).filter(line => line.trim().length > 0);
+    // Parse transcript in "Speaker: Message" format
+    // Supports both "Agent:/User:" (from Retell) and "Pat:/Caller:" formats
+    const lines = transcript.split('\n').filter(line => line.trim().length > 0);
+    const messages = [];
 
-    return lines.map((line, index) => ({
-      speaker: index % 2 === 0 ? 'agent' : 'user',
-      text: line.trim() + (index < lines.length - 1 ? '.' : '')
-    }));
+    for (const line of lines) {
+      // Match "Agent:", "Pat:", "User:", or "Caller:" at the start
+      const match = line.match(/^(Agent|Pat|User|Caller):\s*(.+)$/);
+      if (match) {
+        const [, speaker, text] = match;
+        messages.push({
+          speaker: (speaker === 'Agent' || speaker === 'Pat') ? 'agent' : 'user',
+          text: text.trim()
+        });
+      }
+    }
+
+    return messages;
   }
 
   formatSentiment(sentiment) {

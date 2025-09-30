@@ -6,127 +6,184 @@ serve(async (req) => {
     const payload = await req.json()
 
     console.log('=== RETELL WEBHOOK RECEIVED ===')
-    console.log('Event type:', payload.event_type)
-    console.log('Full payload:', JSON.stringify(payload, null, 2))
+    console.log('Event type:', payload.event)
+    console.log('Call ID:', payload.call?.call_id)
+    console.log('From:', payload.call?.from_number)
+    console.log('To:', payload.call?.to_number)
+    console.log('Has transcript:', !!payload.call?.transcript)
+    console.log('Has transcript_object:', !!payload.call?.transcript_object)
+    console.log('Has call_analysis:', !!payload.call?.call_analysis)
+    console.log('Has recording_url:', !!payload.call?.recording_url)
+    console.log('Transcript length:', payload.call?.transcript?.length)
+    console.log('Sentiment:', payload.call?.call_analysis?.user_sentiment)
     console.log('================================')
+
+    const callDetails = payload.call
+    if (!callDetails) {
+      console.error('No call details in payload!')
+      return new Response('OK - no call details', { status: 200 })
+    }
+
+    const callId = callDetails.call_id
+    if (!callId) {
+      console.error('No call_id in call details!')
+      return new Response('OK - no call_id', { status: 200 })
+    }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseKey)
 
-    // Only process call_ended events
-    if (payload.event_type !== 'call_ended') {
-      console.log('Ignoring non-call_ended event')
-      return new Response('OK', { status: 200 })
-    }
-
-    // Extract call ID from webhook
-    const { call_id } = payload
-
-    console.log('Fetching full call details from Retell API for call:', call_id)
-
-    // Fetch full call details from Retell API
-    const retellApiKey = Deno.env.get('RETELL_API_KEY')!
-    const callDetailsResponse = await fetch(`https://api.retellai.com/v2/get-call/${call_id}`, {
-      headers: {
-        'Authorization': `Bearer ${retellApiKey}`,
-      },
-    })
-
-    if (!callDetailsResponse.ok) {
-      console.error('Failed to fetch call details from Retell:', await callDetailsResponse.text())
-      return new Response('Failed to fetch call details', { status: 500 })
-    }
-
-    const callDetails = await callDetailsResponse.json()
-    console.log('Call details from Retell:', JSON.stringify(callDetails, null, 2))
-
-    // Extract data from call details
+    // Extract all available data
     const from_number = callDetails.from_number
     const to_number = callDetails.to_number
     const start_timestamp = callDetails.start_timestamp
     const end_timestamp = callDetails.end_timestamp
     const recording_url = callDetails.recording_url
+    const recording_url_multichannel = callDetails.recording_url_multichannel
     const transcript = callDetails.transcript
+    const transcript_object = callDetails.transcript_object
+    const transcript_with_tool_calls = callDetails.transcript_with_tool_calls
     const call_analysis = callDetails.call_analysis
+    const call_type = callDetails.call_type
+    const disconnection_reason = callDetails.disconnection_reason
+    const call_successful = callDetails.call_successful
+    const in_voicemail = callDetails.in_voicemail
+    const agent_id = callDetails.agent_id
+    const latency = callDetails.latency
+    const call_cost = callDetails.call_cost
 
-    // Calculate duration
-    const durationMs = end_timestamp - start_timestamp
-    const durationSeconds = Math.floor(durationMs / 1000)
+    // Calculate duration if we have timestamps
+    let durationSeconds = 0
+    if (end_timestamp && start_timestamp) {
+      durationSeconds = Math.floor((end_timestamp - start_timestamp) / 1000)
+    }
 
-    // Format transcript from array to string
+    // Format transcript - Retell provides both a plain string and array
     let transcriptText = ''
-    if (transcript && Array.isArray(transcript)) {
+    if (transcript && typeof transcript === 'string') {
+      // Retell already provides formatted transcript as string
       transcriptText = transcript
+    } else if (transcript_object && Array.isArray(transcript_object)) {
+      // Fallback: format from transcript_object if transcript string not available
+      transcriptText = transcript_object
         .map((entry: any) => `${entry.role === 'agent' ? 'Pat' : 'Caller'}: ${entry.content}`)
         .join('\n\n')
     }
 
-    // Extract sentiment from call_analysis
-    const userSentiment = call_analysis?.user_sentiment || call_analysis?.sentiment || null
+    const userSentiment = call_analysis?.user_sentiment || null
+    const callSummary = call_analysis?.call_summary || null
 
-    console.log('Processed data:', {
-      from_number,
-      to_number,
-      durationSeconds,
-      has_transcript: !!transcriptText,
-      has_recording: !!recording_url,
-      sentiment: userSentiment,
-    })
+    // Get user_id
+    console.log('Looking up service number for:', to_number)
+    const { data: serviceNumber, error: serviceError } = await supabase
+      .from('service_numbers')
+      .select('user_id')
+      .eq('phone_number', to_number)
+      .eq('is_active', true)
+      .single()
 
-    // Find the call record by contact_phone (from_number) and approximate timing
-    // We'll match on from_number and status='in-progress' or recent calls
-    const { data: callRecords, error: findError } = await supabase
+    if (serviceError) {
+      console.error('Service number lookup error:', serviceError)
+    }
+
+    if (!serviceNumber) {
+      console.error('No service number found for:', to_number)
+      return new Response('OK - no service number', { status: 200 })
+    }
+
+    console.log('Found user_id:', serviceNumber.user_id)
+
+    // Try to find existing record by retell_call_id
+    const { data: existing } = await supabase
       .from('call_records')
-      .select('*')
-      .eq('contact_phone', from_number)
-      .eq('service_number', to_number)
-      .or('status.eq.in-progress,status.eq.ringing')
-      .order('started_at', { ascending: false })
-      .limit(1)
+      .select('id')
+      .eq('retell_call_id', callId)
+      .single()
 
-    if (findError) {
-      console.error('Error finding call record:', findError)
-      return new Response('Error finding call', { status: 500 })
+    const eventType = payload.event
+
+    const recordData = {
+      status: eventType || 'unknown',
+      ended_at: end_timestamp ? new Date(end_timestamp).toISOString() : null,
+      duration_seconds: durationSeconds,
+      transcript: transcriptText || null,
+      transcript_object: transcript_object || null,
+      transcript_with_tool_calls: transcript_with_tool_calls || null,
+      recording_url: recording_url || null,
+      recording_url_multichannel: recording_url_multichannel || null,
+      user_sentiment: userSentiment,
+      call_summary: callSummary,
+      call_analysis_full: call_analysis || null,
+      call_type: call_type || null,
+      disconnection_reason: disconnection_reason || null,
+      call_successful: call_successful ?? null,
+      in_voicemail: in_voicemail ?? null,
+      agent_id: agent_id || null,
+      llm_latency_p50: latency?.llm?.p50 || null,
+      llm_latency_p90: latency?.llm?.p90 || null,
+      llm_latency_p99: latency?.llm?.p99 || null,
+      e2e_latency_p50: latency?.e2e?.p50 || null,
+      e2e_latency_p90: latency?.e2e?.p90 || null,
+      e2e_latency_p99: latency?.e2e?.p99 || null,
+      call_cost_total: call_cost?.total || null,
+      call_cost_llm: call_cost?.llm || null,
+      call_cost_tts: call_cost?.tts || null,
+      call_cost_stt: call_cost?.stt || null,
+      call_cost_telephony: call_cost?.telephony || null,
+      event_type: eventType,
+      metadata: payload,
     }
 
-    if (!callRecords || callRecords.length === 0) {
-      console.warn('No matching call record found for:', from_number, to_number)
-      return new Response('No matching call found', { status: 404 })
-    }
+    console.log('Saving record with event:', eventType, 'has_transcript:', !!transcriptText)
 
-    const callRecord = callRecords[0]
-    console.log('Updating call record:', callRecord.id)
+    if (existing) {
+      // Update existing record
+      console.log('Updating existing record:', existing.id)
+      const { error: updateError } = await supabase
+        .from('call_records')
+        .update(recordData)
+        .eq('id', existing.id)
 
-    // Update the call record with transcript, recording, and sentiment
-    const { error: updateError } = await supabase
-      .from('call_records')
-      .update({
-        status: 'completed',
-        duration_seconds: durationSeconds,
-        ended_at: new Date(end_timestamp).toISOString(),
-        transcript: transcriptText,
-        recording_url: recording_url,
-        user_sentiment: userSentiment,
-      })
-      .eq('id', callRecord.id)
+      if (updateError) {
+        console.error('Update error:', updateError)
+      } else {
+        console.log('Updated call record:', existing.id, 'with event:', eventType)
+      }
+    } else {
+      console.log('No existing record found, creating new...')
+      // Insert new record - use safe defaults for required fields
+      const insertData = {
+        user_id: serviceNumber.user_id,
+        retell_call_id: callId,
+        caller_number: from_number || 'unknown',
+        contact_phone: from_number || 'unknown',
+        service_number: to_number || 'unknown',
+        direction: 'inbound',
+        disposition: 'answered_by_pat',
+        started_at: start_timestamp ? new Date(start_timestamp).toISOString() : new Date().toISOString(),
+        ...recordData
+      }
 
-    if (updateError) {
-      console.error('Error updating call record:', updateError)
-      return new Response('Error updating call', { status: 500 })
-    }
+      console.log('Attempting to insert with data keys:', Object.keys(insertData))
+      const { data: insertResult, error: insertError } = await supabase
+        .from('call_records')
+        .insert(insertData)
+        .select()
 
-    console.log('Call record updated successfully with transcript and recording')
-
-    // If there's a call summary, we could also update conversation context here
-    if (call_analysis?.call_summary) {
-      console.log('Call summary:', call_analysis.call_summary)
-      // TODO: Update conversation_contexts table with summary and key_points
+      if (insertError) {
+        console.error('Insert error:', JSON.stringify(insertError))
+        console.error('Attempted to insert user_id:', serviceNumber.user_id)
+        console.error('Call ID:', callId)
+      } else {
+        console.log('Successfully created call record:', insertResult?.[0]?.id)
+        console.log('Created new call record for:', callId, 'with event:', eventType)
+      }
     }
 
     return new Response('OK', { status: 200 })
   } catch (error) {
     console.error('Error in webhook-retellai-analysis:', error)
-    return new Response('Error', { status: 500 })
+    return new Response('OK - error caught', { status: 200 })
   }
 })
