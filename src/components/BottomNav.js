@@ -2,6 +2,89 @@
  * Mobile Bottom Navigation Component
  */
 
+import { supabase, getCurrentUser } from '../lib/supabase.js';
+
+// Global unread count
+let unreadCount = 0;
+let unreadSubscription = null;
+
+// Initialize unread message tracking
+export async function initUnreadTracking() {
+  const { user } = await getCurrentUser();
+  if (!user) return;
+
+  // Get initial unread count
+  await updateUnreadCount(user.id);
+  updateBadge(); // Show initial count
+
+  // Clean up existing subscription
+  if (unreadSubscription) {
+    unreadSubscription.unsubscribe();
+  }
+
+  // Subscribe to new messages
+  unreadSubscription = supabase
+    .channel('unread-messages')
+    .on('postgres_changes', {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'sms_messages',
+      filter: `user_id=eq.${user.id}`
+    }, async (payload) => {
+      console.log('New message notification:', payload);
+      await updateUnreadCount(user.id);
+      updateBadge();
+    })
+    .subscribe((status) => {
+      console.log('Unread tracking subscription status:', status);
+    });
+}
+
+async function updateUnreadCount(userId) {
+  // Get last viewed timestamp from localStorage
+  const lastViewed = localStorage.getItem('inbox_last_viewed');
+
+  if (lastViewed) {
+    // Count only messages received after last view
+    const { count } = await supabase
+      .from('sms_messages')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('direction', 'inbound')
+      .gt('created_at', lastViewed);
+
+    unreadCount = count || 0;
+  } else {
+    // First time - count all inbound messages
+    const { count } = await supabase
+      .from('sms_messages')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('direction', 'inbound');
+
+    unreadCount = count || 0;
+  }
+}
+
+function updateBadge() {
+  const badge = document.getElementById('inbox-badge');
+  if (badge) {
+    if (unreadCount > 0) {
+      badge.textContent = unreadCount > 99 ? '99+' : unreadCount;
+      badge.style.display = 'flex';
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+}
+
+export function clearUnreadBadge() {
+  // Mark inbox as viewed by storing current timestamp
+  localStorage.setItem('inbox_last_viewed', new Date().toISOString());
+  unreadCount = 0;
+  updateBadge();
+}
+
 export function renderBottomNav(currentPath = '/dashboard') {
   const navItems = [
     {
@@ -12,7 +95,8 @@ export function renderBottomNav(currentPath = '/dashboard') {
     {
       path: '/inbox',
       icon: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/></svg>`,
-      label: 'Inbox'
+      label: 'Inbox',
+      badge: true
     },
     {
       path: '/agent-config',
@@ -26,15 +110,20 @@ export function renderBottomNav(currentPath = '/dashboard') {
     }
   ];
 
+  // Initialize unread tracking on first render
+  setTimeout(() => initUnreadTracking(), 100);
+
   return `
     <nav class="bottom-nav">
       ${navItems.map(item => `
         <button
           class="bottom-nav-item ${currentPath === item.path ? 'active' : ''}"
           onclick="navigateTo('${item.path}')"
+          style="position: relative;"
         >
           ${item.icon}
           <span>${item.label}</span>
+          ${item.badge ? `<span id="inbox-badge" class="nav-badge" style="display: none;">0</span>` : ''}
         </button>
       `).join('')}
     </nav>

@@ -3,12 +3,14 @@
  */
 
 import { getCurrentUser, supabase } from '../lib/supabase.js';
-import { renderBottomNav } from '../components/BottomNav.js';
+import { renderBottomNav, clearUnreadBadge } from '../components/BottomNav.js';
 
 export default class InboxPage {
   constructor() {
     this.conversations = [];
     this.selectedContact = null;
+    this.subscription = null;
+    this.userId = null;
   }
 
   async render() {
@@ -19,6 +21,7 @@ export default class InboxPage {
       return;
     }
 
+    this.userId = user.id;
     await this.loadConversations(user.id);
 
     const appElement = document.getElementById('app');
@@ -44,6 +47,112 @@ export default class InboxPage {
     `;
 
     this.attachEventListeners();
+    this.subscribeToMessages();
+  }
+
+  subscribeToMessages() {
+    // Clean up existing subscription
+    if (this.subscription) {
+      this.subscription.unsubscribe();
+    }
+
+    console.log('Setting up inbox subscription for user:', this.userId);
+
+    // Subscribe to new messages
+    this.subscription = supabase
+      .channel('inbox-messages')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'sms_messages',
+        filter: `user_id=eq.${this.userId}`
+      }, (payload) => {
+        console.log('📨 New message received in inbox:', payload);
+        this.handleNewMessage(payload.new);
+      })
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'call_records',
+        filter: `user_id=eq.${this.userId}`
+      }, (payload) => {
+        console.log('📞 New call received in inbox:', payload);
+        this.handleNewCall(payload.new);
+      })
+      .subscribe((status) => {
+        console.log('Inbox subscription status:', status);
+      });
+  }
+
+  async handleNewMessage(message) {
+    console.log('handleNewMessage called with:', message);
+    console.log('Currently selected contact:', this.selectedContact);
+
+    // Reload conversations to update list
+    await this.loadConversations(this.userId);
+
+    // Update conversation list
+    const conversationsEl = document.getElementById('conversations');
+    if (conversationsEl) {
+      conversationsEl.innerHTML = this.renderConversationList();
+      this.attachConversationListeners();
+    }
+
+    // If this message is for the currently selected contact, update the thread
+    const contactPhone = message.direction === 'inbound' ? message.sender_number : message.recipient_number;
+    console.log('Contact phone from message:', contactPhone);
+    console.log('Match?', this.selectedContact === contactPhone);
+
+    if (this.selectedContact === contactPhone) {
+      console.log('Updating thread for selected contact');
+      const threadElement = document.getElementById('message-thread');
+      if (threadElement) {
+        threadElement.innerHTML = this.renderMessageThread();
+        this.attachMessageInputListeners();
+
+        // Scroll to bottom
+        setTimeout(() => {
+          const threadMessages = document.getElementById('thread-messages');
+          if (threadMessages) {
+            threadMessages.scrollTop = threadMessages.scrollHeight;
+          }
+        }, 100);
+      }
+    }
+  }
+
+  async handleNewCall(call) {
+    // Reload conversations to update list
+    await this.loadConversations(this.userId);
+
+    // Update conversation list
+    const conversationsEl = document.getElementById('conversations');
+    if (conversationsEl) {
+      conversationsEl.innerHTML = this.renderConversationList();
+      this.attachConversationListeners();
+    }
+
+    // If this call is for the currently selected contact, update the thread
+    if (this.selectedContact === call.contact_phone) {
+      const threadElement = document.getElementById('message-thread');
+      if (threadElement) {
+        threadElement.innerHTML = this.renderMessageThread();
+        this.attachMessageInputListeners();
+
+        // Scroll to bottom
+        const threadMessages = document.getElementById('thread-messages');
+        if (threadMessages) {
+          threadMessages.scrollTop = threadMessages.scrollHeight;
+        }
+      }
+    }
+  }
+
+  cleanup() {
+    if (this.subscription) {
+      this.subscription.unsubscribe();
+      this.subscription = null;
+    }
   }
 
   async loadConversations(userId) {
@@ -77,9 +186,22 @@ export default class InboxPage {
           calls: [],
           lastActivity: new Date(msg.sent_at || msg.created_at),
           lastMessage: msg.content,
+          unreadCount: 0,
         };
       }
       grouped[phone].messages.push(msg);
+
+      // Count unread inbound messages (messages received after last view of this conversation)
+      if (msg.direction === 'inbound') {
+        const lastViewedKey = `conversation_last_viewed_${phone}`;
+        const lastViewed = localStorage.getItem(lastViewedKey);
+        const msgDate = new Date(msg.sent_at || msg.created_at);
+
+        if (!lastViewed || msgDate > new Date(lastViewed)) {
+          grouped[phone].unreadCount++;
+        }
+      }
+
       const msgDate = new Date(msg.sent_at || msg.created_at);
       if (msgDate > grouped[phone].lastActivity) {
         grouped[phone].lastActivity = msgDate;
@@ -130,7 +252,10 @@ export default class InboxPage {
           <div class="conversation-content">
             <div class="conversation-header">
               <span class="conversation-name">${this.formatPhoneNumber(conv.phone)}</span>
-              <span class="conversation-time">${this.formatTimestamp(conv.lastActivity)}</span>
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                ${conv.unreadCount > 0 ? `<span class="conversation-unread-badge">${conv.unreadCount > 99 ? '99+' : conv.unreadCount}</span>` : ''}
+                <span class="conversation-time">${this.formatTimestamp(conv.lastActivity)}</span>
+              </div>
             </div>
             <div class="conversation-preview">${conv.lastMessage}</div>
           </div>
@@ -270,12 +395,36 @@ export default class InboxPage {
   }
 
   attachEventListeners() {
+    this.attachConversationListeners();
+  }
+
+  attachConversationListeners() {
     const isMobile = window.innerWidth <= 768;
 
     // Click on conversation to view thread
     document.querySelectorAll('.conversation-item').forEach(item => {
       item.addEventListener('click', async () => {
         this.selectedContact = item.dataset.phone;
+
+        // Clear unread badge when viewing a conversation
+        clearUnreadBadge();
+
+        // Mark this conversation as viewed
+        const lastViewedKey = `conversation_last_viewed_${this.selectedContact}`;
+        localStorage.setItem(lastViewedKey, new Date().toISOString());
+
+        // Clear unread count for this conversation
+        const conv = this.conversations.find(c => c.phone === this.selectedContact);
+        if (conv) {
+          conv.unreadCount = 0;
+        }
+
+        // Update conversation list to remove badge
+        const conversationsEl = document.getElementById('conversations');
+        if (conversationsEl) {
+          conversationsEl.innerHTML = this.renderConversationList();
+          this.attachConversationListeners();
+        }
 
         // Update selected state
         document.querySelectorAll('.conversation-item').forEach(i => i.classList.remove('selected'));

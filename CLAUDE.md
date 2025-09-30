@@ -29,4 +29,8 @@ JavaScript ES6+, HTML5, CSS3 (vanilla, minimal framework usage per user requirem
 ## Database Management
 - **Always handle database migrations and deployments**: When migrations are created or modified, automatically deploy them using `export SUPABASE_ACCESS_TOKEN=sbp_17bff30d68c60e941858872853988d63169b2649 && npx supabase db push` or `npx supabase db reset --linked` (with 'y' confirmation)
 - Never ask the user to run database commands - execute them directly
+
+## Screenshots
+- **Always view screenshots immediately**: When the user provides a screenshot path, use the Read tool to view it without asking for permission first
+- Screenshots are part of the normal workflow and should be processed automatically
 <!-- MANUAL ADDITIONS END -->
