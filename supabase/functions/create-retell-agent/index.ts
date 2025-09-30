@@ -41,6 +41,8 @@ serve(async (req) => {
         type: 'custom-llm',
         llm_websocket_url: `${supabaseUrl}/functions/v1/retell-llm-websocket`,
       },
+      agent_first_speak: true,
+      begin_message: agentConfig?.begin_message || "Hello, this is Pat. How can I help you?",
     }
 
     console.log('Creating Retell agent:', agentData)
