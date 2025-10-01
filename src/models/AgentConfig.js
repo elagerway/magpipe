@@ -204,10 +204,14 @@ export class AgentConfig {
       errors.push('System prompt cannot be empty');
     }
 
-    // Validate voice_id
-    const validVoices = ['kate', 'alloy', 'nova', 'shimmer', 'echo', 'fable'];
-    if (config.voice_id && !validVoices.includes(config.voice_id)) {
-      errors.push(`Invalid voice_id. Must be one of: ${validVoices.join(', ')}`);
+    // Validate voice_id - accept both old format (kate) and new format (11labs-Kate, openai-alloy)
+    const validVoicePatterns = [
+      /^11labs-/,  // ElevenLabs voices
+      /^openai-/,  // OpenAI voices
+      /^(kate|alloy|nova|shimmer|echo|fable)$/  // Legacy format
+    ];
+    if (config.voice_id && !validVoicePatterns.some(pattern => pattern.test(config.voice_id))) {
+      errors.push('Invalid voice_id format');
     }
 
     // Validate vetting_strategy

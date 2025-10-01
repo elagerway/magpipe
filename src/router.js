@@ -18,6 +18,8 @@ export class Router {
     this.addRoute('/login', () => import('./pages/login.js'), false);
     this.addRoute('/signup', () => import('./pages/signup.js'), false);
     this.addRoute('/verify-email', () => import('./pages/verify-email.js'), false);
+    this.addRoute('/forgot-password', () => import('./pages/forgot-password.js'), false);
+    this.addRoute('/reset-password', () => import('./pages/reset-password.js'), false);
 
     // Protected routes
     this.addRoute('/dashboard', () => import('./pages/dashboard.js'), true);

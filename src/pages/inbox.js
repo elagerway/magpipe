@@ -31,7 +31,7 @@ export default class InboxPage {
         <!-- Conversation List Sidebar -->
         <div class="conversation-list" id="conversation-list">
           <div class="inbox-header">
-            <h1 style="margin: 0; font-size: 1rem; font-weight: 600;">Conversations</h1>
+            <h1 style="margin: 0; font-size: 1rem; font-weight: 600;">Inbox</h1>
             <button id="new-conversation-btn" style="
               background: white;
               color: var(--primary-color);
@@ -431,36 +431,37 @@ export default class InboxPage {
     const messages = this.parseTranscript(call.transcript);
 
     return `
-      <div class="thread-header" style="display: flex; align-items: center; gap: 0.75rem;">
-        <button class="back-button" id="back-button" style="
-          display: block;
-          background: none;
-          border: none;
-          font-size: 1.75rem;
-          cursor: pointer;
-          padding: 0;
-          color: var(--primary-color);
-          line-height: 1;
-        ">←</button>
-        <div style="flex: 1;">
-          <h2 style="margin: 0; font-size: 0.88rem; font-weight: 600;">
+      <div class="thread-header" style="display: flex; align-items: center; gap: 0.75rem; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <button class="back-button" id="back-button" style="
+            display: none;
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0;
+            margin: 0;
+            color: var(--primary-color);
+            line-height: 1;
+          ">←</button>
+          <h2 style="margin: 0; font-size: calc(1.125rem - 5px); font-weight: 600; line-height: 1;">
             ${this.formatPhoneNumber(call.contact_phone)}
           </h2>
-          <div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.125rem; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-            <span>${call.direction === 'inbound' ? 'Incoming' : 'Outgoing'} Call</span>
+        </div>
+        <div style="font-size: 0.875rem; color: var(--text-secondary); display: flex; gap: 0.5rem; align-items: center; white-space: nowrap;">
+          <span>${call.direction === 'inbound' ? 'Incoming' : 'Outgoing'} Call</span>
+          <span>•</span>
+          <span>${durationText}</span>
+          ${call.user_sentiment ? `
             <span>•</span>
-            <span>${durationText}</span>
-            ${call.user_sentiment ? `
-              <span>•</span>
-              <span class="sentiment-${call.user_sentiment.toLowerCase()}">${this.formatSentiment(call.user_sentiment)}</span>
-            ` : ''}
-          </div>
+            <span>User Sentiment: <span class="sentiment-${call.user_sentiment.toLowerCase()}">${call.user_sentiment}</span></span>
+          ` : ''}
         </div>
       </div>
 
       <div class="thread-messages" id="thread-messages" style="overflow-y: auto;">
         ${call.recording_url ? `
-          <div class="call-detail-recording" style="padding: 6px;">
+          <div class="call-detail-recording" style="padding: 0 6px 6px 6px;">
             <audio controls src="${call.recording_url}" style="width: 100%; height: 40px; padding: 0;"></audio>
           </div>
         ` : ''}
@@ -905,11 +906,11 @@ export default class InboxPage {
 
   formatSentiment(sentiment) {
     const sentimentMap = {
-      'positive': '😊 Positive',
-      'neutral': '😐 Neutral',
-      'negative': '😞 Negative'
+      'positive': 'User Sentiment: Positive',
+      'neutral': 'User Sentiment: Neutral',
+      'negative': 'User Sentiment: Negative'
     };
-    return sentimentMap[sentiment.toLowerCase()] || sentiment;
+    return sentimentMap[sentiment.toLowerCase()] || `User Sentiment: ${sentiment}`;
   }
 
   async sendMessage() {
