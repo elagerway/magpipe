@@ -42,40 +42,36 @@ export default class SettingsPage {
     const appElement = document.getElementById('app');
 
     appElement.innerHTML = `
-      <div class="container with-bottom-nav" style="max-width: 800px; padding-top: 2rem;">
-        <h1>Settings</h1>
+      <div class="container with-bottom-nav" style="max-width: 800px; padding: 2rem 1rem;">
+        <h1 style="margin-bottom: 1.5rem;">Settings</h1>
 
         <div id="error-message" class="hidden"></div>
         <div id="success-message" class="hidden"></div>
 
         <!-- User ID -->
-        <div class="card">
-          <div class="form-group">
-            <strong>User ID:</strong>
+        <div class="card" style="margin-bottom: 1rem;">
+          <div class="form-group" style="margin: 0;">
+            <strong style="display: block; margin-bottom: 0.5rem;">User ID:</strong>
             <code style="
               background: var(--bg-secondary);
-              padding: 0.25rem 0.5rem;
+              padding: 0.5rem;
               border-radius: var(--radius-sm);
-              font-size: 0.875rem;
+              font-size: 0.75rem;
               color: var(--text-primary);
               user-select: all;
-              display: inline-block;
-              margin-left: 0.5rem;
+              display: block;
+              word-break: break-all;
             ">${user.id}</code>
           </div>
         </div>
 
         <!-- Phone Numbers -->
-        <div class="card">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <div>
-              <h2 style="margin: 0 0 0.5rem 0;">Phone Numbers</h2>
-              <p class="text-muted" style="margin: 0;">Manage your active service numbers</p>
-            </div>
-            <button class="btn btn-primary" onclick="navigateTo('/manage-numbers')">
-              Manage Numbers
-            </button>
-          </div>
+        <div class="card" style="margin-bottom: 1rem;">
+          <h2 style="margin: 0 0 0.5rem 0;">Phone Numbers</h2>
+          <p class="text-muted" style="margin: 0 0 1rem 0;">Manage your active service numbers</p>
+          <button class="btn btn-primary btn-full" onclick="navigateTo('/manage-numbers')">
+            Manage Numbers
+          </button>
         </div>
 
         <!-- Profile Section -->

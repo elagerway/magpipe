@@ -69,11 +69,14 @@ serve(async (req) => {
     const llm = await llmResponse.json()
     console.log('Retell LLM created:', llm.llm_id)
 
-    // Create Retell agent with the LLM
+    // Create Retell agent with the LLM and webhook
+    const webhookUrl = `${supabaseUrl}/functions/v1/webhook-retellai-analysis`
+
     const agentData = {
       agent_name: agentConfig?.name || `Pat AI - ${user.email}`,
       voice_id: agentConfig?.voice_id || '11labs-Kate',
       language: 'en-US',
+      webhook_url: webhookUrl,
       response_engine: {
         type: 'retell-llm',
         llm_id: llm.llm_id,

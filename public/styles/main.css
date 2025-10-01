@@ -120,6 +120,12 @@ p {
   margin-bottom: var(--spacing-md);
 }
 
+@media (max-width: 768px) {
+  .card {
+    box-shadow: none;
+  }
+}
+
 /* Button */
 .btn {
   display: inline-flex;
@@ -175,7 +181,13 @@ p {
 
 /* Form Elements */
 .form-group {
-  margin-bottom: var(--spacing-md);
+  margin-bottom: 1rem;
+}
+
+@media (min-width: 768px) {
+  .agent-config-card {
+    padding-bottom: 1rem !important;
+  }
 }
 
 .form-label {
@@ -417,7 +429,7 @@ p {
 }
 
 .inbox-header {
-  padding: 0.8rem 1.5rem;
+  padding: calc(0.8rem * 0.94) calc(1.5rem * 1.05);
   border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
@@ -535,7 +547,7 @@ p {
 }
 
 .thread-header {
-  padding: 1.13rem 1.5rem;
+  padding: calc(1.13rem * 0.8 * 1.10) 1.5rem;
   border-bottom: 1px solid var(--border-color);
   background: var(--bg-primary);
 }
@@ -844,7 +856,6 @@ p {
 .call-detail-recording {
   padding: 1rem 1.5rem;
   background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-color);
 }
 
 .recording-label {
@@ -1078,7 +1089,17 @@ p {
   .thread-header {
     display: flex;
     align-items: center;
-    padding: 1rem !important;
+    padding: calc(1rem * 0.8) 1rem !important;
+    flex-wrap: wrap;
+  }
+
+  .thread-header h2 {
+    font-size: 0.95rem !important;
+  }
+
+  .thread-header > div:last-child {
+    font-size: 0.75rem !important;
+    flex-wrap: wrap;
   }
 
   .back-button {
