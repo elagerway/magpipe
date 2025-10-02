@@ -10,6 +10,14 @@ export default class AgentConfigPage {
   constructor() {
     this.isInitialSetup = false;
     this.autoSaveTimeout = null;
+    this.mediaRecorder = null;
+    this.audioChunks = [];
+    this.recordingTimer = null;
+    this.recordingStartTime = null;
+    this.audioBlob = null;
+    this.previewAudio = null;
+    this.isPreviewPlaying = false;
+    this.previewProgressInterval = null;
   }
 
   async render() {
@@ -27,7 +35,7 @@ export default class AgentConfigPage {
     const appElement = document.getElementById('app');
 
     appElement.innerHTML = `
-      <div class="container with-bottom-nav" style="max-width: 700px; margin: 0 auto; padding: 2rem 0 0 0;">
+      <div class="container with-bottom-nav" style="max-width: 700px; margin: 0 auto; padding-top: 0; padding-bottom: 0;">
         <div class="card agent-config-card" style="padding-bottom: 0; margin-bottom: 0;">
           <!-- Avatar -->
           ${config?.avatar_url ? `
@@ -62,7 +70,13 @@ export default class AgentConfigPage {
           <form id="config-form" style="margin-bottom: 0;">
             <div class="form-group">
               <label class="form-label" for="voice-id">Voice</label>
-              <select id="voice-id" class="form-select">
+              <div style="display: flex; gap: 0.5rem; align-items: center;">
+                <select id="voice-id" class="form-select" style="flex: 1;">
+                ${config?.cloned_voice_id ? `
+                  <optgroup label="Your Cloned Voices">
+                    <option value="11labs-${config.cloned_voice_id}" ${config?.voice_id === '11labs-' + config.cloned_voice_id ? 'selected' : ''}>Cloned Voice 1</option>
+                  </optgroup>
+                ` : ''}
                 <optgroup label="ElevenLabs Voices">
                   <option value="11labs-Kate" ${config?.voice_id === '11labs-Kate' ? 'selected' : ''}>Kate (Default)</option>
                   <option value="11labs-Adrian" ${config?.voice_id === '11labs-Adrian' ? 'selected' : ''}>Adrian</option>
@@ -96,7 +110,142 @@ export default class AgentConfigPage {
                   <option value="openai-shimmer" ${config?.voice_id === 'openai-shimmer' ? 'selected' : ''}>Shimmer</option>
                 </optgroup>
               </select>
+              <div style="position: relative; flex-shrink: 0; width: 38px; height: 38px;">
+                <!-- Circular progress ring -->
+                <svg width="38" height="38" style="position: absolute; top: 0; left: 0; transform: rotate(-90deg); pointer-events: none;">
+                  <circle
+                    cx="19"
+                    cy="19"
+                    r="17"
+                    fill="none"
+                    stroke="#e5e7eb"
+                    stroke-width="2"
+                  />
+                  <circle
+                    id="preview-progress-circle"
+                    cx="19"
+                    cy="19"
+                    r="17"
+                    fill="none"
+                    stroke="var(--primary-color)"
+                    stroke-width="2"
+                    stroke-dasharray="106.81"
+                    stroke-dashoffset="106.81"
+                    stroke-linecap="round"
+                    style="transition: stroke-dashoffset 0.1s linear;"
+                  />
+                </svg>
+                <button type="button" id="preview-voice-btn" style="background: none; border: none; padding: 0; cursor: pointer; color: var(--text-color); display: flex; align-items: center; justify-content: center; width: 38px; height: 38px;">
+                  <svg id="preview-play-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                  </svg>
+                  <svg id="preview-stop-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none" style="display: none;">
+                    <rect x="6" y="6" width="12" height="12"></rect>
+                  </svg>
+                </button>
+              </div>
+              </div>
               <p class="form-help">Select the voice for phone calls</p>
+            </div>
+
+            <!-- Voice Cloning Section -->
+            <div class="voice-clone-container" style="margin-bottom: 1.5rem;">
+              <div id="voice-clone-toggle" style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; cursor: pointer;">
+                <div style="
+                  background: white;
+                  color: var(--primary-color);
+                  border: 2px solid transparent;
+                  background-image: linear-gradient(white, white), linear-gradient(135deg, #6366f1, #8b5cf6);
+                  background-origin: padding-box, border-box;
+                  background-clip: padding-box, border-box;
+                  border-radius: 50%;
+                  width: 36px;
+                  height: 36px;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  flex-shrink: 0;
+                  transition: all 0.2s ease;
+                " id="voice-clone-button">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                    <line x1="12" y1="19" x2="12" y2="23"></line>
+                    <line x1="8" y1="23" x2="16" y2="23"></line>
+                  </svg>
+                </div>
+                <div style="flex: 1;">
+                  <span style="font-weight: 500; font-size: 0.9rem;">Clone Your Voice</span>
+                  <p class="form-help" style="margin: 0; font-size: 0.8rem;">Create a custom voice clone for phone calls</p>
+                </div>
+                <svg id="voice-clone-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" style="transition: transform 0.2s; color: var(--text-secondary);">
+                  <polyline points="4 6 8 10 12 6"></polyline>
+                </svg>
+              </div>
+
+              <div id="voice-clone-panel" style="display: none;">
+                <p class="form-help" style="margin-bottom: 1rem; font-size: 0.875rem;">
+                  Record 1-2 minutes of your voice speaking naturally. Speak clearly in a quiet environment for best results.
+                </p>
+
+                <div id="voice-clone-status" class="hidden" style="margin-bottom: 1rem;"></div>
+
+                <!-- Progress Bar -->
+                <div id="clone-progress" style="display: none; margin-bottom: 1rem;">
+                  <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                    <span style="font-size: 0.875rem; font-weight: 500;">Cloning your voice...</span>
+                    <span id="progress-percent" style="font-size: 0.875rem; color: var(--text-secondary);">0%</span>
+                  </div>
+                  <div style="width: 100%; height: 8px; background: var(--bg-secondary); border-radius: 4px; overflow: hidden;">
+                    <div id="progress-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--primary-color), var(--secondary-color)); transition: width 0.3s ease;"></div>
+                  </div>
+                </div>
+
+                <!-- Recording Controls -->
+                <div id="recording-controls" style="margin-bottom: 1rem;">
+                  <div style="display: flex; gap: 0.75rem; align-items: center; margin-bottom: 1rem;">
+                    <button type="button" id="start-recording-btn" class="btn btn-primary" style="flex: 1;">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <circle cx="12" cy="12" r="3" fill="currentColor"></circle>
+                      </svg>
+                      Start Recording
+                    </button>
+                    <button type="button" id="stop-recording-btn" class="btn btn-secondary" style="flex: 1; display: none;">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="6" y="6" width="12" height="12" fill="currentColor"></rect>
+                      </svg>
+                      Stop
+                    </button>
+                  </div>
+
+                  <div id="recording-timer" style="display: none; text-align: center; font-size: 1.25rem; font-weight: 600; color: var(--primary-color); margin-bottom: 1rem;">
+                    <span id="timer-display">0:00</span> / 2:00
+                  </div>
+                </div>
+
+                <!-- Audio Preview -->
+                <div id="audio-preview" style="display: none; margin-bottom: 1rem;">
+                  <label class="form-label">Preview Recording</label>
+                  <audio id="preview-player" controls style="width: 100%; margin-bottom: 0.75rem;"></audio>
+                  <div style="display: flex; gap: 0.75rem;">
+                    <button type="button" id="retry-recording-btn" class="btn btn-secondary" style="flex: 1;">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="1 4 1 10 7 10"></polyline>
+                        <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+                      </svg>
+                      Re-record
+                    </button>
+                    <button type="button" id="submit-voice-btn" class="btn btn-primary" style="flex: 1;">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                        <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                      </svg>
+                      Clone Voice
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div class="form-group">
@@ -512,6 +661,58 @@ Always sound approachable, keep things simple, and update the user with a quick 
       });
     }
 
+    // Voice cloning toggle functionality
+    const voiceCloneToggle = document.getElementById('voice-clone-toggle');
+    const voiceClonePanel = document.getElementById('voice-clone-panel');
+    const voiceCloneIcon = document.getElementById('voice-clone-icon');
+    const voiceCloneButton = document.getElementById('voice-clone-button');
+
+    if (voiceCloneToggle && voiceClonePanel && voiceCloneIcon) {
+      voiceCloneToggle.addEventListener('click', () => {
+        const isHidden = voiceClonePanel.style.display === 'none';
+        voiceClonePanel.style.display = isHidden ? 'block' : 'none';
+        voiceCloneIcon.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
+      });
+
+      // Hover effect for the circular button
+      if (voiceCloneButton) {
+        voiceCloneToggle.addEventListener('mouseenter', () => {
+          voiceCloneButton.style.backgroundImage = 'linear-gradient(var(--bg-secondary), var(--bg-secondary)), linear-gradient(135deg, #6366f1, #8b5cf6)';
+        });
+        voiceCloneToggle.addEventListener('mouseleave', () => {
+          voiceCloneButton.style.backgroundImage = 'linear-gradient(white, white), linear-gradient(135deg, #6366f1, #8b5cf6)';
+        });
+      }
+    }
+
+    // Voice cloning recording controls
+    const startRecordingBtn = document.getElementById('start-recording-btn');
+    const stopRecordingBtn = document.getElementById('stop-recording-btn');
+    const retryRecordingBtn = document.getElementById('retry-recording-btn');
+    const submitVoiceBtn = document.getElementById('submit-voice-btn');
+
+    if (startRecordingBtn) {
+      startRecordingBtn.addEventListener('click', () => this.startRecording());
+    }
+
+    if (stopRecordingBtn) {
+      stopRecordingBtn.addEventListener('click', () => this.stopRecording());
+    }
+
+    if (retryRecordingBtn) {
+      retryRecordingBtn.addEventListener('click', () => this.retryRecording());
+    }
+
+    if (submitVoiceBtn) {
+      submitVoiceBtn.addEventListener('click', () => this.submitVoiceClone());
+    }
+
+    // Voice preview button
+    const previewVoiceBtn = document.getElementById('preview-voice-btn');
+    if (previewVoiceBtn) {
+      previewVoiceBtn.addEventListener('click', () => this.toggleVoicePreview());
+    }
+
     // Update advanced creativity slider display
     if (advCreativitySlider && creativityValue) {
       advCreativitySlider.addEventListener('input', (e) => {
@@ -538,6 +739,28 @@ Always sound approachable, keep things simple, and update the user with a quick 
     formFields.forEach(field => {
       field.addEventListener('change', () => {
         const isVoiceField = field.id === 'voice-id';
+
+        // Stop preview audio when voice changes
+        if (isVoiceField && this.isPreviewPlaying && this.previewAudio) {
+          this.previewAudio.pause();
+          this.previewAudio.currentTime = 0;
+          this.isPreviewPlaying = false;
+          const playIcon = document.getElementById('preview-play-icon');
+          const stopIcon = document.getElementById('preview-stop-icon');
+          const progressCircle = document.getElementById('preview-progress-circle');
+          if (playIcon && stopIcon) {
+            playIcon.style.display = 'inline';
+            stopIcon.style.display = 'none';
+          }
+          if (progressCircle) {
+            progressCircle.style.strokeDashoffset = '106.81';
+          }
+          if (this.previewProgressInterval) {
+            clearInterval(this.previewProgressInterval);
+            this.previewProgressInterval = null;
+          }
+        }
+
         this.triggerAutoSave(isVoiceField);
       });
       if (field.type === 'text' || field.tagName === 'TEXTAREA') {
@@ -615,5 +838,328 @@ Always sound approachable, keep things simple, and update the user with a quick 
         submitBtn.textContent = this.isInitialSetup ? 'Complete Setup' : 'Save Configuration';
       }
     });
+  }
+
+  async toggleVoicePreview() {
+    const previewBtn = document.getElementById('preview-voice-btn');
+    const playIcon = document.getElementById('preview-play-icon');
+    const stopIcon = document.getElementById('preview-stop-icon');
+    const progressCircle = document.getElementById('preview-progress-circle');
+
+    // If already playing, stop it
+    if (this.isPreviewPlaying && this.previewAudio) {
+      this.previewAudio.pause();
+      this.previewAudio.currentTime = 0;
+      this.isPreviewPlaying = false;
+      playIcon.style.display = 'inline';
+      stopIcon.style.display = 'none';
+      previewBtn.disabled = false;
+
+      // Reset progress circle
+      if (progressCircle) {
+        progressCircle.style.strokeDashoffset = '106.81';
+      }
+
+      // Clear progress interval
+      if (this.previewProgressInterval) {
+        clearInterval(this.previewProgressInterval);
+        this.previewProgressInterval = null;
+      }
+
+      return;
+    }
+
+    // Get selected voice
+    const voiceSelect = document.getElementById('voice-id');
+    const selectedVoice = voiceSelect.value;
+
+    if (!selectedVoice) {
+      return;
+    }
+
+    try {
+      previewBtn.disabled = true;
+
+      const { data: { session } } = await supabase.auth.getSession();
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+
+      // Fetch audio from Edge Function
+      const response = await fetch(`${supabaseUrl}/functions/v1/preview-voice`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          voice_id: selectedVoice,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate voice preview');
+      }
+
+      const audioBlob = await response.blob();
+      const audioUrl = URL.createObjectURL(audioBlob);
+
+      // Create or reuse audio element
+      if (this.previewAudio) {
+        this.previewAudio.src = audioUrl;
+      } else {
+        this.previewAudio = new Audio(audioUrl);
+      }
+
+      // Setup audio event listeners
+      this.previewAudio.onended = () => {
+        this.isPreviewPlaying = false;
+        playIcon.style.display = 'inline';
+        stopIcon.style.display = 'none';
+        previewBtn.disabled = false;
+        if (progressCircle) {
+          progressCircle.style.strokeDashoffset = '106.81';
+        }
+        if (this.previewProgressInterval) {
+          clearInterval(this.previewProgressInterval);
+          this.previewProgressInterval = null;
+        }
+        URL.revokeObjectURL(audioUrl);
+      };
+
+      this.previewAudio.onerror = () => {
+        this.isPreviewPlaying = false;
+        playIcon.style.display = 'inline';
+        stopIcon.style.display = 'none';
+        previewBtn.disabled = false;
+        if (progressCircle) {
+          progressCircle.style.strokeDashoffset = '106.81';
+        }
+        if (this.previewProgressInterval) {
+          clearInterval(this.previewProgressInterval);
+          this.previewProgressInterval = null;
+        }
+        URL.revokeObjectURL(audioUrl);
+      };
+
+      // Play audio
+      await this.previewAudio.play();
+      this.isPreviewPlaying = true;
+      playIcon.style.display = 'none';
+      stopIcon.style.display = 'inline';
+      previewBtn.disabled = false;
+
+      // Update progress circle
+      const circumference = 106.81;
+      this.previewProgressInterval = setInterval(() => {
+        if (this.previewAudio && this.previewAudio.duration) {
+          const progress = this.previewAudio.currentTime / this.previewAudio.duration;
+          const offset = circumference - (progress * circumference);
+          if (progressCircle) {
+            progressCircle.style.strokeDashoffset = offset;
+          }
+        }
+      }, 100);
+
+    } catch (error) {
+      console.error('Error playing voice preview:', error);
+      playIcon.style.display = 'inline';
+      stopIcon.style.display = 'none';
+      previewBtn.disabled = false;
+      if (progressCircle) {
+        progressCircle.style.strokeDashoffset = '106.81';
+      }
+      if (this.previewProgressInterval) {
+        clearInterval(this.previewProgressInterval);
+        this.previewProgressInterval = null;
+      }
+    }
+  }
+
+  async startRecording() {
+    const startBtn = document.getElementById('start-recording-btn');
+    const stopBtn = document.getElementById('stop-recording-btn');
+    const recordingTimer = document.getElementById('recording-timer');
+    const timerDisplay = document.getElementById('timer-display');
+    const statusDiv = document.getElementById('voice-clone-status');
+
+    try {
+      // Request microphone permission
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      // Create MediaRecorder
+      this.mediaRecorder = new MediaRecorder(stream);
+      this.audioChunks = [];
+
+      this.mediaRecorder.addEventListener('dataavailable', (event) => {
+        this.audioChunks.push(event.data);
+      });
+
+      this.mediaRecorder.addEventListener('stop', () => {
+        this.audioBlob = new Blob(this.audioChunks, { type: 'audio/wav' });
+        this.showAudioPreview();
+
+        // Stop all tracks
+        stream.getTracks().forEach(track => track.stop());
+      });
+
+      // Start recording
+      this.mediaRecorder.start();
+      this.recordingStartTime = Date.now();
+
+      // Update UI
+      startBtn.style.display = 'none';
+      stopBtn.style.display = 'block';
+      recordingTimer.style.display = 'block';
+      statusDiv.classList.add('hidden');
+
+      // Start timer
+      this.recordingTimer = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - this.recordingStartTime) / 1000);
+        const minutes = Math.floor(elapsed / 60);
+        const seconds = elapsed % 60;
+        timerDisplay.textContent = `${minutes}:${String(seconds).padStart(2, '0')}`;
+
+        // Auto-stop at 2 minutes
+        if (elapsed >= 120) {
+          this.stopRecording();
+        }
+      }, 1000);
+
+    } catch (error) {
+      console.error('Error starting recording:', error);
+      statusDiv.className = 'alert alert-error';
+      statusDiv.textContent = 'Failed to access microphone. Please allow microphone access and try again.';
+    }
+  }
+
+  stopRecording() {
+    if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+      this.mediaRecorder.stop();
+      clearInterval(this.recordingTimer);
+
+      const startBtn = document.getElementById('start-recording-btn');
+      const stopBtn = document.getElementById('stop-recording-btn');
+      const recordingTimer = document.getElementById('recording-timer');
+
+      startBtn.style.display = 'block';
+      stopBtn.style.display = 'none';
+      recordingTimer.style.display = 'none';
+    }
+  }
+
+  showAudioPreview() {
+    const audioPreview = document.getElementById('audio-preview');
+    const previewPlayer = document.getElementById('preview-player');
+    const recordingControls = document.getElementById('recording-controls');
+
+    // Create object URL for audio blob
+    const audioUrl = URL.createObjectURL(this.audioBlob);
+    previewPlayer.src = audioUrl;
+
+    // Show preview, hide recording controls
+    audioPreview.style.display = 'block';
+    recordingControls.style.display = 'none';
+  }
+
+  retryRecording() {
+    const audioPreview = document.getElementById('audio-preview');
+    const recordingControls = document.getElementById('recording-controls');
+    const timerDisplay = document.getElementById('timer-display');
+
+    // Reset state
+    this.audioBlob = null;
+    this.audioChunks = [];
+    timerDisplay.textContent = '0:00';
+
+    // Hide preview, show recording controls
+    audioPreview.style.display = 'none';
+    recordingControls.style.display = 'block';
+  }
+
+  async submitVoiceClone() {
+    const submitBtn = document.getElementById('submit-voice-btn');
+    const statusDiv = document.getElementById('voice-clone-status');
+    const errorMessage = document.getElementById('error-message');
+    const successMessage = document.getElementById('success-message');
+    const progressContainer = document.getElementById('clone-progress');
+    const progressBar = document.getElementById('progress-bar');
+    const progressPercent = document.getElementById('progress-percent');
+
+    if (!this.audioBlob) {
+      statusDiv.className = 'alert alert-error';
+      statusDiv.textContent = 'No recording found. Please record your voice first.';
+      return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Cloning voice...';
+    statusDiv.classList.add('hidden');
+    progressContainer.style.display = 'block';
+
+    // Simulate progress
+    let progress = 0;
+    const progressInterval = setInterval(() => {
+      progress += Math.random() * 15;
+      if (progress > 90) progress = 90; // Cap at 90% until complete
+      progressBar.style.width = `${progress}%`;
+      progressPercent.textContent = `${Math.floor(progress)}%`;
+    }, 500);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const { user } = await getCurrentUser();
+
+      if (!session || !user) {
+        throw new Error('Please log in to clone your voice');
+      }
+
+      // Create FormData
+      const formData = new FormData();
+      formData.append('audio', this.audioBlob, 'voice-recording.wav');
+      formData.append('name', `${user.email}'s Voice`);
+      formData.append('remove_background_noise', 'true');
+
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const response = await fetch(`${supabaseUrl}/functions/v1/clone-voice`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to clone voice');
+      }
+
+      const result = await response.json();
+      console.log('Voice cloned:', result);
+
+      // Complete progress
+      clearInterval(progressInterval);
+      progressBar.style.width = '100%';
+      progressPercent.textContent = '100%';
+
+      setTimeout(() => {
+        successMessage.className = 'alert alert-success';
+        successMessage.textContent = 'Voice cloned successfully! Reloading...';
+        progressContainer.style.display = 'none';
+
+        // Reload page to show new voice in dropdown
+        setTimeout(() => {
+          window.location.reload();
+        }, 1500);
+      }, 500);
+
+    } catch (error) {
+      clearInterval(progressInterval);
+      console.error('Error cloning voice:', error);
+
+      progressContainer.style.display = 'none';
+      statusDiv.className = 'alert alert-error';
+      statusDiv.textContent = error.message || 'Failed to clone voice. Please try again.';
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Clone Voice';
+    }
   }
 }

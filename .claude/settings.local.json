@@ -79,7 +79,9 @@
       "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_0ccPQ2/**)",
       "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_2yamBL/**)",
       "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_ce1VRH/**)",
-      "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_URosLS/**)"
+      "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_URosLS/**)",
+      "WebFetch(domain:elevenlabs.io)",
+      "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_TPhUMf/**)"
     ],
     "deny": [],
     "ask": []
