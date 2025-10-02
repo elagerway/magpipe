@@ -18,6 +18,8 @@ export default class AgentConfigPage {
     this.previewAudio = null;
     this.isPreviewPlaying = false;
     this.previewProgressInterval = null;
+    this.transferNumbers = [];
+    this.transferSaveTimeout = null;
   }
 
   async render() {
@@ -64,8 +66,8 @@ export default class AgentConfigPage {
             </p>
           ` : ''}
 
-          <div id="error-message" class="hidden"></div>
-          <div id="success-message" class="hidden"></div>
+          <div id="error-message" class="hidden" style="position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 9999; min-width: 200px; text-align: center; font-size: 0.8rem; padding: 0.4rem 0.8rem; border-left: none;"></div>
+          <div id="success-message" class="hidden" style="position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 9999; min-width: 200px; text-align: center; font-size: 0.8rem; padding: 0.4rem 0.8rem; border-left: none;"></div>
 
           <form id="config-form" style="margin-bottom: 0;">
             <div class="form-group">
@@ -411,18 +413,23 @@ export default class AgentConfigPage {
               </div>
 
               <div class="form-group">
-                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                  <input
-                    type="checkbox"
-                    id="transfer-unknown"
-                    ${config?.transfer_unknown_callers ? 'checked' : ''}
-                  />
-                  <span class="form-label" style="margin: 0;">
-                    Transfer unknown callers after vetting
-                  </span>
-                </label>
-                <p class="form-help">After vetting, transfer the call to you instead of handling with AI</p>
+                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                  <label class="form-label" style="margin: 0; flex: 1;">Transfer Numbers</label>
+                  <button
+                    type="button"
+                    id="add-transfer-btn"
+                    class="btn btn-icon"
+                    style="width: 38px; height: 38px; padding: 0; display: flex; align-items: center; justify-content: center;"
+                  >
+                    <span style="font-size: 20px; line-height: 1;">+</span>
+                  </button>
+                </div>
+                <div id="transfer-numbers-list">
+                  <!-- Transfer numbers will be added here dynamically -->
+                </div>
+                <p class="form-help">Add phone numbers where calls can be transferred. Label them for easy identification (e.g., "Mobile", "Office", "Rick"). Optionally add a passcode for each number - when a caller says that passcode, they'll be transferred immediately without screening.</p>
               </div>
+
             </div>
 
             ${this.isInitialSetup
@@ -439,10 +446,371 @@ export default class AgentConfigPage {
       ${renderBottomNav('/agent-config')}
     `;
 
+    await this.loadTransferNumbers();
+    this.renderTransferNumbers();
     this.attachEventListeners();
   }
 
-  async autoSave(voiceChanged = false) {
+  async loadTransferNumbers() {
+    const { user } = await getCurrentUser();
+    const { data, error } = await supabase
+      .from('transfer_numbers')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: true });
+
+    if (!error && data) {
+      this.transferNumbers = data;
+    }
+
+    // If no transfer numbers exist, add one empty row
+    if (this.transferNumbers.length === 0) {
+      this.transferNumbers.push({ id: null, label: '', phone_number: '', is_default: true });
+    }
+  }
+
+  renderTransferNumbers() {
+    const container = document.getElementById('transfer-numbers-list');
+    if (!container) return;
+
+    container.innerHTML = this.transferNumbers.map((transfer, index) => {
+      // Format phone number for display (remove +1 prefix if present)
+      let displayNumber = transfer.phone_number || '';
+      if (displayNumber.startsWith('+1')) {
+        displayNumber = displayNumber.substring(2);
+      } else if (displayNumber.startsWith('1') && displayNumber.length === 11) {
+        displayNumber = displayNumber.substring(1);
+      }
+
+      // Determine if number is US or Canadian based on area code
+      // Canadian area codes: 204, 226, 236, 249, 250, 289, 306, 343, 365, 367, 403, 416, 418, 431, 437, 438, 450, 506, 514, 519, 548, 579, 581, 587, 604, 613, 639, 647, 705, 709, 778, 780, 782, 807, 819, 825, 867, 873, 902, 905
+      const canadianAreaCodes = ['204', '226', '236', '249', '250', '289', '306', '343', '365', '367', '403', '416', '418', '431', '437', '438', '450', '506', '514', '519', '548', '579', '581', '587', '604', '613', '639', '647', '705', '709', '778', '780', '782', '807', '819', '825', '867', '873', '902', '905'];
+      const areaCode = displayNumber.replace(/\D/g, '').substring(0, 3);
+      const flagIcon = canadianAreaCodes.includes(areaCode) ? '🇨🇦' : '🇺🇸';
+
+      return `
+      <div class="transfer-number-row" data-index="${index}" style="margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid #e5e7eb;">
+        <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center;">
+          <input
+            type="text"
+            class="form-input transfer-label"
+            placeholder="Label (e.g., Mobile)"
+            value="${transfer.label || ''}"
+            style="flex: 1;"
+            data-index="${index}"
+          />
+          <div style="flex: 2; display: flex; align-items: center; gap: 0;">
+            <span style="
+              background-color: #eff6ff;
+              border: 1px solid #dbeafe;
+              border-right: none;
+              border-radius: 8px 0 0 8px;
+              padding: 0.5rem 0.75rem;
+              height: 38px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              user-select: none;
+              font-size: 1.5rem;
+            ">${flagIcon}</span>
+            <input
+              type="tel"
+              class="form-input transfer-phone"
+              placeholder="(555) 123-4567"
+              value="${displayNumber}"
+              maxlength="14"
+              style="flex: 1; border-radius: 0 8px 8px 0; border-left: none; padding-left: 0.5rem;"
+              data-index="${index}"
+            />
+          </div>
+          <button
+            type="button"
+            class="btn btn-icon remove-transfer-btn"
+            data-index="${index}"
+            style="width: 38px; height: 38px; padding: 0; display: flex; align-items: center; justify-content: center; background-color: #ef4444; border-color: #ef4444;"
+          >
+            <span style="font-size: 20px; line-height: 1; color: white;">×</span>
+          </button>
+        </div>
+        <div style="display: flex; gap: 0.5rem; align-items: center; padding-left: 0.5rem;">
+          <label style="font-size: 0.8rem; color: #6b7280; white-space: nowrap; min-width: 100px;">Passcode (optional):</label>
+          <input
+            type="text"
+            class="form-input transfer-passcode"
+            placeholder="e.g., urgent123"
+            value="${transfer.transfer_secret || ''}"
+            style="flex: 1; font-size: 0.875rem; padding: 0.35rem 0.5rem; height: 32px;"
+            data-index="${index}"
+          />
+        </div>
+      </div>
+    `;
+    }).join('');
+
+    // Attach event listener for header add button
+    const headerAddBtn = document.getElementById('add-transfer-btn');
+    if (headerAddBtn) {
+      headerAddBtn.replaceWith(headerAddBtn.cloneNode(true)); // Remove old listeners
+      const newHeaderAddBtn = document.getElementById('add-transfer-btn');
+      newHeaderAddBtn.addEventListener('click', () => this.addTransferNumber());
+    }
+
+    const removeBtns = container.querySelectorAll('.remove-transfer-btn');
+    removeBtns.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const index = parseInt(e.currentTarget.dataset.index);
+        this.removeTransferNumber(index);
+      });
+    });
+
+    // Attach event listeners for input changes
+    const labelInputs = container.querySelectorAll('.transfer-label');
+    const phoneInputs = container.querySelectorAll('.transfer-phone');
+    const passcodeInputs = container.querySelectorAll('.transfer-passcode');
+
+    labelInputs.forEach(input => {
+      input.addEventListener('input', (e) => {
+        const index = parseInt(e.target.dataset.index);
+        this.transferNumbers[index].label = e.target.value;
+
+        // Remove red border if field now has value
+        if (e.target.value.trim()) {
+          e.target.style.borderColor = '';
+        }
+
+        this.debounceSaveTransferNumber(index);
+      });
+    });
+
+    phoneInputs.forEach(input => {
+      input.addEventListener('input', (e) => {
+        const index = parseInt(e.target.dataset.index);
+
+        // Format phone number as user types
+        let value = e.target.value.replace(/\D/g, ''); // Remove non-digits
+
+        // Limit to 10 digits
+        if (value.length > 10) {
+          value = value.substring(0, 10);
+        }
+
+        // Format as (XXX) XXX-XXXX
+        let formatted = value;
+        if (value.length > 6) {
+          formatted = `(${value.substring(0, 3)}) ${value.substring(3, 6)}-${value.substring(6)}`;
+        } else if (value.length > 3) {
+          formatted = `(${value.substring(0, 3)}) ${value.substring(3)}`;
+        } else if (value.length > 0) {
+          formatted = `(${value}`;
+        }
+
+        e.target.value = formatted;
+
+        // Store with +1 prefix (only digits)
+        this.transferNumbers[index].phone_number = value.length === 10 ? `+1${value}` : (value.length > 0 ? value : '');
+
+        // Remove red border if field is complete (10 digits)
+        if (value.length === 10) {
+          e.target.style.borderColor = '';
+        }
+
+        this.debounceSaveTransferNumber(index);
+      });
+    });
+
+    passcodeInputs.forEach(input => {
+      input.addEventListener('input', (e) => {
+        const index = parseInt(e.target.dataset.index);
+        this.transferNumbers[index].transfer_secret = e.target.value;
+        this.debounceSaveTransferNumber(index);
+      });
+    });
+  }
+
+  debounceSaveTransferNumber(index) {
+    clearTimeout(this.transferSaveTimeout);
+    this.transferSaveTimeout = setTimeout(() => {
+      this.saveTransferNumber(index);
+    }, 1000); // Save 1 second after user stops typing
+  }
+
+  addTransferNumber() {
+    this.transferNumbers.push({ id: null, label: '', phone_number: '', is_default: false });
+    this.renderTransferNumbers();
+  }
+
+  async removeTransferNumber(index) {
+    const transfer = this.transferNumbers[index];
+
+    // If it has an ID, delete from database
+    if (transfer.id) {
+      await supabase
+        .from('transfer_numbers')
+        .delete()
+        .eq('id', transfer.id);
+    }
+
+    this.transferNumbers.splice(index, 1);
+
+    // If we removed all, add one empty row
+    if (this.transferNumbers.length === 0) {
+      this.transferNumbers.push({ id: null, label: '', phone_number: '', is_default: true });
+    }
+
+    this.renderTransferNumbers();
+
+    // Update Retell transfer tools
+    await this.updateRetellTransferTools();
+
+    // Show deleted message
+    const successMessage = document.getElementById('success-message');
+    if (successMessage) {
+      successMessage.className = 'alert';
+      successMessage.classList.remove('hidden');
+      successMessage.style.backgroundColor = '#fee2e2';
+      successMessage.style.color = '#991b1b';
+      successMessage.textContent = 'Deleted';
+      setTimeout(() => {
+        successMessage.classList.add('hidden');
+        successMessage.style.backgroundColor = '';
+        successMessage.style.color = '';
+      }, 2000);
+    }
+  }
+
+  async saveTransferNumber(index) {
+    const transfer = this.transferNumbers[index];
+
+    // Validate that both fields are filled before saving
+    if (!transfer.label || !transfer.phone_number || transfer.phone_number.length < 12) {
+      // Add red border to missing fields
+      const container = document.getElementById('transfer-numbers-list');
+      if (container) {
+        const labelInput = container.querySelector(`.transfer-label[data-index="${index}"]`);
+        const phoneInput = container.querySelector(`.transfer-phone[data-index="${index}"]`);
+
+        if (!transfer.label && labelInput) {
+          labelInput.style.borderColor = '#ef4444';
+        }
+        if ((!transfer.phone_number || transfer.phone_number.length < 12) && phoneInput) {
+          phoneInput.style.borderColor = '#ef4444';
+        }
+      }
+
+      // Only show message if user has started filling in either field
+      if (transfer.label || transfer.phone_number) {
+        const successMessage = document.getElementById('success-message');
+        if (successMessage) {
+          // Clear any pending timeout to prevent "Saved" from showing
+          clearTimeout(this.successMessageTimeout);
+
+          successMessage.className = 'alert';
+          successMessage.classList.remove('hidden');
+          successMessage.style.backgroundColor = '#fee2e2';
+          successMessage.style.color = '#991b1b';
+          successMessage.style.borderColor = '#fecaca';
+          successMessage.textContent = 'Both label and phone number are required for a transfer';
+
+          this.successMessageTimeout = setTimeout(() => {
+            successMessage.classList.add('hidden');
+            successMessage.style.backgroundColor = '';
+            successMessage.style.color = '';
+            successMessage.style.borderColor = '';
+          }, 3000);
+        }
+      }
+      return;
+    }
+
+    const { user } = await getCurrentUser();
+
+    // Get agent config for agent_id and llm_id
+    const { data: agentConfig } = await supabase
+      .from('agent_configs')
+      .select('retell_agent_id, retell_llm_id')
+      .eq('user_id', user.id)
+      .single();
+
+    if (transfer.id) {
+      // Update existing
+      await supabase
+        .from('transfer_numbers')
+        .update({
+          label: transfer.label,
+          phone_number: transfer.phone_number,
+          transfer_secret: transfer.transfer_secret || null,
+          agent_id: agentConfig?.retell_agent_id,
+          llm_id: agentConfig?.retell_llm_id,
+        })
+        .eq('id', transfer.id);
+    } else {
+      // Insert new
+      const { data, error } = await supabase
+        .from('transfer_numbers')
+        .insert({
+          user_id: user.id,
+          label: transfer.label,
+          phone_number: transfer.phone_number,
+          transfer_secret: transfer.transfer_secret || null,
+          is_default: index === 0,
+          agent_id: agentConfig?.retell_agent_id,
+          llm_id: agentConfig?.retell_llm_id,
+        })
+        .select()
+        .single();
+
+      if (!error && data) {
+        this.transferNumbers[index].id = data.id;
+      }
+    }
+
+    // Update Retell transfer tools
+    await this.updateRetellTransferTools();
+
+    // Show success message
+    const successMessage = document.getElementById('success-message');
+    if (successMessage) {
+      // Clear any pending timeout
+      clearTimeout(this.successMessageTimeout);
+
+      successMessage.className = 'alert alert-success';
+      successMessage.classList.remove('hidden');
+      successMessage.style.backgroundColor = '#d1fae5';
+      successMessage.style.color = '#065f46';
+      successMessage.style.borderColor = '#6ee7b7';
+      successMessage.textContent = 'Saved';
+
+      this.successMessageTimeout = setTimeout(() => {
+        successMessage.classList.add('hidden');
+        successMessage.style.backgroundColor = '';
+        successMessage.style.color = '';
+        successMessage.style.borderColor = '';
+      }, 2000);
+    }
+  }
+
+  async updateRetellTransferTools() {
+    console.log('Updating Retell transfer tools...');
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const { data: { session } } = await supabase.auth.getSession();
+
+    const response = await fetch(`${supabaseUrl}/functions/v1/update-retell-transfer-tool`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const result = await response.json();
+    console.log('Update Retell transfer tools result:', result);
+
+    if (!response.ok) {
+      console.error('Failed to update transfer tools:', result);
+    }
+  }
+
+  async autoSave(voiceChanged = false, transferChanged = false) {
     if (this.isInitialSetup) return; // Don't auto-save during initial setup
 
     const successMessage = document.getElementById('success-message');
@@ -454,7 +822,6 @@ export default class AgentConfigPage {
         voice_id: document.getElementById('voice-id').value,
         response_style: document.getElementById('response-style').value,
         vetting_strategy: document.getElementById('vetting-strategy').value,
-        transfer_unknown_callers: document.getElementById('transfer-unknown').checked,
         temperature: parseFloat(document.getElementById('adv-creativity').value),
         max_tokens: parseInt(document.getElementById('adv-max-response').value),
         agent_volume: parseFloat(document.getElementById('adv-agent-volume').value),
@@ -468,9 +835,24 @@ export default class AgentConfigPage {
 
       if (error) throw error;
 
+      // If transfer settings changed, update Retell transfer tool
+      if (transferChanged) {
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        const { data: { session } } = await supabase.auth.getSession();
+
+        await fetch(`${supabaseUrl}/functions/v1/update-retell-transfer-tool`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+      }
+
       // If voice changed, fetch new avatar
       if (voiceChanged) {
         successMessage.className = 'alert alert-info';
+        successMessage.classList.remove('hidden');
         successMessage.textContent = 'Updating avatar...';
 
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -486,6 +868,10 @@ export default class AgentConfigPage {
 
         if (avatarResponse.ok) {
           successMessage.className = 'alert alert-success';
+          successMessage.classList.remove('hidden');
+          successMessage.style.backgroundColor = '#d1fae5';
+          successMessage.style.color = '#065f46';
+          successMessage.style.borderColor = '#6ee7b7';
           successMessage.textContent = 'Saved & avatar updated';
           // Reload page after a short delay to show new avatar
           setTimeout(() => {
@@ -495,14 +881,25 @@ export default class AgentConfigPage {
         }
       }
 
-      successMessage.className = 'alert alert-success';
-      successMessage.textContent = 'Saved';
-      setTimeout(() => {
-        successMessage.classList.add('hidden');
-      }, 2000);
+      // Don't show "Saved" message for transfer-only changes (transfers have their own validation)
+      if (!transferChanged || voiceChanged) {
+        successMessage.className = 'alert alert-success';
+        successMessage.classList.remove('hidden');
+        successMessage.style.backgroundColor = '#d1fae5';
+        successMessage.style.color = '#065f46';
+        successMessage.style.borderColor = '#6ee7b7';
+        successMessage.textContent = 'Saved';
+        setTimeout(() => {
+          successMessage.classList.add('hidden');
+          successMessage.style.backgroundColor = '';
+          successMessage.style.color = '';
+          successMessage.style.borderColor = '';
+        }, 2000);
+      }
     } catch (error) {
       console.error('Auto-save error:', error);
       errorMessage.className = 'alert alert-error';
+      errorMessage.classList.remove('hidden');
       errorMessage.textContent = error.message || 'Failed to save';
       setTimeout(() => {
         errorMessage.classList.add('hidden');
@@ -510,10 +907,10 @@ export default class AgentConfigPage {
     }
   }
 
-  triggerAutoSave(voiceChanged = false) {
+  triggerAutoSave(voiceChanged = false, transferChanged = false) {
     clearTimeout(this.autoSaveTimeout);
     this.autoSaveTimeout = setTimeout(() => {
-      this.autoSave(voiceChanged);
+      this.autoSave(voiceChanged, transferChanged);
     }, 1000); // Save 1 second after user stops typing/changing
   }
 
@@ -713,6 +1110,7 @@ Always sound approachable, keep things simple, and update the user with a quick 
       previewVoiceBtn.addEventListener('click', () => this.toggleVoicePreview());
     }
 
+
     // Update advanced creativity slider display
     if (advCreativitySlider && creativityValue) {
       advCreativitySlider.addEventListener('input', (e) => {
@@ -738,6 +1136,13 @@ Always sound approachable, keep things simple, and update the user with a quick 
     const formFields = form.querySelectorAll('input, select, textarea');
     formFields.forEach(field => {
       field.addEventListener('change', () => {
+        // Don't trigger autoSave for transfer number fields (they have their own save logic)
+        if (field.classList.contains('transfer-label') ||
+            field.classList.contains('transfer-phone') ||
+            field.classList.contains('transfer-passcode')) {
+          return;
+        }
+
         const isVoiceField = field.id === 'voice-id';
 
         // Stop preview audio when voice changes
@@ -761,10 +1166,15 @@ Always sound approachable, keep things simple, and update the user with a quick 
           }
         }
 
-        this.triggerAutoSave(isVoiceField);
+        this.triggerAutoSave(isVoiceField, false);
       });
       if (field.type === 'text' || field.tagName === 'TEXTAREA') {
-        field.addEventListener('input', () => this.triggerAutoSave());
+        // Don't trigger autoSave for transfer number fields (they have their own save logic)
+        if (!field.classList.contains('transfer-label') &&
+            !field.classList.contains('transfer-phone') &&
+            !field.classList.contains('transfer-passcode')) {
+          field.addEventListener('input', () => this.triggerAutoSave());
+        }
       }
     });
 
@@ -776,7 +1186,6 @@ Always sound approachable, keep things simple, and update the user with a quick 
         voice_id: document.getElementById('voice-id').value,
         response_style: document.getElementById('response-style').value,
         vetting_strategy: document.getElementById('vetting-strategy').value,
-        transfer_unknown_callers: document.getElementById('transfer-unknown').checked,
         temperature: parseFloat(document.getElementById('adv-creativity').value),
         max_tokens: parseInt(document.getElementById('adv-max-response').value),
         agent_volume: parseFloat(document.getElementById('adv-agent-volume').value),
@@ -1162,4 +1571,35 @@ Always sound approachable, keep things simple, and update the user with a quick 
       submitBtn.textContent = 'Clone Voice';
     }
   }
+
+  async updateRetellTransferTool() {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.error('No active session');
+        return;
+      }
+
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const response = await fetch(`${supabaseUrl}/functions/v1/update-retell-transfer-tool`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        console.error('Failed to update transfer tool:', error);
+        return;
+      }
+
+      const result = await response.json();
+      console.log('Transfer tool updated:', result);
+    } catch (error) {
+      console.error('Error updating transfer tool:', error);
+    }
+  }
+
 }
