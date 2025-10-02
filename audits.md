@@ -2,6 +2,57 @@
 
 ---
 
+## Audit: October 2, 2025
+**Build:** TBD
+**Commit:** Add voice cloning feature with ElevenLabs API integration
+**Date:** 2025-10-02
+**Auditor:** Claude (AI Assistant)
+
+### Summary
+Added voice cloning feature allowing users to create custom voice clones for their AI agents. **Feature fully implemented and deployed.** ✅
+
+### New Features
+
+#### Voice Cloning (`src/pages/agent-config.js`, `supabase/functions/clone-voice/`)
+- **ElevenLabs Integration:**
+  - Edge Function: `clone-voice` (ACTIVE, v2) ✓
+  - API endpoint: `https://api.elevenlabs.io/v1/voices/add` ✓
+  - Background noise removal enabled ✓
+  - Voice cloning with 1-2 minutes of audio ✓
+
+- **Recording Interface:**
+  - MediaRecorder API for browser audio capture ✓
+  - Microphone permission handling ✓
+  - 2-minute recording limit with auto-stop ✓
+  - Real-time timer display (MM:SS format) ✓
+  - Audio preview with playback controls ✓
+  - Re-record functionality ✓
+
+- **UI/UX:**
+  - Circular gradient microphone button (matches inbox + button design) ✓
+  - Collapsible panel with expand/collapse animation ✓
+  - Animated progress bar (0-100%) during cloning ✓
+  - Success/error feedback messages ✓
+  - Hover effects on controls ✓
+
+- **Voice Management:**
+  - Cloned voices saved to agent_configs table ✓
+  - Database fields: `cloned_voice_id`, `cloned_voice_name` ✓
+  - Auto-reload after successful cloning ✓
+  - Cloned voice appears in dropdown as "Cloned Voice 1" ✓
+  - Separate optgroup for cloned voices ✓
+
+- **Security:**
+  - Authentication required (JWT token) ✓
+  - User-specific voice storage ✓
+  - CORS headers configured ✓
+
+### Dependencies Updated
+- ElevenLabs API key added to environment (.env and Supabase secrets) ✓
+- No new npm packages required (uses native MediaRecorder API) ✓
+
+---
+
 ## Audit: October 1, 2025
 **Build:** `1b19bad`
 **Commit:** Add advanced agent settings, auto-save, and complete code audit
