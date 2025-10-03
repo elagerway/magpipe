@@ -15,8 +15,8 @@ from livekit.agents import (
     WorkerOptions,
     cli,
     llm,
+    VoicePipelineAgent,
 )
-from livekit.agents.pipeline import VoicePipelineAgent
 from livekit.plugins import deepgram, openai as lkopenai, elevenlabs
 
 from dotenv import load_dotenv
