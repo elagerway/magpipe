@@ -344,5 +344,37 @@ async def entrypoint(ctx: JobContext):
 
 
 if __name__ == "__main__":
-    # Run the agent worker
-    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
+    import sys
+
+    # Check if we should run health check server
+    if len(sys.argv) > 1 and sys.argv[1] == "healthcheck":
+        # Simple HTTP server for Render health checks
+        from http.server import HTTPServer, BaseHTTPRequestHandler
+
+        class HealthCheckHandler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header('Content-type', 'text/plain')
+                self.end_headers()
+                self.wfile.write(b'OK')
+
+            def log_message(self, format, *args):
+                pass  # Suppress logs
+
+        port = int(os.getenv('PORT', 10000))
+        server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
+        logger.info(f"Health check server running on port {port}")
+
+        # Run agent in background thread
+        import threading
+        agent_thread = threading.Thread(
+            target=lambda: cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint)),
+            daemon=True
+        )
+        agent_thread.start()
+
+        # Run health check server in main thread
+        server.serve_forever()
+    else:
+        # Run the agent worker normally
+        cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
