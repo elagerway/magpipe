@@ -180,3 +180,4 @@ After deployment:
 3. Configure LiveKit SIP trunk to point to SignalWire
 4. Update user's `active_voice_stack` to 'livekit' in database
 5. Test with a call!
+# Auto-deploy trigger Fri Oct  3 16:44:30 PDT 2025
