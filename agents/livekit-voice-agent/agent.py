@@ -323,11 +323,10 @@ async def entrypoint(ctx: JobContext):
             # Voice settings from database
             stability=voice_config["stability"],
             similarity_boost=voice_config["similarity_boost"],
-
- optimize_streaming_latency=4,
+            optimize_streaming_latency=4,
         ),
         chat_ctx=initial_ctx,
-        fnc_ctx=llm.FunctionContext() if not tools else None,
+        fnc_ctx=llm.FunctionContext(),
     )
 
     # Add function tools
