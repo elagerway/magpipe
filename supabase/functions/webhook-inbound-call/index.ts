@@ -70,13 +70,53 @@ serve(async (req) => {
     if (activeStack === 'livekit') {
       console.log('Processing call with LiveKit stack')
 
-      // For LiveKit, we need to set up a LiveKit room and SIP trunk
-      // This requires LiveKit SIP configuration which is more complex
-      // For now, return a placeholder message
+      // Create a LiveKit room for this call
+      const roomName = `call-${serviceNumber.user_id}-${Date.now()}`
+
+      console.log('Creating LiveKit room:', roomName)
+
+      // Store room metadata
+      const roomMetadata = JSON.stringify({
+        user_id: serviceNumber.user_id,
+        caller_number: from,
+        to_number: to,
+        call_sid: callSid,
+      })
+
+      // LiveKit SIP domain (get from your LiveKit project)
+      // Format: your-project-name.sip.livekit.cloud
+      const livekitSipDomain = 'plug-bq7kgzpt.sip.livekit.cloud'
+
+      // The SIP URI to dial - LiveKit will route this to the agent
+      const sipUri = `sip:${roomName}@${livekitSipDomain}`
+
+      console.log('Dialing LiveKit SIP URI:', sipUri)
+
+      // Log the call to database
+      const { error: insertError } = await supabase
+        .from('call_records')
+        .insert({
+          user_id: serviceNumber.user_id,
+          caller_number: from,
+          contact_phone: from,
+          service_number: to,
+          call_sid: callSid,
+          direction: 'inbound',
+          status: 'in-progress',
+          disposition: 'answered_by_pat',
+          started_at: new Date().toISOString(),
+        })
+
+      if (insertError) {
+        console.error('Error logging call:', insertError)
+      }
+
+      // Return TwiML to connect to LiveKit via SIP
       const response = `<?xml version="1.0" encoding="UTF-8"?>
       <Response>
-        <Say voice="alice">LiveKit integration is being configured. Please check back soon.</Say>
-        <Hangup/>
+        <Dial>
+          <Sip>${sipUri}?X-Room-Name=${encodeURIComponent(roomName)}&X-Metadata=${encodeURIComponent(roomMetadata)}</Sip>
+        </Dial>
       </Response>`
 
       return new Response(response, {

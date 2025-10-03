@@ -17,7 +17,7 @@ from livekit.agents import (
     llm,
 )
 from livekit.agents.pipeline import VoicePipelineAgent
-from livekit.plugins import deepgram, openai, elevenlabs
+from livekit.plugins import deepgram, openai as lkopenai, elevenlabs
 
 from dotenv import load_dotenv
 from supabase import create_client, Client
@@ -313,7 +313,7 @@ async def entrypoint(ctx: JobContext):
             model="nova-2-phonecall",
             language="en-US",
         ),
-        llm=openai.LLM(
+        llm=lkopenai.LLM(
             model="gpt-4o-mini",
             temperature=0.7,
         ),
