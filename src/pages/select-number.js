@@ -206,7 +206,7 @@ export default class SelectNumberPage {
           successMessage.textContent = 'Service number purchased successfully! Redirecting...';
 
           setTimeout(() => {
-            navigateTo('/manage-numbers');
+            navigateTo('/agent-config');
           }, 1500);
         } catch (error) {
           console.error('Provision error:', error);

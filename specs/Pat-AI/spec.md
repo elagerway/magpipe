@@ -113,9 +113,30 @@ A user wants an AI assistant (Pat) to automatically answer phone calls and SMS m
 - **FR-025**: Pat MUST identify whether the caller's number is in the user's contacts
 - **FR-026**: Pat MUST engage in natural conversation with callers
 - **FR-027**: Pat MUST screen unknown callers using vetting criteria before transferring to the user
-- **FR-028**: Pat MUST allow transfer of vetted calls to the user's actual phone number [NEEDS CLARIFICATION: What specific vetting criteria should be used? Emergency indicators? Business vs. personal? Caller's stated purpose?]
+- **FR-028**: Pat MUST allow transfer of vetted calls to the user's actual phone number
 - **FR-029**: Pat MUST use conversation history and context when speaking with known contacts
 - **FR-030**: System MUST record all inbound calls for later review
+
+#### Call Transfer System
+- **FR-061**: Users MUST be able to configure multiple transfer phone numbers, each with a descriptive label (e.g., "Mobile", "Office", "Rick")
+- **FR-062**: Each transfer number MUST have a label to identify the destination
+- **FR-063**: Users MUST be able to add, edit, and remove transfer numbers through the UI
+- **FR-064**: One transfer number MUST be designated as the default destination
+- **FR-065**: Users MAY configure an optional transfer passcode for each individual transfer number
+- **FR-066**: When a caller says a transfer passcode, Pat MUST immediately transfer to the specific number associated with that passcode without screening
+- **FR-067**: For transfer requests without passcode, Pat MUST ask for the caller's name and reason before transferring
+- **FR-068**: When a caller asks for a specific person (e.g., "Can I speak to Rick?"), Pat MUST screen by asking for name and reason
+- **FR-069**: If the requested person's label exists in transfer numbers AND that person has a passcode configured, Pat MUST say person is busy and wait for passcode or take message
+- **FR-070**: If the requested person's label exists in transfer numbers AND that person has NO passcode configured, Pat MUST transfer directly after screening
+- **FR-071**: If the requested person's label does NOT exist, Pat MUST inform the caller that person is unavailable and offer to take a message
+- **FR-072**: If caller provides the correct passcode after being told person is busy, Pat MUST transfer to that specific person's number
+- **FR-073**: The system MUST inform Pat of all available transfer destinations by label in the conversation prompt
+- **FR-074**: The system MUST inform Pat of all configured passcodes and their associated transfer numbers in the conversation prompt
+- **FR-075**: Each transfer number configuration MUST be stored with the associated AI agent ID and LLM ID
+- **FR-076**: Changes to transfer numbers or passcodes MUST automatically update Pat's conversation behavior and available tools
+- **FR-077**: Each passcode MUST create a unique Retell custom tool specific to that transfer number
+- **FR-078**: If only one transfer number exists with a passcode, that passcode transfers to that number
+- **FR-079**: If multiple transfer numbers exist with different passcodes, each passcode transfers to its respective number
 
 #### Inbound SMS Handling
 - **FR-031**: Pat MUST receive SMS messages sent to the user's service phone number
@@ -167,6 +188,7 @@ A user wants an AI assistant (Pat) to automatically answer phone calls and SMS m
 - **SMS Message**: Represents a text message exchange; attributes include timestamp, contact reference, message direction (inbound/outbound), message content, read status
 - **Conversation Context**: Represents accumulated knowledge about interactions with a specific contact; attributes include contact reference, key topics discussed, preferences, relationship notes, summary of previous interactions
 - **Agent Configuration**: Represents user's customization of Pat's behavior; attributes include voice selection, greeting template, vetting criteria, transfer preferences, response style
+- **Transfer Number**: Represents a phone number destination for call transfers; attributes include user reference, label (descriptive name), phone number, is_default flag, transfer_secret (optional passcode), agent_id, llm_id, creation timestamp
 
 ---
 

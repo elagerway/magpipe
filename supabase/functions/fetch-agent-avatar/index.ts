@@ -86,13 +86,16 @@ serve(async (req) => {
         const voiceData = await voiceResponse.json()
         avatarUrl = voiceData.avatar_url || voiceData.preview_url
         console.log('Voice avatar URL:', avatarUrl)
+      } else if (voiceResponse.status === 404) {
+        // Voice not found in Retell (likely a cloned voice)
+        // Use a default avatar for cloned voices
+        console.log('Voice not found in Retell API, using default avatar for cloned voice')
+        avatarUrl = 'https://api.dicebear.com/7.x/bottts/svg?seed=cloned-voice&backgroundColor=3b82f6'
       }
     } catch (error) {
       console.error('Error fetching voice avatar:', error)
-      return new Response(
-        JSON.stringify({ error: 'Failed to fetch avatar' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      // Use default avatar on error
+      avatarUrl = 'https://api.dicebear.com/7.x/bottts/svg?seed=default-voice&backgroundColor=3b82f6'
     }
 
     // Update agent config with avatar

@@ -33,7 +33,10 @@
   "license": "MIT",
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
-    "postmark": "^4.0.5"
+    "dotenv": "^17.2.3",
+    "node-fetch": "^3.3.2",
+    "postmark": "^4.0.5",
+    "retell-client-js-sdk": "^2.0.7"
   },
   "devDependencies": {
     "@playwright/test": "^1.40.1",
