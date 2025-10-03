@@ -91,9 +91,10 @@ async def get_voice_config(voice_id: str, user_id: str) -> dict:
     }
 
 
-def create_transfer_tool(user_id: str, transfer_numbers: list, room_name: str) -> llm.FunctionContext:
+def create_transfer_tool(user_id: str, transfer_numbers: list, room_name: str):
     """Create transfer function tool based on user's transfer numbers"""
 
+    @llm.function_tool(description="Transfer the active call to another phone number using SignalWire")
     async def transfer_call(
         transfer_to: Annotated[str, "The label or number to transfer to (e.g., 'mobile', 'office', 'Rick')"]
     ):
@@ -147,16 +148,13 @@ def create_transfer_tool(user_id: str, transfer_numbers: list, room_name: str) -
             logger.error(f"Transfer error: {e}")
             return f"I'm having trouble transferring your call right now. Can I take a message instead?"
 
-    return llm.FunctionContext.create_function_info(
-        transfer_call,
-        name=f"transfer_call_{user_id}",
-        description="Transfer the active call to another phone number using SignalWire"
-    )
+    return transfer_call
 
 
-def create_collect_data_tool(user_id: str) -> llm.FunctionContext:
+def create_collect_data_tool(user_id: str):
     """Create dynamic data collection tool"""
 
+    @llm.function_tool(description="Store important information collected from the caller during conversation")
     async def collect_caller_data(
         data_type: Annotated[str, "Type of data being collected (e.g., 'email', 'phone', 'name', 'company', 'reason')"],
         data_value: Annotated[str, "The actual data value provided by the caller"],
@@ -180,16 +178,13 @@ def create_collect_data_tool(user_id: str) -> llm.FunctionContext:
             logger.error(f"Failed to store collected data: {e}")
             return "I've noted that information."
 
-    return llm.FunctionContext.create_function_info(
-        collect_caller_data,
-        name=f"collect_caller_data_{user_id}",
-        description="Store important information collected from the caller during conversation"
-    )
+    return collect_caller_data
 
 
-def create_voice_clone_tool(user_id: str) -> llm.FunctionContext:
+def create_voice_clone_tool(user_id: str):
     """Create voice cloning tool for creating custom ElevenLabs voices"""
 
+    @llm.function_tool(description="Clone a custom voice from an audio sample using ElevenLabs")
     async def clone_voice_from_sample(
         voice_name: Annotated[str, "Name for the cloned voice"],
         audio_sample_url: Annotated[str, "URL to the audio sample file for cloning"],
@@ -245,11 +240,7 @@ def create_voice_clone_tool(user_id: str) -> llm.FunctionContext:
             logger.error(f"Voice cloning error: {e}")
             return "I encountered an error while cloning your voice. Please try again later."
 
-    return llm.FunctionContext.create_function_info(
-        clone_voice_from_sample,
-        name=f"clone_voice_{user_id}",
-        description="Clone a custom voice from an audio sample using ElevenLabs"
-    )
+    return clone_voice_from_sample
 
 
 async def entrypoint(ctx: JobContext):
@@ -326,13 +317,8 @@ async def entrypoint(ctx: JobContext):
             optimize_streaming_latency=4,
         ),
         chat_ctx=initial_ctx,
-        fnc_ctx=llm.FunctionContext(),
+        fnc_ctx=llm.ToolContext() if tools else None,
     )
-
-    # Add function tools
-    if tools:
-        for tool in tools:
-            agent.fnc_ctx.ai_callable(tool)
 
     # Start the agent
     agent.start(ctx.room)
