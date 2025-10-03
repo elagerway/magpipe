@@ -1,4 +1,5 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -20,99 +21,43 @@ serve(async (req) => {
       )
     }
 
-    // Extract the actual voice ID (remove 11labs- or openai- prefix)
-    let actualVoiceId = voice_id
-    let provider = 'elevenlabs'
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabase = createClient(supabaseUrl, supabaseKey)
 
-    if (voice_id.startsWith('11labs-')) {
-      actualVoiceId = voice_id.replace('11labs-', '')
-      provider = 'elevenlabs'
-    } else if (voice_id.startsWith('openai-')) {
-      actualVoiceId = voice_id.replace('openai-', '')
-      provider = 'openai'
-    }
+    // Check if we already have a cached preview for this voice
+    const storagePath = `voice-previews/${voice_id}.mp3`
 
-    const previewText = text || "Hi, this is a sample of what the voice character will sound like when it answers your phone calls"
+    // Get the public URL for the preview
+    const { data: publicUrl } = supabase.storage
+      .from('public')
+      .getPublicUrl(storagePath)
 
-    // Handle ElevenLabs voices
-    if (provider === 'elevenlabs') {
-      const elevenlabsApiKey = Deno.env.get('ELEVENLABS_API_KEY')!
+    // Try to fetch the file to see if it exists
+    const testResponse = await fetch(publicUrl.publicUrl, { method: 'HEAD' })
 
-      const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${actualVoiceId}`, {
-        method: 'POST',
-        headers: {
-          'Accept': 'audio/mpeg',
-          'Content-Type': 'application/json',
-          'xi-api-key': elevenlabsApiKey,
-        },
-        body: JSON.stringify({
-          text: previewText,
-          model_id: 'eleven_monolingual_v1',
-          voice_settings: {
-            stability: 0.5,
-            similarity_boost: 0.5,
-          }
-        }),
-      })
-
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.error('ElevenLabs API error:', errorText)
-        return new Response(
-          JSON.stringify({ error: 'Failed to generate voice preview' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
-      }
-
-      const audioData = await response.arrayBuffer()
+    if (testResponse.ok) {
+      console.log('Found cached preview for voice:', voice_id)
+      // Fetch and return the audio file
+      const audioResponse = await fetch(publicUrl.publicUrl)
+      const audioData = await audioResponse.arrayBuffer()
 
       return new Response(audioData, {
         headers: {
           ...corsHeaders,
           'Content-Type': 'audio/mpeg',
+          'Cache-Control': 'public, max-age=3600',
         },
       })
     }
 
-    // Handle OpenAI voices
-    if (provider === 'openai') {
-      const openaiApiKey = Deno.env.get('OPENAI_API_KEY')!
-
-      const response = await fetch('https://api.openai.com/v1/audio/speech', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${openaiApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'tts-1',
-          voice: actualVoiceId,
-          input: previewText,
-        }),
-      })
-
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.error('OpenAI API error:', errorText)
-        return new Response(
-          JSON.stringify({ error: 'Failed to generate voice preview' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
-      }
-
-      const audioData = await response.arrayBuffer()
-
-      return new Response(audioData, {
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'audio/mpeg',
-        },
-      })
-    }
-
+    // Preview not generated yet
     return new Response(
-      JSON.stringify({ error: 'Unsupported voice provider' }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({
+        error: 'Preview not yet generated for this voice.',
+        generate_url: 'http://localhost:3000/voice-preview-generator.html'
+      }),
+      { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 
   } catch (error) {
