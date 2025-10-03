@@ -246,7 +246,7 @@ def create_voice_clone_tool(user_id: str):
 async def entrypoint(ctx: JobContext):
     """Main agent entry point - called for each new LiveKit room"""
 
-    # Parse room metadata
+    # Parse room metadata or extract from room name
     room_metadata = {}
     try:
         import json
@@ -257,10 +257,21 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"Connecting to room: {ctx.room.name}")
     logger.info(f"Room metadata: {room_metadata}")
 
+    # Extract user_id from room name if not in metadata
+    # Room name format: call-{user_id}-{timestamp}
+    user_id = room_metadata.get("user_id")
+    if not user_id and ctx.room.name.startswith("call-"):
+        parts = ctx.room.name.split("-")
+        if len(parts) >= 6:  # call-uuid-uuid-uuid-uuid-timestamp
+            # UUID format: 8-4-4-4-12, so it's 5 parts total
+            user_id = "-".join(parts[1:6])
+            room_metadata["user_id"] = user_id
+            logger.info(f"Extracted user_id from room name: {user_id}")
+
     # Get user configuration
     user_config = await get_user_config(room_metadata)
     if not user_config:
-        logger.error("No user config found, cannot start agent")
+        logger.error(f"No user config found for user_id: {user_id}")
         return
 
     user_id = user_config["user_id"]
