@@ -16,7 +16,7 @@ from livekit.agents import (
     cli,
     llm,
 )
-from livekit.agents.voice_assistant import VoiceAssistant
+from livekit.agents.voice import Agent as VoiceAgent
 from livekit.plugins import deepgram, openai as lkopenai, elevenlabs
 
 from dotenv import load_dotenv
@@ -306,8 +306,8 @@ async def entrypoint(ctx: JobContext):
     tools.append(create_collect_data_tool(user_id))
     tools.append(create_voice_clone_tool(user_id))
 
-    # Initialize voice assistant
-    agent = VoiceAssistant(
+    # Initialize voice agent
+    agent = VoiceAgent(
         vad=rtc.VAD.load(),
         stt=deepgram.STT(
             model="nova-2-phonecall",
