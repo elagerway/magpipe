@@ -48,8 +48,46 @@ serve(async (req) => {
       .eq('user_id', serviceNumber.user_id)
       .single()
 
-    if (!agentConfig || !agentConfig.retell_agent_id) {
+    if (!agentConfig) {
       console.log('No agent configured for user')
+      const response = `<?xml version="1.0" encoding="UTF-8"?>
+      <Response>
+        <Say voice="alice">Hello! This is Pat. The AI assistant is not configured yet. Please contact the account owner.</Say>
+        <Hangup/>
+      </Response>`
+
+      return new Response(response, {
+        headers: { 'Content-Type': 'text/xml' },
+        status: 200,
+      })
+    }
+
+    // Route based on active Voice AI stack
+    const activeStack = agentConfig.active_voice_stack || 'retell'
+    console.log('Routing call to Voice AI stack:', activeStack)
+
+    // LIVEKIT STACK
+    if (activeStack === 'livekit') {
+      console.log('Processing call with LiveKit stack')
+
+      // For LiveKit, we need to set up a LiveKit room and SIP trunk
+      // This requires LiveKit SIP configuration which is more complex
+      // For now, return a placeholder message
+      const response = `<?xml version="1.0" encoding="UTF-8"?>
+      <Response>
+        <Say voice="alice">LiveKit integration is being configured. Please check back soon.</Say>
+        <Hangup/>
+      </Response>`
+
+      return new Response(response, {
+        headers: { 'Content-Type': 'text/xml' },
+        status: 200,
+      })
+    }
+
+    // RETELL STACK (default)
+    if (!agentConfig.retell_agent_id) {
+      console.log('No Retell agent configured for user')
       const response = `<?xml version="1.0" encoding="UTF-8"?>
       <Response>
         <Say voice="alice">Hello! This is Pat. The AI assistant is not configured yet. Please contact the account owner.</Say>
