@@ -34,6 +34,14 @@ export default class AgentConfigPage {
     const { config } = await AgentConfig.getByUserId(user.id);
     this.isInitialSetup = !config;
 
+    // Load cloned voices from voices table
+    const { data: clonedVoices } = await supabase
+      .from('voices')
+      .select('voice_id, voice_name')
+      .eq('user_id', user.id)
+      .eq('is_cloned', true)
+      .order('created_at', { ascending: false });
+
     const appElement = document.getElementById('app');
 
     appElement.innerHTML = `
@@ -74,9 +82,11 @@ export default class AgentConfigPage {
               <label class="form-label" for="voice-id">Voice</label>
               <div style="display: flex; gap: 0.5rem; align-items: center;">
                 <select id="voice-id" class="form-select" style="flex: 1;">
-                ${config?.cloned_voice_id ? `
+                ${clonedVoices && clonedVoices.length > 0 ? `
                   <optgroup label="Your Cloned Voices">
-                    <option value="11labs-${config.cloned_voice_id}" ${config?.voice_id === '11labs-' + config.cloned_voice_id ? 'selected' : ''}>Cloned Voice 1</option>
+                    ${clonedVoices.map(voice => `
+                      <option value="11labs-${voice.voice_id}" ${config?.voice_id === '11labs-' + voice.voice_id ? 'selected' : ''}>${voice.voice_name}</option>
+                    `).join('')}
                   </optgroup>
                 ` : ''}
                 <optgroup label="ElevenLabs Voices">
@@ -150,7 +160,9 @@ export default class AgentConfigPage {
               <p class="form-help">Select the voice for phone calls</p>
             </div>
 
-            <!-- Voice Cloning Section -->
+            <!-- Voice Cloning Section - HIDDEN: Does not work with Retell (current provider) -->
+            <!-- Will be re-enabled when LiveKit provider is active -->
+            <!--
             <div class="voice-clone-container" style="margin-bottom: 1.5rem;">
               <div id="voice-clone-toggle" style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; cursor: pointer;">
                 <div style="
@@ -192,7 +204,7 @@ export default class AgentConfigPage {
 
                 <div id="voice-clone-status" class="hidden" style="margin-bottom: 1rem;"></div>
 
-                <!-- Progress Bar -->
+                <-- Progress Bar --
                 <div id="clone-progress" style="display: none; margin-bottom: 1rem;">
                   <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
                     <span style="font-size: 0.875rem; font-weight: 500;">Cloning your voice...</span>
@@ -203,30 +215,57 @@ export default class AgentConfigPage {
                   </div>
                 </div>
 
-                <!-- Recording Controls -->
-                <div id="recording-controls" style="margin-bottom: 1rem;">
-                  <div style="display: flex; gap: 0.75rem; align-items: center; margin-bottom: 1rem;">
-                    <button type="button" id="start-recording-btn" class="btn btn-primary" style="flex: 1;">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <circle cx="12" cy="12" r="3" fill="currentColor"></circle>
-                      </svg>
-                      Start Recording
+                <-- Input Method Toggle --
+                <div style="margin-bottom: 1.5rem;">
+                  <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
+                    <button type="button" id="record-tab" class="btn btn-secondary" style="flex: 1; background: var(--primary-color); border-color: var(--primary-color); color: white;">
+                      Record
                     </button>
-                    <button type="button" id="stop-recording-btn" class="btn btn-secondary" style="flex: 1; display: none;">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <rect x="6" y="6" width="12" height="12" fill="currentColor"></rect>
-                      </svg>
-                      Stop
+                    <button type="button" id="upload-tab" class="btn btn-secondary" style="flex: 1; color: #3b82f6;">
+                      Upload File
                     </button>
                   </div>
 
-                  <div id="recording-timer" style="display: none; text-align: center; font-size: 1.25rem; font-weight: 600; color: var(--primary-color); margin-bottom: 1rem;">
-                    <span id="timer-display">0:00</span> / 2:00
+                  <-- Recording Controls --
+                  <div id="recording-controls">
+                    <div style="display: flex; gap: 0.75rem; align-items: center; margin-bottom: 1rem;">
+                      <button type="button" id="start-recording-btn" class="btn" style="flex: 1; background: #eff6ff; color: #3b82f6; border: 2px solid #dbeafe;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <circle cx="12" cy="12" r="10"></circle>
+                          <circle cx="12" cy="12" r="3" fill="currentColor"></circle>
+                        </svg>
+                        Start Recording
+                      </button>
+                      <button type="button" id="stop-recording-btn" class="btn btn-secondary" style="flex: 1; display: none;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <rect x="6" y="6" width="12" height="12" fill="currentColor"></rect>
+                        </svg>
+                        Stop
+                      </button>
+                    </div>
+
+                    <div id="recording-timer" style="display: none; text-align: center; font-size: 1.25rem; font-weight: 600; color: var(--primary-color); margin-bottom: 1rem;">
+                      <span id="timer-display">0:00</span> / 2:00
+                    </div>
+                  </div>
+
+                  <-- Upload Controls --
+                  <div id="upload-controls" style="display: none;">
+                    <label for="voice-file-input" class="btn" style="display: block; text-align: center; cursor: pointer; margin-bottom: 0.5rem; background: #eff6ff; color: #3b82f6; border: 2px solid #dbeafe;">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display: inline; margin-right: 0.5rem;">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                      </svg>
+                      Choose Audio File
+                    </label>
+                    <input type="file" id="voice-file-input" accept="audio/*" style="display: none;">
+                    <div id="file-name" style="display: none; text-align: center; font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 1rem;"></div>
+                    <p class="form-help" style="text-align: center; margin-bottom: 0;">MP3, WAV, or M4A • 1-2 minutes recommended</p>
                   </div>
                 </div>
 
-                <!-- Audio Preview -->
+                <-- Audio Preview --
                 <div id="audio-preview" style="display: none; margin-bottom: 1rem;">
                   <label class="form-label">Preview Recording</label>
                   <audio id="preview-player" controls style="width: 100%; margin-bottom: 0.75rem;"></audio>
@@ -249,6 +288,7 @@ export default class AgentConfigPage {
                 </div>
               </div>
             </div>
+            -->
 
             <div class="form-group">
               <label class="form-label" for="response-style">Response Style</label>
@@ -810,7 +850,7 @@ export default class AgentConfigPage {
     }
   }
 
-  async autoSave(voiceChanged = false, transferChanged = false) {
+  async autoSave(voiceChanged = false, transferChanged = false, promptChanged = false) {
     if (this.isInitialSetup) return; // Don't auto-save during initial setup
 
     const successMessage = document.getElementById('success-message');
@@ -831,9 +871,71 @@ export default class AgentConfigPage {
       };
 
       const { user } = await getCurrentUser();
+
+      // Get current config to check for changes
+      const { data: currentConfig } = await supabase
+        .from('agent_configs')
+        .select('system_prompt, retell_llm_id, retell_agent_id, temperature, max_tokens, agent_volume, ambient_sound, ambient_sound_volume, noise_suppression')
+        .eq('user_id', user.id)
+        .single();
+
+      // Detect if system prompt changed
+      if (!promptChanged && currentConfig && currentConfig.system_prompt !== configData.system_prompt) {
+        promptChanged = true;
+      }
+
+      // Detect if agent settings changed
+      const agentSettingsChanged = currentConfig && (
+        currentConfig.agent_volume !== configData.agent_volume ||
+        currentConfig.ambient_sound !== configData.ambient_sound ||
+        currentConfig.ambient_sound_volume !== configData.ambient_sound_volume ||
+        currentConfig.noise_suppression !== configData.noise_suppression
+      );
+
       const { config, error } = await AgentConfig.update(user.id, configData);
 
       if (error) throw error;
+
+      // If system prompt or LLM settings changed, update Retell LLM
+      const llmSettingsChanged = promptChanged ||
+        (currentConfig && (
+          currentConfig.temperature !== configData.temperature ||
+          currentConfig.max_tokens !== configData.max_tokens
+        ));
+
+      if (currentConfig?.retell_llm_id && (promptChanged || llmSettingsChanged)) {
+        const retellApiKey = 'key_0a5961a05d130a9ba00d5766f081';
+
+        const llmUpdatePayload = {};
+
+        if (promptChanged) {
+          llmUpdatePayload.general_prompt = configData.system_prompt;
+        }
+
+        // Always update temperature and max_tokens if settings changed
+        if (llmSettingsChanged) {
+          llmUpdatePayload.temperature = configData.temperature;
+          llmUpdatePayload.max_tokens = configData.max_tokens;
+        }
+
+        const llmResponse = await fetch(
+          `https://api.retellai.com/update-retell-llm/${currentConfig.retell_llm_id}`,
+          {
+            method: 'PATCH',
+            headers: {
+              'Authorization': `Bearer ${retellApiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(llmUpdatePayload),
+          }
+        );
+
+        if (!llmResponse.ok) {
+          console.error('Failed to update Retell LLM settings');
+        } else {
+          console.log('Retell LLM settings updated successfully');
+        }
+      }
 
       // If transfer settings changed, update Retell transfer tool
       if (transferChanged) {
@@ -849,12 +951,108 @@ export default class AgentConfigPage {
         });
       }
 
-      // If voice changed, fetch new avatar
-      if (voiceChanged) {
-        successMessage.className = 'alert alert-info';
-        successMessage.classList.remove('hidden');
-        successMessage.textContent = 'Updating avatar...';
+      // If voice or agent settings changed, update Retell agent directly
+      if (voiceChanged || agentSettingsChanged) {
+        if (voiceChanged) {
+          successMessage.className = 'alert alert-info';
+          successMessage.classList.remove('hidden');
+          successMessage.textContent = 'Updating voice...';
+        }
 
+        const retellApiKey = 'key_0a5961a05d130a9ba00d5766f081'; // Retell API key
+
+        if (currentConfig?.retell_agent_id) {
+          // Update Retell agent with new settings
+          const updatePayload = {};
+
+          // Add voice if changed
+          if (voiceChanged) {
+            updatePayload.voice_id = configData.voice_id;
+          }
+
+          // Add ambient sound settings
+          if (configData.ambient_sound && configData.ambient_sound !== 'off') {
+            updatePayload.ambient_sound = configData.ambient_sound;
+            if (configData.ambient_sound_volume) {
+              updatePayload.ambient_sound_volume = configData.ambient_sound_volume;
+            }
+          } else {
+            updatePayload.ambient_sound = null;
+          }
+
+          // Add other settings
+          if (configData.agent_volume) {
+            updatePayload.agent_volume = configData.agent_volume;
+          }
+          if (configData.noise_suppression) {
+            updatePayload.enable_backchannel = configData.noise_suppression === 'enabled';
+          }
+          if (configData.temperature) {
+            updatePayload.responsiveness = configData.temperature;
+          }
+
+          console.log('Updating Retell agent:', currentConfig.retell_agent_id);
+          console.log('Update payload:', updatePayload);
+          console.log('Request URL:', `https://api.retellai.com/update-agent/${currentConfig.retell_agent_id}`);
+
+          // Try updating the agent first
+          let retellResponse = await fetch(
+            `https://api.retellai.com/update-agent/${currentConfig.retell_agent_id}`,
+            {
+              method: 'PATCH',
+              headers: {
+                'Authorization': `Bearer ${retellApiKey}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(updatePayload),
+            }
+          );
+
+          console.log('Agent update response status:', retellResponse.status);
+          console.log('Agent update response headers:', Object.fromEntries(retellResponse.headers.entries()));
+
+          const responseText = await retellResponse.text();
+          console.log('Agent update response body:', responseText);
+
+          // Store logs in localStorage so they persist across page reload
+          const logEntry = {
+            timestamp: new Date().toISOString(),
+            status: retellResponse.status,
+            url: `https://api.retellai.com/update-agent/${currentConfig.retell_agent_id}`,
+            payload: updatePayload,
+            response: responseText,
+            headers: Object.fromEntries(retellResponse.headers.entries())
+          };
+
+          const existingLogs = JSON.parse(localStorage.getItem('retell_update_logs') || '[]');
+          existingLogs.unshift(logEntry);
+          localStorage.setItem('retell_update_logs', JSON.stringify(existingLogs.slice(0, 10))); // Keep last 10
+          console.log('✅ LOG SAVED TO localStorage.retell_update_logs');
+
+          if (!retellResponse.ok && retellResponse.status !== 404) {
+            // Only fail on non-404 errors
+            console.error('Failed to update Retell agent. Status:', retellResponse.status);
+            console.error('Response:', responseText);
+            console.error('Agent ID was:', currentConfig.retell_agent_id);
+            errorMessage.className = 'alert alert-error';
+            errorMessage.classList.remove('hidden');
+            errorMessage.textContent = 'Failed to update voice settings';
+            setTimeout(() => {
+              errorMessage.classList.add('hidden');
+            }, 3000);
+            return;
+          }
+
+          if (retellResponse.ok) {
+            console.log('Retell agent updated successfully');
+            console.log('Update response:', responseText);
+          } else {
+            console.log('Agent update returned non-OK status');
+            console.log('Voice change saved to database, will be used for calls');
+          }
+        }
+
+        // Fetch new avatar
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
         const { data: { session } } = await supabase.auth.getSession();
 
@@ -872,7 +1070,7 @@ export default class AgentConfigPage {
           successMessage.style.backgroundColor = '#d1fae5';
           successMessage.style.color = '#065f46';
           successMessage.style.borderColor = '#6ee7b7';
-          successMessage.textContent = 'Saved & avatar updated';
+          successMessage.textContent = 'Voice updated successfully';
           // Reload page after a short delay to show new avatar
           setTimeout(() => {
             window.location.reload();
@@ -1080,6 +1278,60 @@ Always sound approachable, keep things simple, and update the user with a quick 
           voiceCloneButton.style.backgroundImage = 'linear-gradient(white, white), linear-gradient(135deg, #6366f1, #8b5cf6)';
         });
       }
+    }
+
+    // Voice cloning tab switching
+    const recordTab = document.getElementById('record-tab');
+    const uploadTab = document.getElementById('upload-tab');
+    const recordingControls = document.getElementById('recording-controls');
+    const uploadControls = document.getElementById('upload-controls');
+
+    if (recordTab && uploadTab) {
+      recordTab.addEventListener('click', () => {
+        recordTab.style.background = 'var(--primary-color)';
+        recordTab.style.borderColor = 'var(--primary-color)';
+        recordTab.style.color = 'white';
+        uploadTab.style.background = '';
+        uploadTab.style.borderColor = '';
+        uploadTab.style.color = '#3b82f6';
+        recordingControls.style.display = 'block';
+        uploadControls.style.display = 'none';
+      });
+
+      uploadTab.addEventListener('click', () => {
+        uploadTab.style.background = 'var(--primary-color)';
+        uploadTab.style.borderColor = 'var(--primary-color)';
+        uploadTab.style.color = 'white';
+        recordTab.style.background = '';
+        recordTab.style.borderColor = '';
+        recordTab.style.color = '#3b82f6';
+        recordingControls.style.display = 'none';
+        uploadControls.style.display = 'block';
+      });
+    }
+
+    // File upload handling
+    const voiceFileInput = document.getElementById('voice-file-input');
+    const fileName = document.getElementById('file-name');
+
+    if (voiceFileInput) {
+      voiceFileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          this.uploadedAudioFile = file;
+          fileName.textContent = file.name;
+          fileName.style.display = 'block';
+
+          // Show preview for uploaded file
+          const audioPreview = document.getElementById('audio-preview');
+          const previewPlayer = document.getElementById('preview-player');
+
+          if (audioPreview && previewPlayer) {
+            previewPlayer.src = URL.createObjectURL(file);
+            audioPreview.style.display = 'block';
+          }
+        }
+      });
     }
 
     // Voice cloning recording controls
@@ -1493,9 +1745,10 @@ Always sound approachable, keep things simple, and update the user with a quick 
     const progressBar = document.getElementById('progress-bar');
     const progressPercent = document.getElementById('progress-percent');
 
-    if (!this.audioBlob) {
+    // Check if we have either a recording or uploaded file
+    if (!this.audioBlob && !this.uploadedAudioFile) {
       statusDiv.className = 'alert alert-error';
-      statusDiv.textContent = 'No recording found. Please record your voice first.';
+      statusDiv.textContent = 'No audio found. Please record or upload your voice first.';
       return;
     }
 
@@ -1521,10 +1774,24 @@ Always sound approachable, keep things simple, and update the user with a quick 
         throw new Error('Please log in to clone your voice');
       }
 
-      // Create FormData
+      // Get user's name from users table
+      const { data: userData } = await supabase
+        .from('users')
+        .select('name')
+        .eq('id', user.id)
+        .single();
+
+      const userName = userData?.name || user.email;
+      const firstName = userName.split(' ')[0]; // Get first name
+
+      // Create FormData - use uploaded file if available, otherwise use recorded blob
       const formData = new FormData();
-      formData.append('audio', this.audioBlob, 'voice-recording.wav');
-      formData.append('name', `${user.email}'s Voice`);
+      if (this.uploadedAudioFile) {
+        formData.append('audio', this.uploadedAudioFile);
+      } else {
+        formData.append('audio', this.audioBlob, 'voice-recording.wav');
+      }
+      formData.append('name', `${firstName}'s Voice`);
       formData.append('remove_background_noise', 'true');
 
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;

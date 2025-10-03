@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Voice Preview Generator</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .container {
+      background: white;
+      border-radius: 20px;
+      padding: 40px;
+      max-width: 600px;
+      width: 100%;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    }
+
+    h1 {
+      color: #333;
+      margin-bottom: 10px;
+      font-size: 28px;
+    }
+
+    .subtitle {
+      color: #666;
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      color: #333;
+      font-weight: 500;
+      font-size: 14px;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 14px;
+      transition: border-color 0.3s;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 100px;
+      font-family: inherit;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      margin-top: 10px;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .btn-success {
+      background: #10b981;
+      color: white;
+      display: none;
+    }
+
+    .btn-success:hover:not(:disabled) {
+      background: #059669;
+    }
+
+    .status {
+      margin-top: 20px;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      display: none;
+    }
+
+    .status.info {
+      background: #dbeafe;
+      color: #1e40af;
+      border: 1px solid #3b82f6;
+    }
+
+    .status.success {
+      background: #d1fae5;
+      color: #065f46;
+      border: 1px solid #10b981;
+    }
+
+    .status.error {
+      background: #fee2e2;
+      color: #991b1b;
+      border: 1px solid #ef4444;
+    }
+
+    .audio-player {
+      display: none;
+      margin-top: 20px;
+      padding: 20px;
+      background: #f9fafb;
+      border-radius: 8px;
+      border: 2px solid #e5e7eb;
+    }
+
+    .audio-player audio {
+      width: 100%;
+      margin-top: 10px;
+    }
+
+    .loading {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid #ffffff;
+      border-radius: 50%;
+      border-top-color: transparent;
+      animation: spin 1s linear infinite;
+      margin-left: 8px;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .voice-options {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .voice-chip {
+      padding: 8px 12px;
+      background: #f3f4f6;
+      border: 2px solid #e5e7eb;
+      border-radius: 6px;
+      cursor: pointer;
+      text-align: center;
+      font-size: 13px;
+      transition: all 0.2s;
+    }
+
+    .voice-chip:hover {
+      background: #e5e7eb;
+    }
+
+    .voice-chip.selected {
+      background: #667eea;
+      color: white;
+      border-color: #667eea;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎙️ Voice Preview Generator</h1>
+    <p class="subtitle">Generate voice samples for preview</p>
+
+    <div class="form-group">
+      <label>Select Voice (ElevenLabs)</label>
+      <div class="voice-options" id="voiceOptions">
+        <div class="voice-chip" data-voice="11labs-Adrian">Adrian</div>
+        <div class="voice-chip" data-voice="11labs-Amy">Amy (UK)</div>
+        <div class="voice-chip" data-voice="11labs-Anna">Anna</div>
+        <div class="voice-chip" data-voice="11labs-Anthony">Anthony</div>
+        <div class="voice-chip" data-voice="11labs-Billy">Billy</div>
+        <div class="voice-chip" data-voice="11labs-Bing">Bing</div>
+        <div class="voice-chip" data-voice="11labs-Brian">Brian</div>
+        <div class="voice-chip" data-voice="11labs-Chloe">Chloe</div>
+        <div class="voice-chip" data-voice="11labs-Dorothy">Dorothy</div>
+        <div class="voice-chip" data-voice="11labs-Ethan">Ethan</div>
+        <div class="voice-chip" data-voice="11labs-Gilfoy">Gilfoy</div>
+        <div class="voice-chip" data-voice="11labs-Grace">Grace</div>
+        <div class="voice-chip" data-voice="11labs-Jason">Jason</div>
+        <div class="voice-chip" data-voice="11labs-Jenny">Jenny</div>
+        <div class="voice-chip" data-voice="11labs-Joe">Joe</div>
+        <div class="voice-chip" data-voice="11labs-John">John</div>
+        <div class="voice-chip" data-voice="11labs-Julia">Julia</div>
+        <div class="voice-chip selected" data-voice="11labs-Kate">Kate</div>
+        <div class="voice-chip" data-voice="11labs-Lily">Lily</div>
+        <div class="voice-chip" data-voice="11labs-Lucas">Lucas</div>
+        <div class="voice-chip" data-voice="11labs-Marissa">Marissa</div>
+        <div class="voice-chip" data-voice="11labs-Max">Max</div>
+        <div class="voice-chip" data-voice="11labs-Noah">Noah (AU)</div>
+        <div class="voice-chip" data-voice="11labs-Paul">Paul</div>
+        <div class="voice-chip" data-voice="11labs-Samad">Samad (IN)</div>
+        <div class="voice-chip" data-voice="11labs-Steve">Steve</div>
+        <div class="voice-chip" data-voice="11labs-Susan">Susan</div>
+        <div class="voice-chip" data-voice="11labs-victoria">Victoria</div>
+        <div class="voice-chip" data-voice="11labs-Zuri">Zuri</div>
+      </div>
+      <input type="text" id="voiceId" placeholder="Or enter custom voice ID" value="11labs-Kate">
+    </div>
+
+    <div class="form-group">
+      <label>Sample Text</label>
+      <textarea id="sampleText" placeholder="Enter the text you want the voice to speak...">Hi! Thanks for calling, my name is Kate. I'm here to answer calls and texts. How can I help you?</textarea>
+    </div>
+
+    <button class="btn btn-primary" id="generateBtn">
+      Generate & Record Preview
+    </button>
+
+    <button class="btn btn-danger" id="hangupBtn" style="display: none; background: #ef4444;">
+      Hang Up Call
+    </button>
+
+    <div class="status" id="status"></div>
+
+    <div class="audio-player" id="audioPlayer">
+      <strong>✅ Recording saved successfully!</strong>
+      <audio controls id="audioElement"></audio>
+      <button class="btn btn-success" id="replayBtn" style="display: block; margin-top: 10px;">
+        Play Recording
+      </button>
+    </div>
+  </div>
+
+  <script type="module" src="../src/voice-preview-generator.js"></script>
+</body>
+</html>
