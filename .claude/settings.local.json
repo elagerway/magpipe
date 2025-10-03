@@ -1,6 +1,7 @@
 {
   "permissions": {
     "allow": [
+      "Read(*)",
       "Bash(npm install)",
       "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_5ib2cK/**)",
       "Read(//Users/erik/Desktop/**)",
@@ -81,7 +82,25 @@
       "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_ce1VRH/**)",
       "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_URosLS/**)",
       "WebFetch(domain:elevenlabs.io)",
-      "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_TPhUMf/**)"
+      "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_TPhUMf/**)",
+      "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_t9zUQv/**)",
+      "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_JtU2Dv/**)",
+      "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_914H3c/**)",
+      "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_dcJIl9/**)",
+      "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_mShL4Z/**)",
+      "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_Alk7Qg/**)",
+      "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_ofNk6p/**)",
+      "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_tuZNB2/**)",
+      "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_Q4KnbV/**)",
+      "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_Z9LXR6/**)",
+      "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_qGbi53/**)",
+      "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_VeP0zM/**)",
+      "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_bUsFhC/**)",
+      "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_EACztL/**)",
+      "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_GINvlu/**)",
+      "Bash(npm install:*)",
+      "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_Op3dha/**)",
+      "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_GTzxRB/**)"
     ],
     "deny": [],
     "ask": []
