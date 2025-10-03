@@ -345,7 +345,7 @@ if __name__ == "__main__":
         def log_message(self, format, *args):
             pass  # Suppress logs
 
-    # Check if we should run health check server
+    # Check if we should run health check server BEFORE cli.run_app
     if len(sys.argv) > 1 and sys.argv[1] == "healthcheck":
         port = int(os.getenv('PORT', 10000))
 
@@ -355,8 +355,8 @@ if __name__ == "__main__":
         server_thread.start()
         logger.info(f"Health check server started on port {port}")
 
-        # Run agent in main thread
-        cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
-    else:
-        # Run the agent worker normally
-        cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
+        # Remove 'healthcheck' from argv so LiveKit CLI doesn't see it
+        sys.argv = [sys.argv[0], "start"]
+
+    # Run the agent worker
+    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
