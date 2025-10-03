@@ -1,0 +1,9 @@
+# LiveKit Agent Dependencies
+livekit-agents>=0.8.0
+livekit-agents-plugins-deepgram>=0.6.0
+livekit-agents-plugins-openai>=0.6.0
+livekit-agents-plugins-elevenlabs>=0.6.0
+livekit>=0.11.0
+python-dotenv>=1.0.0
+aiohttp>=3.9.0
+supabase>=2.0.0
