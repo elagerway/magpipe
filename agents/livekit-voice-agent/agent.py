@@ -359,4 +359,7 @@ if __name__ == "__main__":
         sys.argv = [sys.argv[0], "start"]
 
     # Run the agent worker
-    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
+    cli.run_app(WorkerOptions(
+        entrypoint_fnc=entrypoint,
+        agent_name="SW Telephony Agent"
+    ))
