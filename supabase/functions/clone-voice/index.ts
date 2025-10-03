@@ -79,10 +79,24 @@ serve(async (req) => {
     const result = await response.json()
     console.log('Voice cloned successfully:', result.voice_id)
 
-    // Save the cloned voice ID to agent_configs
-    const voiceId = `11labs-${result.voice_id}`
+    // Insert into voices table
+    const { error: insertError } = await supabase
+      .from('voices')
+      .insert({
+        user_id: user.id,
+        voice_id: result.voice_id,
+        voice_name: voiceName,
+        is_cloned: true,
+      })
 
-    const { error: updateError } = await supabase
+    if (insertError) {
+      console.error('Error inserting voice:', insertError)
+      // Don't fail - voice was cloned successfully in ElevenLabs
+    }
+
+    // Update agent_configs to use this voice
+    const voiceId = `11labs-${result.voice_id}`
+    const { data: agentConfig, error: updateError } = await supabase
       .from('agent_configs')
       .update({
         voice_id: voiceId,
@@ -90,10 +104,40 @@ serve(async (req) => {
         cloned_voice_name: voiceName,
       })
       .eq('user_id', user.id)
+      .select('retell_agent_id')
+      .single()
 
     if (updateError) {
       console.error('Error updating agent config:', updateError)
       // Don't fail - voice was cloned successfully
+    }
+
+    // Update Retell agent to use the new cloned voice
+    if (agentConfig?.retell_agent_id) {
+      const retellApiKey = Deno.env.get('RETELL_API_KEY')!
+
+      console.log('Updating Retell agent with voice:', voiceId)
+      const retellResponse = await fetch(
+        `https://api.retellai.com/update-agent/${agentConfig.retell_agent_id}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${retellApiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            voice_id: voiceId,
+          }),
+        }
+      )
+
+      if (!retellResponse.ok) {
+        const errorText = await retellResponse.text()
+        console.error('Failed to update Retell agent:', errorText)
+        // Don't fail - voice was cloned successfully, user can manually update agent
+      } else {
+        console.log('Retell agent updated successfully with cloned voice')
+      }
     }
 
     return new Response(

@@ -27,8 +27,12 @@ JavaScript ES6+, HTML5, CSS3 (vanilla, minimal framework usage per user requirem
 - Keep technical implementation details in backend logs only
 
 ## Database Management
-- **Always handle database migrations and deployments**: When migrations are created or modified, automatically deploy them using `export SUPABASE_ACCESS_TOKEN=sbp_17bff30d68c60e941858872853988d63169b2649 && npx supabase db push` or `npx supabase db reset --linked` (with 'y' confirmation)
-- Never ask the user to run database commands - execute them directly
+- **CRITICAL: NEVER RESET THE DATABASE WITHOUT EXPLICIT USER REQUEST**: DO NOT run `npx supabase db reset` under ANY circumstances unless the user explicitly asks you to reset the database
+- **Database reset deletes ALL data**: Running `db reset` wipes all data including user accounts, agent configurations, contacts, messages, and all other data - this is DESTRUCTIVE and IRREVERSIBLE
+- **For schema changes**: Use `export SUPABASE_ACCESS_TOKEN=sbp_17bff30d68c60e941858872853988d63169b2649 && npx supabase db push` to apply new migrations without clearing data
+- **For Edge Function changes**: Edge Functions don't require database operations - they auto-deploy or use `npx supabase functions deploy <function-name>`
+- **For code-only changes**: Most changes to TypeScript/JavaScript in Edge Functions or frontend code don't require any database commands at all
+- Never ask the user to run database commands - execute them directly (but NEVER db reset unless explicitly requested)
 
 ## Audit Documentation
 - **Always update audits.md when creating commits**: Every time you create a git commit, add a new audit entry at the top of `audits.md`
@@ -76,6 +80,35 @@ JavaScript ES6+, HTML5, CSS3 (vanilla, minimal framework usage per user requirem
 - **Always open media files immediately**: When the user provides a file path for .png, .jpg, .gif, .mov, .aeic, or any other media file, use the Read tool to view it without asking for permission first
 - Media files (screenshots, images, videos) are part of the normal workflow and should be processed automatically
 - Never ask for permission to view media files - just open them
+
+## Voice AI Stack Architecture
+- **Multi-stack support**: Pat supports multiple Voice AI providers (Retell, LiveKit) that can be swapped by admin
+- **Provider-specific features**: Each provider has different capabilities and limitations
+- **Stack selection**: Active stack is controlled via database configuration, NOT hardcoded
+
+### Voice AI Providers
+
+#### Retell (Current Default)
+- **Preset voices only**: Supports 29 ElevenLabs preset voices + OpenAI voices
+- **NO custom/cloned voices**: ElevenLabs custom voices cannot be added programmatically (Retell API limitation)
+- **Voice cloning UI**: MUST be hidden when Retell is active provider
+- **Agent management**: Never question agent existence if calls are working
+- **Verification**: Use `curl --request GET --url https://api.retellai.com/get-agent/{agent_id} -H 'Authorization: Bearer {RETELL_API_KEY}'`
+- **Trust the database**: If `agent_configs.retell_agent_id` contains an ID, use it
+
+#### LiveKit (Custom Voice Support)
+- **All voices supported**: Preset ElevenLabs voices + custom/cloned voices programmatically
+- **Voice cloning UI**: MUST be visible and functional when LiveKit is active provider
+- **Full control**: Direct integration with ElevenLabs API for complete voice management
+- **Custom pipeline**: STT (Deepgram) → LLM (OpenAI) → TTS (ElevenLabs)
+- **Credentials**: Use LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET from environment
+
+### Stack Switching Rules
+- **Admin-controlled**: Only admin can switch active Voice AI stack
+- **Per-user configuration**: Each user's active stack is stored in database
+- **UI adaptation**: Voice cloning features show/hide based on active provider
+- **No mixing**: A user is on ONE stack at a time (Retell OR LiveKit, not both)
+- **Migration**: When switching stacks, agent configuration must be recreated on new provider
 
 ## Retell Custom Tool Naming Convention
 - **All Retell custom tool names must be unique per user**: Tool names must follow the pattern `{user_id}_{function_name}`
