@@ -160,9 +160,7 @@ export default class AgentConfigPage {
               <p class="form-help">Select the voice for phone calls</p>
             </div>
 
-            <!-- Voice Cloning Section - HIDDEN: Does not work with Retell (current provider) -->
-            <!-- Will be re-enabled when LiveKit provider is active -->
-            <!--
+            <!-- Voice Cloning Section - LiveKit supports custom voices! -->
             <div class="voice-clone-container" style="margin-bottom: 1.5rem;">
               <div id="voice-clone-toggle" style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; cursor: pointer;">
                 <div style="
@@ -288,7 +286,6 @@ export default class AgentConfigPage {
                 </div>
               </div>
             </div>
-            -->
 
             <div class="form-group">
               <label class="form-label" for="response-style">Response Style</label>
@@ -1183,6 +1180,9 @@ If spammy, ignore or politely decline.
 
 Always sound approachable, keep things simple, and update the user with a quick summary after each interaction.`;
 
+            // Get voice stack preference from localStorage (set during signup)
+            const voiceStack = localStorage.getItem('voice_stack_preference') || 'retell';
+
             const createResponse = await fetch(`${supabaseUrl}/functions/v1/create-retell-agent`, {
               method: 'POST',
               headers: {
@@ -1194,7 +1194,8 @@ Always sound approachable, keep things simple, and update the user with a quick 
                   name: 'Pat AI Assistant',
                   voice_id: '11labs-Kate',
                   prompt: defaultPrompt,
-                }
+                },
+                voiceStack: voiceStack,
               }),
             });
 
