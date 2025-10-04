@@ -246,7 +246,7 @@ def create_voice_clone_tool(user_id: str):
 async def entrypoint(ctx: JobContext):
     """Main agent entry point - called for each new LiveKit room"""
 
-    # Parse room metadata or extract from room name
+    # Parse room metadata
     room_metadata = {}
     try:
         import json
@@ -257,16 +257,38 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"Connecting to room: {ctx.room.name}")
     logger.info(f"Room metadata: {room_metadata}")
 
-    # Extract user_id from room name if not in metadata
-    # Room name format: call-{user_id}-{timestamp}
+    # Get user_id from metadata or look up from service number
     user_id = room_metadata.get("user_id")
-    if not user_id and ctx.room.name.startswith("call-"):
-        parts = ctx.room.name.split("-")
-        if len(parts) >= 6:  # call-uuid-uuid-uuid-uuid-timestamp
-            # UUID format: 8-4-4-4-12, so it's 5 parts total
-            user_id = "-".join(parts[1:6])
-            room_metadata["user_id"] = user_id
-            logger.info(f"Extracted user_id from room name: {user_id}")
+
+    if not user_id:
+        # Wait for SIP participant to join and get their attributes
+        await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
+
+        # Find SIP participant and get service number
+        service_number = None
+        for participant in ctx.room.remote_participants.values():
+            if participant.attributes.get("sip.trunkPhoneNumber"):
+                service_number = participant.attributes["sip.trunkPhoneNumber"]
+                logger.info(f"Found service number from SIP participant: {service_number}")
+                break
+
+        if service_number:
+            # Look up user from service_numbers table
+            response = supabase.table("service_numbers") \
+                .select("user_id") \
+                .eq("phone_number", service_number) \
+                .eq("is_active", True) \
+                .single() \
+                .execute()
+
+            if response.data:
+                user_id = response.data["user_id"]
+                room_metadata["user_id"] = user_id
+                logger.info(f"Looked up user_id from service number: {user_id}")
+
+    if not user_id:
+        logger.error("Could not determine user_id")
+        return
 
     # Get user configuration
     user_config = await get_user_config(room_metadata)
@@ -298,8 +320,7 @@ async def entrypoint(ctx: JobContext):
     # Add greeting message
     greeting = user_config.get("greeting_template", "Hello! This is Pat. How can I help you today?")
 
-    # Connect to room
-    await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
+    # Already connected earlier to get service number, so skip second connect
 
     # Create function tools
     tools = []
