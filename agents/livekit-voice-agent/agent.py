@@ -248,6 +248,8 @@ def create_voice_clone_tool(user_id: str):
 async def entrypoint(ctx: JobContext):
     """Main agent entry point - called for each new LiveKit room"""
 
+    logger.info(f"🚀 AGENT ENTRYPOINT CALLED - Room: {ctx.room.name}")
+
     # Parse room metadata
     room_metadata = {}
     try:
@@ -372,7 +374,7 @@ async def entrypoint(ctx: JobContext):
     # Say greeting when participant joins - use instructions parameter
     await session.generate_reply(instructions=f"Say this greeting to the caller: {greeting}")
 
-    logger.info("Agent started successfully")
+    logger.info("✅ Agent session started successfully - ready for calls")
 
 
 if __name__ == "__main__":
@@ -404,8 +406,17 @@ if __name__ == "__main__":
         # Remove 'healthcheck' from argv so LiveKit CLI doesn't see it
         sys.argv = [sys.argv[0], "start"]
 
-    # Run the agent worker
-    cli.run_app(WorkerOptions(
-        entrypoint_fnc=entrypoint,
-        agent_name="SW Telephony Agent"
-    ))
+    # Run the agent worker with error handling
+    try:
+        logger.info("🎬 Starting LiveKit agent worker...")
+        cli.run_app(WorkerOptions(
+            entrypoint_fnc=entrypoint,
+            agent_name="SW Telephony Agent"
+        ))
+    except KeyboardInterrupt:
+        logger.info("⚠️ Agent worker stopped by user (KeyboardInterrupt)")
+    except Exception as e:
+        logger.error(f"❌ AGENT WORKER CRASHED: {e}", exc_info=True)
+        raise
+    finally:
+        logger.warning("🛑 Agent worker has exited")
