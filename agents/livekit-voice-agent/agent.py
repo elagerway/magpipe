@@ -19,7 +19,7 @@ from livekit.agents import (
     Agent,
     function_tool,
 )
-from livekit.plugins import deepgram, openai as lkopenai, elevenlabs
+from livekit.plugins import deepgram, openai as lkopenai, elevenlabs, silero
 
 from dotenv import load_dotenv
 from supabase import create_client, Client
@@ -349,7 +349,7 @@ async def entrypoint(ctx: JobContext):
 
     # Initialize AgentSession
     session = AgentSession(
-        vad=rtc.VAD.load(),
+        vad=silero.VAD.load(),
         stt=deepgram.STT(
             model="nova-2-phonecall",
             language="en-US",
