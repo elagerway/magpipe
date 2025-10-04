@@ -28,25 +28,43 @@ serve(async (req) => {
     // Check if we already have a cached preview for this voice
     const storagePath = `voice-previews/${voice_id}.mp3`
 
-    // Try to download the file from storage
-    const { data: fileData, error: downloadError } = await supabase.storage
+    // Check if file exists in storage by trying to list it
+    console.log('Looking for cached preview:', storagePath)
+    const { data: files, error: listError } = await supabase.storage
       .from('public')
-      .download(storagePath)
-
-    if (!downloadError && fileData) {
-      console.log('Found cached preview for voice:', voice_id)
-      const audioData = await fileData.arrayBuffer()
-
-      return new Response(audioData, {
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'audio/mpeg',
-          'Cache-Control': 'public, max-age=3600',
-        },
+      .list('voice-previews', {
+        search: voice_id + '.mp3'
       })
+
+    console.log('List result - error:', listError, 'files:', files?.length, 'files:', files?.map(f => f.name))
+
+    if (!listError && files && files.length > 0) {
+      console.log('Found cached preview for voice:', voice_id)
+
+      // Get public URL and fetch the file
+      const { data: urlData } = supabase.storage
+        .from('public')
+        .getPublicUrl(storagePath)
+
+      console.log('Fetching from URL:', urlData.publicUrl)
+      const audioResponse = await fetch(urlData.publicUrl)
+      console.log('Fetch response status:', audioResponse.status)
+      if (audioResponse.ok) {
+        const audioData = await audioResponse.arrayBuffer()
+        console.log('Returning cached audio, size:', audioData.byteLength)
+        return new Response(audioData, {
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'audio/mpeg',
+            'Cache-Control': 'public, max-age=3600',
+          },
+        })
+      } else {
+        console.log('Fetch failed:', audioResponse.statusText)
+      }
     }
 
-    console.log('No cached preview found, will generate:', downloadError?.message)
+    console.log('No cached preview found, generating new one')
 
     // Preview not cached - generate it now using ElevenLabs
     console.log('Generating preview for voice:', voice_id)

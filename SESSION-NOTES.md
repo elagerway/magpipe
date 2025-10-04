@@ -7,16 +7,17 @@
 
 ## Current Session (2025-10-03)
 
-### Active Work: LiveKit Agent PSTN Call Issues on Render
+### ✅ RESOLVED: LiveKit Agent PSTN Call Issues on Render
 
 **Problem:**
-- Calls from PSTN → SignalWire → LiveKit Agent failing with import error
-- Agent crashing on startup with `AttributeError: module 'livekit.rtc' has no attribute 'VAD'`
+- Calls from PSTN → SignalWire → LiveKit Agent failing with multiple errors
+- Agent crashing on startup
 
-**Root Cause:**
-- Deployed version on Render had wrong import: `rtc.VAD.load()`
-- Should be: `silero.VAD.load()`
-- Local file had correct code but wasn't deployed
+**Root Causes (Fixed):**
+- Wrong VAD import: `rtc.VAD.load()` → should be `silero.VAD.load()`
+- Missing silero dependency in requirements.txt
+- Wrong TTS parameter names (voice → voice_id, model_id → model)
+- Missing explicit API key (plugin expects ELEVEN_API_KEY, we use ELEVENLABS_API_KEY)
 
 **Fixes Applied:** ✅
 1. **VAD Import Fix** (5184a87)
@@ -33,16 +34,24 @@
 
 4. **ElevenLabs TTS Model Parameter** (d132d94)
    - Fixed parameter name: `model_id` → `model` (correct per LiveKit docs)
-   - **Deployment Status:** DEPLOYING... ⏳
+   - **Deployment Status:** ~~LIVE~~ ❌ (Missing API key)
+
+5. **ElevenLabs API Key** (8d1e22f)
+   - Plugin expects ELEVEN_API_KEY but we use ELEVENLABS_API_KEY
+   - Pass explicitly via api_key parameter
+   - **Deployment Status:** LIVE ✅ (06:06:39 UTC)
 
 **Next Steps:**
-1. ✅ ~~Fix deployment errors~~ - DONE (4 fixes deployed)
-2. ⏳ Wait for Render deployment to complete (commit d132d94)
-3. Test PSTN call to verify agent connects and responds properly
-4. If calls work, tune VAD parameters if needed (cutting off users, not detecting end of speech, etc.)
+1. ✅ ~~Fix deployment errors~~ - DONE (5 fixes deployed)
+2. ✅ ~~Wait for Render deployment to complete (commit 8d1e22f)~~ - LIVE
+3. ✅ ~~Test PSTN call to verify agent connects and responds properly~~ - **SUCCESS!** 🎉
+4. ✅ ~~Enable voice cloning UI for LiveKit~~ - DONE (commit 35173fa)
+5. Monitor for VAD issues (cutting off users, not detecting end of speech, etc.)
+6. Optional: Tune VAD parameters if needed
 
 **Recent Related Commits:**
-- `d132d94` - Fix ElevenLabs TTS parameter - use model instead of model_id ⏳ **DEPLOYING**
+- `8d1e22f` - Pass ELEVENLABS_API_KEY explicitly to TTS ✅ **LIVE**
+- `d132d94` - Fix ElevenLabs TTS parameter - use model instead of model_id ✅
 - `4257ee2` - Fix ElevenLabs TTS parameter names (voice_id) - model_id still wrong ❌
 - `59e728e` - Add livekit-plugins-silero to requirements ✅
 - `5184a87` - Fix VAD import - use silero.VAD instead of rtc.VAD ✅

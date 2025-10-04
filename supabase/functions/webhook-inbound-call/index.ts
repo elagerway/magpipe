@@ -83,11 +83,12 @@ serve(async (req) => {
       console.log('=== LIVEKIT STACK SELECTED ===')
       console.log('Processing call with LiveKit stack')
 
-      // LiveKit SIP trunk domain (matches dispatch rule trunk)
-      const livekitSipDomain = 'plug-bq7kgzpt.sip.livekit.cloud'
+      // LiveKit SIP trunk domain (from LiveKit dashboard SIP URI)
+      const livekitSipDomain = '378ads1njtd.sip.livekit.cloud'
 
       // Dial the called number directly - dispatch rule handles routing
-      const sipUri = `sip:${to}@${livekitSipDomain}`
+      // Note: Use transport=tls to match working call configuration
+      const sipUri = `sip:${to}@${livekitSipDomain};transport=tls`
 
       console.log('Dialing SIP URI:', sipUri)
 

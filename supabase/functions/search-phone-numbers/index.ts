@@ -65,14 +65,15 @@ serve(async (req) => {
     // Determine if query is numeric (area code) or text (location)
     const isNumeric = /^\d+$/.test(query.trim())
     const searchQuery = query.trim()
+    const normalizedQuery = searchQuery.toLowerCase()
 
     // Helper function to search SignalWire
-    const searchSignalWire = async (areaCode: string) => {
+    const searchSignalWire = async (areaCode: string, country: string = 'US') => {
       const searchParams = new URLSearchParams()
       searchParams.append('AreaCode', areaCode)
       searchParams.append('PageSize', '20')
 
-      const url = `https://${signalwireSpaceUrl}/api/laml/2010-04-01/Accounts/${signalwireProjectId}/AvailablePhoneNumbers/US/Local.json?${searchParams.toString()}`
+      const url = `https://${signalwireSpaceUrl}/api/laml/2010-04-01/Accounts/${signalwireProjectId}/AvailablePhoneNumbers/${country}/Local.json?${searchParams.toString()}`
 
       const response = await fetch(url, {
         method: 'GET',
@@ -88,9 +89,82 @@ serve(async (req) => {
       return []
     }
 
+    // Helper function to search by country
+    const searchByCountry = async (country: string) => {
+      // For Canada, search ALL Canadian area codes
+      const canadianAreaCodes = [
+        '204', '226', '236', '249', '250', '289', '306', '343', '365', '367',
+        '403', '416', '418', '431', '437', '438', '450', '506', '514', '519',
+        '548', '579', '581', '587', '604', '613', '639', '647', '672', '705',
+        '709', '742', '753', '778', '780', '782', '807', '819', '825', '867',
+        '873', '902', '905'
+      ]
+      const usCountryCode = country === 'CA' ? 'US' : 'US' // SignalWire only has US endpoint
+
+      let allNumbers: any[] = []
+
+      if (country === 'CA') {
+        // Search Canadian area codes
+        console.log('Searching all Canadian area codes for SMS-capable numbers')
+        for (const areaCode of canadianAreaCodes) {
+          const searchParams = new URLSearchParams()
+          searchParams.append('AreaCode', areaCode)
+          searchParams.append('PageSize', '20')
+
+          const url = `https://${signalwireSpaceUrl}/api/laml/2010-04-01/Accounts/${signalwireProjectId}/AvailablePhoneNumbers/${usCountryCode}/Local.json?${searchParams.toString()}`
+
+          const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+              'Authorization': 'Basic ' + btoa(`${signalwireProjectId}:${signalwireToken}`),
+            },
+          })
+
+          if (response.ok) {
+            const result = await response.json()
+            const numbers = result.available_phone_numbers || []
+            // Filter to only SMS-capable numbers immediately
+            const smsNumbers = numbers.filter((num: any) => num.capabilities?.SMS === true)
+            allNumbers.push(...smsNumbers)
+            console.log(`Area code ${areaCode}: ${smsNumbers.length} SMS-capable numbers found`)
+            if (allNumbers.length >= 50) break
+          }
+        }
+      } else {
+        // For US, get general available numbers
+        const searchParams = new URLSearchParams()
+        searchParams.append('PageSize', '50')
+
+        const url = `https://${signalwireSpaceUrl}/api/laml/2010-04-01/Accounts/${signalwireProjectId}/AvailablePhoneNumbers/US/Local.json?${searchParams.toString()}`
+
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Authorization': 'Basic ' + btoa(`${signalwireProjectId}:${signalwireToken}`),
+          },
+        })
+
+        if (response.ok) {
+          const result = await response.json()
+          const numbers = result.available_phone_numbers || []
+          allNumbers = numbers.filter((num: any) => num.capabilities?.SMS === true)
+        }
+      }
+
+      console.log('Total SMS-capable numbers found:', allNumbers.length)
+      return allNumbers
+    }
+
     let allNumbers: any[] = []
 
-    if (isNumeric) {
+    // Check if searching by country
+    if (normalizedQuery === 'canada' || normalizedQuery === 'ca') {
+      console.log('Searching for SMS-capable numbers in Canada')
+      allNumbers = await searchByCountry('CA')
+    } else if (normalizedQuery === 'usa' || normalizedQuery === 'us' || normalizedQuery === 'united states') {
+      console.log('Searching for SMS-capable numbers in USA')
+      allNumbers = await searchByCountry('US')
+    } else if (isNumeric) {
       // Search by area code
       console.log('Searching for area code:', searchQuery)
       allNumbers = await searchSignalWire(searchQuery)
@@ -121,7 +195,6 @@ serve(async (req) => {
         'vancouver': ['604', '236', '778'],
       }
 
-      const normalizedQuery = searchQuery.toLowerCase()
       let areaCodesToSearch: string[] = []
 
       // Try to match common city names
@@ -173,7 +246,11 @@ serve(async (req) => {
       phone_number: num.phone_number,
       locality: num.locality || 'Unknown',
       region: num.region || 'Unknown',
-      capabilities: num.capabilities,
+      capabilities: {
+        voice: num.capabilities?.voice === true || num.capabilities?.Voice === true,
+        sms: num.capabilities?.sms === true || num.capabilities?.SMS === true,
+        mms: num.capabilities?.mms === true || num.capabilities?.MMS === true,
+      },
     }))
 
     return new Response(

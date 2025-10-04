@@ -138,6 +138,22 @@ export default class SettingsPage {
             </button>
           </div>
 
+          <!-- Voice AI Stack Toggle -->
+          <div style="border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <h3 style="margin: 0; font-size: 1rem;">Voice AI Backend</h3>
+                <p class="text-muted" style="margin: 0.25rem 0 0 0; font-size: 0.875rem;">
+                  <span id="voice-stack-label">${config?.active_voice_stack === 'livekit' ? 'LiveKit (Custom Voices)' : 'Retell (Standard)'}</span>
+                </p>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="voice-stack-toggle" ${config?.active_voice_stack === 'livekit' ? 'checked' : ''} />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+
           ${config ? `
             <div class="form-group">
               <strong>Agent ID:</strong>
@@ -323,6 +339,43 @@ export default class SettingsPage {
     const deleteAccountBtn = document.getElementById('delete-account-btn');
     const errorMessage = document.getElementById('error-message');
     const successMessage = document.getElementById('success-message');
+    const voiceStackToggle = document.getElementById('voice-stack-toggle');
+
+    // Voice AI stack toggle
+    if (voiceStackToggle) {
+      voiceStackToggle.addEventListener('change', async (e) => {
+        const newStack = e.target.checked ? 'livekit' : 'retell';
+        const label = document.getElementById('voice-stack-label');
+
+        errorMessage.classList.add('hidden');
+        successMessage.classList.add('hidden');
+
+        try {
+          const { data, error } = await supabase.functions.invoke('admin-switch-voice-stack', {
+            body: { stack: newStack }
+          });
+
+          if (error) throw error;
+
+          // Update label
+          label.textContent = newStack === 'livekit' ? 'LiveKit (Custom Voices)' : 'Retell (Standard)';
+
+          successMessage.className = 'alert alert-success';
+          successMessage.textContent = `Switched to ${newStack === 'livekit' ? 'LiveKit' : 'Retell'} voice AI backend`;
+
+          setTimeout(() => {
+            successMessage.classList.add('hidden');
+          }, 3000);
+        } catch (error) {
+          console.error('Switch voice stack error:', error);
+          errorMessage.className = 'alert alert-error';
+          errorMessage.textContent = 'Failed to switch voice AI backend. Please try again.';
+
+          // Revert toggle
+          e.target.checked = !e.target.checked;
+        }
+      });
+    }
 
     // Name inline editing
     document.getElementById('name-display').addEventListener('click', () => {

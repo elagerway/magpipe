@@ -73,10 +73,10 @@ serve(async (req) => {
       .eq('area_code', areaCode)
       .single()
 
-    // Use country-specific verification numbers
-    // Canada: +15878569001, USA: +16282954811
-    const isCanada = areaCodeData?.country === 'Canada'
-    const fromNumber = isCanada ? '+15878569001' : '+16282954811'
+    // Use verification number based on country
+    const fromNumber = areaCodeData?.country === 'Canada'
+      ? '+16043377899'  // Canadian verification number
+      : '+16282954020'  // US verification number
 
     // Send SMS via SignalWire
     const signalwireProjectId = Deno.env.get('SIGNALWIRE_PROJECT_ID')

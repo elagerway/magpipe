@@ -100,7 +100,9 @@
       "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_GINvlu/**)",
       "Bash(npm install:*)",
       "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_Op3dha/**)",
-      "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_GTzxRB/**)"
+      "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_GTzxRB/**)",
+      "Bash(python3:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []

@@ -135,6 +135,18 @@ export default class SignupPage {
               />
             </div>
 
+            <div class="form-group">
+              <label class="form-label" for="voice-stack">Voice AI Stack (for testing)</label>
+              <select
+                id="voice-stack"
+                class="form-input"
+              >
+                <option value="retell">Retell (Standard)</option>
+                <option value="livekit">LiveKit (Custom Voices)</option>
+              </select>
+              <p class="form-help">Choose which voice AI backend to use</p>
+            </div>
+
             <button type="submit" class="btn btn-primary btn-full" id="submit-btn">
               Create Account
             </button>
@@ -198,6 +210,7 @@ export default class SignupPage {
       const email = document.getElementById('email').value;
       const password = document.getElementById('password').value;
       const confirmPassword = document.getElementById('confirm-password').value;
+      const voiceStack = document.getElementById('voice-stack').value;
 
       // Validate passwords match
       if (password !== confirmPassword) {
@@ -225,6 +238,9 @@ export default class SignupPage {
           console.error('Error creating profile:', profileError);
           // Continue anyway - profile might be created by trigger
         }
+
+        // Store voice stack preference for later use during agent creation
+        localStorage.setItem('voice_stack_preference', voiceStack);
 
         // Redirect to email verification
         navigateTo('/verify-email');

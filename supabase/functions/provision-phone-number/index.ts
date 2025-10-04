@@ -102,6 +102,14 @@ serve(async (req) => {
 
     const phoneSid = purchaseResult.sid
 
+    // Normalize capabilities to lowercase (SignalWire uses uppercase)
+    const capabilities = purchaseResult.capabilities || {}
+    const normalizedCapabilities = {
+      voice: capabilities.voice === true || capabilities.Voice === true,
+      sms: capabilities.sms === true || capabilities.SMS === true,
+      mms: capabilities.mms === true || capabilities.MMS === true,
+    }
+
     // Step 2: Save the service number to service_numbers table
     const { error: insertError } = await supabase
       .from('service_numbers')
@@ -111,7 +119,7 @@ serve(async (req) => {
         phone_sid: phoneSid,
         friendly_name: `Pat AI - ${user.email}`,
         is_active: false, // Inactive by default - user must activate
-        capabilities: purchaseResult.capabilities || { voice: true, sms: true, mms: true },
+        capabilities: normalizedCapabilities,
       })
 
     if (insertError) {
