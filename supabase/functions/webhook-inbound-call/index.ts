@@ -1,8 +1,20 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
+// This webhook is called by SignalWire, which doesn't send auth headers
+// We handle auth by validating the phone number exists in our database
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
 serve(async (req) => {
+  // Handle OPTIONS for CORS
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
   try {
+    console.log('=== WEBHOOK INBOUND CALL START ===')
     const formData = await req.formData()
     const to = formData.get('To') as string
     const from = formData.get('From') as string
@@ -68,29 +80,16 @@ serve(async (req) => {
 
     // LIVEKIT STACK
     if (activeStack === 'livekit') {
+      console.log('=== LIVEKIT STACK SELECTED ===')
       console.log('Processing call with LiveKit stack')
 
-      // Create a LiveKit room for this call
-      const roomName = `call-${serviceNumber.user_id}-${Date.now()}`
-
-      console.log('Creating LiveKit room:', roomName)
-
-      // Store room metadata
-      const roomMetadata = JSON.stringify({
-        user_id: serviceNumber.user_id,
-        caller_number: from,
-        to_number: to,
-        call_sid: callSid,
-      })
-
-      // LiveKit SIP domain (get from your LiveKit project)
-      // Format: your-project-name.sip.livekit.cloud
+      // LiveKit SIP trunk domain (matches dispatch rule trunk)
       const livekitSipDomain = 'plug-bq7kgzpt.sip.livekit.cloud'
 
-      // The SIP URI to dial - LiveKit will route this to the agent
-      const sipUri = `sip:${roomName}@${livekitSipDomain}`
+      // Dial the called number directly - dispatch rule handles routing
+      const sipUri = `sip:${to}@${livekitSipDomain}`
 
-      console.log('Dialing LiveKit SIP URI:', sipUri)
+      console.log('Dialing SIP URI:', sipUri)
 
       // Log the call to database
       const { error: insertError } = await supabase
@@ -115,7 +114,7 @@ serve(async (req) => {
       const response = `<?xml version="1.0" encoding="UTF-8"?>
       <Response>
         <Dial>
-          <Sip>${sipUri}?X-Room-Name=${encodeURIComponent(roomName)}&X-Metadata=${encodeURIComponent(roomMetadata)}</Sip>
+          <Sip>${sipUri}</Sip>
         </Dial>
       </Response>`
 
