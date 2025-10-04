@@ -16,7 +16,7 @@ from livekit.agents import (
     cli,
     llm,
 )
-from livekit.agents.voice import Agent as VoiceAgent
+from livekit.agents.voice_assistant import VoicePipelineAgent
 from livekit.plugins import deepgram, openai as lkopenai, elevenlabs
 
 from dotenv import load_dotenv
@@ -312,10 +312,11 @@ async def entrypoint(ctx: JobContext):
     transfer_numbers = transfer_numbers_response.data or []
 
     # Configure initial agent context
-    initial_ctx = llm.ChatContext().append(
-        role="system",
-        text=user_config.get("system_prompt", "You are Pat, a helpful AI assistant.")
+    system_message = llm.ChatMessage.create(
+        text=user_config.get("system_prompt", "You are Pat, a helpful AI assistant."),
+        role="system"
     )
+    initial_ctx = llm.ChatContext(messages=[system_message])
 
     # Add greeting message
     greeting = user_config.get("greeting_template", "Hello! This is Pat. How can I help you today?")
@@ -330,7 +331,7 @@ async def entrypoint(ctx: JobContext):
     tools.append(create_voice_clone_tool(user_id))
 
     # Initialize voice agent
-    agent = VoiceAgent(
+    agent = VoicePipelineAgent(
         vad=rtc.VAD.load(),
         stt=deepgram.STT(
             model="nova-2-phonecall",
@@ -349,7 +350,6 @@ async def entrypoint(ctx: JobContext):
             optimize_streaming_latency=4,
         ),
         chat_ctx=initial_ctx,
-        fnc_ctx=llm.ToolContext() if tools else None,
     )
 
     # Start the agent
