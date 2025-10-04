@@ -34,7 +34,30 @@ JavaScript ES6+, HTML5, CSS3 (vanilla, minimal framework usage per user requirem
 - **For code-only changes**: Most changes to TypeScript/JavaScript in Edge Functions or frontend code don't require any database commands at all
 - Never ask the user to run database commands - execute them directly (but NEVER db reset unless explicitly requested)
 
-## Audit Documentation
+## Session Memory & Documentation
+
+### Session Notes (SESSION-NOTES.md)
+- **CRITICAL: Update SESSION-NOTES.md at the start and end of each work session**: This file serves as persistent memory across Claude sessions
+- **Always read SESSION-NOTES.md at session start**: Check "Current Session" section to understand active work and context
+- **Update current session section when:**
+  - Starting work on a new problem/feature
+  - Making significant progress or discoveries
+  - Encountering blockers or issues
+  - Switching between different tasks
+  - User loses connection (power outage, network issue, etc.)
+- **Session notes format**:
+  - **Active Work:** One-line description of current task
+  - **Problem:** What issue is being solved
+  - **Context:** Background information and relevant details
+  - **Known Issues:** List of identified problems
+  - **Next Steps:** Numbered action items
+  - **Recent Related Commits:** Git SHAs and descriptions
+  - **Uncommitted Changes:** What's in working tree
+- **Add to Session History section:** When completing a major feature or switching focus areas
+- **Keep Technical Context updated:** Document architecture decisions, configuration details, key file locations
+- **Update Debugging Resources:** Add new scripts, tools, or procedures discovered during work
+
+### Audit Documentation (audits.md)
 - **Always update audits.md when creating commits**: Every time you create a git commit, add a new audit entry at the top of `audits.md`
 - **Audit entry format**:
   - Section header: `## Audit: [Date] (Part N if multiple on same day)`
@@ -55,6 +78,12 @@ JavaScript ES6+, HTML5, CSS3 (vanilla, minimal framework usage per user requirem
   - Security updates
 - **Keep it comprehensive**: Include file paths, function names, and specific implementation details
 - **Use checkmarks**: Mark completed items with ✓
+
+### Code Comments for Context
+- **Add contextual comments for non-obvious decisions**: Use `// CONTEXT:` or `# CONTEXT:` to explain why something was done a certain way
+- **Document workarounds**: Use `// WORKAROUND:` to explain temporary solutions
+- **Mark important sections**: Use `// IMPORTANT:` for critical code that shouldn't be modified without understanding impact
+- **Reference issues**: Use `// FIX:` or `// TODO:` with issue numbers or descriptions
 
 ## Feature Implementation & Testing
 - **Always perform recursive testing when implementing new features**: Before completing any feature implementation, use grep/search tools to find all references to related functionality
