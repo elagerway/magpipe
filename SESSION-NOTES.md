@@ -29,15 +29,21 @@
 3. **ElevenLabs TTS Parameters** (4257ee2)
    - Fixed parameter names: `voice` → `voice_id`, `model` → `model_id`
    - Removed deprecated parameters (stability, similarity_boost, optimize_streaming_latency)
-   - **Deployment Status:** LIVE ✅ (22:40:20 UTC)
+   - **Deployment Status:** ~~LIVE~~ ❌ (Still had wrong param)
+
+4. **ElevenLabs TTS Model Parameter** (d132d94)
+   - Fixed parameter name: `model_id` → `model` (correct per LiveKit docs)
+   - **Deployment Status:** DEPLOYING... ⏳
 
 **Next Steps:**
-1. ✅ ~~Fix deployment errors~~ - DONE (3 fixes deployed)
-2. Test PSTN call to verify agent connects and responds properly
-3. If calls work, tune VAD parameters if needed (cutting off users, not detecting end of speech, etc.)
+1. ✅ ~~Fix deployment errors~~ - DONE (4 fixes deployed)
+2. ⏳ Wait for Render deployment to complete (commit d132d94)
+3. Test PSTN call to verify agent connects and responds properly
+4. If calls work, tune VAD parameters if needed (cutting off users, not detecting end of speech, etc.)
 
 **Recent Related Commits:**
-- `4257ee2` - Fix ElevenLabs TTS parameter names ✅ **LIVE**
+- `d132d94` - Fix ElevenLabs TTS parameter - use model instead of model_id ⏳ **DEPLOYING**
+- `4257ee2` - Fix ElevenLabs TTS parameter names (voice_id) - model_id still wrong ❌
 - `59e728e` - Add livekit-plugins-silero to requirements ✅
 - `5184a87` - Fix VAD import - use silero.VAD instead of rtc.VAD ✅
 - `211da61` - Update session notes and audits with VAD import fix
