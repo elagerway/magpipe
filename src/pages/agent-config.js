@@ -42,6 +42,9 @@ export default class AgentConfigPage {
       .eq('is_cloned', true)
       .order('created_at', { ascending: false });
 
+    // Check active voice stack to determine if voice cloning is available
+    const isLiveKitActive = config?.active_voice_stack === 'livekit';
+
     const appElement = document.getElementById('app');
 
     appElement.innerHTML = `
@@ -161,6 +164,7 @@ export default class AgentConfigPage {
             </div>
 
             <!-- Voice Cloning Section - LiveKit supports custom voices! -->
+            ${isLiveKitActive ? `
             <div class="voice-clone-container" style="margin-bottom: 1.5rem;">
               <div id="voice-clone-toggle" style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; cursor: pointer;">
                 <div style="
@@ -286,6 +290,7 @@ export default class AgentConfigPage {
                 </div>
               </div>
             </div>
+            ` : ''}
 
             <div class="form-group">
               <label class="form-label" for="response-style">Response Style</label>
