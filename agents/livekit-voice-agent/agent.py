@@ -360,7 +360,7 @@ async def entrypoint(ctx: JobContext):
         ),
         tts=elevenlabs.TTS(
             voice_id=voice_config["voice_id"],
-            model_id="eleven_turbo_v2_5",
+            model="eleven_turbo_v2_5",
         ),
     )
 
