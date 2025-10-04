@@ -12,7 +12,7 @@ serve(async (req) => {
   }
 
   try {
-    const { agentConfig } = await req.json()
+    const { agentConfig, voiceStack } = await req.json()
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -169,6 +169,7 @@ Always end with:
         avatar_url: avatarUrl,
         prompt: agentConfig?.prompt || 'You are Pat, a helpful AI assistant. You answer calls and messages for the user. Be friendly, professional, and helpful.',
         language: 'en-US',
+        active_voice_stack: voiceStack || 'retell',
       })
 
     if (insertError) {

@@ -25,9 +25,14 @@ export default class ManageNumbersPage {
         <div style="margin-bottom: 1.5rem;">
           <h1 style="margin-bottom: 0.5rem;">My Service Numbers</h1>
           <p class="text-muted" style="margin-bottom: 1rem;">Manage your phone numbers for Pat AI</p>
-          <button class="btn btn-primary btn-full" id="add-number-btn">
-            + Add New Number
-          </button>
+          <div style="display: flex; gap: 0.5rem;">
+            <button class="btn btn-primary" id="add-number-btn" style="flex: 1;">
+              + Add New Number
+            </button>
+            <button class="btn btn-secondary" id="fix-capabilities-btn">
+              Fix Capabilities
+            </button>
+          </div>
         </div>
 
         <div class="card" style="padding: 1rem;">
@@ -61,6 +66,7 @@ export default class ManageNumbersPage {
   attachEventListeners() {
     const addNumberBtn = document.getElementById('add-number-btn');
     const addFirstNumberBtn = document.getElementById('add-first-number-btn');
+    const fixCapabilitiesBtn = document.getElementById('fix-capabilities-btn');
 
     addNumberBtn?.addEventListener('click', () => {
       navigateTo('/select-number');
@@ -68,6 +74,10 @@ export default class ManageNumbersPage {
 
     addFirstNumberBtn?.addEventListener('click', () => {
       navigateTo('/select-number');
+    });
+
+    fixCapabilitiesBtn?.addEventListener('click', async () => {
+      await this.fixCapabilities();
     });
   }
 
@@ -192,10 +202,9 @@ export default class ManageNumbersPage {
         </div>
 
         <!-- Capabilities -->
-        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.75rem;">
-          ${hasVoice ? `<span style="font-size: 0.875rem; color: #10b981;">📞 Voice</span>` : ''}
-          ${hasSms ? `<span style="font-size: 0.875rem; color: #10b981;">💬 SMS</span>` : ''}
-          ${hasMms ? `<span style="font-size: 0.875rem; color: #10b981;">📷 MMS</span>` : ''}
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem;">
+          ${hasVoice ? '<span style="display: inline-block; padding: 0.125rem 0.5rem; background: rgba(34, 197, 94, 0.1); color: rgb(34, 197, 94); border-radius: 0.25rem; font-size: 0.75rem; font-weight: 500;">Voice</span>' : '<span style="display: inline-block; padding: 0.125rem 0.5rem; background: rgba(156, 163, 175, 0.1); color: rgb(107, 114, 128); border-radius: 0.25rem; font-size: 0.75rem; font-weight: 500;">No Voice</span>'}
+          ${hasSms ? '<span style="display: inline-block; padding: 0.125rem 0.5rem; background: rgba(59, 130, 246, 0.1); color: rgb(59, 130, 246); border-radius: 0.25rem; font-size: 0.75rem; font-weight: 500;">SMS</span>' : '<span style="display: inline-block; padding: 0.125rem 0.5rem; background: rgba(156, 163, 175, 0.1); color: rgb(107, 114, 128); border-radius: 0.25rem; font-size: 0.75rem; font-weight: 500;">No SMS</span>'}
         </div>
 
         <!-- Purchase date -->
@@ -362,5 +371,50 @@ export default class ManageNumbersPage {
     }
 
     return await response.json();
+  }
+
+  async fixCapabilities() {
+    const errorMessage = document.getElementById('error-message');
+    const successMessage = document.getElementById('success-message');
+    const fixBtn = document.getElementById('fix-capabilities-btn');
+
+    errorMessage.classList.add('hidden');
+    successMessage.classList.add('hidden');
+
+    try {
+      fixBtn.disabled = true;
+      fixBtn.textContent = 'Fixing...';
+
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const { data: { session } } = await supabase.auth.getSession();
+
+      const response = await fetch(`${supabaseUrl}/functions/v1/fix-number-capabilities`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to fix capabilities');
+      }
+
+      const result = await response.json();
+
+      successMessage.className = 'alert alert-success';
+      successMessage.textContent = `Fixed capabilities for ${result.updated} number(s)`;
+
+      // Reload numbers to show updated capabilities
+      await this.loadNumbers();
+    } catch (error) {
+      console.error('Error fixing capabilities:', error);
+      errorMessage.className = 'alert alert-error';
+      errorMessage.textContent = error.message || 'Failed to fix capabilities';
+    } finally {
+      fixBtn.disabled = false;
+      fixBtn.textContent = 'Fix Capabilities';
+    }
   }
 }
