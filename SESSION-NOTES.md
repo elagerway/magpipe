@@ -1,11 +1,59 @@
 # Session Notes
 
-**Last Updated:** 2025-10-03
+**Last Updated:** 2025-10-04
 **Active Branch:** Pat-AI
 
 ---
 
-## Current Session (2025-10-03)
+## Current Session (2025-10-04)
+
+### ✅ Phone Number Capability Badges & SignalWire SMS Issues
+
+**Problem:**
+- Phone numbers showing as SMS-capable during search but not after purchase
+- No visibility into Voice/SMS capabilities in the UI
+- SignalWire using uppercase capability keys (SMS, MMS) but our code expecting lowercase
+
+**Work Completed:** ✅
+1. **Capability Badges** (ec7792c)
+   - Added Voice/SMS capability badges to select-number page
+   - Added capability badges to manage-numbers page
+   - Created "Fix Capabilities" button to sync actual capabilities from SignalWire
+
+2. **Capability Normalization**
+   - Updated provision-phone-number to normalize capabilities (uppercase → lowercase)
+   - Updated search-phone-numbers to normalize capabilities in response
+   - Created fix-number-capabilities Edge Function to repair existing numbers
+
+3. **Enhanced Canadian Number Search**
+   - Search all 43 Canadian area codes instead of just 9
+   - Filter for SMS-capable numbers before returning results
+   - Added country-based search (canada/usa keywords)
+
+4. **Verification SMS Routing**
+   - Updated verify-phone-send to route by country (Canada vs US)
+   - Canada: +16043377899
+   - US: +16282954020
+
+**SignalWire Issue Discovered:** ⚠️
+- SignalWire's AvailablePhoneNumbers API shows SMS capability but purchased numbers don't have it enabled
+- Affects ALL newly purchased numbers (both Canadian and US)
+- Older numbers in account have SMS working fine
+- User needs to contact SignalWire support
+
+**Recent Commits:**
+- `ec7792c` - Add phone number capability badges and SMS filtering ✅ **PUSHED**
+- `29d3d24` - Update Canadian verification SMS sender
+- `2c57786` - Add LiveKit support to voice preview generator
+
+**Next Steps:**
+1. Contact SignalWire support about SMS capability mismatch
+2. Use existing SMS-capable numbers (+16282954020, +12367006869, etc.)
+3. Monitor for SignalWire fixes
+
+---
+
+## Previous Session (2025-10-03)
 
 ### ✅ RESOLVED: LiveKit Agent PSTN Call Issues on Render
 
