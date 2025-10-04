@@ -22,20 +22,20 @@
 - Added `silero` to imports from livekit.plugins
 - Changed `vad=rtc.VAD.load()` to `vad=silero.VAD.load()`
 - Committed and pushed (5184a87)
-- Render auto-redeploy should be triggered
+- **Additional fix:** Added `livekit-plugins-silero>=0.6.0` to requirements.txt (59e728e)
+- **Deployment Status:** LIVE ✅ (22:35:19 UTC)
 
 **Next Steps:**
-1. Monitor Render logs to confirm successful deployment
-2. Test PSTN call to verify agent connects properly
-3. If calls work, tune VAD parameters if needed (cutting off users, etc.)
+1. ✅ ~~Monitor Render logs to confirm successful deployment~~ - DONE
+2. Test PSTN call to verify agent connects and responds properly
+3. If calls work, tune VAD parameters if needed (cutting off users, not detecting end of speech, etc.)
 
 **Recent Related Commits:**
+- `59e728e` - Add livekit-plugins-silero to requirements ✅ LIVE
 - `5184a87` - Fix VAD import - use silero.VAD instead of rtc.VAD ✅
+- `211da61` - Update session notes and audits with VAD import fix
 - `14dd33f` - Update audits.md with session memory system entry
 - `ea00ca4` - Add persistent session memory system
-- `7d4f89f` - Add detailed logging to track agent lifecycle and crashes
-- `0aa16a2` - Trigger Render redeploy - restart LiveKit agent
-- `c87cc34` - Simplify LiveKit agent - focus on basic calling only
 
 **Uncommitted Changes:**
 - Multiple LiveKit debugging scripts added
