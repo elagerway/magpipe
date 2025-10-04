@@ -202,7 +202,7 @@ export default class AgentConfigPage {
 
                 <div id="voice-clone-status" class="hidden" style="margin-bottom: 1rem;"></div>
 
-                <-- Progress Bar --
+                <!-- Progress Bar -->
                 <div id="clone-progress" style="display: none; margin-bottom: 1rem;">
                   <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
                     <span style="font-size: 0.875rem; font-weight: 500;">Cloning your voice...</span>
@@ -213,7 +213,7 @@ export default class AgentConfigPage {
                   </div>
                 </div>
 
-                <-- Input Method Toggle --
+                <!-- Input Method Toggle -->
                 <div style="margin-bottom: 1.5rem;">
                   <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
                     <button type="button" id="record-tab" class="btn btn-secondary" style="flex: 1; background: var(--primary-color); border-color: var(--primary-color); color: white;">
@@ -224,7 +224,7 @@ export default class AgentConfigPage {
                     </button>
                   </div>
 
-                  <-- Recording Controls --
+                  <!-- Recording Controls -->
                   <div id="recording-controls">
                     <div style="display: flex; gap: 0.75rem; align-items: center; margin-bottom: 1rem;">
                       <button type="button" id="start-recording-btn" class="btn" style="flex: 1; background: #eff6ff; color: #3b82f6; border: 2px solid #dbeafe;">
@@ -247,7 +247,7 @@ export default class AgentConfigPage {
                     </div>
                   </div>
 
-                  <-- Upload Controls --
+                  <!-- Upload Controls -->
                   <div id="upload-controls" style="display: none;">
                     <label for="voice-file-input" class="btn" style="display: block; text-align: center; cursor: pointer; margin-bottom: 0.5rem; background: #eff6ff; color: #3b82f6; border: 2px solid #dbeafe;">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display: inline; margin-right: 0.5rem;">
@@ -263,7 +263,7 @@ export default class AgentConfigPage {
                   </div>
                 </div>
 
-                <-- Audio Preview --
+                <!-- Audio Preview -->
                 <div id="audio-preview" style="display: none; margin-bottom: 1rem;">
                   <label class="form-label">Preview Recording</label>
                   <audio id="preview-player" controls style="width: 100%; margin-bottom: 0.75rem;"></audio>
