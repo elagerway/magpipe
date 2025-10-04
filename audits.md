@@ -2,7 +2,42 @@
 
 ---
 
-## Audit: October 3, 2025
+## Audit: October 3, 2025 (Part 2)
+**Build:** `5184a87`
+**Commit:** Fix VAD import - use silero.VAD instead of rtc.VAD
+**Date:** 2025-10-03
+**Auditor:** Claude (AI Assistant)
+
+### Summary
+Fixed critical import error preventing LiveKit agent from handling PSTN calls. Agent was crashing on startup due to incorrect VAD import. **Fix deployed and pushed to Render.** ✅
+
+### Bug Fix
+
+#### LiveKit Agent Import Error (`agents/livekit-voice-agent/agent.py`)
+- **Problem:** Agent crashing with `AttributeError: module 'livekit.rtc' has no attribute 'VAD'`
+- **Root Cause:** Using `rtc.VAD.load()` instead of `silero.VAD.load()`
+- **Impact:** All PSTN → SignalWire → LiveKit calls failing ✓
+- **Fix Applied:**
+  - Added `silero` to imports: `from livekit.plugins import deepgram, openai as lkopenai, elevenlabs, silero` ✓
+  - Changed line 352: `vad=rtc.VAD.load()` → `vad=silero.VAD.load()` ✓
+  - Committed and pushed to trigger Render auto-redeploy ✓
+
+### Context
+- Issue discovered through Render log analysis showing AttributeError on line 352
+- Local file had correct code but wasn't deployed (uncommitted changes)
+- Fixed deployment sync issue by committing and pushing to origin/Pat-AI
+
+### Testing Required
+- Monitor Render logs for successful deployment
+- Test PSTN call through SignalWire to LiveKit agent
+- Verify agent connects and handles call properly
+
+### Dependencies Updated
+- No dependency changes (import fix only) ✓
+
+---
+
+## Audit: October 3, 2025 (Part 1)
 **Build:** `ea00ca4`
 **Commit:** Add persistent session memory system
 **Date:** 2025-10-03
