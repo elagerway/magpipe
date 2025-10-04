@@ -1563,7 +1563,9 @@ Always sound approachable, keep things simple, and update the user with a quick 
       });
 
       if (!response.ok) {
-        throw new Error('Failed to generate voice preview');
+        const errorText = await response.text();
+        console.error('Preview error:', response.status, errorText);
+        throw new Error(`Failed to generate voice preview: ${response.status} - ${errorText}`);
       }
 
       const audioBlob = await response.blob();
