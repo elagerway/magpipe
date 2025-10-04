@@ -359,6 +359,7 @@ async def entrypoint(ctx: JobContext):
             temperature=0.7,
         ),
         tts=elevenlabs.TTS(
+            api_key=os.getenv("ELEVENLABS_API_KEY"),
             voice_id=voice_config["voice_id"],
             model="eleven_turbo_v2_5",
         ),
