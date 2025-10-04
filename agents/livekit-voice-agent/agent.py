@@ -15,8 +15,10 @@ from livekit.agents import (
     WorkerOptions,
     cli,
     llm,
+    AgentSession,
+    Agent,
+    function_tool,
 )
-from livekit.agents.voice_assistant import VoicePipelineAgent
 from livekit.plugins import deepgram, openai as lkopenai, elevenlabs
 
 from dotenv import load_dotenv
@@ -94,7 +96,7 @@ async def get_voice_config(voice_id: str, user_id: str) -> dict:
 def create_transfer_tool(user_id: str, transfer_numbers: list, room_name: str):
     """Create transfer function tool based on user's transfer numbers"""
 
-    @llm.function_tool(description="Transfer the active call to another phone number using SignalWire")
+    @function_tool(description="Transfer the active call to another phone number using SignalWire")
     async def transfer_call(
         transfer_to: Annotated[str, "The label or number to transfer to (e.g., 'mobile', 'office', 'Rick')"]
     ):
@@ -154,7 +156,7 @@ def create_transfer_tool(user_id: str, transfer_numbers: list, room_name: str):
 def create_collect_data_tool(user_id: str):
     """Create dynamic data collection tool"""
 
-    @llm.function_tool(description="Store important information collected from the caller during conversation")
+    @function_tool(description="Store important information collected from the caller during conversation")
     async def collect_caller_data(
         data_type: Annotated[str, "Type of data being collected (e.g., 'email', 'phone', 'name', 'company', 'reason')"],
         data_value: Annotated[str, "The actual data value provided by the caller"],
@@ -184,7 +186,7 @@ def create_collect_data_tool(user_id: str):
 def create_voice_clone_tool(user_id: str):
     """Create voice cloning tool for creating custom ElevenLabs voices"""
 
-    @llm.function_tool(description="Clone a custom voice from an audio sample using ElevenLabs")
+    @function_tool(description="Clone a custom voice from an audio sample using ElevenLabs")
     async def clone_voice_from_sample(
         voice_name: Annotated[str, "Name for the cloned voice"],
         audio_sample_url: Annotated[str, "URL to the audio sample file for cloning"],
@@ -311,15 +313,9 @@ async def entrypoint(ctx: JobContext):
 
     transfer_numbers = transfer_numbers_response.data or []
 
-    # Configure initial agent context
-    system_message = llm.ChatMessage.create(
-        text=user_config.get("system_prompt", "You are Pat, a helpful AI assistant."),
-        role="system"
-    )
-    initial_ctx = llm.ChatContext(messages=[system_message])
-
-    # Add greeting message
+    # Get greeting message
     greeting = user_config.get("greeting_template", "Hello! This is Pat. How can I help you today?")
+    system_prompt = user_config.get("system_prompt", "You are Pat, a helpful AI assistant.")
 
     # Already connected earlier to get service number, so skip second connect
 
@@ -330,8 +326,11 @@ async def entrypoint(ctx: JobContext):
     tools.append(create_collect_data_tool(user_id))
     tools.append(create_voice_clone_tool(user_id))
 
-    # Initialize voice agent
-    agent = VoicePipelineAgent(
+    # Create Agent instance
+    assistant = Agent(instructions=system_prompt, tools=tools)
+
+    # Initialize AgentSession
+    session = AgentSession(
         vad=rtc.VAD.load(),
         stt=deepgram.STT(
             model="nova-2-phonecall",
@@ -349,14 +348,13 @@ async def entrypoint(ctx: JobContext):
             similarity_boost=voice_config["similarity_boost"],
             optimize_streaming_latency=4,
         ),
-        chat_ctx=initial_ctx,
     )
 
-    # Start the agent
-    agent.start(ctx.room)
+    # Start the session
+    await session.start(room=ctx.room, agent=assistant)
 
     # Say greeting when participant joins
-    await agent.say(greeting, allow_interruptions=True)
+    await session.generate_reply(greeting)
 
     logger.info("Agent started successfully")
 
