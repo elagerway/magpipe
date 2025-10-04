@@ -28,19 +28,14 @@ serve(async (req) => {
     // Check if we already have a cached preview for this voice
     const storagePath = `voice-previews/${voice_id}.mp3`
 
-    // Get the public URL for the preview
-    const { data: publicUrl } = supabase.storage
+    // Try to download the file from storage
+    const { data: fileData, error: downloadError } = await supabase.storage
       .from('public')
-      .getPublicUrl(storagePath)
+      .download(storagePath)
 
-    // Try to fetch the file to see if it exists
-    const testResponse = await fetch(publicUrl.publicUrl, { method: 'HEAD' })
-
-    if (testResponse.ok) {
+    if (!downloadError && fileData) {
       console.log('Found cached preview for voice:', voice_id)
-      // Fetch and return the audio file
-      const audioResponse = await fetch(publicUrl.publicUrl)
-      const audioData = await audioResponse.arrayBuffer()
+      const audioData = await fileData.arrayBuffer()
 
       return new Response(audioData, {
         headers: {
@@ -51,14 +46,70 @@ serve(async (req) => {
       })
     }
 
-    // Preview not generated yet
-    return new Response(
-      JSON.stringify({
-        error: 'Preview not yet generated for this voice.',
-        generate_url: 'http://localhost:3000/voice-preview-generator.html'
-      }),
-      { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    console.log('No cached preview found, will generate:', downloadError?.message)
+
+    // Preview not cached - generate it now using ElevenLabs
+    console.log('Generating preview for voice:', voice_id)
+
+    const elevenLabsApiKey = Deno.env.get('ELEVENLABS_API_KEY')
+    if (!elevenLabsApiKey) {
+      return new Response(
+        JSON.stringify({ error: 'ElevenLabs API key not configured' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const previewText = text || 'Hi, this is a preview of my voice. How do I sound?'
+    const cleanVoiceId = voice_id.replace('11labs-', '')
+
+    // Generate audio with ElevenLabs
+    const elevenLabsResponse = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${cleanVoiceId}`,
+      {
+        method: 'POST',
+        headers: {
+          'xi-api-key': elevenLabsApiKey,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: previewText,
+          model_id: 'eleven_turbo_v2_5',
+        }),
+      }
     )
+
+    if (!elevenLabsResponse.ok) {
+      const errorText = await elevenLabsResponse.text()
+      console.error('ElevenLabs error:', errorText)
+      return new Response(
+        JSON.stringify({ error: 'Failed to generate voice preview' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const audioData = await elevenLabsResponse.arrayBuffer()
+
+    // Cache the preview for future use
+    try {
+      await supabase.storage
+        .from('public')
+        .upload(storagePath, audioData, {
+          contentType: 'audio/mpeg',
+          upsert: true,
+        })
+      console.log('Cached preview at:', storagePath)
+    } catch (storageError) {
+      console.error('Failed to cache preview:', storageError)
+      // Continue anyway - we can still return the audio
+    }
+
+    return new Response(audioData, {
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'audio/mpeg',
+        'Cache-Control': 'public, max-age=3600',
+      },
+    })
 
   } catch (error) {
     console.error('Error in preview-voice:', error)
