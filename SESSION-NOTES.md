@@ -18,20 +18,27 @@
 - Should be: `silero.VAD.load()`
 - Local file had correct code but wasn't deployed
 
-**Fix Applied:** ✅
-- Added `silero` to imports from livekit.plugins
-- Changed `vad=rtc.VAD.load()` to `vad=silero.VAD.load()`
-- Committed and pushed (5184a87)
-- **Additional fix:** Added `livekit-plugins-silero>=0.6.0` to requirements.txt (59e728e)
-- **Deployment Status:** LIVE ✅ (22:35:19 UTC)
+**Fixes Applied:** ✅
+1. **VAD Import Fix** (5184a87)
+   - Added `silero` to imports from livekit.plugins
+   - Changed `vad=rtc.VAD.load()` to `vad=silero.VAD.load()`
+
+2. **Missing Dependency** (59e728e)
+   - Added `livekit-plugins-silero>=0.6.0` to requirements.txt
+
+3. **ElevenLabs TTS Parameters** (4257ee2)
+   - Fixed parameter names: `voice` → `voice_id`, `model` → `model_id`
+   - Removed deprecated parameters (stability, similarity_boost, optimize_streaming_latency)
+   - **Deployment Status:** LIVE ✅ (22:40:20 UTC)
 
 **Next Steps:**
-1. ✅ ~~Monitor Render logs to confirm successful deployment~~ - DONE
+1. ✅ ~~Fix deployment errors~~ - DONE (3 fixes deployed)
 2. Test PSTN call to verify agent connects and responds properly
 3. If calls work, tune VAD parameters if needed (cutting off users, not detecting end of speech, etc.)
 
 **Recent Related Commits:**
-- `59e728e` - Add livekit-plugins-silero to requirements ✅ LIVE
+- `4257ee2` - Fix ElevenLabs TTS parameter names ✅ **LIVE**
+- `59e728e` - Add livekit-plugins-silero to requirements ✅
 - `5184a87` - Fix VAD import - use silero.VAD instead of rtc.VAD ✅
 - `211da61` - Update session notes and audits with VAD import fix
 - `14dd33f` - Update audits.md with session memory system entry
