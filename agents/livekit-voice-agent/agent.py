@@ -359,12 +359,8 @@ async def entrypoint(ctx: JobContext):
             temperature=0.7,
         ),
         tts=elevenlabs.TTS(
-            voice=voice_config["voice_id"],
-            model="eleven_turbo_v2_5",
-            # Voice settings from database
-            stability=voice_config["stability"],
-            similarity_boost=voice_config["similarity_boost"],
-            optimize_streaming_latency=4,
+            voice_id=voice_config["voice_id"],
+            model_id="eleven_turbo_v2_5",
         ),
     )
 
