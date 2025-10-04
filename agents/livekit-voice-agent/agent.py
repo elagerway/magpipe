@@ -263,16 +263,38 @@ async def entrypoint(ctx: JobContext):
     user_id = room_metadata.get("user_id")
 
     if not user_id:
-        # Wait for SIP participant to join and get their attributes
+        # Connect and wait for SIP participant to join
         await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
 
-        # Find SIP participant and get service number
+        # Wait for participant to join
         service_number = None
+
+        # Check existing participants first
         for participant in ctx.room.remote_participants.values():
             if participant.attributes.get("sip.trunkPhoneNumber"):
                 service_number = participant.attributes["sip.trunkPhoneNumber"]
-                logger.info(f"Found service number from SIP participant: {service_number}")
+                logger.info(f"Found service number from existing SIP participant: {service_number}")
                 break
+
+        # If no participant yet, wait for one
+        if not service_number:
+            logger.info("Waiting for SIP participant to join...")
+            participant_joined_event = asyncio.Event()
+
+            @ctx.room.on("participant_connected")
+            def on_participant_connected(participant):
+                logger.info(f"Participant connected: {participant.identity}")
+                if participant.attributes.get("sip.trunkPhoneNumber"):
+                    nonlocal service_number
+                    service_number = participant.attributes["sip.trunkPhoneNumber"]
+                    logger.info(f"Found service number from new SIP participant: {service_number}")
+                    participant_joined_event.set()
+
+            # Wait up to 10 seconds for participant
+            try:
+                await asyncio.wait_for(participant_joined_event.wait(), timeout=10.0)
+            except asyncio.TimeoutError:
+                logger.error("Timeout waiting for SIP participant")
 
         if service_number:
             # Look up user from service_numbers table
@@ -317,17 +339,11 @@ async def entrypoint(ctx: JobContext):
     greeting = user_config.get("greeting_template", "Hello! This is Pat. How can I help you today?")
     system_prompt = user_config.get("system_prompt", "You are Pat, a helpful AI assistant.")
 
-    # Already connected earlier to get service number, so skip second connect
+    # Already connected earlier to get service number, don't connect again in session.start
 
-    # Create function tools
-    tools = []
-    if transfer_numbers:
-        tools.append(create_transfer_tool(user_id, transfer_numbers, ctx.room.name))
-    tools.append(create_collect_data_tool(user_id))
-    tools.append(create_voice_clone_tool(user_id))
-
-    # Create Agent instance
-    assistant = Agent(instructions=system_prompt, tools=tools)
+    # Create Agent instance - start with no tools, just basic conversation
+    # TODO: Add transfer and data collection tools once basic calling works
+    assistant = Agent(instructions=system_prompt)
 
     # Initialize AgentSession
     session = AgentSession(
@@ -350,11 +366,11 @@ async def entrypoint(ctx: JobContext):
         ),
     )
 
-    # Start the session
+    # Start the session - room already connected, so session takes over
     await session.start(room=ctx.room, agent=assistant)
 
-    # Say greeting when participant joins
-    await session.generate_reply(greeting)
+    # Say greeting when participant joins - use instructions parameter
+    await session.generate_reply(instructions=f"Say this greeting to the caller: {greeting}")
 
     logger.info("Agent started successfully")
 
