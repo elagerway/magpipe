@@ -51,6 +51,14 @@
 2. Use existing SMS-capable numbers (+16282954020, +12367006869, etc.)
 3. Monitor for SignalWire fixes
 
+**NEW ISSUE (2025-10-04 02:00 AM):** ⚠️
+- +15878560911 shows as ACTIVE in UI but NOT in database
+- Calls to this number fail with "Service Unavailable"
+- Database insert failing silently when activating number
+- Need to debug provision-phone-number function or check RLS policies
+- +16282954811 works fine (different user, already in database)
+- Issue: erik@snapsonic.com numbers not persisting to service_numbers table
+
 ---
 
 ## Previous Session (2025-10-03)
