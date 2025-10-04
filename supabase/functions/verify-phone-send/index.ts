@@ -65,21 +65,18 @@ serve(async (req) => {
       )
     }
 
-    // Get user's service number or use a default
-    const { data: serviceNumber } = await supabase
-      .from('service_numbers')
-      .select('phone_number')
-      .eq('user_id', user.id)
-      .eq('is_active', true)
-      .limit(1)
+    // Lookup country from area code table
+    const areaCode = phoneNumber.substring(2, 5) // Extract area code from +1XXX format
+    const { data: areaCodeData } = await supabase
+      .from('area_codes')
+      .select('country')
+      .eq('area_code', areaCode)
       .single()
 
-    // Use default number if no service number yet (for new users)
-    const defaultNumber = '+16043377899'
-    const baseNumber = serviceNumber?.phone_number || defaultNumber
-
-    // Determine sender number based on recipient location (USA SMS compliance)
-    const fromNumber = await getSenderNumber(phoneNumber, baseNumber, supabase)
+    // Use country-specific verification numbers
+    // Canada: +15878569001, USA: +16282954811
+    const isCanada = areaCodeData?.country === 'Canada'
+    const fromNumber = isCanada ? '+15878569001' : '+16282954811'
 
     // Send SMS via SignalWire
     const signalwireProjectId = Deno.env.get('SIGNALWIRE_PROJECT_ID')
