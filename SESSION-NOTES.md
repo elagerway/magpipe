@@ -7,27 +7,32 @@
 
 ## Current Session (2025-10-03)
 
-### Active Work: LiveKit Agent VAD Issues on Render
+### Active Work: LiveKit Agent PSTN Call Issues on Render
 
 **Problem:**
-- LiveKit voice agent experiencing VAD (Voice Activity Detection) issues when deployed on Render
-- User lost power mid-session - working on fixing VAD configuration
+- Calls from PSTN → SignalWire → LiveKit Agent failing with import error
+- Agent crashing on startup with `AttributeError: module 'livekit.rtc' has no attribute 'VAD'`
 
-**Context:**
-- Agent is deployed on Render and runs as a background service
-- Using Silero VAD for speech detection (agents/livekit-voice-agent/agent.py:352)
-- Current VAD config: `vad=silero.VAD.load()` with default parameters
+**Root Cause:**
+- Deployed version on Render had wrong import: `rtc.VAD.load()`
+- Should be: `silero.VAD.load()`
+- Local file had correct code but wasn't deployed
 
-**Known Issues:**
-- VAD behavior needs tuning (specific symptoms TBD when user provides details)
-- Agent has gone through multiple iterations to stabilize (see commit history)
+**Fix Applied:** ✅
+- Added `silero` to imports from livekit.plugins
+- Changed `vad=rtc.VAD.load()` to `vad=silero.VAD.load()`
+- Committed and pushed (5184a87)
+- Render auto-redeploy should be triggered
 
 **Next Steps:**
-1. Determine specific VAD symptom (cutting off users? not detecting end of speech? etc.)
-2. Add custom VAD parameters to Silero configuration
-3. Test and deploy updated config to Render
+1. Monitor Render logs to confirm successful deployment
+2. Test PSTN call to verify agent connects properly
+3. If calls work, tune VAD parameters if needed (cutting off users, etc.)
 
 **Recent Related Commits:**
+- `5184a87` - Fix VAD import - use silero.VAD instead of rtc.VAD ✅
+- `14dd33f` - Update audits.md with session memory system entry
+- `ea00ca4` - Add persistent session memory system
 - `7d4f89f` - Add detailed logging to track agent lifecycle and crashes
 - `0aa16a2` - Trigger Render redeploy - restart LiveKit agent
 - `c87cc34` - Simplify LiveKit agent - focus on basic calling only
