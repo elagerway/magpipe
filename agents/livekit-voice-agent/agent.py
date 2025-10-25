@@ -351,12 +351,12 @@ async def entrypoint(ctx: JobContext):
                 # Update call_record with LiveKit's voice platform call ID
                 # This allows us to match the call later when saving transcript
                 if call_sid and service_number:
-                    logger.info(f"Updating call_record with voice_platform_call_id: {call_sid}")
+                    logger.info(f"Updating call_record with LiveKit call ID: {call_sid}")
                     import datetime
                     time_window = datetime.datetime.now() - datetime.timedelta(minutes=5)
 
                     update_response = supabase.table("call_records") \
-                        .update({"voice_platform_call_id": call_sid}) \
+                        .update({"livekit_call_id": call_sid}) \
                         .eq("service_number", service_number) \
                         .eq("user_id", user_id) \
                         .eq("status", "in-progress") \
@@ -364,9 +364,9 @@ async def entrypoint(ctx: JobContext):
                         .execute()
 
                     if update_response.data and len(update_response.data) > 0:
-                        logger.info(f"✅ Updated call_record with voice_platform_call_id")
+                        logger.info(f"✅ Updated call_record with livekit_call_id")
                     else:
-                        logger.warning(f"⚠️ Could not update call_record with voice_platform_call_id")
+                        logger.warning(f"⚠️ Could not update call_record with livekit_call_id")
 
     if not user_id:
         logger.error("Could not determine user_id")
@@ -479,20 +479,20 @@ IMPORTANT CONTEXT:
 
             call_record_id = None
 
-            # Try to find call_record by voice_platform_call_id (LiveKit's SIP callID)
+            # Try to find call_record by livekit_call_id (LiveKit's SIP callID)
             if call_sid:
-                logger.info(f"Looking up call by voice_platform_call_id: {call_sid}")
+                logger.info(f"Looking up call by livekit_call_id: {call_sid}")
                 response = supabase.table("call_records") \
                     .select("id") \
-                    .eq("voice_platform_call_id", call_sid) \
+                    .eq("livekit_call_id", call_sid) \
                     .limit(1) \
                     .execute()
 
                 if response.data and len(response.data) > 0:
                     call_record_id = response.data[0]["id"]
-                    logger.info(f"✅ Found call_record by voice_platform_call_id: {call_record_id}")
+                    logger.info(f"✅ Found call_record by livekit_call_id: {call_record_id}")
                 else:
-                    logger.warning(f"⚠️ No call_record found with voice_platform_call_id: {call_sid}")
+                    logger.warning(f"⚠️ No call_record found with livekit_call_id: {call_sid}")
 
             # If not found by call_sid, try to find by service_number and recent timestamp
             if not call_record_id and service_number and user_id:
