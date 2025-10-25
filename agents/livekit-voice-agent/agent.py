@@ -379,16 +379,17 @@ async def entrypoint(ctx: JobContext):
         ),
     )
 
-    # Track transcript in real-time
-    @session.on("agent_speech_committed")
-    def on_agent_speech(msg):
-        transcript_messages.append({"speaker": "agent", "text": msg.message})
-        logger.info(f"Agent said: {msg.message}")
+    # Track transcript in real-time using conversation_item_added event
+    @session.on("conversation_item_added")
+    def on_conversation_item(event):
+        # Extract text content from the conversation item
+        text_content = event.item.text_content if hasattr(event.item, 'text_content') else ""
 
-    @session.on("user_speech_committed")
-    def on_user_speech(msg):
-        transcript_messages.append({"speaker": "user", "text": msg.message})
-        logger.info(f"User said: {msg.message}")
+        if text_content:
+            role = event.item.role
+            speaker = "agent" if role == "assistant" else "user"
+            transcript_messages.append({"speaker": speaker, "text": text_content})
+            logger.info(f"{speaker.capitalize()} said: {text_content}")
 
     # Handle call completion
     async def on_call_end():
