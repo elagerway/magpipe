@@ -49,10 +49,14 @@ async def get_user_config(room_metadata: dict) -> dict:
         response = supabase.table("agent_configs") \
             .select("*") \
             .eq("user_id", user_id) \
-            .single() \
+            .limit(1) \
             .execute()
 
-        return response.data
+        if response.data and len(response.data) > 0:
+            return response.data[0]
+        else:
+            logger.warning(f"No agent_config found for user_id: {user_id}")
+            return None
     except Exception as e:
         logger.error(f"Failed to fetch user config: {e}")
         return None
@@ -69,16 +73,17 @@ async def get_voice_config(voice_id: str, user_id: str) -> dict:
             .select("*") \
             .eq("voice_id", clean_voice_id) \
             .eq("user_id", user_id) \
-            .single() \
+            .limit(1) \
             .execute()
 
-        if response.data:
+        if response.data and len(response.data) > 0:
+            voice_data = response.data[0]
             return {
                 "voice_id": clean_voice_id,
-                "stability": float(response.data.get("stability", 0.5)),
-                "similarity_boost": float(response.data.get("similarity_boost", 0.75)),
-                "style": float(response.data.get("style", 0.0)),
-                "use_speaker_boost": response.data.get("use_speaker_boost", True),
+                "stability": float(voice_data.get("stability", 0.5)),
+                "similarity_boost": float(voice_data.get("similarity_boost", 0.75)),
+                "style": float(voice_data.get("style", 0.0)),
+                "use_speaker_boost": voice_data.get("use_speaker_boost", True),
             }
     except Exception as e:
         logger.warning(f"Could not fetch voice config: {e}")
@@ -318,11 +323,11 @@ async def entrypoint(ctx: JobContext):
                 .select("user_id") \
                 .eq("phone_number", service_number) \
                 .eq("is_active", True) \
-                .single() \
+                .limit(1) \
                 .execute()
 
-            if response.data:
-                user_id = response.data["user_id"]
+            if response.data and len(response.data) > 0:
+                user_id = response.data[0]["user_id"]
                 room_metadata["user_id"] = user_id
                 logger.info(f"Looked up user_id from service number: {user_id}")
 
@@ -423,12 +428,14 @@ async def entrypoint(ctx: JobContext):
                 response = supabase.table("call_records") \
                     .select("id") \
                     .eq("call_sid", call_sid) \
-                    .single() \
+                    .limit(1) \
                     .execute()
 
-                if response.data:
-                    call_record_id = response.data["id"]
+                if response.data and len(response.data) > 0:
+                    call_record_id = response.data[0]["id"]
                     logger.info(f"Found call_record by call_sid: {call_record_id}")
+                else:
+                    logger.warning(f"No call_record found with call_sid: {call_sid}")
 
             # If not found by call_sid, try to find by service_number and recent timestamp
             if not call_record_id and service_number and user_id:
