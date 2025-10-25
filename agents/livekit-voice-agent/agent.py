@@ -522,26 +522,26 @@ IMPORTANT CONTEXT:
                     try:
                         logger.info(f"Fetching recording info for egress_id: {egress_id}")
 
-                        # Create ListEgressRequest with room_name filter
+                        # Create ListEgressRequest with egress_id filter for direct lookup
                         from livekit.protocol import egress as proto_egress
-                        list_request = proto_egress.ListEgressRequest(room_name=ctx.room.name)
-                        egress_list = await livekit_api.egress.list_egress(list_request)
+                        list_request = proto_egress.ListEgressRequest(egress_id=egress_id)
+                        egress_response = await livekit_api.egress.list_egress(list_request)
 
-                        for egress in egress_list:
-                            if egress.egress_id == egress_id:
-                                # Get the file URL from the egress
-                                if egress.file_results and len(egress.file_results) > 0:
-                                    recording_url = egress.file_results[0].download_url
-                                    logger.info(f"✅ Recording URL: {recording_url}")
-                                elif egress.file and egress.file.download_url:
-                                    recording_url = egress.file.download_url
-                                    logger.info(f"✅ Recording URL: {recording_url}")
-                                else:
-                                    logger.warning(f"Egress {egress_id} found but no download URL yet (status: {egress.status})")
-                                break
+                        # ListEgressResponse has 'items' property containing the list
+                        if egress_response.items and len(egress_response.items) > 0:
+                            egress = egress_response.items[0]
 
-                        if not recording_url:
-                            logger.warning(f"Egress {egress_id} not found in list for room {ctx.room.name}")
+                            # Get the file URL from the egress
+                            if egress.file_results and len(egress.file_results) > 0:
+                                recording_url = egress.file_results[0].download_url
+                                logger.info(f"✅ Recording URL: {recording_url}")
+                            elif hasattr(egress, 'file') and egress.file and hasattr(egress.file, 'download_url'):
+                                recording_url = egress.file.download_url
+                                logger.info(f"✅ Recording URL (legacy): {recording_url}")
+                            else:
+                                logger.warning(f"Egress {egress_id} found but no download URL yet (status: {egress.status})")
+                        else:
+                            logger.warning(f"Egress {egress_id} not found or no items returned")
                     except Exception as e:
                         logger.error(f"Error fetching recording URL: {e}", exc_info=True)
 
