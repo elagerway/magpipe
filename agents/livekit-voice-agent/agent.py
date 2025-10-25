@@ -611,6 +611,13 @@ IMPORTANT CONTEXT:
 
     logger.info("✅ Agent session started successfully - ready for calls")
 
+    # Close LiveKit API client to avoid resource leaks
+    try:
+        await livekit_api.aclose()
+        logger.info("🔌 LiveKit API client closed")
+    except Exception as e:
+        logger.warning(f"Error closing LiveKit API client: {e}")
+
 
 if __name__ == "__main__":
     import sys
