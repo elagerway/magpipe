@@ -8,6 +8,7 @@ import { renderBottomNav } from '../components/BottomNav.js';
 export default class ManageNumbersPage {
   constructor() {
     this.serviceNumbers = [];
+    this.numbersToDelete = [];
   }
 
   async render() {
@@ -25,14 +26,9 @@ export default class ManageNumbersPage {
         <div style="margin-bottom: 1.5rem;">
           <h1 style="margin-bottom: 0.5rem;">My Service Numbers</h1>
           <p class="text-muted" style="margin-bottom: 1rem;">Manage your phone numbers for Pat AI</p>
-          <div style="display: flex; gap: 0.5rem;">
-            <button class="btn btn-primary" id="add-number-btn" style="flex: 1;">
-              + Add New Number
-            </button>
-            <button class="btn btn-secondary" id="fix-capabilities-btn">
-              Fix Capabilities
-            </button>
-          </div>
+          <button class="btn btn-primary" id="add-number-btn">
+            + Add New Number
+          </button>
         </div>
 
         <div class="card" style="padding: 1rem;">
@@ -56,17 +52,42 @@ export default class ManageNumbersPage {
           </div>
         </div>
       </div>
+
+      <!-- Delete Confirmation Modal -->
+      <div id="delete-modal" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content" style="max-width: 400px;">
+          <h2 style="margin-bottom: 1rem;">Delete Phone Number?</h2>
+          <p style="margin-bottom: 1.5rem;">
+            Are you sure you want to delete <strong id="delete-number-display"></strong>?
+          </p>
+          <p class="text-muted" style="font-size: 0.875rem; margin-bottom: 1.5rem;">
+            This number will be deactivated immediately and permanently deleted in 30 days.
+          </p>
+          <div style="display: flex; gap: 0.75rem;">
+            <button class="btn btn-secondary" id="cancel-delete-btn" style="flex: 1;">
+              Cancel
+            </button>
+            <button class="btn" id="confirm-delete-btn" style="flex: 1; background: #ef4444; border-color: #ef4444; color: white;">
+              Yes, Delete
+            </button>
+          </div>
+        </div>
+      </div>
+
       ${renderBottomNav('/settings')}
     `;
 
     this.attachEventListeners();
     await this.loadNumbers();
+
+    // Automatically fix capabilities in the background
+    this.fixCapabilities().catch(err => console.error('Background capability fix failed:', err));
   }
 
   attachEventListeners() {
     const addNumberBtn = document.getElementById('add-number-btn');
     const addFirstNumberBtn = document.getElementById('add-first-number-btn');
-    const fixCapabilitiesBtn = document.getElementById('fix-capabilities-btn');
 
     addNumberBtn?.addEventListener('click', () => {
       navigateTo('/select-number');
@@ -74,10 +95,6 @@ export default class ManageNumbersPage {
 
     addFirstNumberBtn?.addEventListener('click', () => {
       navigateTo('/select-number');
-    });
-
-    fixCapabilitiesBtn?.addEventListener('click', async () => {
-      await this.fixCapabilities();
     });
   }
 
@@ -88,6 +105,7 @@ export default class ManageNumbersPage {
     const errorMessage = document.getElementById('error-message');
 
     try {
+      // Load active/inactive service numbers
       const { data: numbers, error } = await supabase
         .from('service_numbers')
         .select('*')
@@ -97,9 +115,20 @@ export default class ManageNumbersPage {
 
       this.serviceNumbers = numbers || [];
 
+      // Load numbers scheduled for deletion
+      const { data: toDelete, error: deleteError } = await supabase
+        .from('numbers_to_delete')
+        .select('*')
+        .eq('deletion_status', 'pending')
+        .order('scheduled_deletion_date', { ascending: true });
+
+      if (deleteError) console.error('Error loading deletion queue:', deleteError);
+
+      this.numbersToDelete = toDelete || [];
+
       loading.classList.add('hidden');
 
-      if (this.serviceNumbers.length === 0) {
+      if (this.serviceNumbers.length === 0 && this.numbersToDelete.length === 0) {
         emptyState.classList.remove('hidden');
       } else {
         numbersContainer.classList.remove('hidden');
@@ -133,7 +162,7 @@ export default class ManageNumbersPage {
       ` : ''}
 
       ${inactiveNumbers.length > 0 ? `
-        <div>
+        <div style="margin-bottom: 2rem;">
           <h3 style="margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
             <span style="width: 8px; height: 8px; background: #9ca3af; border-radius: 50%;"></span>
             Inactive Numbers (${inactiveNumbers.length})
@@ -143,13 +172,167 @@ export default class ManageNumbersPage {
           </div>
         </div>
       ` : ''}
+
+      ${this.numbersToDelete.length > 0 ? `
+        <div>
+          <h3 style="margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+            <span style="width: 8px; height: 8px; background: #ef4444; border-radius: 50%;"></span>
+            Scheduled for Deletion (${this.numbersToDelete.length})
+          </h3>
+          <div style="display: grid; gap: 1rem;">
+            ${this.numbersToDelete.map(num => this.renderDeletionCard(num)).join('')}
+          </div>
+        </div>
+      ` : ''}
     `;
 
     // Attach toggle listeners
     this.serviceNumbers.forEach(num => {
       const toggleBtn = document.getElementById(`toggle-${num.id}`);
       toggleBtn?.addEventListener('click', () => this.toggleNumber(num.id, !num.is_active));
+
+      // Attach delete button listeners
+      const deleteBtn = document.getElementById(`delete-${num.id}`);
+      deleteBtn?.addEventListener('click', () => this.showDeleteModal(num));
     });
+
+    // Attach cancel deletion listeners
+    this.numbersToDelete.forEach(num => {
+      const cancelBtn = document.getElementById(`cancel-delete-${num.id}`);
+      cancelBtn?.addEventListener('click', () => this.cancelDeletion(num));
+    });
+
+    // Attach modal listeners
+    this.attachModalListeners();
+  }
+
+  attachModalListeners() {
+    const modal = document.getElementById('delete-modal');
+    const cancelBtn = document.getElementById('cancel-delete-btn');
+    const confirmBtn = document.getElementById('confirm-delete-btn');
+    const backdrop = modal?.querySelector('.modal-backdrop');
+
+    const closeModal = () => {
+      modal?.classList.add('hidden');
+      this.numberToDelete = null;
+    };
+
+    cancelBtn?.addEventListener('click', closeModal);
+    backdrop?.addEventListener('click', closeModal);
+
+    confirmBtn?.addEventListener('click', async () => {
+      if (this.numberToDelete) {
+        await this.deleteNumber(this.numberToDelete);
+        closeModal();
+      }
+    });
+  }
+
+  showDeleteModal(number) {
+    this.numberToDelete = number;
+    const modal = document.getElementById('delete-modal');
+    const numberDisplay = document.getElementById('delete-number-display');
+
+    if (numberDisplay) {
+      numberDisplay.textContent = this.formatPhoneNumber(number.phone_number);
+    }
+
+    modal?.classList.remove('hidden');
+  }
+
+  async deleteNumber(number) {
+    const errorMessage = document.getElementById('error-message');
+    const successMessage = document.getElementById('success-message');
+    const confirmBtn = document.getElementById('confirm-delete-btn');
+
+    errorMessage.classList.add('hidden');
+    successMessage.classList.add('hidden');
+
+    try {
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = 'Deleting...';
+
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { user } } = await supabase.auth.getUser();
+
+      // Queue the number for deletion
+      const response = await fetch(`${supabaseUrl}/functions/v1/queue-number-deletion`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          email: user.email,
+          phone_numbers: [number.phone_number]
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to queue number for deletion');
+      }
+
+      const result = await response.json();
+
+      successMessage.className = 'alert alert-success';
+      successMessage.textContent = `Number queued for deletion. It will be permanently deleted in 35 days.`;
+
+      // Reload numbers to reflect changes
+      await this.loadNumbers();
+
+    } catch (error) {
+      console.error('Error deleting number:', error);
+      errorMessage.className = 'alert alert-error';
+      errorMessage.textContent = error.message || 'Failed to delete number';
+    } finally {
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = 'Yes, Delete';
+    }
+  }
+
+  async cancelDeletion(number) {
+    const errorMessage = document.getElementById('error-message');
+    const successMessage = document.getElementById('success-message');
+
+    errorMessage.classList.add('hidden');
+    successMessage.classList.add('hidden');
+
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const { data: { session } } = await supabase.auth.getSession();
+
+      // Call Edge Function to cancel deletion
+      const response = await fetch(`${supabaseUrl}/functions/v1/cancel-number-deletion`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          phone_number: number.phone_number
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to cancel deletion');
+      }
+
+      const result = await response.json();
+
+      successMessage.className = 'alert alert-success';
+      successMessage.textContent = `Deletion cancelled. Number restored to inactive status.`;
+
+      // Reload numbers to reflect changes
+      await this.loadNumbers();
+
+    } catch (error) {
+      console.error('Error cancelling deletion:', error);
+      errorMessage.className = 'alert alert-error';
+      errorMessage.textContent = error.message || 'Failed to cancel deletion';
+    }
   }
 
   renderNumberCard(number) {
@@ -207,14 +390,103 @@ export default class ManageNumbersPage {
           ${hasSms ? '<span style="display: inline-block; padding: 0.125rem 0.5rem; background: rgba(59, 130, 246, 0.1); color: rgb(59, 130, 246); border-radius: 0.25rem; font-size: 0.75rem; font-weight: 500;">SMS</span>' : '<span style="display: inline-block; padding: 0.125rem 0.5rem; background: rgba(156, 163, 175, 0.1); color: rgb(107, 114, 128); border-radius: 0.25rem; font-size: 0.75rem; font-weight: 500;">No SMS</span>'}
         </div>
 
-        <!-- Purchase date -->
-        <p class="text-muted" style="font-size: 0.75rem; margin: 0;">
-          Purchased: ${new Date(number.purchased_at).toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric'
-          })}
-        </p>
+        <!-- Purchase date and delete button -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border-color);">
+          <p class="text-muted" style="font-size: 0.75rem; margin: 0;">
+            Purchased: ${new Date(number.purchased_at).toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric'
+            })}
+          </p>
+          <button
+            id="delete-${number.id}"
+            class="btn"
+            style="
+              padding: 0.375rem 0.75rem;
+              font-size: 0.75rem;
+              background: ${number.is_active ? '#9ca3af' : '#ef4444'};
+              border-color: ${number.is_active ? '#9ca3af' : '#ef4444'};
+              color: white;
+              cursor: ${number.is_active ? 'not-allowed' : 'pointer'};
+              opacity: ${number.is_active ? '0.6' : '1'};
+            "
+            ${number.is_active ? 'disabled' : ''}
+            title="${number.is_active ? 'Deactivate number before deleting' : 'Delete this number'}"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display: inline; vertical-align: middle; margin-right: 0.25rem;">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+            Delete
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  renderDeletionCard(number) {
+    const scheduledDate = new Date(number.scheduled_deletion_date);
+    const now = new Date();
+    const daysRemaining = Math.ceil((scheduledDate - now) / (1000 * 60 * 60 * 24));
+
+    return `
+      <div class="number-card" style="
+        padding: 1.25rem;
+        border: 1px solid rgba(239, 68, 68, 0.3);
+        border-radius: var(--radius-md);
+        background: rgba(239, 68, 68, 0.02);
+        margin-bottom: 1rem;
+      ">
+        <!-- Header with phone number -->
+        <div style="margin-bottom: 0.75rem;">
+          <div style="font-size: 1.125rem; font-weight: 600; margin-bottom: 0.25rem; color: rgba(239, 68, 68, 0.8);">
+            ${this.formatPhoneNumber(number.phone_number)}
+          </div>
+          <div style="font-size: 0.75rem; color: var(--text-secondary);">
+            ${number.friendly_name || 'Pat AI'}
+          </div>
+        </div>
+
+        <!-- Deletion warning -->
+        <div style="
+          padding: 0.75rem;
+          background: rgba(239, 68, 68, 0.04);
+          border-left: 2px solid rgba(239, 68, 68, 0.4);
+          border-radius: 0.25rem;
+          margin-bottom: 0.75rem;
+        ">
+          <div style="font-size: 0.875rem; font-weight: 600; color: rgba(220, 38, 38, 0.8); margin-bottom: 0.25rem;">
+            ⚠️ Scheduled for Deletion
+          </div>
+          <div style="font-size: 0.875rem; color: var(--text-secondary);">
+            This number will be permanently deleted in <strong style="color: rgba(239, 68, 68, 0.9);">${daysRemaining} day${daysRemaining !== 1 ? 's' : ''}</strong>
+          </div>
+        </div>
+
+        <!-- Deletion date and cancel button -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid rgba(239, 68, 68, 0.1);">
+          <div style="font-size: 0.75rem; color: var(--text-secondary);">
+            Deletion Date: ${scheduledDate.toLocaleDateString('en-US', {
+              month: 'long',
+              day: 'numeric',
+              year: 'numeric',
+              hour: 'numeric',
+              minute: '2-digit'
+            })}
+          </div>
+          <button
+            id="cancel-delete-${number.id}"
+            class="btn btn-secondary"
+            style="
+              padding: 0.375rem 0.75rem;
+              font-size: 0.75rem;
+            "
+            title="Cancel deletion and restore number"
+          >
+            Cancel Deletion
+          </button>
+        </div>
       </div>
     `;
   }
@@ -374,17 +646,7 @@ export default class ManageNumbersPage {
   }
 
   async fixCapabilities() {
-    const errorMessage = document.getElementById('error-message');
-    const successMessage = document.getElementById('success-message');
-    const fixBtn = document.getElementById('fix-capabilities-btn');
-
-    errorMessage.classList.add('hidden');
-    successMessage.classList.add('hidden');
-
     try {
-      fixBtn.disabled = true;
-      fixBtn.textContent = 'Fixing...';
-
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const { data: { session } } = await supabase.auth.getSession();
 
@@ -403,18 +665,13 @@ export default class ManageNumbersPage {
 
       const result = await response.json();
 
-      successMessage.className = 'alert alert-success';
-      successMessage.textContent = `Fixed capabilities for ${result.updated} number(s)`;
-
-      // Reload numbers to show updated capabilities
-      await this.loadNumbers();
+      // Silently reload numbers to show updated capabilities
+      if (result.updated > 0) {
+        await this.loadNumbers();
+      }
     } catch (error) {
+      // Log error silently, don't show to user
       console.error('Error fixing capabilities:', error);
-      errorMessage.className = 'alert alert-error';
-      errorMessage.textContent = error.message || 'Failed to fix capabilities';
-    } finally {
-      fixBtn.disabled = false;
-      fixBtn.textContent = 'Fix Capabilities';
     }
   }
 }
