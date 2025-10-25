@@ -98,22 +98,32 @@ export class CallRecord {
   }
 
   /**
-   * Get call record by SignalWire CallSid
-   * @param {string} callSid - SignalWire CallSid
+   * Get call record by vendor call ID (SignalWire CallSid, Twilio CallSid, etc.)
+   * @param {string} callSid - Vendor call ID
    * @returns {Promise<{callRecord: Object|null, error: Error|null}>}
    */
   static async getByCallSid(callSid) {
-    const { data, error } = await supabase
+    // Try vendor_call_id first (new multi-vendor architecture)
+    let { data, error } = await supabase
       .from('call_records')
       .select('*')
-      .eq('signalwire_call_sid', callSid)
-      .single();
+      .eq('vendor_call_id', callSid)
+      .limit(1);
+
+    // Fallback to call_sid for backward compatibility
+    if ((!data || data.length === 0) && error?.code !== 'PGRST116') {
+      ({ data, error } = await supabase
+        .from('call_records')
+        .select('*')
+        .eq('call_sid', callSid)
+        .limit(1));
+    }
 
     if (error && error.code !== 'PGRST116') {
       return { callRecord: null, error };
     }
 
-    return { callRecord: data, error: null };
+    return { callRecord: data && data.length > 0 ? data[0] : null, error: null };
   }
 
   /**
@@ -138,24 +148,25 @@ export class CallRecord {
   }
 
   /**
-   * Update call record by SignalWire CallSid (for webhook updates)
-   * @param {string} callSid - SignalWire CallSid
+   * Update call record by vendor call ID (for webhook updates)
+   * @param {string} callSid - Vendor call ID (SignalWire CallSid, Twilio CallSid, etc.)
    * @param {Object} updates - Fields to update
    * @returns {Promise<{callRecord: Object|null, error: Error|null}>}
    */
   static async updateByCallSid(callSid, updates) {
+    // Update by vendor_call_id or call_sid (for backward compatibility)
     const { data, error } = await supabase
       .from('call_records')
       .update(updates)
-      .eq('signalwire_call_sid', callSid)
+      .or(`vendor_call_id.eq.${callSid},call_sid.eq.${callSid}`)
       .select()
-      .single();
+      .limit(1);
 
     if (error) {
       return { callRecord: null, error };
     }
 
-    return { callRecord: data, error: null };
+    return { callRecord: data && data.length > 0 ? data[0] : null, error: null };
   }
 
   /**
