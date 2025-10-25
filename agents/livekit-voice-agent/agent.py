@@ -524,24 +524,37 @@ IMPORTANT CONTEXT:
 
                         # Create ListEgressRequest with egress_id filter for direct lookup
                         from livekit.protocol import egress as proto_egress
-                        list_request = proto_egress.ListEgressRequest(egress_id=egress_id)
-                        egress_response = await livekit_api.egress.list_egress(list_request)
 
-                        # ListEgressResponse has 'items' property containing the list
-                        if egress_response.items and len(egress_response.items) > 0:
-                            egress = egress_response.items[0]
+                        # Retry up to 3 times with delays since egress may still be processing
+                        max_retries = 3
+                        retry_delay = 2  # seconds
 
-                            # Get the file URL from the egress
-                            if egress.file_results and len(egress.file_results) > 0:
-                                recording_url = egress.file_results[0].download_url
-                                logger.info(f"✅ Recording URL: {recording_url}")
-                            elif hasattr(egress, 'file') and egress.file and hasattr(egress.file, 'download_url'):
-                                recording_url = egress.file.download_url
-                                logger.info(f"✅ Recording URL (legacy): {recording_url}")
+                        for attempt in range(max_retries):
+                            list_request = proto_egress.ListEgressRequest(egress_id=egress_id)
+                            egress_response = await livekit_api.egress.list_egress(list_request)
+
+                            # ListEgressResponse has 'items' property containing the list
+                            if egress_response.items and len(egress_response.items) > 0:
+                                egress = egress_response.items[0]
+
+                                # Get the file URL from the egress
+                                if egress.file_results and len(egress.file_results) > 0:
+                                    recording_url = egress.file_results[0].download_url
+                                    logger.info(f"✅ Recording URL: {recording_url}")
+                                    break
+                                elif hasattr(egress, 'file') and egress.file and hasattr(egress.file, 'download_url'):
+                                    recording_url = egress.file.download_url
+                                    logger.info(f"✅ Recording URL (legacy): {recording_url}")
+                                    break
+                                else:
+                                    logger.info(f"Egress {egress_id} status: {egress.status}, attempt {attempt + 1}/{max_retries}")
+                                    if attempt < max_retries - 1:
+                                        await asyncio.sleep(retry_delay)
+                                    else:
+                                        logger.warning(f"Egress {egress_id} found but no download URL after {max_retries} attempts (status: {egress.status})")
                             else:
-                                logger.warning(f"Egress {egress_id} found but no download URL yet (status: {egress.status})")
-                        else:
-                            logger.warning(f"Egress {egress_id} not found or no items returned")
+                                logger.warning(f"Egress {egress_id} not found or no items returned")
+                                break
                     except Exception as e:
                         logger.error(f"Error fetching recording URL: {e}", exc_info=True)
 
