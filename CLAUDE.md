@@ -92,6 +92,33 @@ JavaScript ES6+, HTML5, CSS3 (vanilla, minimal framework usage per user requirem
 - **Reference issues**: Use `// FIX:` or `// TODO:` with issue numbers or descriptions
 
 ## Feature Implementation & Testing
+
+### CRITICAL: Breaking Change Prevention
+- **ALWAYS verify changes won't break existing functionality**: Before implementing any new feature, database change, or function modification, you MUST search for all code that might be affected
+- **Breaking Change Analysis Workflow** (MANDATORY for ALL changes):
+  1. **Identify what's changing**: Database columns, function signatures, API endpoints, data formats, etc.
+  2. **Search for all references**: Use `grep -r "pattern" path/` to find every place the changed element is used
+  3. **Analyze impact**: For each reference found, determine if the change will break it
+  4. **Fix or update**: Either:
+     - Add backward compatibility (keep old + add new)
+     - Update all references to use new implementation
+     - Add fallback logic to handle both old and new
+  5. **Document**: List all potentially affected code in commit message or separate doc
+  6. **Test**: Verify nothing breaks before committing
+
+- **Example: Database Column Changes**
+  - Renaming/removing column? Search: `grep -r "column_name" .`
+  - Adding new column? Search for places that might need to populate it
+  - Check: Models, Edge Functions, frontend code, tests, migrations
+
+- **Example: Function Signature Changes**
+  - Changing parameters? Search: `grep -r "functionName(" .`
+  - Check: All call sites, imports, exports
+
+- **Example: API Endpoint Changes**
+  - Changing endpoint path/method? Search: `grep -r "endpoint/path" .`
+  - Check: Frontend fetch calls, webhooks, external integrations
+
 - **Always perform recursive testing when implementing new features**: Before completing any feature implementation, use grep/search tools to find all references to related functionality
 - **Ensure backward compatibility**: When modifying existing functionality, verify all dependent code is updated to conform with new features/functions
 - **Check for breaking changes**: Search for references to modified database fields, function signatures, API endpoints, and UI elements
