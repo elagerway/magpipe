@@ -207,11 +207,27 @@ async function processAndReplySMS(
 
     // For SMS, use OpenAI to generate intelligent responses
     // Use SMS-specific prompt or fall back to system_prompt adapted for SMS
+
+    // SMS context suffix - explicitly tells AI this is TEXT, not voice
+    const SMS_CONTEXT_SUFFIX = `
+
+IMPORTANT CONTEXT:
+- You are responding via SMS TEXT MESSAGE (not a voice call)
+- The customer is TEXTING you, not calling
+- Keep responses BRIEF: 1-2 sentences maximum
+- Use casual, friendly text message language
+- NEVER mention: "calling", "call back", "speak", "talk", "phone call", "voice"
+- ALWAYS use text-appropriate language: "text", "message", "reply", "send"
+- If they ask to talk/call, say: "I can help via text, or you can call [service_number] to speak with someone"
+- This is asynchronous messaging - they may not respond immediately`
+
     const smsPrompt = agentConfig.system_prompt
-      ? `${agentConfig.system_prompt}\n\nYou are responding to an SMS text message (not a phone call). Keep your response brief, friendly, and conversational. Limit responses to 1-2 sentences. Do not reference phone calls or calling - this is a text message conversation.`
-      : "You are Pat, a helpful AI assistant. You are responding to an SMS text message. Reply in a friendly and concise way. Keep responses brief (1-2 sentences max). Do not reference phone calls - this is a text message conversation."
+      ? `${agentConfig.system_prompt}${SMS_CONTEXT_SUFFIX}`
+      : `You are Pat, a helpful AI assistant. You are responding to an SMS text message. Reply in a friendly and concise way. Keep responses brief (1-2 sentences max). Do not reference phone calls - this is a text message conversation.${SMS_CONTEXT_SUFFIX}`
 
     const systemPrompt = smsPrompt
+
+    console.log('SMS system prompt applied with context suffix')
 
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY')!
 
