@@ -554,12 +554,20 @@ IMPORTANT CONTEXT:
 
         from livekit.protocol import egress as proto_egress
 
+        # Check AWS credentials
+        aws_key = os.getenv("AWS_ACCESS_KEY_ID")
+        aws_secret = os.getenv("AWS_SECRET_ACCESS_KEY")
+        aws_region = os.getenv("AWS_REGION", "us-west-2")
+        aws_bucket = os.getenv("AWS_S3_BUCKET", "pat-livekit-recordings")
+
+        logger.info(f"AWS config check: key={'set' if aws_key else 'MISSING'}, secret={'set' if aws_secret else 'MISSING'}, region={aws_region}, bucket={aws_bucket}")
+
         # Configure S3 upload for recording storage
         s3_upload = proto_egress.S3Upload(
-            access_key=os.getenv("AWS_ACCESS_KEY_ID"),
-            secret=os.getenv("AWS_SECRET_ACCESS_KEY"),
-            region=os.getenv("AWS_REGION", "us-west-2"),
-            bucket=os.getenv("AWS_S3_BUCKET", "pat-livekit-recordings"),
+            access_key=aws_key,
+            secret=aws_secret,
+            region=aws_region,
+            bucket=aws_bucket,
         )
 
         # Create room composite egress to record audio with S3 storage
@@ -575,9 +583,15 @@ IMPORTANT CONTEXT:
             ],
         )
 
-        egress_response = await livekit_api.egress.start_room_composite_egress(egress_request)
+        logger.info("📤 Sending egress start request to LiveKit...")
+        egress_response = await asyncio.wait_for(
+            livekit_api.egress.start_room_composite_egress(egress_request),
+            timeout=10.0  # 10 second timeout
+        )
         egress_id = egress_response.egress_id
         logger.info(f"✅ Recording started with egress_id: {egress_id}")
+    except asyncio.TimeoutError:
+        logger.error("❌ Recording start timed out after 10 seconds")
     except Exception as e:
         logger.error(f"❌ Failed to start recording: {e}", exc_info=True)
         # Continue with call even if recording fails
