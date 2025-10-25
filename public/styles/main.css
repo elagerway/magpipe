@@ -1126,6 +1126,11 @@ p {
 
   .message-bubble {
     max-width: 85%;
+    padding-bottom: calc(0.75rem + 4px);
+  }
+
+  .transcript-bubble {
+    padding-bottom: calc(0.25rem + 4px);
   }
 }
 
