@@ -6,6 +6,40 @@ import { AgentConfig } from '../models/AgentConfig.js';
 import { getCurrentUser, supabase } from '../lib/supabase.js';
 import { renderBottomNav } from '../components/BottomNav.js';
 
+// ElevenLabs Voices with metadata
+const ELEVENLABS_VOICES = [
+  { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel', label: 'Rachel (Default)', accent: 'American', gender: 'Female', description: 'Calm' },
+  { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam', label: 'Adam', accent: 'American', gender: 'Male', description: 'Deep' },
+  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah', label: 'Sarah', accent: 'American', gender: 'Female', description: 'Soft' },
+  { id: 'MF3mGyEYCl7XYWbV9V6O', name: 'Elli', label: 'Elli', accent: 'American', gender: 'Female', description: 'Youthful' },
+  { id: 'TxGEqnHWrfWFTfGW9XjX', name: 'Josh', label: 'Josh', accent: 'American', gender: 'Male', description: 'Strong' },
+  { id: 'VR6AewLTigWG4xSOukaG', name: 'Arnold', label: 'Arnold', accent: 'American', gender: 'Male', description: 'Raspy' },
+  { id: 'pFZP5JQG7iQjIQuC4Bku', name: 'Lily', label: 'Lily', accent: 'British', gender: 'Female', description: 'Warm' },
+  { id: 'nPczCjzI2devNBz1zQrb', name: 'Brian', label: 'Brian', accent: 'American', gender: 'Male', description: 'Narration' },
+  { id: 'N2lVS1w4EtoT3dr4eOWO', name: 'Callum', label: 'Callum', accent: 'American', gender: 'Male', description: 'Hoarse' },
+  { id: 'IKne3meq5aSn9XLyUdCD', name: 'Charlie', label: 'Charlie', accent: 'Australian', gender: 'Male', description: 'Natural' },
+  { id: 'XB0fDUnXU5powFXDhCwa', name: 'Charlotte', label: 'Charlotte', accent: 'English-Swedish', gender: 'Female', description: 'Seductive' },
+  { id: 'iP95p4xoKVk53GoZ742B', name: 'Chris', label: 'Chris', accent: 'American', gender: 'Male', description: 'Casual' },
+  { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel', label: 'Daniel', accent: 'British', gender: 'Male', description: 'Authoritative' },
+  { id: 'cjVigY5qzO86Huf0OWal', name: 'Eric', label: 'Eric', accent: 'American', gender: 'Male', description: 'Friendly' },
+  { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George', label: 'George', accent: 'British', gender: 'Male', description: 'Raspy' },
+  { id: 'cgSgspJ2msm6clMCkdW9', name: 'Jessica', label: 'Jessica', accent: 'American', gender: 'Female', description: 'Expressive' },
+  { id: 'FGY2WhTYpPnrIDTdsKH5', name: 'Laura', label: 'Laura', accent: 'American', gender: 'Female', description: 'Upbeat' },
+  { id: 'TX3LPaxmHKxFdv7VOQHJ', name: 'Liam', label: 'Liam', accent: 'American', gender: 'Male', description: 'Articulate' },
+  { id: 'XrExE9yKIg1WjnnlVkGX', name: 'Matilda', label: 'Matilda', accent: 'American', gender: 'Female', description: 'Warm' },
+  { id: 't0jbNlBVZ17f02VDIeMI', name: 'Thomas', label: 'Thomas', accent: 'American', gender: 'Male', description: 'Calm' },
+];
+
+// OpenAI Voices with metadata
+const OPENAI_VOICES = [
+  { id: 'openai-alloy', name: 'Alloy', accent: 'Neutral', gender: 'Neutral', description: 'Balanced' },
+  { id: 'openai-echo', name: 'Echo', accent: 'Neutral', gender: 'Male', description: 'Clear' },
+  { id: 'openai-fable', name: 'Fable', accent: 'British', gender: 'Male', description: 'Expressive' },
+  { id: 'openai-nova', name: 'Nova', accent: 'American', gender: 'Female', description: 'Energetic' },
+  { id: 'openai-onyx', name: 'Onyx', accent: 'American', gender: 'Male', description: 'Deep' },
+  { id: 'openai-shimmer', name: 'Shimmer', accent: 'American', gender: 'Female', description: 'Warm' },
+];
+
 export default class AgentConfigPage {
   constructor() {
     this.isInitialSetup = false;
@@ -20,6 +54,29 @@ export default class AgentConfigPage {
     this.previewProgressInterval = null;
     this.transferNumbers = [];
     this.transferSaveTimeout = null;
+    this.currentPreviewAudio = null;
+  }
+
+  getVoiceDisplayName(voiceId, clonedVoices = []) {
+    // Check cloned voices first
+    const clonedVoice = clonedVoices.find(v => `11labs-${v.voice_id}` === voiceId);
+    if (clonedVoice) {
+      return clonedVoice.voice_name;
+    }
+
+    // Check ElevenLabs voices
+    const elevenLabsVoice = ELEVENLABS_VOICES.find(v => v.id === voiceId);
+    if (elevenLabsVoice) {
+      return elevenLabsVoice.label || elevenLabsVoice.name;
+    }
+
+    // Check OpenAI voices
+    const openAIVoice = OPENAI_VOICES.find(v => v.id === voiceId);
+    if (openAIVoice) {
+      return openAIVoice.name;
+    }
+
+    return 'Unknown Voice';
   }
 
   async render() {
@@ -83,80 +140,25 @@ export default class AgentConfigPage {
           <form id="config-form" style="margin-bottom: 0;">
             <div class="form-group">
               <label class="form-label" for="voice-id">Voice</label>
-              <div style="display: flex; gap: 0.5rem; align-items: center;">
-                <select id="voice-id" class="form-select" style="flex: 1;">
-                ${clonedVoices && clonedVoices.length > 0 ? `
-                  <optgroup label="Your Cloned Voices">
-                    ${clonedVoices.map(voice => `
-                      <option value="11labs-${voice.voice_id}" ${config?.voice_id === '11labs-' + voice.voice_id ? 'selected' : ''}>${voice.voice_name}</option>
-                    `).join('')}
-                  </optgroup>
-                ` : ''}
-                <optgroup label="ElevenLabs Voices">
-                  <option value="21m00Tcm4TlvDq8ikWAM" ${config?.voice_id === '21m00Tcm4TlvDq8ikWAM' ? 'selected' : ''}>Rachel (Default)</option>
-                  <option value="pNInz6obpgDQGcFmaJgB" ${config?.voice_id === 'pNInz6obpgDQGcFmaJgB' ? 'selected' : ''}>Adam</option>
-                  <option value="EXAVITQu4vr4xnSDxMaL" ${config?.voice_id === 'EXAVITQu4vr4xnSDxMaL' ? 'selected' : ''}>Sarah</option>
-                  <option value="MF3mGyEYCl7XYWbV9V6O" ${config?.voice_id === 'MF3mGyEYCl7XYWbV9V6O' ? 'selected' : ''}>Elli</option>
-                  <option value="TxGEqnHWrfWFTfGW9XjX" ${config?.voice_id === 'TxGEqnHWrfWFTfGW9XjX' ? 'selected' : ''}>Josh</option>
-                  <option value="VR6AewLTigWG4xSOukaG" ${config?.voice_id === 'VR6AewLTigWG4xSOukaG' ? 'selected' : ''}>Arnold</option>
-                  <option value="pFZP5JQG7iQjIQuC4Bku" ${config?.voice_id === 'pFZP5JQG7iQjIQuC4Bku' ? 'selected' : ''}>Lily</option>
-                  <option value="nPczCjzI2devNBz1zQrb" ${config?.voice_id === 'nPczCjzI2devNBz1zQrb' ? 'selected' : ''}>Brian</option>
-                  <option value="N2lVS1w4EtoT3dr4eOWO" ${config?.voice_id === 'N2lVS1w4EtoT3dr4eOWO' ? 'selected' : ''}>Callum</option>
-                  <option value="IKne3meq5aSn9XLyUdCD" ${config?.voice_id === 'IKne3meq5aSn9XLyUdCD' ? 'selected' : ''}>Charlie</option>
-                  <option value="XB0fDUnXU5powFXDhCwa" ${config?.voice_id === 'XB0fDUnXU5powFXDhCwa' ? 'selected' : ''}>Charlotte</option>
-                  <option value="iP95p4xoKVk53GoZ742B" ${config?.voice_id === 'iP95p4xoKVk53GoZ742B' ? 'selected' : ''}>Chris</option>
-                  <option value="onwK4e9ZLuTAKqWW03F9" ${config?.voice_id === 'onwK4e9ZLuTAKqWW03F9' ? 'selected' : ''}>Daniel</option>
-                  <option value="cjVigY5qzO86Huf0OWal" ${config?.voice_id === 'cjVigY5qzO86Huf0OWal' ? 'selected' : ''}>Eric</option>
-                  <option value="JBFqnCBsd6RMkjVDRZzb" ${config?.voice_id === 'JBFqnCBsd6RMkjVDRZzb' ? 'selected' : ''}>George</option>
-                  <option value="cgSgspJ2msm6clMCkdW9" ${config?.voice_id === 'cgSgspJ2msm6clMCkdW9' ? 'selected' : ''}>Jessica</option>
-                  <option value="FGY2WhTYpPnrIDTdsKH5" ${config?.voice_id === 'FGY2WhTYpPnrIDTdsKH5' ? 'selected' : ''}>Laura</option>
-                  <option value="TX3LPaxmHKxFdv7VOQHJ" ${config?.voice_id === 'TX3LPaxmHKxFdv7VOQHJ' ? 'selected' : ''}>Liam</option>
-                  <option value="XrExE9yKIg1WjnnlVkGX" ${config?.voice_id === 'XrExE9yKIg1WjnnlVkGX' ? 'selected' : ''}>Matilda</option>
-                  <option value="t0jbNlBVZ17f02VDIeMI" ${config?.voice_id === 't0jbNlBVZ17f02VDIeMI' ? 'selected' : ''}>Thomas</option>
-                </optgroup>
-                <optgroup label="OpenAI Voices">
-                  <option value="openai-alloy" ${config?.voice_id === 'openai-alloy' ? 'selected' : ''}>Alloy</option>
-                  <option value="openai-echo" ${config?.voice_id === 'openai-echo' ? 'selected' : ''}>Echo</option>
-                  <option value="openai-fable" ${config?.voice_id === 'openai-fable' ? 'selected' : ''}>Fable</option>
-                  <option value="openai-nova" ${config?.voice_id === 'openai-nova' ? 'selected' : ''}>Nova</option>
-                  <option value="openai-onyx" ${config?.voice_id === 'openai-onyx' ? 'selected' : ''}>Onyx</option>
-                  <option value="openai-shimmer" ${config?.voice_id === 'openai-shimmer' ? 'selected' : ''}>Shimmer</option>
-                </optgroup>
-              </select>
-              <div style="position: relative; flex-shrink: 0; width: 38px; height: 38px;">
-                <!-- Circular progress ring -->
-                <svg width="38" height="38" style="position: absolute; top: 0; left: 0; transform: rotate(-90deg); pointer-events: none;">
-                  <circle
-                    cx="19"
-                    cy="19"
-                    r="17"
-                    fill="none"
-                    stroke="#e5e7eb"
-                    stroke-width="2"
-                  />
-                  <circle
-                    id="preview-progress-circle"
-                    cx="19"
-                    cy="19"
-                    r="17"
-                    fill="none"
-                    stroke="var(--primary-color)"
-                    stroke-width="2"
-                    stroke-dasharray="106.81"
-                    stroke-dashoffset="106.81"
-                    stroke-linecap="round"
-                    style="transition: stroke-dashoffset 0.1s linear;"
-                  />
-                </svg>
-                <button type="button" id="preview-voice-btn" style="background: none; border: none; padding: 0; cursor: pointer; color: var(--text-color); display: flex; align-items: center; justify-content: center; width: 38px; height: 38px;">
-                  <svg id="preview-play-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                  </svg>
-                  <svg id="preview-stop-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none" style="display: none;">
-                    <rect x="6" y="6" width="12" height="12"></rect>
-                  </svg>
+              <input type="hidden" id="voice-id" value="${config?.voice_id || '21m00Tcm4TlvDq8ikWAM'}" />
+              <div class="voice-selector-display" style="
+                flex: 1;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 0.75rem;
+                border: 1px solid var(--border-color);
+                border-radius: 8px;
+                background: white;
+                cursor: pointer;
+                transition: all 0.2s;
+              " id="voice-selector-display">
+                <span id="selected-voice-display" style="font-weight: 500; pointer-events: none;">
+                  ${this.getVoiceDisplayName(config?.voice_id || '21m00Tcm4TlvDq8ikWAM', clonedVoices)}
+                </span>
+                <button type="button" id="change-voice-btn" class="btn btn-sm" style="background: var(--primary-color); color: white; padding: 0.35rem 0.75rem; font-size: 0.875rem; pointer-events: none;">
+                  Change Voice
                 </button>
-              </div>
               </div>
               <p class="form-help">Select the voice for phone calls</p>
             </div>
@@ -483,6 +485,255 @@ export default class AgentConfigPage {
           </form>
         </div>
       </div>
+
+      <!-- Voice Selection Modal -->
+      <style>
+        .voice-option:hover {
+          background: var(--bg-secondary);
+          border-color: var(--primary-color);
+        }
+        .voice-option input[type="radio"]:checked ~ div span {
+          color: var(--primary-color);
+        }
+        .voice-preview-btn:hover {
+          border-color: var(--primary-color);
+          background: rgba(var(--primary-color-rgb), 0.1);
+        }
+        .voice-preview-btn.playing {
+          border-color: var(--primary-color);
+          background: var(--primary-color);
+          color: white;
+        }
+        @media (max-width: 600px) {
+          #voice-selection-modal .modal-content {
+            margin: 20px;
+            max-height: calc(100vh - 40px);
+          }
+        }
+      </style>
+      <div id="voice-selection-modal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 10000;">
+        <div class="modal-overlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5);"></div>
+        <div class="modal-content" style="
+          position: relative;
+          max-width: 500px;
+          max-height: 80vh;
+          overflow-y: auto;
+          margin: 50px auto;
+          background: white;
+          border-radius: 12px;
+          box-shadow: var(--shadow-lg);
+        ">
+          <div class="modal-header" style="
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--border-color);
+          ">
+            <h3 style="margin: 0; font-size: 1.125rem; font-weight: 600;">Select Voice</h3>
+            <button type="button" class="modal-close" id="close-voice-modal" style="
+              background: none;
+              border: none;
+              font-size: 1.5rem;
+              cursor: pointer;
+              color: var(--text-secondary);
+              line-height: 1;
+              padding: 0;
+              width: 30px;
+              height: 30px;
+            ">&times;</button>
+          </div>
+
+          <div class="modal-body" style="padding: 1.25rem;">
+            ${clonedVoices && clonedVoices.length > 0 ? `
+              <div class="voice-section" style="margin-bottom: 1.5rem;">
+                <h4 class="voice-section-title" style="
+                  font-size: 0.875rem;
+                  font-weight: 600;
+                  color: var(--text-secondary);
+                  margin-bottom: 0.75rem;
+                  padding-bottom: 0.5rem;
+                  border-bottom: 1px solid var(--border-color);
+                ">🎤 Your Cloned Voices</h4>
+                ${clonedVoices.map(voice => `
+                  <div class="voice-option" data-voice-id="11labs-${voice.voice_id}" data-voice-name="${voice.voice_name}" style="
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    padding: 0.75rem;
+                    border: 1px solid var(--border-color);
+                    border-radius: 8px;
+                    margin-bottom: 0.5rem;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                  ">
+                    <label class="voice-radio" style="
+                      display: flex;
+                      align-items: center;
+                      gap: 0.5rem;
+                      cursor: pointer;
+                      flex: 1;
+                    ">
+                      <input type="radio" name="modal-voice-select" value="11labs-${voice.voice_id}" ${config?.voice_id === '11labs-' + voice.voice_id ? 'checked' : ''}>
+                      <div>
+                        <span style="font-weight: 500;">${voice.voice_name}</span>
+                      </div>
+                    </label>
+                    <button type="button" class="voice-preview-btn" data-voice-id="11labs-${voice.voice_id}" style="
+                      background: none;
+                      border: 1px solid var(--border-color);
+                      border-radius: 50%;
+                      width: 32px;
+                      height: 32px;
+                      display: flex;
+                      align-items: center;
+                      justify-content: center;
+                      cursor: pointer;
+                      transition: all 0.2s;
+                    ">
+                      <svg class="play-icon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                      </svg>
+                      <svg class="stop-icon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="display: none;">
+                        <rect x="6" y="6" width="12" height="12"></rect>
+                      </svg>
+                    </button>
+                  </div>
+                `).join('')}
+              </div>
+            ` : ''}
+
+            <div class="voice-section" style="margin-bottom: 1.5rem;">
+              <h4 class="voice-section-title" style="
+                font-size: 0.875rem;
+                font-weight: 600;
+                color: var(--text-secondary);
+                margin-bottom: 0.75rem;
+                padding-bottom: 0.5rem;
+                border-bottom: 1px solid var(--border-color);
+              ">🔊 ElevenLabs Voices</h4>
+              ${ELEVENLABS_VOICES.map(voice => `
+                <div class="voice-option" data-voice-id="${voice.id}" data-voice-name="${voice.label || voice.name}" style="
+                  display: flex;
+                  align-items: center;
+                  justify-content: space-between;
+                  padding: 0.75rem;
+                  border: 1px solid var(--border-color);
+                  border-radius: 8px;
+                  margin-bottom: 0.5rem;
+                  cursor: pointer;
+                  transition: all 0.2s;
+                ">
+                  <label class="voice-radio" style="
+                    display: flex;
+                    align-items: center;
+                    gap: 0.5rem;
+                    cursor: pointer;
+                    flex: 1;
+                  ">
+                    <input type="radio" name="modal-voice-select" value="${voice.id}" ${config?.voice_id === voice.id ? 'checked' : ''}>
+                    <div>
+                      <span style="font-weight: 500;">${voice.label || voice.name}</span>
+                      <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">
+                        ${voice.accent} • ${voice.gender} • ${voice.description}
+                      </div>
+                    </div>
+                  </label>
+                  <button type="button" class="voice-preview-btn" data-voice-id="${voice.id}" style="
+                    background: none;
+                    border: 1px solid var(--border-color);
+                    border-radius: 50%;
+                    width: 32px;
+                    height: 32px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                  ">
+                    <svg class="play-icon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                      <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                    </svg>
+                    <svg class="stop-icon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="display: none;">
+                      <rect x="6" y="6" width="12" height="12"></rect>
+                    </svg>
+                  </button>
+                </div>
+              `).join('')}
+            </div>
+
+            <div class="voice-section">
+              <h4 class="voice-section-title" style="
+                font-size: 0.875rem;
+                font-weight: 600;
+                color: var(--text-secondary);
+                margin-bottom: 0.75rem;
+                padding-bottom: 0.5rem;
+                border-bottom: 1px solid var(--border-color);
+              ">🤖 OpenAI Voices</h4>
+              ${OPENAI_VOICES.map(voice => `
+                <div class="voice-option" data-voice-id="${voice.id}" data-voice-name="${voice.name}" style="
+                  display: flex;
+                  align-items: center;
+                  justify-content: space-between;
+                  padding: 0.75rem;
+                  border: 1px solid var(--border-color);
+                  border-radius: 8px;
+                  margin-bottom: 0.5rem;
+                  cursor: pointer;
+                  transition: all 0.2s;
+                ">
+                  <label class="voice-radio" style="
+                    display: flex;
+                    align-items: center;
+                    gap: 0.5rem;
+                    cursor: pointer;
+                    flex: 1;
+                  ">
+                    <input type="radio" name="modal-voice-select" value="${voice.id}" ${config?.voice_id === voice.id ? 'checked' : ''}>
+                    <div>
+                      <span style="font-weight: 500;">${voice.name}</span>
+                      <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">
+                        ${voice.accent} • ${voice.gender} • ${voice.description}
+                      </div>
+                    </div>
+                  </label>
+                  <button type="button" class="voice-preview-btn" data-voice-id="${voice.id}" style="
+                    background: none;
+                    border: 1px solid var(--border-color);
+                    border-radius: 50%;
+                    width: 32px;
+                    height: 32px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                  ">
+                    <svg class="play-icon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                      <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                    </svg>
+                    <svg class="stop-icon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="display: none;">
+                      <rect x="6" y="6" width="12" height="12"></rect>
+                    </svg>
+                  </button>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+
+          <div class="modal-footer" style="
+            display: flex;
+            gap: 0.75rem;
+            padding: 1rem 1.25rem;
+            border-top: 1px solid var(--border-color);
+          ">
+            <button type="button" class="btn btn-secondary" id="cancel-voice-selection" style="flex: 1;">Cancel</button>
+            <button type="button" class="btn btn-primary" id="confirm-voice-selection" style="flex: 1;">Select</button>
+          </div>
+        </div>
+      </div>
+
       ${renderBottomNav('/agent-config')}
     `;
 
@@ -1260,6 +1511,96 @@ Always sound approachable, keep things simple, and update the user with a quick 
       });
     }
 
+    // Voice selection modal functionality
+    const voiceSelectorDisplay = document.getElementById('voice-selector-display');
+    const voiceModal = document.getElementById('voice-selection-modal');
+    const closeModalBtn = document.getElementById('close-voice-modal');
+    const cancelBtn = document.getElementById('cancel-voice-selection');
+    const confirmBtn = document.getElementById('confirm-voice-selection');
+    const modalOverlay = voiceModal?.querySelector('.modal-overlay');
+
+    // Open modal - entire voice selector is clickable
+    if (voiceSelectorDisplay && voiceModal) {
+      voiceSelectorDisplay.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const currentVoice = document.getElementById('voice-id').value;
+        const radio = voiceModal.querySelector(`input[value="${currentVoice}"]`);
+        if (radio) radio.checked = true;
+        voiceModal.style.display = 'block';
+      });
+
+      // Add hover effect
+      voiceSelectorDisplay.addEventListener('mouseenter', () => {
+        voiceSelectorDisplay.style.borderColor = 'var(--primary-color)';
+        voiceSelectorDisplay.style.background = 'var(--bg-secondary)';
+      });
+
+      voiceSelectorDisplay.addEventListener('mouseleave', () => {
+        voiceSelectorDisplay.style.borderColor = 'var(--border-color)';
+        voiceSelectorDisplay.style.background = 'white';
+      });
+    }
+
+    // Close modal function
+    const closeVoiceModal = () => {
+      if (voiceModal) {
+        voiceModal.style.display = 'none';
+        // Stop any playing previews
+        if (this.currentPreviewAudio) {
+          this.currentPreviewAudio.pause();
+          this.currentPreviewAudio = null;
+        }
+        // Reset all preview buttons
+        document.querySelectorAll('.voice-preview-btn').forEach(btn => {
+          btn.classList.remove('playing');
+          const playIcon = btn.querySelector('.play-icon');
+          const stopIcon = btn.querySelector('.stop-icon');
+          if (playIcon) playIcon.style.display = 'inline';
+          if (stopIcon) stopIcon.style.display = 'none';
+        });
+      }
+    };
+
+    // Close modal events
+    if (closeModalBtn) closeModalBtn.addEventListener('click', closeVoiceModal);
+    if (cancelBtn) cancelBtn.addEventListener('click', closeVoiceModal);
+    if (modalOverlay) modalOverlay.addEventListener('click', closeVoiceModal);
+
+    // Confirm voice selection
+    if (confirmBtn) {
+      confirmBtn.addEventListener('click', () => {
+        const selectedRadio = document.querySelector('input[name="modal-voice-select"]:checked');
+        if (selectedRadio) {
+          const voiceId = selectedRadio.value;
+          const voiceOption = selectedRadio.closest('.voice-option');
+          const voiceName = voiceOption?.dataset.voiceName;
+
+          // Update hidden input
+          document.getElementById('voice-id').value = voiceId;
+
+          // Update display
+          document.getElementById('selected-voice-display').textContent = voiceName;
+
+          // Trigger auto-save
+          this.triggerAutoSave(true, false);
+
+          closeVoiceModal();
+        }
+      });
+    }
+
+    // Voice preview in modal
+    const previewBtns = document.querySelectorAll('.voice-preview-btn');
+    previewBtns.forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        const voiceId = btn.dataset.voiceId;
+        await this.playVoicePreview(voiceId, btn);
+      });
+    });
+
     // Voice cloning toggle functionality
     const voiceCloneToggle = document.getElementById('voice-clone-toggle');
     const voiceClonePanel = document.getElementById('voice-clone-panel');
@@ -1638,6 +1979,79 @@ Always sound approachable, keep things simple, and update the user with a quick 
         clearInterval(this.previewProgressInterval);
         this.previewProgressInterval = null;
       }
+    }
+  }
+
+  async playVoicePreview(voiceId, btn) {
+    // Stop any currently playing preview
+    if (this.currentPreviewAudio) {
+      this.currentPreviewAudio.pause();
+      this.currentPreviewAudio = null;
+    }
+
+    // Reset all buttons
+    document.querySelectorAll('.voice-preview-btn').forEach(b => {
+      b.classList.remove('playing');
+      const playIcon = b.querySelector('.play-icon');
+      const stopIcon = b.querySelector('.stop-icon');
+      if (playIcon) playIcon.style.display = 'inline';
+      if (stopIcon) stopIcon.style.display = 'none';
+    });
+
+    // If clicking the same button that was playing, just stop
+    if (btn.classList.contains('playing')) {
+      return;
+    }
+
+    // Show playing state
+    btn.classList.add('playing');
+    const playIcon = btn.querySelector('.play-icon');
+    const stopIcon = btn.querySelector('.stop-icon');
+    if (playIcon) playIcon.style.display = 'none';
+    if (stopIcon) stopIcon.style.display = 'inline';
+
+    try {
+      // Fetch and play preview
+      const { data: { session } } = await supabase.auth.getSession();
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+
+      const response = await fetch(`${supabaseUrl}/functions/v1/preview-voice`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ voice_id: voiceId }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate voice preview');
+      }
+
+      const audioBlob = await response.blob();
+      const audioUrl = URL.createObjectURL(audioBlob);
+
+      this.currentPreviewAudio = new Audio(audioUrl);
+      this.currentPreviewAudio.onended = () => {
+        btn.classList.remove('playing');
+        if (playIcon) playIcon.style.display = 'inline';
+        if (stopIcon) stopIcon.style.display = 'none';
+        URL.revokeObjectURL(audioUrl);
+      };
+
+      this.currentPreviewAudio.onerror = () => {
+        btn.classList.remove('playing');
+        if (playIcon) playIcon.style.display = 'inline';
+        if (stopIcon) stopIcon.style.display = 'none';
+        URL.revokeObjectURL(audioUrl);
+      };
+
+      await this.currentPreviewAudio.play();
+    } catch (error) {
+      console.error('Error playing voice preview:', error);
+      btn.classList.remove('playing');
+      if (playIcon) playIcon.style.display = 'inline';
+      if (stopIcon) stopIcon.style.display = 'none';
     }
   }
 
