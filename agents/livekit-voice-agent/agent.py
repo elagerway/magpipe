@@ -521,10 +521,13 @@ IMPORTANT CONTEXT:
                 if egress_id:
                     try:
                         logger.info(f"Fetching recording info for egress_id: {egress_id}")
-                        # List all egress for this room and find our egress_id
-                        all_egress = await livekit_api.egress.list_egress()
 
-                        for egress in all_egress:
+                        # Create ListEgressRequest with room_name filter
+                        from livekit.protocol import egress as proto_egress
+                        list_request = proto_egress.ListEgressRequest(room_name=ctx.room.name)
+                        egress_list = await livekit_api.egress.list_egress(list_request)
+
+                        for egress in egress_list:
                             if egress.egress_id == egress_id:
                                 # Get the file URL from the egress
                                 if egress.file_results and len(egress.file_results) > 0:
@@ -536,6 +539,9 @@ IMPORTANT CONTEXT:
                                 else:
                                     logger.warning(f"Egress {egress_id} found but no download URL yet (status: {egress.status})")
                                 break
+
+                        if not recording_url:
+                            logger.warning(f"Egress {egress_id} not found in list for room {ctx.room.name}")
                     except Exception as e:
                         logger.error(f"Error fetching recording URL: {e}", exc_info=True)
 
