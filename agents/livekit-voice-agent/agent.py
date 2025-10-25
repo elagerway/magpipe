@@ -261,6 +261,13 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"Connecting to room: {ctx.room.name}")
     logger.info(f"Room metadata: {room_metadata}")
 
+    # Initialize transcript collection and call tracking
+    transcript_messages = []
+    call_sid = None
+    call_start_time = asyncio.get_event_loop().time()
+    service_number = None
+    caller_number = None
+
     # Get user_id from metadata or look up from service number
     user_id = room_metadata.get("user_id")
 
@@ -275,7 +282,11 @@ async def entrypoint(ctx: JobContext):
         for participant in ctx.room.remote_participants.values():
             if participant.attributes.get("sip.trunkPhoneNumber"):
                 service_number = participant.attributes["sip.trunkPhoneNumber"]
+                # Get caller number from SIP participant
+                caller_number = participant.attributes.get("sip.callID") or participant.identity
+                call_sid = participant.attributes.get("sip.callID") or ctx.room.name
                 logger.info(f"Found service number from existing SIP participant: {service_number}")
+                logger.info(f"Call SID: {call_sid}")
                 break
 
         # If no participant yet, wait for one
@@ -287,9 +298,12 @@ async def entrypoint(ctx: JobContext):
             def on_participant_connected(participant):
                 logger.info(f"Participant connected: {participant.identity}")
                 if participant.attributes.get("sip.trunkPhoneNumber"):
-                    nonlocal service_number
+                    nonlocal service_number, call_sid, caller_number
                     service_number = participant.attributes["sip.trunkPhoneNumber"]
+                    caller_number = participant.attributes.get("sip.callID") or participant.identity
+                    call_sid = participant.attributes.get("sip.callID") or ctx.room.name
                     logger.info(f"Found service number from new SIP participant: {service_number}")
+                    logger.info(f"Call SID: {call_sid}")
                     participant_joined_event.set()
 
             # Wait up to 10 seconds for participant
@@ -364,6 +378,94 @@ async def entrypoint(ctx: JobContext):
             model="eleven_turbo_v2_5",
         ),
     )
+
+    # Track transcript in real-time
+    @session.on("agent_speech_committed")
+    def on_agent_speech(msg):
+        transcript_messages.append({"speaker": "agent", "text": msg.message})
+        logger.info(f"Agent said: {msg.message}")
+
+    @session.on("user_speech_committed")
+    def on_user_speech(msg):
+        transcript_messages.append({"speaker": "user", "text": msg.message})
+        logger.info(f"User said: {msg.message}")
+
+    # Handle call completion
+    async def on_call_end():
+        """Save transcript and recording when call ends"""
+        try:
+            logger.info("📞 Call ending - saving transcript...")
+
+            # Format transcript
+            transcript_text = "\n\n".join([
+                f"{'Pat' if msg['speaker'] == 'agent' else 'Caller'}: {msg['text']}"
+                for msg in transcript_messages
+            ])
+
+            logger.info(f"Transcript ({len(transcript_messages)} messages):\n{transcript_text}")
+
+            call_record_id = None
+
+            # Try to find call_record by call_sid first
+            if call_sid:
+                logger.info(f"Looking up call by call_sid: {call_sid}")
+                response = supabase.table("call_records") \
+                    .select("id") \
+                    .eq("call_sid", call_sid) \
+                    .single() \
+                    .execute()
+
+                if response.data:
+                    call_record_id = response.data["id"]
+                    logger.info(f"Found call_record by call_sid: {call_record_id}")
+
+            # If not found by call_sid, try to find by service_number and recent timestamp
+            if not call_record_id and service_number and user_id:
+                logger.info(f"Looking up call by service_number: {service_number} and user_id: {user_id}")
+                # Look for most recent in-progress call for this service number
+                import datetime
+                time_window = datetime.datetime.now() - datetime.timedelta(minutes=5)
+
+                response = supabase.table("call_records") \
+                    .select("id") \
+                    .eq("service_number", service_number) \
+                    .eq("user_id", user_id) \
+                    .eq("status", "in-progress") \
+                    .gte("started_at", time_window.isoformat()) \
+                    .order("started_at", desc=True) \
+                    .limit(1) \
+                    .execute()
+
+                if response.data and len(response.data) > 0:
+                    call_record_id = response.data[0]["id"]
+                    logger.info(f"Found call_record by service_number: {call_record_id}")
+
+            if call_record_id:
+                # Update call_record with transcript
+                update_data = {
+                    "transcript": transcript_text,
+                    "status": "completed",
+                    "ended_at": "now()"
+                }
+
+                supabase.table("call_records") \
+                    .update(update_data) \
+                    .eq("id", call_record_id) \
+                    .execute()
+
+                logger.info("✅ Call transcript saved to database")
+            else:
+                logger.warning("No call_record found - cannot save transcript")
+
+        except Exception as e:
+            logger.error(f"Error saving transcript: {e}", exc_info=True)
+
+    # Register cleanup handler
+    @ctx.room.on("participant_disconnected")
+    def on_participant_disconnected(participant):
+        logger.info(f"Participant disconnected: {participant.identity}")
+        # Run async cleanup in background
+        asyncio.create_task(on_call_end())
 
     # Start the session - room already connected, so session takes over
     await session.start(room=ctx.room, agent=assistant)
