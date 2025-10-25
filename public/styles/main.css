@@ -1,4 +1,4 @@
-/* CSS Variables */
+/* CSS Variables - Updated 2025-10-25 */
 :root {
   --primary-color: #6366f1;
   --primary-hover: #4f46e5;
@@ -1126,6 +1126,17 @@ p {
 
   .message-bubble {
     max-width: 85%;
+  }
+}
+
+/* Desktop-only styles */
+@media (min-width: 769px) {
+  .message-bubble {
+    padding: 0.5rem 0.5625rem;
+  }
+
+  .transcript-bubble {
+    padding: 0.5rem 0.5625rem;
   }
 }
 
