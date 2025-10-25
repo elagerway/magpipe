@@ -569,14 +569,23 @@ IMPORTANT CONTEXT:
 
         from livekit.protocol import egress as proto_egress
 
-        # Create room composite egress to record audio (TrackComposite doesn't support audio_only)
+        # Configure S3 upload for recording storage
+        s3_upload = proto_egress.S3Upload(
+            access_key=os.getenv("AWS_ACCESS_KEY_ID"),
+            secret=os.getenv("AWS_SECRET_ACCESS_KEY"),
+            region=os.getenv("AWS_REGION", "us-west-2"),
+            bucket=os.getenv("AWS_S3_BUCKET", "pat-livekit-recordings"),
+        )
+
+        # Create room composite egress to record audio with S3 storage
         egress_request = proto_egress.RoomCompositeEgressRequest(
             room_name=ctx.room.name,
             audio_only=True,  # Only record audio, not video
             file_outputs=[
                 proto_egress.EncodedFileOutput(
                     file_type=proto_egress.EncodedFileType.MP4,
-                    filepath=f"{ctx.room.name}.m4a",
+                    filepath=f"recordings/{ctx.room.name}.m4a",
+                    s3=s3_upload,
                 )
             ],
         )
