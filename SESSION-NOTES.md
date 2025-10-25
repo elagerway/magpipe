@@ -1,11 +1,91 @@
 # Session Notes
 
-**Last Updated:** 2025-10-04
+**Last Updated:** 2025-10-24
 **Active Branch:** Pat-AI
 
 ---
 
-## Current Session (2025-10-04)
+## Current Session (2025-10-24)
+
+### ✅ RESOLVED: Service Unavailable Error - LiveKit SIP Integration
+
+**Problem:**
+- Calls to +16042101966 failing with "Service Unavailable" error from SignalWire
+- Number was active in database, configured in SignalWire, but calls wouldn't connect
+- Initially working on LiveKit stack 2 hours prior, then suddenly stopped working
+
+**Root Causes Identified:**
+1. **LiveKit SIP Dispatch Rule Missing** - Accidentally deleted during troubleshooting
+2. **Empty inboundNumbers Array** - LiveKit dispatch rule had `inboundNumbers: []` instead of `['+1']`
+3. **Invalid Voice IDs** - Database had friendly names like `"11labs-Kate"` instead of real ElevenLabs voice IDs like `"21m00Tcm4TlvDq8ikWAM"`
+4. **ElevenLabs TTS Connection Failure** - Agent connected but TTS crashed with "connection closed" error
+
+**Critical Mistake:**
+- Deleted working LiveKit dispatch rule (SDR_oMTrnZT3bZVE) while attempting to update it
+- Node SDK wouldn't accept updates or recreations with partial parameters
+- Had to manually recreate via LiveKit dashboard
+
+**Resolution Steps:** ✅
+1. **Recreated LiveKit SIP Dispatch Rule** (via LiveKit dashboard)
+   - Rule ID: SDR_yFiprRssooJC
+   - Trunk: ST_eDVUAafvDeF6 (SignalWire Inbound)
+   - Name: Sw-calls
+   - Rule Type: dispatchRuleIndividual
+   - Room Prefix: call-
+   - Agent: SW Telephony Agent
+
+2. **Added Phone Number to SIP Trunk**
+   - Manually added +16042101966 to trunk's inbound numbers in LiveKit dashboard
+   - This associates the number with the dispatch rule
+
+3. **Fixed Voice ID Mapping** (Critical Fix)
+   - **File**: `src/pages/agent-config.js` (lines 95-116)
+   - Changed dropdown values from friendly names to real ElevenLabs voice IDs:
+     - `"11labs-Kate"` → `"21m00Tcm4TlvDq8ikWAM"` (Rachel)
+     - `"11labs-Sarah"` → `"EXAVITQu4vr4xnSDxMaL"`
+     - And 18 other voices
+   - **File**: `src/pages/verify-phone.js` (line 440)
+   - Changed default voice_id from `"11labs-Kate"` to `"21m00Tcm4TlvDq8ikWAM"`
+   - **File**: `src/pages/agent-config.js` (line 1198)
+   - Changed default voice_id in agent creation
+
+4. **Updated User's Voice ID in Database**
+   - Manually changed `voice_id` from `"11labs-Kate"` to `"21m00Tcm4TlvDq8ikWAM"` in agent_configs table
+   - This fixed the immediate TTS connection failure
+
+**Technical Details:**
+- **LiveKit Agent Code**: `agents/livekit-voice-agent/agent.py` (line 330)
+  - Function `get_voice_config()` strips `"11labs-"` prefix from voice_id
+  - `"11labs-Kate"` becomes `"Kate"` which is NOT a valid ElevenLabs voice ID
+  - Real ElevenLabs voice IDs are 20-character alphanumeric strings
+- **Preview Function**: `supabase/functions/preview-voice/index.ts` (line 81)
+  - Already handles both formats: `.replace('11labs-', '')` is no-op for real IDs
+  - Works correctly with new voice ID format
+
+**Files Modified:**
+- `src/pages/agent-config.js` - Voice dropdown options (lines 95-116, 1198)
+- `src/pages/verify-phone.js` - Default voice_id (line 440)
+- `scripts/update-livekit-dispatch.js` - Updated dispatch rule ID to SDR_yFiprRssooJC
+
+**Testing:**
+- ✅ Call to +16042101966 connects successfully
+- ✅ Audio bidirectional (can hear agent, agent can hear caller)
+- ✅ Voice preview works with new voice IDs
+- ✅ LiveKit agent running on Render (deploy ec7792c)
+
+**Lessons Learned:**
+- **NEVER delete infrastructure (dispatch rules, trunks, etc.) without 100% certainty of recreation**
+- **Always verify voice IDs match what the TTS provider expects**
+- **LiveKit SDK requires full object for updates, not partial - use dashboard for changes**
+- **Test actual calls after configuration changes, not just deployment status**
+
+**Next Steps:**
+1. Test phone number deletion workflow (service_numbers → numbers_to_delete)
+2. Test cancel deletion workflow (numbers_to_delete → service_numbers inactive)
+
+---
+
+## Previous Session (2025-10-04)
 
 ### ✅ Phone Number Capability Badges & SignalWire SMS Issues
 
