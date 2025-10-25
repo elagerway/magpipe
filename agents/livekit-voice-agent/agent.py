@@ -358,7 +358,24 @@ async def entrypoint(ctx: JobContext):
 
     # Get greeting message
     greeting = user_config.get("greeting_template", "Hello! This is Pat. How can I help you today?")
-    system_prompt = user_config.get("system_prompt", "You are Pat, a helpful AI assistant.")
+    base_prompt = user_config.get("system_prompt", "You are Pat, a helpful AI assistant.")
+
+    # Voice context suffix - adapts user's single prompt for voice calls
+    VOICE_CONTEXT_SUFFIX = """
+
+IMPORTANT CONTEXT:
+- You are on a LIVE VOICE CALL with the customer (not texting)
+- The customer is SPEAKING to you in real-time
+- Speak naturally and conversationally - use natural spoken language
+- You can ask clarifying questions and have back-and-forth dialogue
+- This is synchronous - they can hear you immediately and respond
+- Use spoken phrases like "Sure, I can help with that" not written phrases
+- Tools available: You can transfer calls, take messages, help customers
+- Be warm, friendly, and professional in your spoken tone"""
+
+    system_prompt = f"{base_prompt}{VOICE_CONTEXT_SUFFIX}"
+
+    logger.info("Voice system prompt applied with context suffix")
 
     # Already connected earlier to get service number, don't connect again in session.start
 
