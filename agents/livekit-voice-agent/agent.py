@@ -521,14 +521,20 @@ IMPORTANT CONTEXT:
                 if egress_id:
                     try:
                         logger.info(f"Fetching recording info for egress_id: {egress_id}")
-                        egress_info = await livekit_api.egress.list_egress(room_name=ctx.room.name)
+                        # List all egress for this room and find our egress_id
+                        all_egress = await livekit_api.egress.list_egress()
 
-                        for egress in egress_info:
+                        for egress in all_egress:
                             if egress.egress_id == egress_id:
                                 # Get the file URL from the egress
-                                if egress.file and egress.file.download_url:
+                                if egress.file_results and len(egress.file_results) > 0:
+                                    recording_url = egress.file_results[0].download_url
+                                    logger.info(f"✅ Recording URL: {recording_url}")
+                                elif egress.file and egress.file.download_url:
                                     recording_url = egress.file.download_url
                                     logger.info(f"✅ Recording URL: {recording_url}")
+                                else:
+                                    logger.warning(f"Egress {egress_id} found but no download URL yet (status: {egress.status})")
                                 break
                     except Exception as e:
                         logger.error(f"Error fetching recording URL: {e}", exc_info=True)
