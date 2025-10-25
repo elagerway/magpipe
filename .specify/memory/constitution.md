@@ -49,6 +49,43 @@ Tests MUST be written BEFORE implementation code. No implementation code may be 
 
 **Rationale**: TDD is non-negotiable because it forces clear requirements definition, prevents scope creep, enables fearless refactoring, and provides living documentation. Tests written after implementation are biased toward what was built rather than what should be built.
 
+### IIa. Breaking Change Prevention (NON-NEGOTIABLE)
+
+Before implementing ANY change (features, refactors, migrations, etc.), you MUST verify it won't break existing functionality:
+
+**Mandatory Pre-Implementation Analysis**:
+1. **Identify all elements being changed**: Database columns, function signatures, API endpoints, data formats, configuration keys, UI components, etc.
+2. **Search for ALL references**: Use `grep -r "element" path/` to find every usage across the entire codebase
+3. **Analyze each reference**: Determine if the change will break it or require updates
+4. **Choose remediation strategy**:
+   - **Backward compatibility** (PREFERRED): Keep old implementation working, add new alongside it
+   - **Coordinated update**: Update all references simultaneously in same commit
+   - **Fallback logic**: Code handles both old and new formats/signatures gracefully
+5. **Document affected code**: In commit message or separate BREAKING_CHANGES.md file, list all files/functions modified
+6. **Verify nothing breaks**: Test ALL affected code paths before committing
+
+**Examples Requiring Analysis**:
+- **Database changes**: Renaming/removing columns, changing data types, adding constraints
+  - Search: `grep -r "column_name" .` to find all queries/models using it
+  - Check: Frontend models, Edge Functions, Python agents, SQL queries, migrations
+- **Function signature changes**: Adding/removing/reordering parameters
+  - Search: `grep -r "functionName(" .` to find all call sites
+  - Check: All imports, all invocations, all tests
+- **API endpoint changes**: Changing paths, methods, request/response formats
+  - Search: `grep -r "/api/endpoint" .` to find all fetch/axios calls
+  - Check: Frontend code, external webhooks, mobile apps, documentation
+- **Configuration changes**: Renaming env vars, changing config file structure
+  - Search: `grep -r "CONFIG_KEY" .` to find all references
+  - Check: .env files, deploy scripts, documentation
+
+**Enforcement**: Code reviews MUST verify this analysis was performed. Pull requests MUST include "Breaking Change Analysis" section documenting:
+1. What changed
+2. What code was searched
+3. What references were found
+4. How backward compatibility was maintained OR why coordinated update is safe
+
+**Rationale**: Breaking changes discovered post-deployment cause outages, data loss, and user trust erosion. The cost of prevention (10 minutes of grep) is orders of magnitude less than remediation (hours of debugging, hotfixes, rollbacks). Every breaking change that reaches production represents a process failure.
+
 ### III. User Experience Consistency
 
 User-facing interfaces MUST provide predictable, intuitive experiences:
