@@ -36,11 +36,10 @@ supabase_url = os.getenv("SUPABASE_URL")
 supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 supabase: Client = create_client(supabase_url, supabase_key)
 
-# Initialize LiveKit API client for Egress (recording)
+# LiveKit API credentials (client initialized in entrypoint where event loop exists)
 livekit_url = os.getenv("LIVEKIT_URL")
 livekit_api_key = os.getenv("LIVEKIT_API_KEY")
 livekit_api_secret = os.getenv("LIVEKIT_API_SECRET")
-livekit_api = api.LiveKitAPI(livekit_url, livekit_api_key, livekit_api_secret)
 
 
 async def get_user_config(room_metadata: dict) -> dict:
@@ -260,6 +259,9 @@ async def entrypoint(ctx: JobContext):
     """Main agent entry point - called for each new LiveKit room"""
 
     logger.info(f"🚀 AGENT ENTRYPOINT CALLED - Room: {ctx.room.name}")
+
+    # Initialize LiveKit API client for Egress (requires event loop)
+    livekit_api = api.LiveKitAPI(livekit_url, livekit_api_key, livekit_api_secret)
 
     # Parse room metadata
     room_metadata = {}
