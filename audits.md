@@ -2,6 +2,65 @@
 
 ---
 
+## Audit: October 25, 2025
+**Build:** e971f1b
+**Commit Message:** Implement LiveKit Egress call recording with automatic URL storage
+**Date:** 2025-10-25
+**Auditor:** Claude (AI Assistant)
+
+### Summary
+Implemented call recording using LiveKit Egress API to capture audio and automatically save recording URLs to database for playback in inbox conversations. ✅
+
+### New Features
+
+#### 1. LiveKit Egress Call Recording (`agents/livekit-voice-agent/agent.py`)
+- **Feature:** Automatic audio-only recording of all LiveKit voice calls
+- **Implementation:**
+  - Added `from livekit import rtc, api` import (line 11) ✓
+  - Initialized LiveKit API client for Egress operations (lines 39-43) ✓
+  - Track `egress_id` variable to correlate recording with call (line 440) ✓
+  - Start recording using `TrackCompositeEgressRequest` after session starts (lines 547-570) ✓
+  - Recording format: Audio-only MP4 container with M4A codec ✓
+  - Filename: `{room_name}.m4a` (e.g., `call-xyz123.m4a`) ✓
+  - Fetch recording download URL from LiveKit Egress API when call ends (lines 517-542) ✓
+  - Save `recording_url` to `call_records` table alongside transcript ✓
+
+#### 2. Recording URL Storage
+- **Database:** `call_records.recording_url` column populated with LiveKit download URL
+- **Logic:** Uses `list_egress()` API filtered by `egress_id` to retrieve file URL
+- **Enhanced Logging:** Shows recording status in agent logs (`✅ Call transcript saved to database with recording`)
+- **Error Handling:** Graceful fallback - call continues even if recording fails
+
+#### 3. Inbox Playback Support
+- **UI:** Recording controls already exist in `src/pages/inbox.js:463-465`
+- **Behavior:** Audio player appears when `recording_url` is present
+- **Format:** HTML5 `<audio controls>` element with full playback controls
+
+### Technical Details
+
+#### Recording Pipeline
+1. Call begins → LiveKit room created
+2. Session starts → `TrackCompositeEgressRequest` submitted
+3. LiveKit Egress captures audio tracks to MP4/M4A file
+4. File stored in LiveKit's cloud storage (S3/GCS)
+5. Call ends → Agent queries `list_egress()` for download URL
+6. Recording URL saved to `call_records.recording_url`
+7. Inbox displays audio player with recording
+
+#### Configuration
+- **API Client:** `api.LiveKitAPI(livekit_url, livekit_api_key, livekit_api_secret)`
+- **Egress Type:** `TrackCompositeEgressRequest` (combines all audio tracks)
+- **Audio Only:** `audio_only=True` (no video)
+- **File Type:** `EncodedFileType.MP4` with M4A audio codec
+- **Storage:** LiveKit managed cloud storage (automatic)
+
+### Dependencies
+- **Existing:** `livekit-server-sdk` already in requirements.txt
+- **Import:** Added `api` to existing `from livekit import rtc` statement
+- **No new packages:** Uses existing LiveKit SDK capabilities
+
+---
+
 ## Audit: October 24, 2025
 **Build:** (Uncommitted - voice ID fixes)
 **Date:** 2025-10-24
