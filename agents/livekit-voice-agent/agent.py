@@ -8,7 +8,7 @@ import logging
 import os
 from typing import Annotated
 
-from livekit import rtc
+from livekit import rtc, api
 from livekit.agents import (
     AutoSubscribe,
     JobContext,
@@ -35,6 +35,12 @@ logger = logging.getLogger(__name__)
 supabase_url = os.getenv("SUPABASE_URL")
 supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 supabase: Client = create_client(supabase_url, supabase_key)
+
+# Initialize LiveKit API client for Egress (recording)
+livekit_url = os.getenv("LIVEKIT_URL")
+livekit_api_key = os.getenv("LIVEKIT_API_KEY")
+livekit_api_secret = os.getenv("LIVEKIT_API_SECRET")
+livekit_api = api.LiveKitAPI(livekit_url, livekit_api_key, livekit_api_secret)
 
 
 async def get_user_config(room_metadata: dict) -> dict:
@@ -430,6 +436,9 @@ IMPORTANT CONTEXT:
         ),
     )
 
+    # Track egress (recording) ID
+    egress_id = None
+
     # Track transcript in real-time using conversation_item_added event
     @session.on("conversation_item_added")
     def on_conversation_item(event):
@@ -505,19 +514,39 @@ IMPORTANT CONTEXT:
                     logger.info(f"Found call_record by service_number: {call_record_id}")
 
             if call_record_id:
-                # Update call_record with transcript
+                # Fetch recording URL from LiveKit Egress if recording was started
+                recording_url = None
+                if egress_id:
+                    try:
+                        logger.info(f"Fetching recording info for egress_id: {egress_id}")
+                        egress_info = await livekit_api.egress.list_egress(room_name=ctx.room.name)
+
+                        for egress in egress_info:
+                            if egress.egress_id == egress_id:
+                                # Get the file URL from the egress
+                                if egress.file and egress.file.download_url:
+                                    recording_url = egress.file.download_url
+                                    logger.info(f"✅ Recording URL: {recording_url}")
+                                break
+                    except Exception as e:
+                        logger.error(f"Error fetching recording URL: {e}", exc_info=True)
+
+                # Update call_record with transcript and recording
                 update_data = {
                     "transcript": transcript_text,
                     "status": "completed",
                     "ended_at": "now()"
                 }
 
+                if recording_url:
+                    update_data["recording_url"] = recording_url
+
                 supabase.table("call_records") \
                     .update(update_data) \
                     .eq("id", call_record_id) \
                     .execute()
 
-                logger.info("✅ Call transcript saved to database")
+                logger.info(f"✅ Call transcript saved to database{' with recording' if recording_url else ''}")
             else:
                 logger.warning("No call_record found - cannot save transcript")
 
@@ -534,6 +563,31 @@ IMPORTANT CONTEXT:
 
     # Start the session - room already connected, so session takes over
     await session.start(room=ctx.room, agent=assistant)
+
+    # Start recording the call using LiveKit Egress
+    try:
+        logger.info(f"🎙️ Starting call recording for room: {ctx.room.name}")
+
+        from livekit.protocol import egress as proto_egress
+
+        # Create track composite egress to record audio
+        egress_request = proto_egress.TrackCompositeEgressRequest(
+            room_name=ctx.room.name,
+            audio_only=True,  # Only record audio, not video
+            file_outputs=[
+                proto_egress.EncodedFileOutput(
+                    file_type=proto_egress.EncodedFileType.MP4,
+                    filepath=f"{ctx.room.name}.m4a",  # Will be stored in S3/GCS
+                )
+            ],
+        )
+
+        egress_response = await livekit_api.egress.start_track_composite_egress(egress_request)
+        egress_id = egress_response.egress_id
+        logger.info(f"✅ Recording started with egress_id: {egress_id}")
+    except Exception as e:
+        logger.error(f"❌ Failed to start recording: {e}", exc_info=True)
+        # Continue with call even if recording fails
 
     # Say greeting when participant joins - use instructions parameter
     await session.generate_reply(instructions=f"Say this greeting to the caller: {greeting}")
