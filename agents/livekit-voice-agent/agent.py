@@ -563,33 +563,33 @@ IMPORTANT CONTEXT:
         # Run async cleanup - use ensure_future to handle async properly
         asyncio.ensure_future(on_call_end())
 
-    # Start the session - room already connected, so session takes over
-    await session.start(room=ctx.room, agent=assistant)
-
-    # Start recording the call using LiveKit Egress
+    # Start recording the call using LiveKit Egress BEFORE starting session
     try:
         logger.info(f"🎙️ Starting call recording for room: {ctx.room.name}")
 
         from livekit.protocol import egress as proto_egress
 
-        # Create track composite egress to record audio
-        egress_request = proto_egress.TrackCompositeEgressRequest(
+        # Create room composite egress to record audio (TrackComposite doesn't support audio_only)
+        egress_request = proto_egress.RoomCompositeEgressRequest(
             room_name=ctx.room.name,
             audio_only=True,  # Only record audio, not video
             file_outputs=[
                 proto_egress.EncodedFileOutput(
                     file_type=proto_egress.EncodedFileType.MP4,
-                    filepath=f"{ctx.room.name}.m4a",  # Will be stored in S3/GCS
+                    filepath=f"{ctx.room.name}.m4a",
                 )
             ],
         )
 
-        egress_response = await livekit_api.egress.start_track_composite_egress(egress_request)
+        egress_response = await livekit_api.egress.start_room_composite_egress(egress_request)
         egress_id = egress_response.egress_id
         logger.info(f"✅ Recording started with egress_id: {egress_id}")
     except Exception as e:
         logger.error(f"❌ Failed to start recording: {e}", exc_info=True)
         # Continue with call even if recording fails
+
+    # Start the session - room already connected, so session takes over
+    await session.start(room=ctx.room, agent=assistant)
 
     # Say greeting when participant joins - use instructions parameter
     await session.generate_reply(instructions=f"Say this greeting to the caller: {greeting}")
