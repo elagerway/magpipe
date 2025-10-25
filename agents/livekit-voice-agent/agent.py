@@ -516,64 +516,24 @@ IMPORTANT CONTEXT:
                     logger.info(f"Found call_record by service_number: {call_record_id}")
 
             if call_record_id:
-                # Fetch recording URL from LiveKit Egress if recording was started
-                recording_url = None
-                if egress_id:
-                    try:
-                        logger.info(f"Fetching recording info for egress_id: {egress_id}")
-
-                        # Create ListEgressRequest with egress_id filter for direct lookup
-                        from livekit.protocol import egress as proto_egress
-
-                        # Retry up to 3 times with delays since egress may still be processing
-                        max_retries = 3
-                        retry_delay = 2  # seconds
-
-                        for attempt in range(max_retries):
-                            list_request = proto_egress.ListEgressRequest(egress_id=egress_id)
-                            egress_response = await livekit_api.egress.list_egress(list_request)
-
-                            # ListEgressResponse has 'items' property containing the list
-                            if egress_response.items and len(egress_response.items) > 0:
-                                egress = egress_response.items[0]
-
-                                # Get the file URL from the egress
-                                if egress.file_results and len(egress.file_results) > 0:
-                                    recording_url = egress.file_results[0].download_url
-                                    logger.info(f"✅ Recording URL: {recording_url}")
-                                    break
-                                elif hasattr(egress, 'file') and egress.file and hasattr(egress.file, 'download_url'):
-                                    recording_url = egress.file.download_url
-                                    logger.info(f"✅ Recording URL (legacy): {recording_url}")
-                                    break
-                                else:
-                                    logger.info(f"Egress {egress_id} status: {egress.status}, attempt {attempt + 1}/{max_retries}")
-                                    if attempt < max_retries - 1:
-                                        await asyncio.sleep(retry_delay)
-                                    else:
-                                        logger.warning(f"Egress {egress_id} found but no download URL after {max_retries} attempts (status: {egress.status})")
-                            else:
-                                logger.warning(f"Egress {egress_id} not found or no items returned")
-                                break
-                    except Exception as e:
-                        logger.error(f"Error fetching recording URL: {e}", exc_info=True)
-
-                # Update call_record with transcript and recording
+                # Save egress_id for deferred recording URL fetch
+                # Don't try to fetch URL immediately - egress takes time to process
                 update_data = {
                     "transcript": transcript_text,
                     "status": "completed",
                     "ended_at": "now()"
                 }
 
-                if recording_url:
-                    update_data["recording_url"] = recording_url
+                if egress_id:
+                    update_data["egress_id"] = egress_id
+                    logger.info(f"💾 Saving egress_id {egress_id} for deferred recording URL fetch")
 
                 supabase.table("call_records") \
                     .update(update_data) \
                     .eq("id", call_record_id) \
                     .execute()
 
-                logger.info(f"✅ Call transcript saved to database{' with recording' if recording_url else ''}")
+                logger.info(f"✅ Call transcript saved to database{' with egress_id' if egress_id else ''}")
             else:
                 logger.warning("No call_record found - cannot save transcript")
 
