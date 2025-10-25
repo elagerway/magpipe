@@ -37,10 +37,18 @@ STT (Deepgram) → LLM (OpenAI) → TTS (ElevenLabs)
 **Transport:** SIP_TRANSPORT_AUTO
 
 **Inbound Numbers Configuration:**
-- **Must contain:** All phone numbers that should accept calls
-- **Example:** `+16042101966`
-- **Wildcard:** Can use `+1` to match all US/Canada numbers
-- **Critical:** If a number is NOT in this list, calls will be rejected with "Service Unavailable"
+- **CRITICAL DISCOVERY:** Set `allowedNumbers` to empty array `[]` to accept ALL numbers
+- **DO NOT use wildcards:** Wildcards like `+1` do NOT work and will break incoming calls
+- **DO NOT set specific numbers:** Setting specific numbers will restrict to only those numbers
+- **Correct configuration:** `"allowedNumbers": []` (empty array = unrestricted)
+- **Example working config:**
+  ```json
+  {
+    "allowedAddresses": ["0.0.0.0/0"],
+    "allowedNumbers": []
+  }
+  ```
+- **Why this matters:** Users can add new phone numbers without updating the trunk configuration
 
 ### 2. LiveKit SIP Dispatch Rule
 
