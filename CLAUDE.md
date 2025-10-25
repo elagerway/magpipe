@@ -21,6 +21,12 @@ JavaScript ES6+, HTML5, CSS3 (vanilla, minimal framework usage per user requirem
 - Pat-AI: Added JavaScript ES6+, HTML5, CSS3 (vanilla, minimal framework usage per user requirement) + Supabase JS Client (auth, database, realtime), Service Worker API (PWA), Web Audio API (voice), WebRTC (real-time voice communication), Signalwire (custom telephony integration for calls/SMS - to be researched), Retellai.com (AI agent)
 
 <!-- MANUAL ADDITIONS START -->
+## Critical Working Principles
+- **NEVER make assertions without verification**: Before stating something as fact (especially about what exists where, what's configured, etc.), VERIFY it first with actual data
+- **When user corrects you, believe them immediately**: Do not argue or re-explain - they know their system better than you do
+- **Check before asserting**: Use scripts/queries to verify state before making claims about database contents, SignalWire configuration, file locations, etc.
+- **If uncertain, ask or investigate**: It's better to say "let me check" than to assert something incorrect
+
 ## User Interface Guidelines
 - **Never expose vendor names in user-facing messages**: Do not mention third-party service names like "Retell", "SignalWire", "OpenAI", etc. in error messages, success messages, or any UI text visible to end users
 - Use product-centric language: "Pat AI assistant", "your number", "activate", "deactivate"
