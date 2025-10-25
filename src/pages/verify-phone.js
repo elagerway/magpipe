@@ -437,7 +437,7 @@ Example SMS Reply:
       body: JSON.stringify({
         agentConfig: {
           name: 'Pat AI Assistant',
-          voice_id: '11labs-Kate',
+          voice_id: '21m00Tcm4TlvDq8ikWAM', // Rachel voice
           prompt: defaultPrompt,
         }
       }),

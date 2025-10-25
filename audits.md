@@ -2,6 +2,85 @@
 
 ---
 
+## Audit: October 24, 2025
+**Build:** (Uncommitted - voice ID fixes)
+**Date:** 2025-10-24
+**Auditor:** Claude (AI Assistant)
+
+### Summary
+Fixed critical "Service Unavailable" error affecting LiveKit voice calls. Root causes: deleted LiveKit SIP dispatch rule and invalid ElevenLabs voice IDs in database/UI. **Calls now working with proper voice ID mapping.** ✅
+
+### Bug Fixes
+
+#### 1. LiveKit SIP Dispatch Rule Missing (`LiveKit Dashboard`)
+- **Problem:** Calls failing with "Service Unavailable" - LiveKit rejecting SIP INVITEs
+- **Root Cause:** Accidentally deleted dispatch rule SDR_oMTrnZT3bZVE while attempting update
+- **Impact:** ALL LiveKit voice calls broken ❌
+- **Fix Applied:**
+  - Recreated dispatch rule via LiveKit dashboard (SDK wouldn't accept recreation) ✓
+  - New Rule ID: SDR_yFiprRssooJC ✓
+  - Trunk: ST_eDVUAafvDeF6 (SignalWire Inbound) ✓
+  - Rule Type: dispatchRuleIndividual (creates room per call) ✓
+  - Manually added +16042101966 to trunk's inbound numbers ✓
+
+#### 2. Invalid ElevenLabs Voice IDs (`src/pages/agent-config.js`)
+- **Problem:** Voice dropdown using friendly names like `"11labs-Kate"` instead of real ElevenLabs voice IDs
+- **Root Cause:** UI saved `"11labs-Kate"` → agent.py strips prefix → `"Kate"` → NOT a valid voice ID
+- **Impact:** Agent connects but TTS fails with "connection closed" error ❌
+- **Fix Applied (lines 95-116):**
+  - Changed all 22 voice options to use real ElevenLabs voice IDs ✓
+  - Example: `"11labs-Kate"` → `"21m00Tcm4TlvDq8ikWAM"` (Rachel) ✓
+  - Rachel set as default voice (most reliable) ✓
+- **Also Updated:**
+  - `src/pages/verify-phone.js` line 440: Default voice_id ✓
+  - `src/pages/agent-config.js` line 1198: Agent creation default ✓
+  - Database: Manually updated erik@snapsonic.com's voice_id to Rachel ✓
+
+### Technical Details
+
+#### Voice ID Format Issue
+- **Old Format:** `"11labs-Kate"` (friendly name with prefix)
+- **New Format:** `"21m00Tcm4TlvDq8ikWAM"` (actual ElevenLabs voice ID)
+- **Agent Code:** `agents/livekit-voice-agent/agent.py:330` - `get_voice_config()` strips `"11labs-"` prefix
+- **Problem:** After stripping, `"Kate"` is not a valid 20-character ElevenLabs voice ID
+- **Solution:** Use real voice IDs that work even after prefix stripping
+
+#### Voice Preview Compatibility
+- **File:** `supabase/functions/preview-voice/index.ts:81`
+- **Code:** `const cleanVoiceId = voice_id.replace('11labs-', '')`
+- **Result:** Works with both old and new formats (replace is no-op for real IDs) ✓
+
+### Files Modified
+1. `src/pages/agent-config.js` - Voice dropdown options (lines 95-116)
+2. `src/pages/agent-config.js` - Default voice_id in agent creation (line 1198)
+3. `src/pages/verify-phone.js` - Default voice_id for new users (line 440)
+4. `scripts/update-livekit-dispatch.js` - Updated dispatch rule ID reference
+5. `SESSION-NOTES.md` - Documented complete troubleshooting process
+
+### Testing
+- ✅ Call to +16042101966 connects successfully
+- ✅ Bidirectional audio (caller hears agent, agent hears caller)
+- ✅ ElevenLabs TTS working with Rachel voice
+- ✅ Voice preview function compatible with new voice IDs
+- ✅ LiveKit agent stable on Render (deploy ec7792c)
+
+### Critical Lessons
+1. **NEVER delete infrastructure** (dispatch rules, trunks) without 100% certainty of programmatic recreation
+2. **Voice IDs must match provider expectations** - always use actual API IDs, not friendly names
+3. **LiveKit SDK limitations** - requires full object for updates; use dashboard for complex changes
+4. **Test end-to-end** - deployment success ≠ functionality; always test actual calls
+5. **Voice ID mapping is critical** - UI, database, and agent must all use same format
+
+### Dependencies Updated
+- None (configuration and data fixes only)
+
+### Next Steps
+1. Test phone number deletion workflow (service_numbers → numbers_to_delete)
+2. Test cancel deletion workflow (numbers_to_delete → service_numbers inactive)
+3. Consider adding voice ID validation to prevent future mismatches
+
+---
+
 ## Audit: October 3, 2025 (Part 2)
 **Build:** `5184a87`
 **Commit:** Fix VAD import - use silero.VAD instead of rtc.VAD

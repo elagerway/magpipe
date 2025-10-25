@@ -93,28 +93,26 @@ export default class AgentConfigPage {
                   </optgroup>
                 ` : ''}
                 <optgroup label="ElevenLabs Voices">
-                  <option value="11labs-Kate" ${config?.voice_id === '11labs-Kate' ? 'selected' : ''}>Kate (Default)</option>
-                  <option value="11labs-Adrian" ${config?.voice_id === '11labs-Adrian' ? 'selected' : ''}>Adrian</option>
-                  <option value="11labs-Alice" ${config?.voice_id === '11labs-Alice' ? 'selected' : ''}>Alice</option>
-                  <option value="11labs-Aria" ${config?.voice_id === '11labs-Aria' ? 'selected' : ''}>Aria</option>
-                  <option value="11labs-Bill" ${config?.voice_id === '11labs-Bill' ? 'selected' : ''}>Bill</option>
-                  <option value="11labs-Brian" ${config?.voice_id === '11labs-Brian' ? 'selected' : ''}>Brian</option>
-                  <option value="11labs-Callum" ${config?.voice_id === '11labs-Callum' ? 'selected' : ''}>Callum</option>
-                  <option value="11labs-Charlie" ${config?.voice_id === '11labs-Charlie' ? 'selected' : ''}>Charlie</option>
-                  <option value="11labs-Charlotte" ${config?.voice_id === '11labs-Charlotte' ? 'selected' : ''}>Charlotte</option>
-                  <option value="11labs-Chris" ${config?.voice_id === '11labs-Chris' ? 'selected' : ''}>Chris</option>
-                  <option value="11labs-Daniel" ${config?.voice_id === '11labs-Daniel' ? 'selected' : ''}>Daniel</option>
-                  <option value="11labs-Eric" ${config?.voice_id === '11labs-Eric' ? 'selected' : ''}>Eric</option>
-                  <option value="11labs-George" ${config?.voice_id === '11labs-George' ? 'selected' : ''}>George</option>
-                  <option value="11labs-Jessica" ${config?.voice_id === '11labs-Jessica' ? 'selected' : ''}>Jessica</option>
-                  <option value="11labs-Laura" ${config?.voice_id === '11labs-Laura' ? 'selected' : ''}>Laura</option>
-                  <option value="11labs-Liam" ${config?.voice_id === '11labs-Liam' ? 'selected' : ''}>Liam</option>
-                  <option value="11labs-Lily" ${config?.voice_id === '11labs-Lily' ? 'selected' : ''}>Lily</option>
-                  <option value="11labs-Matilda" ${config?.voice_id === '11labs-Matilda' ? 'selected' : ''}>Matilda</option>
-                  <option value="11labs-River" ${config?.voice_id === '11labs-River' ? 'selected' : ''}>River</option>
-                  <option value="11labs-Roger" ${config?.voice_id === '11labs-Roger' ? 'selected' : ''}>Roger</option>
-                  <option value="11labs-Sarah" ${config?.voice_id === '11labs-Sarah' ? 'selected' : ''}>Sarah</option>
-                  <option value="11labs-Will" ${config?.voice_id === '11labs-Will' ? 'selected' : ''}>Will</option>
+                  <option value="21m00Tcm4TlvDq8ikWAM" ${config?.voice_id === '21m00Tcm4TlvDq8ikWAM' ? 'selected' : ''}>Rachel (Default)</option>
+                  <option value="pNInz6obpgDQGcFmaJgB" ${config?.voice_id === 'pNInz6obpgDQGcFmaJgB' ? 'selected' : ''}>Adam</option>
+                  <option value="EXAVITQu4vr4xnSDxMaL" ${config?.voice_id === 'EXAVITQu4vr4xnSDxMaL' ? 'selected' : ''}>Sarah</option>
+                  <option value="MF3mGyEYCl7XYWbV9V6O" ${config?.voice_id === 'MF3mGyEYCl7XYWbV9V6O' ? 'selected' : ''}>Elli</option>
+                  <option value="TxGEqnHWrfWFTfGW9XjX" ${config?.voice_id === 'TxGEqnHWrfWFTfGW9XjX' ? 'selected' : ''}>Josh</option>
+                  <option value="VR6AewLTigWG4xSOukaG" ${config?.voice_id === 'VR6AewLTigWG4xSOukaG' ? 'selected' : ''}>Arnold</option>
+                  <option value="pFZP5JQG7iQjIQuC4Bku" ${config?.voice_id === 'pFZP5JQG7iQjIQuC4Bku' ? 'selected' : ''}>Lily</option>
+                  <option value="nPczCjzI2devNBz1zQrb" ${config?.voice_id === 'nPczCjzI2devNBz1zQrb' ? 'selected' : ''}>Brian</option>
+                  <option value="N2lVS1w4EtoT3dr4eOWO" ${config?.voice_id === 'N2lVS1w4EtoT3dr4eOWO' ? 'selected' : ''}>Callum</option>
+                  <option value="IKne3meq5aSn9XLyUdCD" ${config?.voice_id === 'IKne3meq5aSn9XLyUdCD' ? 'selected' : ''}>Charlie</option>
+                  <option value="XB0fDUnXU5powFXDhCwa" ${config?.voice_id === 'XB0fDUnXU5powFXDhCwa' ? 'selected' : ''}>Charlotte</option>
+                  <option value="iP95p4xoKVk53GoZ742B" ${config?.voice_id === 'iP95p4xoKVk53GoZ742B' ? 'selected' : ''}>Chris</option>
+                  <option value="onwK4e9ZLuTAKqWW03F9" ${config?.voice_id === 'onwK4e9ZLuTAKqWW03F9' ? 'selected' : ''}>Daniel</option>
+                  <option value="cjVigY5qzO86Huf0OWal" ${config?.voice_id === 'cjVigY5qzO86Huf0OWal' ? 'selected' : ''}>Eric</option>
+                  <option value="JBFqnCBsd6RMkjVDRZzb" ${config?.voice_id === 'JBFqnCBsd6RMkjVDRZzb' ? 'selected' : ''}>George</option>
+                  <option value="cgSgspJ2msm6clMCkdW9" ${config?.voice_id === 'cgSgspJ2msm6clMCkdW9' ? 'selected' : ''}>Jessica</option>
+                  <option value="FGY2WhTYpPnrIDTdsKH5" ${config?.voice_id === 'FGY2WhTYpPnrIDTdsKH5' ? 'selected' : ''}>Laura</option>
+                  <option value="TX3LPaxmHKxFdv7VOQHJ" ${config?.voice_id === 'TX3LPaxmHKxFdv7VOQHJ' ? 'selected' : ''}>Liam</option>
+                  <option value="XrExE9yKIg1WjnnlVkGX" ${config?.voice_id === 'XrExE9yKIg1WjnnlVkGX' ? 'selected' : ''}>Matilda</option>
+                  <option value="t0jbNlBVZ17f02VDIeMI" ${config?.voice_id === 't0jbNlBVZ17f02VDIeMI' ? 'selected' : ''}>Thomas</option>
                 </optgroup>
                 <optgroup label="OpenAI Voices">
                   <option value="openai-alloy" ${config?.voice_id === 'openai-alloy' ? 'selected' : ''}>Alloy</option>
@@ -1197,7 +1195,7 @@ Always sound approachable, keep things simple, and update the user with a quick 
               body: JSON.stringify({
                 agentConfig: {
                   name: 'Pat AI Assistant',
-                  voice_id: '11labs-Kate',
+                  voice_id: '21m00Tcm4TlvDq8ikWAM', // Rachel voice
                   prompt: defaultPrompt,
                 },
                 voiceStack: voiceStack,
