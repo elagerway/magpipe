@@ -26,10 +26,12 @@ serve(async (req) => {
       updateData.ended_at = new Date().toISOString()
     }
 
+    // Update by vendor_call_id (new multi-vendor architecture)
+    // Also update call_sid for backward compatibility
     const { error } = await supabase
       .from('call_records')
       .update(updateData)
-      .eq('call_sid', callSid)
+      .or(`vendor_call_id.eq.${callSid},call_sid.eq.${callSid}`)
 
     if (error) {
       console.error('Error updating call status:', error)

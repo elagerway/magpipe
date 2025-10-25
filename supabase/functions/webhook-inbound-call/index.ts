@@ -100,7 +100,11 @@ serve(async (req) => {
           caller_number: from,
           contact_phone: from,
           service_number: to,
-          call_sid: callSid,
+          vendor_call_id: callSid,              // SignalWire's CallSid
+          telephony_vendor: 'signalwire',       // Track which vendor
+          voice_platform: 'livekit',            // Track which AI platform
+          voice_platform_call_id: null,         // Will be set by agent
+          call_sid: callSid,                    // DEPRECATED: backward compatibility
           direction: 'inbound',
           status: 'in-progress',
           disposition: 'answered_by_pat',
