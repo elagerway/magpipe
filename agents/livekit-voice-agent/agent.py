@@ -290,8 +290,13 @@ async def entrypoint(ctx: JobContext):
                 # Get caller number from SIP participant
                 caller_number = participant.attributes.get("sip.callID") or participant.identity
                 call_sid = participant.attributes.get("sip.callID") or ctx.room.name
+
+                # Log all SIP attributes to debug call_sid mismatch
+                logger.info(f"🔍 ALL SIP participant attributes: {participant.attributes}")
                 logger.info(f"Found service number from existing SIP participant: {service_number}")
-                logger.info(f"Call SID: {call_sid}")
+                logger.info(f"Call SID from LiveKit: {call_sid}")
+                logger.info(f"Caller number: {caller_number}")
+                logger.info(f"Participant identity: {participant.identity}")
                 break
 
         # If no participant yet, wait for one
@@ -307,8 +312,12 @@ async def entrypoint(ctx: JobContext):
                     service_number = participant.attributes["sip.trunkPhoneNumber"]
                     caller_number = participant.attributes.get("sip.callID") or participant.identity
                     call_sid = participant.attributes.get("sip.callID") or ctx.room.name
+
+                    # Log all SIP attributes to debug call_sid mismatch
+                    logger.info(f"🔍 ALL SIP participant attributes: {participant.attributes}")
                     logger.info(f"Found service number from new SIP participant: {service_number}")
-                    logger.info(f"Call SID: {call_sid}")
+                    logger.info(f"Call SID from LiveKit: {call_sid}")
+                    logger.info(f"Caller number: {caller_number}")
                     participant_joined_event.set()
 
             # Wait up to 10 seconds for participant
