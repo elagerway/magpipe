@@ -570,6 +570,13 @@ IMPORTANT CONTEXT:
             bucket=aws_bucket,
         )
 
+        # Webhook URL for egress completion notifications
+        supabase_url = os.getenv("SUPABASE_URL")
+        webhook_url = f"{supabase_url}/functions/v1/webhook-livekit-egress"
+
+        logger.info(f"🔗 Egress webhook URL: {webhook_url}")
+        logger.info("Note: Configure this URL in LiveKit Dashboard > Project Settings > Webhooks")
+
         # Create room composite egress to record audio with S3 storage
         egress_request = proto_egress.RoomCompositeEgressRequest(
             room_name=ctx.room.name,
