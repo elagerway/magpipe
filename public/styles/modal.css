@@ -9,7 +9,6 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -21,9 +20,25 @@
   display: none;
 }
 
+.modal-backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: -1;
+}
+
 .modal-content {
+  background: var(--bg-primary);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  box-shadow: var(--shadow-xl);
   max-height: 90vh;
   overflow-y: auto;
+  position: relative;
+  z-index: 1;
   animation: modalSlideIn 0.2s ease-out;
 }
 

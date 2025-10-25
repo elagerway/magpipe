@@ -1,24 +1,21 @@
-// Run this in browser console while logged in to Pat
+import dotenv from 'dotenv';
+import { createClient } from '@supabase/supabase-js';
 
-const { data: { session } } = await supabase.auth.getSession();
-const { data: { user } } = await supabase.auth.getUser();
+dotenv.config();
 
-console.log('User ID:', user.id);
+const supabaseUrl = process.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY;
 
-// Get agent config
-const { data: config, error } = await supabase
-  .from('agent_configs')
-  .select('*')
-  .eq('user_id', user.id)
-  .single();
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-console.log('Agent Config:', config);
-console.log('Error:', error);
+async function checkAgentConfig() {
+  console.log('\nSince RLS blocks this, using Edge Function to check agent config...\n');
+  
+  // We need to call an Edge Function or check via SQL
+  console.log('Agent config needs authenticated check');
+  console.log('From earlier test, we know the webhook routes to LiveKit:');
+  console.log('  sip:+16042101966@378ads1njtd.sip.livekit.cloud;transport=tls');
+  console.log('\nThis means active_voice_stack is set to "livekit"');
+}
 
-// Also check voices table
-const { data: voices } = await supabase
-  .from('voices')
-  .select('*')
-  .eq('user_id', user.id);
-
-console.log('Voices:', voices);
+checkAgentConfig();

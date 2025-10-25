@@ -16,10 +16,17 @@ async function updateDispatchRule() {
 
   const sipClient = new SipClient(livekitUrl, apiKey, apiSecret)
 
-  const dispatchRuleId = 'SDR_sC9C3GJwhQCj'
+  const dispatchRuleId = 'SDR_oMTrnZT3bZVE'
 
-  // Update to match all +1 numbers
+  // Update to match all +1 numbers with complete rule object
   const updates = {
+    dispatchRuleIndividual: {
+      roomPrefix: 'call-',
+      pin: ''
+    },
+    trunkIds: ['ST_eDVUAafvDeF6'],
+    hidePhoneNumber: false,
+    name: 'SW-calls',
     inboundNumbers: ['+1'], // Match all US/Canada numbers
   }
 
