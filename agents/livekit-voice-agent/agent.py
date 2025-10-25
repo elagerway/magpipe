@@ -382,14 +382,24 @@ async def entrypoint(ctx: JobContext):
     # Track transcript in real-time using conversation_item_added event
     @session.on("conversation_item_added")
     def on_conversation_item(event):
-        # Extract text content from the conversation item
-        text_content = event.item.text_content if hasattr(event.item, 'text_content') else ""
+        try:
+            logger.info(f"🎤 conversation_item_added event fired! Event type: {type(event)}")
 
-        if text_content:
-            role = event.item.role
-            speaker = "agent" if role == "assistant" else "user"
-            transcript_messages.append({"speaker": speaker, "text": text_content})
-            logger.info(f"{speaker.capitalize()} said: {text_content}")
+            # Extract text content from the conversation item
+            text_content = event.item.text_content if hasattr(event.item, 'text_content') else ""
+
+            logger.info(f"Text content extracted: '{text_content}' (length: {len(text_content)})")
+
+            if text_content:
+                role = event.item.role
+                speaker = "agent" if role == "assistant" else "user"
+                transcript_messages.append({"speaker": speaker, "text": text_content})
+                logger.info(f"✅ {speaker.capitalize()} said: {text_content}")
+                logger.info(f"📝 Total messages in transcript: {len(transcript_messages)}")
+            else:
+                logger.warning("⚠️ conversation_item_added event had no text_content")
+        except Exception as e:
+            logger.error(f"❌ Error in conversation_item_added handler: {e}", exc_info=True)
 
     # Handle call completion
     async def on_call_end():
@@ -464,9 +474,10 @@ async def entrypoint(ctx: JobContext):
     # Register cleanup handler
     @ctx.room.on("participant_disconnected")
     def on_participant_disconnected(participant):
-        logger.info(f"Participant disconnected: {participant.identity}")
-        # Run async cleanup in background
-        asyncio.create_task(on_call_end())
+        logger.info(f"📞 Participant disconnected: {participant.identity}")
+        logger.info(f"📝 Transcript has {len(transcript_messages)} messages before save")
+        # Run async cleanup - use ensure_future to handle async properly
+        asyncio.ensure_future(on_call_end())
 
     # Start the session - room already connected, so session takes over
     await session.start(room=ctx.room, agent=assistant)
