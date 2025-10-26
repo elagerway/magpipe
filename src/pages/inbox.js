@@ -1661,6 +1661,7 @@ export default class InboxPage {
         this.transformToHangupButton();
         break;
 
+      case 'progress':
       case 'ringing':
         stateLabel.textContent = 'Ringing...';
         stateLabel.style.color = '#f59e0b'; // Orange color
