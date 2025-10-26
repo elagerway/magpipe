@@ -545,8 +545,16 @@ IMPORTANT CONTEXT:
     def on_participant_disconnected(participant):
         logger.info(f"📞 Participant disconnected: {participant.identity}")
         logger.info(f"📝 Transcript has {len(transcript_messages)} messages before save")
+
+        # Wait a moment for any pending transcriptions to complete
+        async def delayed_cleanup():
+            logger.info("⏳ Waiting 2 seconds for pending transcriptions...")
+            await asyncio.sleep(2)
+            logger.info(f"📝 Final transcript message count: {len(transcript_messages)}")
+            await on_call_end()
+
         # Run async cleanup - use ensure_future to handle async properly
-        asyncio.ensure_future(on_call_end())
+        asyncio.ensure_future(delayed_cleanup())
 
     # Start recording the call using LiveKit Egress BEFORE starting session
     try:
