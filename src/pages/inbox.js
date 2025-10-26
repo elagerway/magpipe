@@ -280,6 +280,8 @@ export default class InboxPage {
 
     // Add each call as a separate conversation
     calls?.forEach(call => {
+      console.log('Processing call:', call);
+
       const duration = call.duration_seconds || 0;
       const durationText = duration > 0
         ? `${Math.floor(duration / 60)}:${String(duration % 60).padStart(2, '0')}`
@@ -287,10 +289,13 @@ export default class InboxPage {
 
       const statusInfo = this.getCallStatusInfo(call.status);
 
+      // Use contact_phone if available, otherwise use caller_number for inbound calls
+      const phoneNumber = call.contact_phone || call.caller_number || 'Unknown';
+
       conversationsList.push({
         type: 'call',
         callId: call.id,
-        phone: call.contact_phone,
+        phone: phoneNumber,
         call: call,
         lastActivity: new Date(call.started_at),
         lastMessage: `${call.direction === 'inbound' ? 'Incoming' : 'Outgoing'} Call • ${durationText}`,
@@ -317,17 +322,37 @@ export default class InboxPage {
                         (conv.type === 'call' && this.selectedCallId === conv.callId);
 
       if (conv.type === 'call') {
+        // Determine icon based on direction - using Feather icons
+        const isOutbound = conv.call.direction === 'outbound';
+        const iconSvg = isOutbound
+          ? `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+               <polyline points="23 7 23 1 17 1"></polyline>
+               <line x1="13 11 23 1"></line>
+               <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+             </svg>` // phone-outgoing
+          : `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+               <polyline points="16 2 16 8 22 8"></polyline>
+               <line x1="23 1 16 8"></line>
+               <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+             </svg>`; // phone-incoming
+
+        // For outbound: show "To: contact" and "From: service number"
+        // For inbound: show "From: contact" and "To: service number"
+        const primaryNumber = conv.phone; // The contact number
+        const serviceNumber = conv.call.service_number || conv.call.caller_number;
+
         return `
           <div class="conversation-item ${isSelected ? 'selected' : ''}" data-call-id="${conv.callId}" data-type="call">
             <div class="conversation-avatar call-avatar">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
-              </svg>
+              ${iconSvg}
             </div>
             <div class="conversation-content">
               <div class="conversation-header">
-                <span class="conversation-name">${this.formatPhoneNumber(conv.phone)}</span>
+                <span class="conversation-name">${this.formatPhoneNumber(primaryNumber)}</span>
                 <span class="conversation-time">${this.formatTimestamp(conv.lastActivity)}</span>
+              </div>
+              <div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 2px;">
+                ${isOutbound ? 'From' : 'To'}: ${this.formatPhoneNumber(serviceNumber)}
               </div>
               <div class="conversation-preview">
                 <span class="call-status-indicator ${conv.statusInfo.class}">${conv.statusInfo.icon}</span>
@@ -1001,7 +1026,6 @@ export default class InboxPage {
 
         <!-- Call header -->
         <div style="text-align: center; margin-bottom: 0.5rem; flex-shrink: 0; position: relative;">
-          <h2 style="font-size: 1.125rem; margin: 0; font-weight: 600;">New Call</h2>
 
           <!-- SIP Status Indicator -->
           <div id="sip-status" style="
@@ -1026,7 +1050,7 @@ export default class InboxPage {
           </div>
         </div>
 
-        <!-- Caller ID selector -->
+        <!-- Caller ID selector and Recording toggle (inline) -->
         <div style="
           max-width: 300px;
           margin: 0 auto 0.5rem auto;
@@ -1040,22 +1064,55 @@ export default class InboxPage {
             margin-bottom: 0.2rem;
             text-align: center;
           ">Call from</label>
-          <select
-            id="caller-id-select"
-            style="
-              width: 100%;
-              padding: 0.4rem;
-              border: 1px solid var(--border-color);
-              border-radius: var(--radius-md);
-              background: var(--bg-secondary);
-              color: var(--text-primary);
-              font-size: 0.8rem;
-              cursor: pointer;
-              outline: none;
-            "
-          >
-            <option value="">Loading numbers...</option>
-          </select>
+          <div style="
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+          ">
+            <select
+              id="caller-id-select"
+              style="
+                flex: 0 0 auto;
+                width: 160px;
+                padding: 0.4rem;
+                border: 1px solid var(--border-color);
+                border-radius: var(--radius-md);
+                background: var(--bg-secondary);
+                color: var(--text-primary);
+                font-size: 0.8rem;
+                cursor: pointer;
+                outline: none;
+              "
+            >
+              <option value="">Loading numbers...</option>
+            </select>
+            <div style="
+              display: flex;
+              align-items: center;
+              gap: 0;
+            ">
+              <label for="record-call-toggle" style="
+                font-size: 0.7rem;
+                color: var(--text-secondary);
+                cursor: pointer;
+                user-select: none;
+                display: flex;
+                align-items: center;
+                gap: 0.2rem;
+                white-space: nowrap;
+              ">
+                <svg id="record-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position: relative;">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+                Record Call
+              </label>
+              <label class="toggle-switch" style="margin: 0 0 0 -0.5rem; transform: scale(0.5); transform-origin: center; flex-shrink: 0;">
+                <input type="checkbox" id="record-call-toggle" checked>
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
         </div>
 
         <!-- Phone number display with search -->
@@ -1086,7 +1143,9 @@ export default class InboxPage {
                 letter-spacing: 0.05em;
                 min-height: 1.5rem;
                 text-align: center;
-                border: none;
+                border: 1px solid rgba(128, 128, 128, 0.2);
+                border-radius: 8px;
+                padding: 0.5rem;
                 background: transparent;
                 outline: none;
               "
@@ -1244,6 +1303,7 @@ export default class InboxPage {
     const closeBtn = document.getElementById('close-call-modal');
     const suggestionsEl = document.getElementById('contact-suggestions');
     const callerIdSelect = document.getElementById('caller-id-select');
+    const recordCallToggle = document.getElementById('record-call-toggle');
 
     let selectedContact = null;
 
@@ -1252,6 +1312,21 @@ export default class InboxPage {
         deleteBtn.style.display = searchInput.value.length > 0 ? 'flex' : 'none';
       }
     };
+
+    // Load recording preference from localStorage (default: true)
+    const recordingPref = localStorage.getItem('record_calls_preference');
+    if (recordCallToggle) {
+      recordCallToggle.checked = recordingPref !== 'false'; // Default to true
+    }
+
+    // Save recording preference when toggled
+    if (recordCallToggle) {
+      recordCallToggle.addEventListener('change', (e) => {
+        const shouldRecord = e.target.checked;
+        localStorage.setItem('record_calls_preference', shouldRecord.toString());
+        console.log('📹 Call recording preference:', shouldRecord ? 'ON' : 'OFF');
+      });
+    }
 
     // Load service numbers for caller ID selector
     this.loadServiceNumbers();
@@ -1444,14 +1519,18 @@ export default class InboxPage {
       }
 
       // Create initial call record
+      // For outbound WebRTC calls, we'll use 'transferred_to_user' as the disposition
+      // since the user is making the call directly
       const { data: callRecord, error: callError } = await supabase
         .from('call_records')
         .insert({
           user_id: this.userId,
+          caller_number: fromNumber, // For outbound calls, caller is us (service number)
           contact_phone: phoneNumber,
           service_number: fromNumber,
           direction: 'outbound',
           status: 'initiated',
+          disposition: 'transferred_to_user', // Required field - user is making direct call
           started_at: new Date().toISOString(),
         })
         .select()
@@ -1459,7 +1538,17 @@ export default class InboxPage {
 
       if (callError) {
         console.error('Failed to create call record:', callError);
+        alert(`Failed to create call record: ${callError.message}`);
+        return;
       }
+
+      if (!callRecord) {
+        console.error('No call record returned from insert');
+        alert('Failed to create call record - no data returned');
+        return;
+      }
+
+      console.log('Call record created:', callRecord);
 
       const callRecordId = callRecord?.id;
       let callStartTime = null;
@@ -1685,6 +1774,8 @@ export default class InboxPage {
         stateLabel.style.color = '#10b981'; // Green color
         // Keep hangup button active when call is established
         this.transformToHangupButton();
+        // Show recording indicator if recording is enabled
+        this.showRecordingIndicator();
         break;
 
       case 'hungup':
@@ -1692,6 +1783,8 @@ export default class InboxPage {
         stateLabel.style.color = '#ef4444'; // Red color
         // Transform back to call button when hung up
         this.transformToCallButton();
+        // Hide recording indicator
+        this.hideRecordingIndicator();
         break;
 
       case 'idle':
@@ -1700,7 +1793,55 @@ export default class InboxPage {
         stateLabel.style.color = 'var(--text-secondary)';
         // Transform back to call button when idle
         this.transformToCallButton();
+        // Hide recording indicator
+        this.hideRecordingIndicator();
         break;
+    }
+  }
+
+  showRecordingIndicator() {
+    const recordToggle = document.getElementById('record-call-toggle');
+    const recordIcon = document.getElementById('record-icon');
+
+    // Only show indicator if recording is enabled
+    if (!recordToggle || !recordToggle.checked || !recordIcon) return;
+
+    // Add pulsing red dot to the center of the icon
+    const existingDot = document.getElementById('recording-dot');
+    if (existingDot) return; // Already showing
+
+    const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    dot.setAttribute('id', 'recording-dot');
+    dot.setAttribute('cx', '12');
+    dot.setAttribute('cy', '12');
+    dot.setAttribute('r', '3');
+    dot.setAttribute('fill', '#ef4444');
+
+    // Add pulse animation
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes recording-pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.3; }
+      }
+      #recording-dot {
+        animation: recording-pulse 1.5s ease-in-out infinite;
+      }
+    `;
+    if (!document.getElementById('recording-pulse-style')) {
+      style.id = 'recording-pulse-style';
+      document.head.appendChild(style);
+    }
+
+    recordIcon.appendChild(dot);
+    console.log('🔴 Recording indicator shown');
+  }
+
+  hideRecordingIndicator() {
+    const dot = document.getElementById('recording-dot');
+    if (dot) {
+      dot.remove();
+      console.log('⚫ Recording indicator hidden');
     }
   }
 
