@@ -26,6 +26,7 @@ JavaScript ES6+, HTML5, CSS3 (vanilla, minimal framework usage per user requirem
 - **When user corrects you, believe them immediately**: Do not argue or re-explain - they know their system better than you do
 - **Check before asserting**: Use scripts/queries to verify state before making claims about database contents, SignalWire configuration, file locations, etc.
 - **If uncertain, ask or investigate**: It's better to say "let me check" than to assert something incorrect
+- **NEVER ask user to check logs - check them yourself**: Use direct API calls, CLI commands, or database queries to fetch logs instead of asking the user to copy/paste them. The user should not be a data retrieval service.
 
 ## User Interface Guidelines
 - **Never expose vendor names in user-facing messages**: Do not mention third-party service names like "Retell", "SignalWire", "OpenAI", etc. in error messages, success messages, or any UI text visible to end users
