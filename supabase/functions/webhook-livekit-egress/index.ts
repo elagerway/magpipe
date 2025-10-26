@@ -73,9 +73,10 @@ serve(async (req) => {
     console.log(`Egress ended: ${egressId}, status: ${status}, statusType: ${typeof status}`)
     console.log('Full egressInfo:', JSON.stringify(egressInfo, null, 2))
 
-    // Only process successful egresses (status 3 = EGRESS_COMPLETE)
-    if (status !== 3) {
-      console.log(`Egress ${egressId} did not complete successfully (status: ${status}, expected: 3)`)
+    // Only process successful egresses (status can be number 3 or string "EGRESS_COMPLETE")
+    const isComplete = status === 3 || status === 'EGRESS_COMPLETE'
+    if (!isComplete) {
+      console.log(`Egress ${egressId} did not complete successfully (status: ${status})`)
       return new Response(JSON.stringify({ ok: true, message: `Ignoring status ${status}` }), {
         headers: { 'Content-Type': 'application/json' },
         status: 200,
@@ -90,11 +91,14 @@ serve(async (req) => {
 
     if (fileResults.length > 0) {
       const firstFile = fileResults[0]
-      recordingUrl = firstFile.downloadUrl || firstFile.download_url || firstFile.location
+      // Try all possible field names: location (LiveKit actual), downloadUrl, download_url
+      recordingUrl = firstFile.location || firstFile.downloadUrl || firstFile.download_url
       console.log('First file result keys:', Object.keys(firstFile))
+      console.log('First file location:', firstFile.location)
     } else if (egressInfo.file) {
-      recordingUrl = egressInfo.file.downloadUrl || egressInfo.file.download_url || egressInfo.file.location
+      recordingUrl = egressInfo.file.location || egressInfo.file.downloadUrl || egressInfo.file.download_url
       console.log('Using egressInfo.file, keys:', Object.keys(egressInfo.file))
+      console.log('File location:', egressInfo.file.location)
     }
 
     if (!recordingUrl) {
