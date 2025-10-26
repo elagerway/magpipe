@@ -290,7 +290,7 @@ export default class InboxPage {
       conversationsList.push({
         type: 'call',
         callId: call.id,
-        phone: call.contact_number,
+        phone: call.contact_phone,
         call: call,
         lastActivity: new Date(call.started_at),
         lastMessage: `${call.direction === 'inbound' ? 'Incoming' : 'Outgoing'} Call • ${durationText}`,
@@ -455,7 +455,7 @@ export default class InboxPage {
             line-height: 1;
           ">←</button>
           <h2 style="margin: 0; font-size: calc(1.125rem - 5px); font-weight: 600; line-height: 1;">
-            ${this.formatPhoneNumber(call.contact_number)}
+            ${this.formatPhoneNumber(call.contact_phone)}
           </h2>
         </div>
         <div style="font-size: 0.875rem; color: var(--text-secondary); display: flex; gap: 0.5rem; align-items: center; white-space: nowrap;">
@@ -542,6 +542,11 @@ export default class InboxPage {
         icon: '💬',
         text: 'Voicemail',
         class: 'status-voicemail'
+      },
+      'Caller Hungup': {
+        icon: '⊗',
+        text: 'Hung Up',
+        class: 'status-hungup'
       }
     };
 
@@ -1028,7 +1033,7 @@ export default class InboxPage {
           width: 100%;
           flex-shrink: 0;
         ">
-          <label style="
+          <label id="call-state-label" style="
             display: block;
             font-size: 0.7rem;
             color: var(--text-secondary);
@@ -1359,8 +1364,19 @@ export default class InboxPage {
       });
     }
 
-    // Call button
+    // Call button - handles both call and hangup actions
     document.getElementById('call-btn').addEventListener('click', async () => {
+      const callBtn = document.getElementById('call-btn');
+
+      // Check if this is a hangup action (button is red)
+      if (callBtn.dataset.action === 'hangup') {
+        console.log('Hanging up call...');
+        this.userHungUp = true;
+        sipClient.hangup();
+        return;
+      }
+
+      // Otherwise, initiate a new call
       const phoneNumber = searchInput ? searchInput.value.trim() : '';
 
       if (!phoneNumber) {
@@ -1397,6 +1413,9 @@ export default class InboxPage {
   async initiateCall(phoneNumber, callerIdNumber = null) {
     console.log('Initiating call to:', phoneNumber);
 
+    // Track if user clicks hangup button
+    this.userHungUp = false;
+
     try {
       // Check if SIP client is registered
       if (!sipClient.isRegistered) {
@@ -1429,7 +1448,7 @@ export default class InboxPage {
         .from('call_records')
         .insert({
           user_id: this.userId,
-          contact_number: phoneNumber,
+          contact_phone: phoneNumber,
           service_number: fromNumber,
           direction: 'outbound',
           status: 'initiated',
@@ -1445,11 +1464,14 @@ export default class InboxPage {
       const callRecordId = callRecord?.id;
       let callStartTime = null;
 
+      // Disable call button and show connecting state
+      this.updateCallState('connecting');
+
       // Make the call with caller ID
       await sipClient.makeCall(phoneNumber, fromNumber, {
         onProgress: () => {
           console.log('Call is ringing...');
-          this.showCallStatus('Calling...');
+          this.updateCallState('ringing');
           // Update call status to ringing
           if (callRecordId) {
             supabase
@@ -1462,7 +1484,7 @@ export default class InboxPage {
         onConfirmed: () => {
           console.log('Call connected');
           callStartTime = new Date();
-          this.showCallStatus('Connected');
+          this.updateCallState('established');
           // Update call status to completed (answered)
           if (callRecordId) {
             supabase
@@ -1477,23 +1499,36 @@ export default class InboxPage {
         },
         onFailed: (cause) => {
           console.error('Call failed:', cause);
-          alert(`Call failed: ${cause}`);
-          this.showCallStatus('Failed');
-          // Update call status to failed
+
+          // Check if this was a user-initiated hangup
+          const isUserHangup = this.userHungUp || ['Canceled', 'Terminated', 'Bye'].includes(cause);
+
+          // Don't show alert for user-initiated hangups
+          if (!isUserHangup) {
+            alert(`Call failed: ${cause}`);
+          }
+
+          // Show "Hung Up" for user hangups, otherwise go to idle
+          if (isUserHangup) {
+            this.updateCallState('hungup');
+          } else {
+            this.updateCallState('idle');
+          }
+
+          // Update call status - use 'Caller Hungup' for user hangups, 'failed' for actual failures
           if (callRecordId) {
             supabase
               .from('call_records')
               .update({
-                status: 'failed',
+                status: isUserHangup ? 'Caller Hungup' : 'failed',
                 ended_at: new Date().toISOString()
               })
               .eq('id', callRecordId)
-              .then(() => console.log('Call status updated to failed'));
+              .then(() => console.log(`Call status updated to ${isUserHangup ? 'Caller Hungup' : 'failed'}`));
           }
         },
         onEnded: () => {
           console.log('Call ended');
-          this.showCallStatus('Ended');
 
           // Calculate duration if call was answered
           let duration = null;
@@ -1501,17 +1536,33 @@ export default class InboxPage {
             duration = Math.floor((new Date() - callStartTime) / 1000);
           }
 
+          // Determine final status
+          let finalStatus = 'completed';
+          if (this.userHungUp && !callStartTime) {
+            // User hung up before call was answered
+            finalStatus = 'Caller Hungup';
+            this.updateCallState('hungup');
+          } else if (this.userHungUp && callStartTime) {
+            // User hung up after call was answered
+            finalStatus = 'completed';
+            this.updateCallState('hungup');
+          } else {
+            // Call ended normally
+            this.updateCallState('idle');
+          }
+
           // Update call status to ended
           if (callRecordId) {
             supabase
               .from('call_records')
               .update({
+                status: finalStatus,
                 ended_at: new Date().toISOString(),
                 duration: duration
               })
               .eq('id', callRecordId)
               .then(() => {
-                console.log('Call ended, duration:', duration);
+                console.log(`Call ended with status: ${finalStatus}, duration:`, duration);
                 // Reload conversations to show the call
                 this.loadConversations(this.userId);
               });
@@ -1536,6 +1587,120 @@ export default class InboxPage {
     const statusEl = document.getElementById('call-status');
     if (statusEl) {
       statusEl.textContent = status;
+    }
+  }
+
+  transformToHangupButton() {
+    const callBtn = document.getElementById('call-btn');
+    if (!callBtn) return;
+
+    // Change to red hangup button
+    callBtn.style.background = 'linear-gradient(135deg, #ef4444, #dc2626)';
+    callBtn.style.boxShadow = '0 4px 12px rgba(239, 68, 68, 0.3)';
+    callBtn.dataset.action = 'hangup';
+    callBtn.disabled = false;
+    callBtn.style.opacity = '1';
+    callBtn.style.cursor = 'pointer';
+
+    // Update hover effects
+    callBtn.onmouseover = () => {
+      callBtn.style.transform = 'scale(1.05)';
+      callBtn.style.boxShadow = '0 6px 16px rgba(239, 68, 68, 0.4)';
+    };
+    callBtn.onmouseout = () => {
+      callBtn.style.transform = 'scale(1)';
+      callBtn.style.boxShadow = '0 4px 12px rgba(239, 68, 68, 0.3)';
+    };
+
+    // Change icon to hangup icon (phone with X)
+    callBtn.innerHTML = `
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08c-.18-.17-.29-.42-.29-.7 0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28-.79-.74-1.68-1.36-2.66-1.85-.33-.16-.56-.5-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/>
+      </svg>
+    `;
+
+    console.log('🔴 Button transformed to HANGUP');
+  }
+
+  transformToCallButton() {
+    const callBtn = document.getElementById('call-btn');
+    if (!callBtn) return;
+
+    // Change back to green call button
+    callBtn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+    callBtn.style.boxShadow = '0 4px 12px rgba(16, 185, 129, 0.3)';
+    callBtn.dataset.action = 'call';
+    callBtn.disabled = false;
+    callBtn.style.opacity = '1';
+    callBtn.style.cursor = 'pointer';
+
+    // Restore hover effects
+    callBtn.onmouseover = () => {
+      callBtn.style.transform = 'scale(1.05)';
+      callBtn.style.boxShadow = '0 6px 16px rgba(16, 185, 129, 0.4)';
+    };
+    callBtn.onmouseout = () => {
+      callBtn.style.transform = 'scale(1)';
+      callBtn.style.boxShadow = '0 4px 12px rgba(16, 185, 129, 0.3)';
+    };
+
+    // Restore phone icon
+    callBtn.innerHTML = `
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+      </svg>
+    `;
+
+    console.log('🟢 Button transformed to CALL');
+  }
+
+  updateCallState(state, message = null) {
+    const stateLabel = document.getElementById('call-state-label');
+    const callBtn = document.getElementById('call-btn');
+
+    console.log('📞 Updating call state to:', state, 'Message:', message, 'Label found:', !!stateLabel);
+
+    if (!stateLabel) {
+      console.warn('⚠️ Call state label not found');
+      return;
+    }
+
+    switch (state) {
+      case 'connecting':
+        stateLabel.textContent = 'Connecting...';
+        stateLabel.style.color = 'var(--text-secondary)';
+        // Transform to hangup button as soon as call starts
+        this.transformToHangupButton();
+        break;
+
+      case 'ringing':
+        stateLabel.textContent = 'Ringing...';
+        stateLabel.style.color = '#f59e0b'; // Orange color
+        // Keep hangup button active during ringing
+        this.transformToHangupButton();
+        break;
+
+      case 'established':
+        stateLabel.textContent = 'Call Established';
+        stateLabel.style.color = '#10b981'; // Green color
+        // Keep hangup button active when call is established
+        this.transformToHangupButton();
+        break;
+
+      case 'hungup':
+        stateLabel.textContent = 'Hung Up';
+        stateLabel.style.color = '#ef4444'; // Red color
+        // Transform back to call button when hung up
+        this.transformToCallButton();
+        break;
+
+      case 'idle':
+      default:
+        stateLabel.textContent = message || 'Call from';
+        stateLabel.style.color = 'var(--text-secondary)';
+        // Transform back to call button when idle
+        this.transformToCallButton();
+        break;
     }
   }
 
