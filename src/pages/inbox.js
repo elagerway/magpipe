@@ -5,6 +5,7 @@
 import { getCurrentUser, supabase } from '../lib/supabase.js';
 import { renderBottomNav, clearUnreadBadge } from '../components/BottomNav.js';
 import { sipClient } from '../lib/sipClient.js';
+import { livekitClient } from '../lib/livekitClient.js';
 
 export default class InboxPage {
   constructor() {
@@ -1447,7 +1448,17 @@ export default class InboxPage {
       if (callBtn.dataset.action === 'hangup') {
         console.log('Hanging up call...');
         this.userHungUp = true;
+
+        // Disconnect from LiveKit if connected
+        if (livekitClient.isConnected) {
+          await livekitClient.disconnect();
+        }
+
+        // Also hangup SIP if still connected (for backward compatibility)
         sipClient.hangup();
+
+        // Reset UI
+        this.updateCallState('idle');
         return;
       }
 
@@ -1555,16 +1566,42 @@ export default class InboxPage {
 
       console.log('✅ Outbound call initiated:', callResult);
 
-      // Update UI to show call is ringing (not established yet)
-      this.updateCallState('progress');
-      this.showCallStatus('Ringing...');
+      // Get LiveKit token to join the room
+      console.log('🎫 Getting LiveKit token to join room...');
+      const { data: tokenData, error: tokenError } = await supabase.functions.invoke('livekit-token', {
+        body: {
+          roomName: callResult.roomName,
+          identity: `user-${this.userId}`,
+          name: 'User'
+        }
+      });
 
-      // TODO: Add realtime listener for call status updates from LiveKit
-      // The call state should update to "established" when the recipient answers
-      // For now, we'll keep it in "progress" state
-      // The call will be tracked in database by LiveKit webhooks
+      if (tokenError || !tokenData?.token) {
+        console.error('Failed to get LiveKit token:', tokenError);
+        alert('Failed to join call room');
+        this.updateCallState('idle');
+        return;
+      }
 
-      console.log('📞 Call ringing through LiveKit. Call ID:', callResult.callId);
+      console.log('✅ Got LiveKit token, joining room...');
+
+      // Join the LiveKit room
+      try {
+        await livekitClient.joinRoom(callResult.roomName, tokenData.token);
+        console.log('✅ Successfully joined LiveKit room!');
+
+        // Update UI to show call is connected
+        this.updateCallState('established');
+        this.showCallStatus('Connected');
+
+      } catch (joinError) {
+        console.error('Failed to join LiveKit room:', joinError);
+        alert('Failed to join call: ' + joinError.message);
+        this.updateCallState('idle');
+        return;
+      }
+
+      console.log('📞 In call via LiveKit. Call ID:', callResult.callId);
     } catch (error) {
       console.error('Failed to initiate call:', error);
       alert(`Failed to initiate call: ${error.message}`);

@@ -34,6 +34,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
     "dotenv": "^17.2.3",
+    "livekit-client": "^2.15.13",
     "livekit-server-sdk": "^2.14.0",
     "node-fetch": "^3.3.2",
     "postmark": "^4.0.5",
