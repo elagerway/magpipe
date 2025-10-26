@@ -27,11 +27,12 @@ serve(async (req) => {
       throw jsonError
     }
 
-    // Log to database for debugging (temporary)
+    // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseKey)
 
+    // Log to database for debugging (temporary)
     try {
       await supabase.from('webhook_logs').insert({
         webhook_type: 'livekit_egress',
@@ -109,10 +110,6 @@ serve(async (req) => {
     console.log(`✅ Recording URL: ${recordingUrl}`)
 
     // Update call_record with recording URL
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseKey)
-
     const { data: updateResult, error: updateError } = await supabase
       .from('call_records')
       .update({ recording_url: recordingUrl })
