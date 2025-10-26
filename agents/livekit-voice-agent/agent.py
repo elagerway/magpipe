@@ -586,13 +586,17 @@ IMPORTANT CONTEXT:
         logger.info("Note: Configure this URL in LiveKit Dashboard > Project Settings > Webhooks")
 
         # Create room composite egress to record audio with S3 storage
+        # Clean up filename: remove underscore before + and remove + from phone number
+        # Transform: call-_+16045628647_abc -> call-16045628647_abc
+        clean_room_name = ctx.room.name.replace("_+", "")
+
         egress_request = proto_egress.RoomCompositeEgressRequest(
             room_name=ctx.room.name,
             audio_only=True,  # Only record audio, not video
             file_outputs=[
                 proto_egress.EncodedFileOutput(
                     file_type=proto_egress.EncodedFileType.MP4,
-                    filepath=f"recordings/{ctx.room.name}.m4a",
+                    filepath=f"recordings/{clean_room_name}.mp4",
                     s3=s3_upload,
                 )
             ],
