@@ -1492,12 +1492,6 @@ export default class InboxPage {
     this.userHungUp = false;
 
     try {
-      // Check if SIP client is registered
-      if (!sipClient.isRegistered) {
-        alert('SIP client not ready. Please wait for registration to complete.');
-        return;
-      }
-
       // Get caller ID number (defaults to first active service number)
       let fromNumber = callerIdNumber;
       if (!fromNumber) {
@@ -1518,154 +1512,49 @@ export default class InboxPage {
         }
       }
 
-      // Create initial call record
-      // For outbound WebRTC calls, we'll use 'transferred_to_user' as the disposition
-      // since the user is making the call directly
-      const { data: callRecord, error: callError } = await supabase
-        .from('call_records')
-        .insert({
-          user_id: this.userId,
-          caller_number: fromNumber, // For outbound calls, caller is us (service number)
-          contact_phone: phoneNumber,
-          service_number: fromNumber,
-          direction: 'outbound',
-          status: 'initiated',
-          disposition: 'transferred_to_user', // Required field - user is making direct call
-          started_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
+      // Check if recording is enabled
+      const recordCallToggle = document.getElementById('record-call-toggle');
+      const recordCall = recordCallToggle ? recordCallToggle.checked : true;
 
-      if (callError) {
-        console.error('Failed to create call record:', callError);
-        alert(`Failed to create call record: ${callError.message}`);
-        return;
-      }
-
-      if (!callRecord) {
-        console.error('No call record returned from insert');
-        alert('Failed to create call record - no data returned');
-        return;
-      }
-
-      console.log('Call record created:', callRecord);
-
-      const callRecordId = callRecord?.id;
-      let callStartTime = null;
-
-      // Disable call button and show connecting state
+      // Show connecting state
       this.updateCallState('connecting');
 
-      // Make the call with caller ID
-      await sipClient.makeCall(phoneNumber, fromNumber, {
-        onProgress: () => {
-          console.log('Call is ringing...');
-          this.updateCallState('ringing');
-          // Update call status to ringing
-          if (callRecordId) {
-            supabase
-              .from('call_records')
-              .update({ status: 'ringing' })
-              .eq('id', callRecordId)
-              .then(() => console.log('Call status updated to ringing'));
-          }
-        },
-        onConfirmed: () => {
-          console.log('Call connected');
-          callStartTime = new Date();
-          this.updateCallState('established');
-          // Update call status to completed (answered)
-          if (callRecordId) {
-            supabase
-              .from('call_records')
-              .update({
-                status: 'completed',
-                answered_at: callStartTime.toISOString()
-              })
-              .eq('id', callRecordId)
-              .then(() => console.log('Call status updated to completed'));
-          }
-        },
-        onFailed: (cause) => {
-          console.error('Call failed:', cause);
+      console.log('Initiating LiveKit outbound call via Edge Function...');
 
-          // Check if this was a user-initiated hangup
-          const isUserHangup = this.userHungUp || ['Canceled', 'Terminated', 'Bye'].includes(cause);
-
-          // Don't show alert for user-initiated hangups
-          if (!isUserHangup) {
-            alert(`Call failed: ${cause}`);
-          }
-
-          // Show "Hung Up" for user hangups, otherwise go to idle
-          if (isUserHangup) {
-            this.updateCallState('hungup');
-          } else {
-            this.updateCallState('idle');
-          }
-
-          // Update call status - use 'Caller Hungup' for user hangups, 'failed' for actual failures
-          if (callRecordId) {
-            supabase
-              .from('call_records')
-              .update({
-                status: isUserHangup ? 'Caller Hungup' : 'failed',
-                ended_at: new Date().toISOString()
-              })
-              .eq('id', callRecordId)
-              .then(() => console.log(`Call status updated to ${isUserHangup ? 'Caller Hungup' : 'failed'}`));
-          }
-        },
-        onEnded: () => {
-          console.log('Call ended');
-
-          // Calculate duration if call was answered
-          let duration = null;
-          if (callStartTime) {
-            duration = Math.floor((new Date() - callStartTime) / 1000);
-          }
-
-          // Determine final status
-          let finalStatus = 'completed';
-          if (this.userHungUp && !callStartTime) {
-            // User hung up before call was answered
-            finalStatus = 'Caller Hungup';
-            this.updateCallState('hungup');
-          } else if (this.userHungUp && callStartTime) {
-            // User hung up after call was answered
-            finalStatus = 'completed';
-            this.updateCallState('hungup');
-          } else {
-            // Call ended normally
-            this.updateCallState('idle');
-          }
-
-          // Update call status to ended
-          if (callRecordId) {
-            supabase
-              .from('call_records')
-              .update({
-                status: finalStatus,
-                ended_at: new Date().toISOString(),
-                duration: duration
-              })
-              .eq('id', callRecordId)
-              .then(() => {
-                console.log(`Call ended with status: ${finalStatus}, duration:`, duration);
-                // Reload conversations to show the call
-                this.loadConversations(this.userId);
-              });
-          }
-
-          // Return to normal view
-          setTimeout(() => {
-            const modal = document.getElementById('call-modal');
-            if (modal) {
-              modal.remove();
-            }
-          }, 1500);
-        },
+      // Call LiveKit Edge Function to initiate outbound call
+      const { data: callResult, error: callError } = await supabase.functions.invoke('livekit-outbound-call', {
+        body: {
+          phoneNumber,
+          callerIdNumber: fromNumber,
+          userId: this.userId,
+          recordCall
+        }
       });
+
+      if (callError) {
+        console.error('Failed to initiate outbound call:', callError);
+        alert(`Failed to initiate call: ${callError.message}`);
+        this.updateCallState('idle');
+        return;
+      }
+
+      if (!callResult || !callResult.success) {
+        console.error('Call initiation failed:', callResult);
+        alert(`Failed to initiate call: ${callResult?.error || 'Unknown error'}`);
+        this.updateCallState('idle');
+        return;
+      }
+
+      console.log('✅ Outbound call initiated:', callResult);
+
+      // Update UI to show call is active
+      this.updateCallState('established');
+
+      // TODO: Add realtime listener for call status updates from LiveKit
+      // For now, just keep the UI in "established" state until user hangs up
+      // The call will be tracked in database by LiveKit webhooks
+
+      console.log('📞 Call in progress through LiveKit. Waiting for call to complete...');
     } catch (error) {
       console.error('Failed to initiate call:', error);
       alert(`Failed to initiate call: ${error.message}`);
