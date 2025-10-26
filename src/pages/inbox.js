@@ -4,6 +4,7 @@
 
 import { getCurrentUser, supabase } from '../lib/supabase.js';
 import { renderBottomNav, clearUnreadBadge } from '../components/BottomNav.js';
+import { sipClient } from '../lib/sipClient.js';
 
 export default class InboxPage {
   constructor() {
@@ -289,7 +290,7 @@ export default class InboxPage {
       conversationsList.push({
         type: 'call',
         callId: call.id,
-        phone: call.contact_phone,
+        phone: call.contact_number,
         call: call,
         lastActivity: new Date(call.started_at),
         lastMessage: `${call.direction === 'inbound' ? 'Incoming' : 'Outgoing'} Call • ${durationText}`,
@@ -454,7 +455,7 @@ export default class InboxPage {
             line-height: 1;
           ">←</button>
           <h2 style="margin: 0; font-size: calc(1.125rem - 5px); font-weight: 600; line-height: 1;">
-            ${this.formatPhoneNumber(call.contact_phone)}
+            ${this.formatPhoneNumber(call.contact_number)}
           </h2>
         </div>
         <div style="font-size: 0.875rem; color: var(--text-secondary); display: flex; gap: 0.5rem; align-items: center; white-space: nowrap;">
@@ -574,6 +575,7 @@ export default class InboxPage {
   }
 
   formatPhoneNumber(phone) {
+    if (!phone) return 'Unknown';
     const cleaned = phone.replace(/\D/g, '');
     const match = cleaned.match(/^1?(\d{3})(\d{3})(\d{4})$/);
     if (match) {
@@ -604,6 +606,117 @@ export default class InboxPage {
   }
 
   async showNewConversationModal() {
+    // Show choice modal: Call or Message
+    this.showConversationTypeChoice();
+  }
+
+  showConversationTypeChoice() {
+    // Create dropdown below the + button
+    const newConvBtn = document.getElementById('new-conversation-btn');
+    const existingDropdown = document.getElementById('conversation-type-dropdown');
+
+    // Remove existing dropdown if any
+    if (existingDropdown) {
+      existingDropdown.remove();
+      return; // Toggle behavior - if already open, close it
+    }
+
+    const rect = newConvBtn.getBoundingClientRect();
+
+    const dropdown = document.createElement('div');
+    dropdown.id = 'conversation-type-dropdown';
+    dropdown.style.cssText = `
+      position: fixed;
+      top: ${rect.bottom + 8}px;
+      left: ${rect.left - 150}px;
+      background: var(--bg-primary);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-lg);
+      z-index: 1100;
+      min-width: 180px;
+      overflow: hidden;
+    `;
+
+    dropdown.innerHTML = `
+      <button id="dropdown-call-btn" style="
+        width: 100%;
+        padding: 0.875rem 1rem;
+        background: none;
+        border: none;
+        border-bottom: 1px solid var(--border-color);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        color: var(--text-primary);
+        font-size: 0.9375rem;
+        transition: background 0.15s ease;
+      ">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+        </svg>
+        Call
+      </button>
+      <button id="dropdown-message-btn" style="
+        width: 100%;
+        padding: 0.875rem 1rem;
+        background: none;
+        border: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        color: var(--text-primary);
+        font-size: 0.9375rem;
+        transition: background 0.15s ease;
+      ">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+        </svg>
+        Message
+      </button>
+    `;
+
+    document.body.appendChild(dropdown);
+
+    // Add hover effects
+    const buttons = dropdown.querySelectorAll('button');
+    buttons.forEach(btn => {
+      btn.addEventListener('mouseenter', () => {
+        btn.style.background = 'var(--bg-secondary)';
+      });
+      btn.addEventListener('mouseleave', () => {
+        btn.style.background = 'none';
+      });
+    });
+
+    // Add event listeners
+    document.getElementById('dropdown-call-btn').addEventListener('click', () => {
+      dropdown.remove();
+      this.showCallInterface();
+    });
+
+    document.getElementById('dropdown-message-btn').addEventListener('click', () => {
+      dropdown.remove();
+      this.showMessageInterface();
+    });
+
+    // Close dropdown when clicking outside
+    const closeDropdown = (e) => {
+      if (!dropdown.contains(e.target) && e.target !== newConvBtn) {
+        dropdown.remove();
+        document.removeEventListener('click', closeDropdown);
+      }
+    };
+
+    // Delay to prevent immediate close from the button click that opened it
+    setTimeout(() => {
+      document.addEventListener('click', closeDropdown);
+    }, 10);
+  }
+
+  async showMessageInterface() {
     const threadElement = document.getElementById('message-thread');
 
     // Load active service numbers
@@ -797,6 +910,878 @@ export default class InboxPage {
 
     // Focus phone input
     document.getElementById('text-phone').focus();
+  }
+
+  showCallInterface() {
+    const isMobile = window.innerWidth <= 768;
+
+    if (isMobile) {
+      // Create full-screen modal for mobile
+      const modal = document.createElement('div');
+      modal.id = 'call-modal';
+      modal.className = 'modal';
+      modal.innerHTML = `
+        <div class="modal-backdrop"></div>
+        <div class="modal-content" style="
+          height: 100vh;
+          max-height: 100vh;
+          width: 100%;
+          max-width: 100%;
+          margin: 0;
+          border-radius: 0;
+          padding: 0;
+          display: flex;
+          flex-direction: column;
+        ">
+          ${this.renderCallInterfaceContent()}
+        </div>
+      `;
+      document.body.appendChild(modal);
+      this.attachCallEventListeners();
+    } else {
+      // Desktop: use thread element
+      const threadElement = document.getElementById('message-thread');
+      threadElement.innerHTML = this.renderCallInterfaceContent();
+
+      // Show thread on desktop
+      threadElement.style.display = 'flex';
+
+      this.attachCallEventListeners();
+    }
+  }
+
+  renderCallInterfaceContent() {
+    const isMobile = window.innerWidth <= 768;
+
+    return `
+      <div style="
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        background: var(--bg-primary);
+        padding: 1rem 0.5rem;
+        overflow: hidden;
+        position: relative;
+      ">
+        <!-- Close button (mobile only) -->
+        ${isMobile ? `
+          <button
+            id="close-call-modal"
+            style="
+              position: absolute;
+              top: 1rem;
+              right: 1rem;
+              width: 32px;
+              height: 32px;
+              border-radius: 50%;
+              border: none;
+              background: var(--bg-secondary);
+              color: var(--text-secondary);
+              cursor: pointer;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              z-index: 10;
+              transition: all 0.15s ease;
+            "
+            onmouseover="this.style.background='var(--border-color)'"
+            onmouseout="this.style.background='var(--bg-secondary)'"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        ` : ''}
+
+        <!-- Call header -->
+        <div style="text-align: center; margin-bottom: 0.5rem; flex-shrink: 0; position: relative;">
+          <h2 style="font-size: 1.125rem; margin: 0; font-weight: 600;">New Call</h2>
+
+          <!-- SIP Status Indicator -->
+          <div id="sip-status" style="
+            position: absolute;
+            top: 50%;
+            right: 1rem;
+            transform: translateY(-50%);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+          ">
+            <div id="sip-led" style="
+              width: 8px;
+              height: 8px;
+              border-radius: 50%;
+              background: #6b7280;
+              box-shadow: 0 0 4px rgba(107, 116, 128, 0.5);
+            "></div>
+            <span id="sip-status-text">Connecting...</span>
+          </div>
+        </div>
+
+        <!-- Caller ID selector -->
+        <div style="
+          max-width: 300px;
+          margin: 0 auto 0.5rem auto;
+          width: 100%;
+          flex-shrink: 0;
+        ">
+          <label style="
+            display: block;
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.2rem;
+            text-align: center;
+          ">Call from</label>
+          <select
+            id="caller-id-select"
+            style="
+              width: 100%;
+              padding: 0.4rem;
+              border: 1px solid var(--border-color);
+              border-radius: var(--radius-md);
+              background: var(--bg-secondary);
+              color: var(--text-primary);
+              font-size: 0.8rem;
+              cursor: pointer;
+              outline: none;
+            "
+          >
+            <option value="">Loading numbers...</option>
+          </select>
+        </div>
+
+        <!-- Phone number display with search -->
+        <div style="
+          padding: 0.5rem 0.5rem;
+          margin: 0 auto 0.4rem auto;
+          min-height: 2.5rem;
+          max-width: 300px;
+          width: 100%;
+          position: relative;
+          flex-shrink: 0;
+        ">
+          <div style="
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+          ">
+            <input
+              type="text"
+              id="call-search-input"
+              placeholder="Enter name or number"
+              style="
+                width: 100%;
+                font-size: 1.2rem;
+                font-weight: 300;
+                color: var(--text-primary);
+                letter-spacing: 0.05em;
+                min-height: 1.5rem;
+                text-align: center;
+                border: none;
+                background: transparent;
+                outline: none;
+              "
+            />
+            <button
+              id="delete-btn"
+              style="
+                position: absolute;
+                right: 0;
+                top: 50%;
+                transform: translateY(-50%);
+                width: 32px;
+                height: 32px;
+                border-radius: 50%;
+                border: none;
+                background: var(--bg-secondary);
+                color: var(--text-secondary);
+                cursor: pointer;
+                display: none;
+                align-items: center;
+                justify-content: center;
+                transition: all 0.15s ease;
+                flex-shrink: 0;
+              "
+              onmousedown="this.style.background='var(--border-color)'; this.style.transform='translateY(-50%) scale(0.95)'"
+              onmouseup="this.style.background='var(--bg-secondary)'; this.style.transform='translateY(-50%) scale(1)'"
+              onmouseleave="this.style.background='var(--bg-secondary)'; this.style.transform='translateY(-50%) scale(1)'"
+              ontouchstart="this.style.background='var(--border-color)'; this.style.transform='translateY(-50%) scale(0.95)'"
+              ontouchend="this.style.background='var(--bg-secondary)'; this.style.transform='translateY(-50%) scale(1)'"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M22 3H7c-.69 0-1.23.35-1.59.88L0 12l5.41 8.11c.36.53.9.89 1.59.89h15c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-3 12.59L17.59 17 14 13.41 10.41 17 9 15.59 12.59 12 9 8.41 10.41 7 14 10.59 17.59 7 19 8.41 15.41 12 19 15.59z"/>
+              </svg>
+            </button>
+          </div>
+
+          <!-- Contact suggestions dropdown -->
+          <div id="contact-suggestions" style="
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-lg);
+            max-height: 200px;
+            overflow-y: auto;
+            display: none;
+            z-index: 100;
+            margin-top: 0.25rem;
+          "></div>
+        </div>
+
+        <!-- DTMF Keypad -->
+        <div style="
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 0.5rem;
+          max-width: 300px;
+          margin: 0 auto;
+          width: 100%;
+          flex-shrink: 0;
+        ">
+          ${this.renderDTMFButton('1', '')}
+          ${this.renderDTMFButton('2', 'ABC')}
+          ${this.renderDTMFButton('3', 'DEF')}
+          ${this.renderDTMFButton('4', 'GHI')}
+          ${this.renderDTMFButton('5', 'JKL')}
+          ${this.renderDTMFButton('6', 'MNO')}
+          ${this.renderDTMFButton('7', 'PQRS')}
+          ${this.renderDTMFButton('8', 'TUV')}
+          ${this.renderDTMFButton('9', 'WXYZ')}
+          ${this.renderDTMFButton('*', '')}
+          ${this.renderDTMFButton('0', '')}
+          ${this.renderDTMFButton('#', '')}
+        </div>
+
+        <!-- Spacer -->
+        <div style="flex: 1; min-height: 0.5rem;"></div>
+
+        <!-- Call action button -->
+        <div style="
+          display: flex;
+          justify-content: center;
+          padding: 0.75rem 0 4rem 0;
+          flex-shrink: 0;
+        ">
+          <button
+            id="call-btn"
+            style="
+              width: 56px;
+              height: 56px;
+              border-radius: 50%;
+              border: none;
+              background: linear-gradient(135deg, #10b981, #059669);
+              color: white;
+              cursor: pointer;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              transition: all 0.2s ease;
+              box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+            "
+            onmouseover="this.style.transform='scale(1.05)'; this.style.boxShadow='0 6px 16px rgba(16, 185, 129, 0.4)'"
+            onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 12px rgba(16, 185, 129, 0.3)'"
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  renderDTMFButton(digit, letters) {
+    return `
+      <button
+        class="dtmf-btn"
+        data-digit="${digit}"
+        style="
+          aspect-ratio: 1;
+          border: none;
+          border-radius: 50%;
+          background: var(--bg-secondary);
+          color: var(--text-primary);
+          cursor: pointer;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          font-size: 1.5rem;
+          font-weight: 300;
+          transition: all 0.15s ease;
+          user-select: none;
+          -webkit-tap-highlight-color: transparent;
+          padding: 0.5rem;
+        "
+        onmousedown="this.style.background='var(--border-color)'; this.style.transform='scale(0.95)'"
+        onmouseup="this.style.background='var(--bg-secondary)'; this.style.transform='scale(1)'"
+        onmouseleave="this.style.background='var(--bg-secondary)'; this.style.transform='scale(1)'"
+        ontouchstart="this.style.background='var(--border-color)'; this.style.transform='scale(0.95)'"
+        ontouchend="this.style.background='var(--bg-secondary)'; this.style.transform='scale(1)'"
+      >
+        <span style="line-height: 1;">${digit}</span>
+        ${letters ? `<span style="font-size: 0.6rem; font-weight: 600; letter-spacing: 0.05em; margin-top: 0.1rem; color: var(--text-secondary);">${letters}</span>` : ''}
+      </button>
+    `;
+  }
+
+  attachCallEventListeners() {
+    const searchInput = document.getElementById('call-search-input');
+    const deleteBtn = document.getElementById('delete-btn');
+    const closeBtn = document.getElementById('close-call-modal');
+    const suggestionsEl = document.getElementById('contact-suggestions');
+    const callerIdSelect = document.getElementById('caller-id-select');
+
+    let selectedContact = null;
+
+    const updateDeleteButton = () => {
+      if (deleteBtn && searchInput) {
+        deleteBtn.style.display = searchInput.value.length > 0 ? 'flex' : 'none';
+      }
+    };
+
+    // Load service numbers for caller ID selector
+    this.loadServiceNumbers();
+
+    // Prompt for microphone access and initialize SIP client
+    this.requestMicrophoneAndInitializeSIP();
+
+    // Close button (mobile only)
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => {
+        const modal = document.getElementById('call-modal');
+        if (modal) {
+          modal.remove();
+        }
+      });
+    }
+
+    // Search input for contact autocomplete
+    if (searchInput) {
+      searchInput.addEventListener('input', async (e) => {
+        const query = e.target.value.trim();
+        updateDeleteButton();
+
+        if (query.length === 0) {
+          suggestionsEl.style.display = 'none';
+          suggestionsEl.innerHTML = '';
+          selectedContact = null;
+          return;
+        }
+
+        // Search contacts
+        const contacts = await this.searchContacts(query);
+
+        if (contacts.length > 0) {
+          suggestionsEl.innerHTML = contacts.map(contact => `
+            <div class="contact-suggestion" data-phone="${contact.phone_number}" style="
+              padding: 0.75rem;
+              cursor: pointer;
+              border-bottom: 1px solid var(--border-color);
+              transition: background 0.15s;
+            " onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='transparent'">
+              <div style="font-weight: 600; color: var(--text-primary);">
+                ${contact.first_name || ''} ${contact.last_name || ''}
+              </div>
+              <div style="font-size: 0.875rem; color: var(--text-secondary);">
+                ${this.formatPhoneNumber(contact.phone_number)}
+              </div>
+            </div>
+          `).join('');
+          suggestionsEl.style.display = 'block';
+
+          // Add click handlers to suggestions
+          suggestionsEl.querySelectorAll('.contact-suggestion').forEach(suggestion => {
+            suggestion.addEventListener('click', () => {
+              const phone = suggestion.dataset.phone;
+              searchInput.value = phone;
+              selectedContact = contacts.find(c => c.phone_number === phone);
+              suggestionsEl.style.display = 'none';
+              updateDeleteButton();
+            });
+          });
+        } else {
+          suggestionsEl.style.display = 'none';
+        }
+      });
+
+      // Focus input on load
+      searchInput.focus();
+
+      // Close suggestions when clicking outside
+      document.addEventListener('click', (e) => {
+        if (!suggestionsEl.contains(e.target) && e.target !== searchInput) {
+          suggestionsEl.style.display = 'none';
+        }
+      });
+    }
+
+    // DTMF buttons - append to input OR send DTMF if call is active
+    document.querySelectorAll('.dtmf-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const digit = btn.dataset.digit;
+
+        // If call is active, send DTMF tone
+        if (sipClient.isInCall()) {
+          console.log('Sending DTMF:', digit);
+          sipClient.sendDTMF(digit);
+          // Visual feedback
+          btn.style.transform = 'scale(0.95)';
+          setTimeout(() => {
+            btn.style.transform = 'scale(1)';
+          }, 100);
+        } else {
+          // Otherwise, append to input
+          if (searchInput) {
+            searchInput.value += digit;
+            updateDeleteButton();
+            suggestionsEl.style.display = 'none';
+          }
+        }
+      });
+    });
+
+    // Delete button - remove last character
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', () => {
+        if (searchInput) {
+          searchInput.value = searchInput.value.slice(0, -1);
+          updateDeleteButton();
+        }
+      });
+    }
+
+    // Call button
+    document.getElementById('call-btn').addEventListener('click', async () => {
+      const phoneNumber = searchInput ? searchInput.value.trim() : '';
+
+      if (!phoneNumber) {
+        alert('Please enter a phone number');
+        return;
+      }
+
+      // Get selected caller ID
+      const selectedCallerId = callerIdSelect ? callerIdSelect.value : null;
+
+      if (!selectedCallerId) {
+        alert('No active phone number selected');
+        return;
+      }
+
+      // Close modal if on mobile
+      const modal = document.getElementById('call-modal');
+      if (modal) {
+        modal.remove();
+      }
+
+      await this.initiateCall(phoneNumber, selectedCallerId);
+    });
+
+    // Close modal on backdrop click (mobile only)
+    const backdrop = document.querySelector('#call-modal .modal-backdrop');
+    if (backdrop) {
+      backdrop.addEventListener('click', () => {
+        document.getElementById('call-modal').remove();
+      });
+    }
+  }
+
+  async initiateCall(phoneNumber, callerIdNumber = null) {
+    console.log('Initiating call to:', phoneNumber);
+
+    try {
+      // Check if SIP client is registered
+      if (!sipClient.isRegistered) {
+        alert('SIP client not ready. Please wait for registration to complete.');
+        return;
+      }
+
+      // Get caller ID number (defaults to first active service number)
+      let fromNumber = callerIdNumber;
+      if (!fromNumber) {
+        const { data: serviceNumbers } = await supabase
+          .from('service_numbers')
+          .select('phone_number')
+          .eq('user_id', this.userId)
+          .eq('is_active', true)
+          .order('purchased_at', { ascending: false })
+          .limit(1);
+
+        if (serviceNumbers && serviceNumbers.length > 0) {
+          fromNumber = serviceNumbers[0].phone_number;
+        } else {
+          // Use a placeholder number for testing if no service numbers
+          fromNumber = '+10000000000';
+          console.warn('No active service numbers found, using placeholder caller ID');
+        }
+      }
+
+      // Create initial call record
+      const { data: callRecord, error: callError } = await supabase
+        .from('call_records')
+        .insert({
+          user_id: this.userId,
+          contact_number: phoneNumber,
+          service_number: fromNumber,
+          direction: 'outbound',
+          status: 'initiated',
+          started_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (callError) {
+        console.error('Failed to create call record:', callError);
+      }
+
+      const callRecordId = callRecord?.id;
+      let callStartTime = null;
+
+      // Make the call with caller ID
+      await sipClient.makeCall(phoneNumber, fromNumber, {
+        onProgress: () => {
+          console.log('Call is ringing...');
+          this.showCallStatus('Calling...');
+          // Update call status to ringing
+          if (callRecordId) {
+            supabase
+              .from('call_records')
+              .update({ status: 'ringing' })
+              .eq('id', callRecordId)
+              .then(() => console.log('Call status updated to ringing'));
+          }
+        },
+        onConfirmed: () => {
+          console.log('Call connected');
+          callStartTime = new Date();
+          this.showCallStatus('Connected');
+          // Update call status to completed (answered)
+          if (callRecordId) {
+            supabase
+              .from('call_records')
+              .update({
+                status: 'completed',
+                answered_at: callStartTime.toISOString()
+              })
+              .eq('id', callRecordId)
+              .then(() => console.log('Call status updated to completed'));
+          }
+        },
+        onFailed: (cause) => {
+          console.error('Call failed:', cause);
+          alert(`Call failed: ${cause}`);
+          this.showCallStatus('Failed');
+          // Update call status to failed
+          if (callRecordId) {
+            supabase
+              .from('call_records')
+              .update({
+                status: 'failed',
+                ended_at: new Date().toISOString()
+              })
+              .eq('id', callRecordId)
+              .then(() => console.log('Call status updated to failed'));
+          }
+        },
+        onEnded: () => {
+          console.log('Call ended');
+          this.showCallStatus('Ended');
+
+          // Calculate duration if call was answered
+          let duration = null;
+          if (callStartTime) {
+            duration = Math.floor((new Date() - callStartTime) / 1000);
+          }
+
+          // Update call status to ended
+          if (callRecordId) {
+            supabase
+              .from('call_records')
+              .update({
+                ended_at: new Date().toISOString(),
+                duration: duration
+              })
+              .eq('id', callRecordId)
+              .then(() => {
+                console.log('Call ended, duration:', duration);
+                // Reload conversations to show the call
+                this.loadConversations(this.userId);
+              });
+          }
+
+          // Return to normal view
+          setTimeout(() => {
+            const modal = document.getElementById('call-modal');
+            if (modal) {
+              modal.remove();
+            }
+          }, 1500);
+        },
+      });
+    } catch (error) {
+      console.error('Failed to initiate call:', error);
+      alert(`Failed to initiate call: ${error.message}`);
+    }
+  }
+
+  showCallStatus(status) {
+    const statusEl = document.getElementById('call-status');
+    if (statusEl) {
+      statusEl.textContent = status;
+    }
+  }
+
+  async searchContacts(query) {
+    try {
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('id, first_name, last_name, phone_number')
+        .eq('user_id', this.userId)
+        .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%,phone_number.ilike.%${query}%`)
+        .limit(5);
+
+      if (error) {
+        console.error('Error searching contacts:', error);
+        return [];
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error('Failed to search contacts:', error);
+      return [];
+    }
+  }
+
+  async requestMicrophoneAndInitializeSIP() {
+    try {
+      // First check if permission is already blocked
+      let isBlocked = false;
+      try {
+        const permissionStatus = await navigator.permissions.query({ name: 'microphone' });
+        isBlocked = permissionStatus.state === 'denied';
+        console.log('🎤 Microphone permission state:', permissionStatus.state);
+      } catch (e) {
+        console.log('Could not check permission status:', e);
+      }
+
+      if (isBlocked) {
+        // Show instructions to unblock
+        alert('⚠️ Microphone is BLOCKED\n\nTo enable calling:\n\n1. Look at your browser address bar (where it shows localhost:3000)\n2. Click the camera/lock icon on the LEFT side\n3. Find "Microphone" and change it to "Allow"\n4. Refresh this page\n5. Try again');
+        this.updateSIPStatus('error', 'Mic blocked');
+        return;
+      }
+
+      // Show a custom prompt asking user to grant microphone access
+      const promptModal = document.createElement('div');
+      promptModal.id = 'mic-permission-modal';
+      promptModal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.8);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+      `;
+
+      promptModal.innerHTML = `
+        <div style="
+          background: var(--bg-primary);
+          border-radius: 12px;
+          padding: 2rem;
+          max-width: 400px;
+          margin: 1rem;
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        ">
+          <div style="text-align: center; margin-bottom: 1.5rem;">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">🎤</div>
+            <h2 style="margin: 0 0 0.5rem 0; font-size: 1.5rem; color: var(--text-primary);">Microphone Access Required</h2>
+            <p style="margin: 0; color: var(--text-secondary); line-height: 1.5;">
+              Pat needs access to your microphone to make calls.
+              Your browser will ask for permission.
+            </p>
+          </div>
+          <div style="display: flex; gap: 1rem;">
+            <button id="allow-mic-btn" style="
+              flex: 1;
+              background: linear-gradient(135deg, #6366f1, #8b5cf6);
+              color: white;
+              border: none;
+              border-radius: 8px;
+              padding: 0.75rem 1.5rem;
+              font-size: 1rem;
+              font-weight: 600;
+              cursor: pointer;
+            ">Allow Microphone</button>
+            <button id="cancel-mic-btn" style="
+              background: var(--bg-secondary);
+              color: var(--text-secondary);
+              border: 1px solid var(--border-color);
+              border-radius: 8px;
+              padding: 0.75rem 1rem;
+              font-size: 1rem;
+              cursor: pointer;
+            ">Cancel</button>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(promptModal);
+
+      // Wait for user to click Allow or Cancel
+      const userChoice = await new Promise((resolve) => {
+        document.getElementById('allow-mic-btn').addEventListener('click', () => resolve('allow'));
+        document.getElementById('cancel-mic-btn').addEventListener('click', () => resolve('cancel'));
+      });
+
+      promptModal.remove();
+
+      if (userChoice === 'cancel') {
+        this.updateSIPStatus('error', 'Cancelled');
+        return;
+      }
+
+      // Request microphone permission
+      console.log('🎤 Requesting microphone access...');
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      console.log('✅ Microphone access granted');
+
+      // Stop the stream immediately - we just needed permission
+      stream.getTracks().forEach(track => track.stop());
+
+      // Now initialize SIP client
+      await this.initializeSIPClient();
+    } catch (error) {
+      console.error('❌ Microphone access error:', error);
+      this.updateSIPStatus('error', 'Mic denied');
+
+      if (error.name === 'NotAllowedError') {
+        alert('⚠️ Microphone was denied\n\nThe browser denied microphone access.\n\nTry:\n1. Click the lock/camera icon in the address bar\n2. Reset permissions for this site\n3. Refresh and try again');
+      } else {
+        alert(`⚠️ Microphone error: ${error.name}\n\n${error.message}`);
+      }
+    }
+  }
+
+  async initializeSIPClient() {
+    const sipLed = document.getElementById('sip-led');
+    const sipStatusText = document.getElementById('sip-status-text');
+
+    if (!sipLed || !sipStatusText) return;
+
+    // Set to connecting state
+    this.updateSIPStatus('connecting');
+
+    try {
+      // Get SIP credentials from user record
+      const { data: userRecord, error: userError } = await supabase
+        .from('users')
+        .select('sip_username, sip_password, sip_realm, sip_ws_server')
+        .eq('id', this.userId)
+        .single();
+
+      if (userError || !userRecord) {
+        this.updateSIPStatus('error', 'No SIP endpoint');
+        return;
+      }
+
+      if (!userRecord.sip_username || !userRecord.sip_password) {
+        this.updateSIPStatus('error', 'Not configured');
+        return;
+      }
+
+      // Build SIP URI from user record
+      const sipUri = `sip:${userRecord.sip_username}@${userRecord.sip_realm}`;
+
+      // Initialize SIP client
+      await sipClient.initialize({
+        sipUri,
+        sipPassword: userRecord.sip_password,
+        wsServer: userRecord.sip_ws_server,
+        displayName: 'Pat AI',
+      });
+
+      this.updateSIPStatus('registered');
+    } catch (error) {
+      console.error('SIP initialization failed:', error);
+      this.updateSIPStatus('error', error.message);
+    }
+  }
+
+  updateSIPStatus(status, message = '') {
+    const sipLed = document.getElementById('sip-led');
+    const sipStatusText = document.getElementById('sip-status-text');
+
+    if (!sipLed || !sipStatusText) return;
+
+    switch (status) {
+      case 'connecting':
+        sipLed.style.background = '#6b7280';
+        sipLed.style.boxShadow = '0 0 4px rgba(107, 116, 128, 0.5)';
+        sipStatusText.textContent = 'Connecting...';
+        sipStatusText.style.color = 'var(--text-secondary)';
+        break;
+      case 'registered':
+        sipLed.style.background = '#10b981';
+        sipLed.style.boxShadow = '0 0 8px rgba(16, 185, 129, 0.8)';
+        sipStatusText.textContent = 'Ready';
+        sipStatusText.style.color = '#10b981';
+        break;
+      case 'error':
+        sipLed.style.background = '#ef4444';
+        sipLed.style.boxShadow = '0 0 8px rgba(239, 68, 68, 0.8)';
+        sipStatusText.textContent = message || 'Error';
+        sipStatusText.style.color = '#ef4444';
+        break;
+    }
+  }
+
+  async loadServiceNumbers() {
+    const callerIdSelect = document.getElementById('caller-id-select');
+    if (!callerIdSelect) return;
+
+    try {
+      const { data: serviceNumbers, error } = await supabase
+        .from('service_numbers')
+        .select('id, phone_number, friendly_name, is_active')
+        .eq('user_id', this.userId)
+        .eq('is_active', true)
+        .order('purchased_at', { ascending: false });
+
+      if (error) {
+        console.error('Error loading service numbers:', error);
+        callerIdSelect.innerHTML = '<option value="+10000000000">Test Number (No active numbers)</option>';
+        return;
+      }
+
+      if (!serviceNumbers || serviceNumbers.length === 0) {
+        callerIdSelect.innerHTML = '<option value="+10000000000">Test Number (No active numbers)</option>';
+        return;
+      }
+
+      // Populate dropdown with service numbers
+      callerIdSelect.innerHTML = serviceNumbers.map((number, index) => {
+        const flag = this.getCountryFlag(number.phone_number);
+        const formattedNumber = this.formatPhoneNumber(number.phone_number);
+        return `<option value="${number.phone_number}" ${index === 0 ? 'selected' : ''}>
+          ${flag} ${formattedNumber}
+        </option>`;
+      }).join('');
+    } catch (error) {
+      console.error('Failed to load service numbers:', error);
+      callerIdSelect.innerHTML = '<option value="+10000000000">Test Number (Error loading)</option>';
+    }
   }
 
   getCountryFlag(phoneNumber) {
