@@ -116,18 +116,11 @@ async function generatePreview() {
     audioPlayer.style.display = 'none';
     hideStatus();
 
-    // Step 1: Get user's voice stack preference
-    const { data: { user } } = await supabase.auth.getUser();
-    const { data: config } = await supabase
-      .from('agent_configs')
-      .select('active_voice_stack')
-      .eq('user_id', user.id)
-      .single();
-
-    const voiceStack = config?.active_voice_stack || 'retell';
+    // Always use LiveKit for voice previews
+    const voiceStack = 'livekit';
 
     // Step 2: Create the preview session
-    showStatus(voiceStack === 'livekit' ? 'Generating preview with ElevenLabs...' : 'Creating temporary agent...', 'info');
+    showStatus('Generating preview with ElevenLabs...', 'info');
 
     const { data: session, error: sessionError } = await supabase.functions.invoke(
       'generate-voice-preview',

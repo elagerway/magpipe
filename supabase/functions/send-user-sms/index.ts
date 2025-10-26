@@ -1,6 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { getSenderNumber, isOptedOut, isUSNumber } from '../_shared/sms-compliance.ts'
+import { isOptedOut, isUSNumber } from '../_shared/sms-compliance.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -36,8 +36,9 @@ serve(async (req) => {
     const signalwireApiToken = Deno.env.get('SIGNALWIRE_API_TOKEN')!
     const signalwireSpaceUrl = Deno.env.get('SIGNALWIRE_SPACE_URL')!
 
-    // Use USA campaign number for US recipients, otherwise use service number
-    const fromNumber = await getSenderNumber(contactPhone, serviceNumber, supabase)
+    // Always use the service number the user selected
+    // This ensures conversation continuity and proper campaign compliance
+    const fromNumber = serviceNumber
 
     // Check if we're sending FROM a US number (USA SMS compliance)
     const fromIsUSNumber = await isUSNumber(fromNumber, supabase)
@@ -108,10 +109,11 @@ serve(async (req) => {
       .upsert({
         user_id: user.id,
         contact_phone: contactPhone,
+        service_number: fromNumber,
         ai_paused_until: pauseUntil.toISOString(),
         updated_at: new Date().toISOString(),
       }, {
-        onConflict: 'user_id,contact_phone'
+        onConflict: 'user_id,contact_phone,service_number'
       })
 
     console.log(`User sent message - AI paused until ${pauseUntil.toISOString()}`)

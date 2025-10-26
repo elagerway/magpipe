@@ -7,7 +7,6 @@ import {
   recordOptIn,
   getOptOutConfirmation,
   getOptInConfirmation,
-  getSenderNumber,
   isOptedOut
 } from '../_shared/sms-compliance.ts'
 
@@ -176,11 +175,13 @@ async function processAndReplySMS(
     }
 
     // Check if AI is paused for this conversation
+    // Note: Separate conversations per service number (different numbers = different threads)
     const { data: context } = await supabase
       .from('conversation_contexts')
       .select('ai_paused_until')
       .eq('user_id', userId)
       .eq('contact_phone', from)
+      .eq('service_number', to)
       .single()
 
     if (context?.ai_paused_until) {
@@ -287,8 +288,9 @@ async function sendSMS(
     const signalwireApiToken = Deno.env.get('SIGNALWIRE_API_TOKEN')!
     const signalwireSpaceUrl = Deno.env.get('SIGNALWIRE_SPACE_URL')!
 
-    // Use USA campaign number for US recipients, otherwise use service number
-    const fromNumber = await getSenderNumber(to, from, supabase)
+    // Always reply from the number that received the message
+    // This ensures conversation continuity and proper campaign compliance
+    const fromNumber = from
 
     // Add opt-out instructions (USA SMS compliance) only when sending FROM a US number
     const { isUSNumber } = await import('../_shared/sms-compliance.ts')
