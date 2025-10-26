@@ -14,11 +14,24 @@ serve(async (req) => {
 
   try {
     console.log('=== LIVEKIT EGRESS WEBHOOK START ===')
+    console.log('Request method:', req.method)
+    console.log('Request headers:', Object.fromEntries(req.headers.entries()))
 
-    const payload = await req.json()
-    console.log('Webhook payload:', JSON.stringify(payload, null, 2))
+    let payload
+    try {
+      payload = await req.json()
+      console.log('✅ Parsed JSON payload successfully')
+      console.log('Webhook payload:', JSON.stringify(payload, null, 2))
+    } catch (jsonError) {
+      console.error('❌ Failed to parse JSON:', jsonError)
+      throw jsonError
+    }
 
-    const { event, egressInfo } = payload
+    // Support both camelCase and snake_case field names
+    const event = payload.event
+    const egressInfo = payload.egressInfo || payload.egress_info
+
+    console.log(`Event type: ${event}, has egressInfo: ${!!egressInfo}`)
 
     // Only process when egress completes successfully
     if (event !== 'egress_ended') {
@@ -29,41 +42,55 @@ serve(async (req) => {
       })
     }
 
-    const egressId = egressInfo?.egressId
-    const status = egressInfo?.status
+    if (!egressInfo) {
+      console.error('❌ No egressInfo in payload!')
+      return new Response(JSON.stringify({ error: 'No egressInfo in payload' }), {
+        headers: { 'Content-Type': 'application/json' },
+        status: 400,
+      })
+    }
 
-    console.log(`Egress ended: ${egressId}, status: ${status}`)
+    const egressId = egressInfo.egressId || egressInfo.egress_id
+    const status = egressInfo.status
+
+    console.log(`Egress ended: ${egressId}, status: ${status}, statusType: ${typeof status}`)
+    console.log('Full egressInfo:', JSON.stringify(egressInfo, null, 2))
 
     // Only process successful egresses (status 3 = EGRESS_COMPLETE)
     if (status !== 3) {
-      console.log(`Egress ${egressId} did not complete successfully (status: ${status})`)
-      return new Response(JSON.stringify({ ok: true }), {
+      console.log(`Egress ${egressId} did not complete successfully (status: ${status}, expected: 3)`)
+      return new Response(JSON.stringify({ ok: true, message: `Ignoring status ${status}` }), {
         headers: { 'Content-Type': 'application/json' },
         status: 200,
       })
     }
 
-    // Extract recording URL
-    const fileResults = egressInfo?.fileResults || []
+    // Extract recording URL (support both camelCase and snake_case)
+    const fileResults = egressInfo.fileResults || egressInfo.file_results || []
+    console.log(`Found ${fileResults.length} file results`)
+
     let recordingUrl = null
 
     if (fileResults.length > 0) {
-      recordingUrl = fileResults[0].downloadUrl || fileResults[0].download_url
-    } else if (egressInfo?.file?.downloadUrl) {
-      recordingUrl = egressInfo.file.downloadUrl
-    } else if (egressInfo?.file?.download_url) {
-      recordingUrl = egressInfo.file.download_url
+      const firstFile = fileResults[0]
+      recordingUrl = firstFile.downloadUrl || firstFile.download_url || firstFile.location
+      console.log('First file result keys:', Object.keys(firstFile))
+    } else if (egressInfo.file) {
+      recordingUrl = egressInfo.file.downloadUrl || egressInfo.file.download_url || egressInfo.file.location
+      console.log('Using egressInfo.file, keys:', Object.keys(egressInfo.file))
     }
 
     if (!recordingUrl) {
-      console.warn(`No recording URL found for egress ${egressId}`)
-      return new Response(JSON.stringify({ ok: true }), {
+      console.warn(`❌ No recording URL found for egress ${egressId}`)
+      console.warn('fileResults:', JSON.stringify(fileResults, null, 2))
+      console.warn('egressInfo.file:', JSON.stringify(egressInfo.file, null, 2))
+      return new Response(JSON.stringify({ ok: true, message: 'No recording URL found' }), {
         headers: { 'Content-Type': 'application/json' },
         status: 200,
       })
     }
 
-    console.log(`Recording URL: ${recordingUrl}`)
+    console.log(`✅ Recording URL: ${recordingUrl}`)
 
     // Update call_record with recording URL
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
