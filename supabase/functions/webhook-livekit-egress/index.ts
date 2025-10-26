@@ -18,7 +18,7 @@ serve(async (req) => {
     const payload = await req.json()
     console.log('Webhook payload:', JSON.stringify(payload, null, 2))
 
-    const { event, egress_info } = payload
+    const { event, egressInfo } = payload
 
     // Only process when egress completes successfully
     if (event !== 'egress_ended') {
@@ -29,13 +29,13 @@ serve(async (req) => {
       })
     }
 
-    const egressId = egress_info?.egress_id
-    const status = egress_info?.status
+    const egressId = egressInfo?.egressId
+    const status = egressInfo?.status
 
     console.log(`Egress ended: ${egressId}, status: ${status}`)
 
-    // Only process successful egresses
-    if (status !== 'EGRESS_COMPLETE') {
+    // Only process successful egresses (status 3 = EGRESS_COMPLETE)
+    if (status !== 3) {
       console.log(`Egress ${egressId} did not complete successfully (status: ${status})`)
       return new Response(JSON.stringify({ ok: true }), {
         headers: { 'Content-Type': 'application/json' },
@@ -44,13 +44,15 @@ serve(async (req) => {
     }
 
     // Extract recording URL
-    const fileResults = egress_info?.file_results || []
+    const fileResults = egressInfo?.fileResults || []
     let recordingUrl = null
 
     if (fileResults.length > 0) {
-      recordingUrl = fileResults[0].download_url
-    } else if (egress_info?.file?.download_url) {
-      recordingUrl = egress_info.file.download_url
+      recordingUrl = fileResults[0].downloadUrl || fileResults[0].download_url
+    } else if (egressInfo?.file?.downloadUrl) {
+      recordingUrl = egressInfo.file.downloadUrl
+    } else if (egressInfo?.file?.download_url) {
+      recordingUrl = egressInfo.file.download_url
     }
 
     if (!recordingUrl) {
