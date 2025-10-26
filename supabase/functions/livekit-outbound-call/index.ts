@@ -100,7 +100,8 @@ serve(async (req) => {
     console.log('Call record created:', callRecord.id)
 
     // Create SIP participant (make the outbound call)
-    console.log('Creating SIP participant to dial:', phoneNumber)
+    console.log('Creating SIP participant to dial:', phoneNumber, 'from:', callerIdNumber)
+    console.log('Using trunk:', OUTBOUND_TRUNK_ID, 'room:', roomName)
 
     const sipParticipant = await sipClient.createSipParticipant(
       OUTBOUND_TRUNK_ID,
@@ -109,8 +110,8 @@ serve(async (req) => {
       {
         participantIdentity: `sip-outbound-${callRecord.id}`,
         participantName: phoneNumber,
-        // Use caller ID if provided
-        ...(callerIdNumber && { participantMetadata: JSON.stringify({ callerId: callerIdNumber }) }),
+        // Set the outbound caller ID number
+        ...(callerIdNumber && { sipNumber: callerIdNumber }),
         // Enable noise reduction for better quality
         krispEnabled: true,
         // Enable recording if requested

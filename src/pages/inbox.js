@@ -1555,14 +1555,16 @@ export default class InboxPage {
 
       console.log('✅ Outbound call initiated:', callResult);
 
-      // Update UI to show call is active
-      this.updateCallState('established');
+      // Update UI to show call is ringing (not established yet)
+      this.updateCallState('progress');
+      this.showCallStatus('Ringing...');
 
       // TODO: Add realtime listener for call status updates from LiveKit
-      // For now, just keep the UI in "established" state until user hangs up
+      // The call state should update to "established" when the recipient answers
+      // For now, we'll keep it in "progress" state
       // The call will be tracked in database by LiveKit webhooks
 
-      console.log('📞 Call in progress through LiveKit. Waiting for call to complete...');
+      console.log('📞 Call ringing through LiveKit. Call ID:', callResult.callId);
     } catch (error) {
       console.error('Failed to initiate call:', error);
       alert(`Failed to initiate call: ${error.message}`);
