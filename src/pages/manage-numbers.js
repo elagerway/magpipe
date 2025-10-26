@@ -540,6 +540,9 @@ export default class ManageNumbersPage {
 
       if (error) throw error;
 
+      // Check if this is a Canadian number and toggle paired US number
+      await this.togglePairedUSNumber(number, newStatus);
+
       successMessage.className = 'alert alert-success';
       successMessage.textContent = `Number ${newStatus ? 'activated' : 'deactivated'} successfully`;
 
@@ -558,6 +561,72 @@ export default class ManageNumbersPage {
 
       // Revert the toggle
       await this.loadNumbers();
+    }
+  }
+
+  async togglePairedUSNumber(canadianNumber, newStatus) {
+    try {
+      // Check if this is a Canadian number
+      const isCanadian = canadianNumber.phone_number.startsWith('+1604') ||
+                         canadianNumber.phone_number.startsWith('+1778') ||
+                         canadianNumber.phone_number.startsWith('+1236') ||
+                         canadianNumber.phone_number.startsWith('+1250');
+
+      if (!isCanadian) {
+        console.log('Not a Canadian number, skipping paired US number toggle');
+        return;
+      }
+
+      // Get authenticated user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Find the paired US number (has "Auto US Relay" in friendly_name and same user_id)
+      const { data: pairedNumbers, error: searchError } = await supabase
+        .from('service_numbers')
+        .select('*')
+        .eq('user_id', user.id)
+        .ilike('friendly_name', '%Auto US Relay%');
+
+      if (searchError) {
+        console.error('Error searching for paired US number:', searchError);
+        return;
+      }
+
+      if (!pairedNumbers || pairedNumbers.length === 0) {
+        console.log('No paired US relay number found');
+        return;
+      }
+
+      // Toggle all paired US numbers (should typically be just one)
+      for (const pairedNumber of pairedNumbers) {
+        console.log(`${newStatus ? 'Activating' : 'Deactivating'} paired US number:`, pairedNumber.phone_number);
+
+        // If activating the paired US number, configure it first
+        if (newStatus) {
+          await this.configureSignalWireNumber(pairedNumber.phone_number);
+        } else {
+          // If deactivating, deactivate in Retell
+          if (pairedNumber.retell_phone_id) {
+            await this.deactivatePhoneInRetell(pairedNumber.phone_number);
+          }
+        }
+
+        // Update the paired number status
+        const { error: updateError } = await supabase
+          .from('service_numbers')
+          .update({ is_active: newStatus })
+          .eq('id', pairedNumber.id);
+
+        if (updateError) {
+          console.error('Error updating paired US number status:', updateError);
+        } else {
+          console.log(`✅ Paired US number ${newStatus ? 'activated' : 'deactivated'}`);
+        }
+      }
+    } catch (error) {
+      console.error('Error toggling paired US number:', error);
+      // Don't throw - this is a non-critical operation
     }
   }
 

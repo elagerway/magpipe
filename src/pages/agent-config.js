@@ -99,8 +99,8 @@ export default class AgentConfigPage {
       .eq('is_cloned', true)
       .order('created_at', { ascending: false });
 
-    // Check active voice stack to determine if voice cloning is available
-    const isLiveKitActive = config?.active_voice_stack === 'livekit';
+    // Always using LiveKit - voice cloning is always available
+    const isLiveKitActive = true;
 
     const appElement = document.getElementById('app');
 
@@ -1434,9 +1434,7 @@ If spammy, ignore or politely decline.
 
 Always sound approachable, keep things simple, and update the user with a quick summary after each interaction.`;
 
-            // Get voice stack preference from localStorage (set during signup)
-            const voiceStack = localStorage.getItem('voice_stack_preference') || 'retell';
-
+            // Always use LiveKit
             const createResponse = await fetch(`${supabaseUrl}/functions/v1/create-retell-agent`, {
               method: 'POST',
               headers: {
@@ -1449,7 +1447,7 @@ Always sound approachable, keep things simple, and update the user with a quick 
                   voice_id: '21m00Tcm4TlvDq8ikWAM', // Rachel voice
                   prompt: defaultPrompt,
                 },
-                voiceStack: voiceStack,
+                voiceStack: 'livekit',
               }),
             });
 

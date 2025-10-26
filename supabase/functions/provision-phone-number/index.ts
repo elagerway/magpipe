@@ -110,18 +110,22 @@ serve(async (req) => {
       mms: capabilities.mms === true || capabilities.MMS === true,
     }
 
-    // Step 2: If this is a US number (+1), add it to the SMS campaign
+    // Step 2: If this is a US number (not Canadian), add it to the SMS campaign
     let campaignRegistered = false
-    if (phoneNumber.startsWith('+1')) {
+    const { isUSNumber } = await import('../_shared/sms-compliance.ts')
+    const isUS = await isUSNumber(phoneNumber, supabase)
+
+    if (isUS) {
       const campaignId = Deno.env.get('SIGNALWIRE_SMS_CAMPAIGN_ID')
 
       if (campaignId) {
         console.log('Registering US number with SMS campaign:', campaignId)
 
-        const campaignUrl = `https://${signalwireSpaceUrl}/api/relay/rest/10dlc/campaign/${campaignId}/associate`
+        const campaignUrl = `https://${signalwireSpaceUrl}/api/relay/rest/registry/beta/campaigns/${campaignId}/orders`
 
         const campaignBody = JSON.stringify({
-          phone_number: phoneNumber
+          phone_numbers: [phoneNumber],
+          status_callback_url: `${webhookBaseUrl}/webhook-campaign-status`
         })
 
         const campaignResponse = await fetch(campaignUrl, {
@@ -166,13 +170,121 @@ serve(async (req) => {
       )
     }
 
+    // Step 4: If this is a Canadian number, auto-provision a US number for SMS to US contacts
+    let usNumberProvisioned = null
+    if (!isUS) {
+      console.log('Canadian number detected - auto-provisioning US number for SMS to US contacts')
+
+      try {
+        // Search for any available US number
+        const searchUrl = `https://${signalwireSpaceUrl}/api/laml/2010-04-01/Accounts/${signalwireProjectId}/AvailablePhoneNumbers/US/Local.json?SmsEnabled=true&VoiceEnabled=true`
+
+        const searchResponse = await fetch(searchUrl, {
+          headers: {
+            'Authorization': 'Basic ' + btoa(`${signalwireProjectId}:${signalwireToken}`),
+          },
+        })
+
+        if (searchResponse.ok) {
+          const searchResult = await searchResponse.json()
+          const availableNumbers = searchResult.available_phone_numbers || []
+
+          if (availableNumbers.length > 0) {
+            const usNumber = availableNumbers[0].phone_number
+            console.log('Found available US number:', usNumber)
+
+            // Purchase the US number
+            const usPurchaseBody = new URLSearchParams({
+              PhoneNumber: usNumber,
+              VoiceUrl: `${webhookBaseUrl}/webhook-inbound-call`,
+              VoiceMethod: 'POST',
+              StatusCallback: `${webhookBaseUrl}/webhook-call-status`,
+              StatusCallbackMethod: 'POST',
+              SmsUrl: `${webhookBaseUrl}/webhook-inbound-sms`,
+              SmsMethod: 'POST',
+              FriendlyName: `Pat AI - ${user.email} (Auto US Relay)`,
+            })
+
+            const usPurchaseResponse = await fetch(purchaseUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Authorization': 'Basic ' + btoa(`${signalwireProjectId}:${signalwireToken}`),
+              },
+              body: usPurchaseBody.toString(),
+            })
+
+            if (usPurchaseResponse.ok) {
+              const usPurchaseResult = await usPurchaseResponse.json()
+              const usPhoneSid = usPurchaseResult.sid
+
+              // Normalize capabilities
+              const usCapabilities = usPurchaseResult.capabilities || {}
+              const usNormalizedCapabilities = {
+                voice: usCapabilities.voice === true || usCapabilities.Voice === true,
+                sms: usCapabilities.sms === true || usCapabilities.SMS === true,
+                mms: usCapabilities.mms === true || usCapabilities.MMS === true,
+              }
+
+              // Register with SMS campaign (it's a US number)
+              const campaignId = Deno.env.get('SIGNALWIRE_SMS_CAMPAIGN_ID')
+              let usCampaignRegistered = false
+
+              if (campaignId) {
+                const campaignUrl = `https://${signalwireSpaceUrl}/api/relay/rest/registry/beta/campaigns/${campaignId}/orders`
+                const campaignBody = JSON.stringify({
+                  phone_numbers: [usNumber],
+                  status_callback_url: `${webhookBaseUrl}/webhook-campaign-status`
+                })
+
+                const campaignResponse = await fetch(campaignUrl, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Basic ' + btoa(`${signalwireProjectId}:${signalwireToken}`),
+                  },
+                  body: campaignBody,
+                })
+
+                if (campaignResponse.ok) {
+                  console.log('✅ Auto-provisioned US number registered with SMS campaign')
+                  usCampaignRegistered = true
+                }
+              }
+
+              // Save US number to database
+              await supabase
+                .from('service_numbers')
+                .insert({
+                  user_id: user.id,
+                  phone_number: usNumber,
+                  phone_sid: usPhoneSid,
+                  friendly_name: `Pat AI - ${user.email} (Auto US Relay)`,
+                  is_active: true, // Auto-activate for seamless SMS to US contacts
+                  capabilities: usNormalizedCapabilities,
+                })
+
+              usNumberProvisioned = usNumber
+              console.log('✅ Auto-provisioned US number:', usNumber)
+            }
+          }
+        }
+      } catch (usError) {
+        console.error('⚠️ Failed to auto-provision US number:', usError)
+        // Don't fail the entire provisioning - Canadian number still works
+      }
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
         phoneNumber,
         phoneSid,
         campaignRegistered,
-        message: campaignRegistered
+        usNumberProvisioned, // Include auto-provisioned US number if any
+        message: usNumberProvisioned
+          ? `Canadian number provisioned successfully. US number ${usNumberProvisioned} also provisioned for SMS to US contacts.`
+          : campaignRegistered
           ? 'Phone number purchased, configured, and registered with SMS campaign successfully'
           : 'Phone number purchased and configured successfully',
         webhooks: {

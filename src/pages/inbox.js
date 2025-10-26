@@ -227,15 +227,23 @@ export default class InboxPage {
     const smsGrouped = {};
     messages?.forEach(msg => {
       const phone = msg.direction === 'inbound' ? msg.sender_number : msg.recipient_number;
+      // For inbound: recipient_number is the service number (our number being texted)
+      // For outbound: sender_number is the service number (our number sending)
+      const serviceNumber = msg.direction === 'inbound' ? msg.recipient_number : msg.sender_number;
+
       if (!smsGrouped[phone]) {
         smsGrouped[phone] = {
           type: 'sms',
           phone,
+          serviceNumbers: new Set([serviceNumber]), // Track all service numbers
           messages: [],
           lastActivity: new Date(msg.sent_at || msg.created_at),
           lastMessage: msg.content,
           unreadCount: 0,
         };
+      } else {
+        // Add this service number to the set
+        smsGrouped[phone].serviceNumbers.add(serviceNumber);
       }
       smsGrouped[phone].messages.push(msg);
 
@@ -343,6 +351,7 @@ export default class InboxPage {
                   <span class="conversation-time">${this.formatTimestamp(conv.lastActivity)}</span>
                 </div>
               </div>
+              <div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 2px;">To: ${Array.from(conv.serviceNumbers).map(n => this.formatPhoneNumber(n)).join(', ')}</div>
               <div class="conversation-preview">${conv.lastMessage}</div>
             </div>
           </div>
@@ -929,24 +938,29 @@ export default class InboxPage {
     input.disabled = true;
     const sendButton = document.getElementById('send-button');
     sendButton.disabled = true;
-    console.log('Input disabled, fetching service number...');
+    console.log('Input disabled, determining service number...');
 
     try {
-      // Get the user's active SignalWire service number
       const { data: { session } } = await supabase.auth.getSession();
-      const { data: serviceNumbers, error: numberError } = await supabase
-        .from('service_numbers')
-        .select('phone_number')
-        .eq('user_id', session.user.id)
-        .eq('is_active', true)
-        .limit(1);
 
-      console.log('Service numbers:', serviceNumbers, 'Error:', numberError);
+      // Get the service number from the current conversation
+      // Use the most recent message's service number (the one they last texted)
+      const conv = this.conversations.find(c => c.type === 'sms' && c.phone === this.selectedContact);
+      if (!conv || !conv.messages || conv.messages.length === 0) {
+        alert('No conversation found.');
+        return;
+      }
 
-      const serviceNumber = serviceNumbers?.[0]?.phone_number;
+      // Get the most recent message to determine which service number to use
+      const recentMsg = conv.messages[conv.messages.length - 1];
+      const serviceNumber = recentMsg.direction === 'inbound'
+        ? recentMsg.recipient_number  // They texted TO this number
+        : recentMsg.sender_number;     // We sent FROM this number
+
+      console.log('Using service number from conversation:', serviceNumber);
 
       if (!serviceNumber) {
-        alert('No active service number found. Please configure a number first.');
+        alert('Could not determine service number.');
         return;
       }
 

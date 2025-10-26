@@ -9,6 +9,7 @@ export default class MessagesPage {
   constructor() {
     this.conversations = [];
     this.currentContactId = null;
+    this.currentServiceNumber = null;
     this.currentThread = [];
   }
 
@@ -22,6 +23,7 @@ export default class MessagesPage {
 
     // Fetch conversations
     const { conversations } = await SmsMessage.getConversations(user.id);
+    console.log('Conversations fetched:', conversations);
     this.conversations = conversations;
 
     const appElement = document.getElementById('app');
@@ -77,29 +79,42 @@ export default class MessagesPage {
 
     return this.conversations
       .map(
-        (conversation) => `
-        <div class="conversation-item ${this.currentContactId === conversation.contact_id ? 'active' : ''}"
+        (conversation) => {
+          const isActive = this.currentContactId === conversation.contact_id &&
+                          this.currentServiceNumber === conversation.recipient_number;
+          // Determine sender number (for inbound it's sender_number, for outbound it's the contact)
+          const senderNumber = conversation.direction === 'inbound'
+            ? conversation.sender_number
+            : conversation.contacts?.phone_number;
+
+          return `
+        <div class="conversation-item ${isActive ? 'active' : ''}"
              data-contact-id="${conversation.contact_id}"
+             data-service-number="${conversation.recipient_number}"
              style="
                padding: 0.75rem;
                border-radius: var(--radius-md);
                cursor: pointer;
                margin-bottom: 0.5rem;
-               background: ${this.currentContactId === conversation.contact_id ? 'var(--bg-secondary)' : 'transparent'};
+               background: ${isActive ? 'var(--bg-secondary)' : 'transparent'};
              "
              onmouseover="if (!this.classList.contains('active')) this.style.backgroundColor='var(--bg-secondary)'"
              onmouseout="if (!this.classList.contains('active')) this.style.backgroundColor='transparent'">
-          <div style="font-weight: 600; margin-bottom: 0.25rem;">
-            ${conversation.contacts?.name || conversation.contacts?.phone_number || 'Unknown'}
+          <div style="font-weight: 600; margin-bottom: 0.25rem; font-size: 1rem;">
+            ${conversation.contacts?.name || senderNumber || 'Unknown'}
+          </div>
+          <div class="text-xs text-muted" style="margin-bottom: 0.25rem;">
+            To: ${conversation.recipient_number}
           </div>
           <div class="text-sm text-muted" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-            ${conversation.direction === 'outbound' ? 'You: ' : ''}${conversation.body.substring(0, 50)}${conversation.body.length > 50 ? '...' : ''}
+            ${conversation.direction === 'outbound' ? 'You: ' : ''}${conversation.content.substring(0, 50)}${conversation.content.length > 50 ? '...' : ''}
           </div>
           <div class="text-xs text-muted" style="margin-top: 0.25rem;">
             ${this.formatDateTime(conversation.created_at)}
           </div>
         </div>
-      `
+      `;
+        }
       )
       .join('');
   }
@@ -120,7 +135,7 @@ export default class MessagesPage {
             background: ${message.direction === 'outbound' ? 'var(--primary-color)' : 'var(--bg-secondary)'};
             color: ${message.direction === 'outbound' ? 'white' : 'var(--text-primary)'};
           ">
-            <div style="word-wrap: break-word;">${message.body}</div>
+            <div style="word-wrap: break-word;">${message.content}</div>
             <div style="
               margin-top: 0.5rem;
               font-size: 0.75rem;
@@ -174,20 +189,22 @@ export default class MessagesPage {
     document.querySelectorAll('.conversation-item').forEach((item) => {
       item.addEventListener('click', async (e) => {
         const contactId = e.currentTarget.dataset.contactId;
-        await this.loadThread(contactId);
+        const serviceNumber = e.currentTarget.dataset.serviceNumber;
+        await this.loadThread(contactId, serviceNumber);
       });
     });
   }
 
-  async loadThread(contactId) {
+  async loadThread(contactId, serviceNumber) {
     this.currentContactId = contactId;
+    this.currentServiceNumber = serviceNumber;
 
     // Update conversation list styling
     document.getElementById('conversations-list').innerHTML = this.renderConversationsList();
     this.attachConversationListeners();
 
-    // Fetch thread
-    const { messages } = await SmsMessage.getThread(contactId);
+    // Fetch thread filtered by service number
+    const { messages } = await SmsMessage.getThread(contactId, { serviceNumber });
     this.currentThread = messages;
 
     // Find contact info

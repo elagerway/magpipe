@@ -159,20 +159,27 @@ export class SmsMessage {
   }
 
   /**
-   * Get SMS conversation thread with a contact
+   * Get SMS conversation thread with a contact on a specific service number
    * @param {string} contactId - Contact's UUID
-   * @param {Object} options - Query options {limit, offset}
+   * @param {Object} options - Query options {serviceNumber, limit, offset}
    * @returns {Promise<{messages: Array, error: Error|null}>}
    */
   static async getThread(contactId, options = {}) {
-    const { limit = 50, offset = 0 } = options;
+    const { serviceNumber = null, limit = 50, offset = 0 } = options;
 
-    const { data, error } = await supabase
+    let query = supabase
       .from('sms_messages')
       .select('*')
       .eq('contact_id', contactId)
       .order('created_at', { ascending: true })
       .range(offset, offset + limit - 1);
+
+    // Filter by service number if provided (for multi-number threading)
+    if (serviceNumber) {
+      query = query.eq('recipient_number', serviceNumber);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       return { messages: [], error };
@@ -295,11 +302,12 @@ export class SmsMessage {
 
   /**
    * Get latest message from each contact (for conversation list view)
+   * Grouped by contact_id AND recipient_number (service number) to support multiple numbers
    * @param {string} userId - User's UUID
    * @returns {Promise<{conversations: Array, error: Error|null}>}
    */
   static async getConversations(userId) {
-    // This is a complex query that requires grouping by contact_id
+    // This is a complex query that requires grouping by contact_id AND recipient_number
     // We'll use a simplified approach: get all messages, then group client-side
     const { data, error } = await supabase
       .from('sms_messages')
@@ -311,11 +319,14 @@ export class SmsMessage {
       return { conversations: [], error };
     }
 
-    // Group by contact_id, keeping only the latest message
+    // Group by contact_id AND recipient_number (service number), keeping only the latest message
+    // This creates separate conversation threads when the same contact texts different service numbers
     const conversationMap = new Map();
     data.forEach((message) => {
-      if (!conversationMap.has(message.contact_id)) {
-        conversationMap.set(message.contact_id, message);
+      // Create unique key combining contact_id and recipient_number (service number)
+      const conversationKey = `${message.contact_id}:${message.recipient_number}`;
+      if (!conversationMap.has(conversationKey)) {
+        conversationMap.set(conversationKey, message);
       }
     });
 
