@@ -66,11 +66,17 @@ serve(async (req) => {
     const roomName = `outbound-${userId}-${Date.now()}`
     console.log('Creating room:', roomName)
 
-    // Create LiveKit room with agent
+    // Create LiveKit room with agent metadata
     await roomClient.createRoom({
       name: roomName,
       emptyTimeout: 300, // 5 minutes
       maxParticipants: 10,
+      metadata: JSON.stringify({
+        user_id: userId,
+        direction: 'outbound',
+        contact_phone: phoneNumber,
+        service_number: callerIdNumber,
+      }),
     })
 
     console.log('Room created successfully')
