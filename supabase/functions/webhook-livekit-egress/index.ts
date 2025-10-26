@@ -27,6 +27,22 @@ serve(async (req) => {
       throw jsonError
     }
 
+    // Log to database for debugging (temporary)
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabase = createClient(supabaseUrl, supabaseKey)
+
+    try {
+      await supabase.from('webhook_logs').insert({
+        webhook_type: 'livekit_egress',
+        payload: payload,
+        received_at: new Date().toISOString()
+      })
+      console.log('✅ Logged webhook payload to database')
+    } catch (logError) {
+      console.warn('Could not log to database (table may not exist):', logError)
+    }
+
     // Support both camelCase and snake_case field names
     const event = payload.event
     const egressInfo = payload.egressInfo || payload.egress_info
