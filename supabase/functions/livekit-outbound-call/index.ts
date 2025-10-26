@@ -7,8 +7,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// LiveKit outbound SIP trunk ID (with TLS on port 5061)
-const OUTBOUND_TRUNK_ID = 'ST_gjX5nwd4CNYq'
+// LiveKit outbound SIP trunk ID
+const OUTBOUND_TRUNK_ID = 'ST_3DmaaWbHL9QT'
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -79,9 +79,10 @@ serve(async (req) => {
       }),
     })
 
-    console.log('Room created successfully')
+    console.log('✅ Room created successfully')
 
     // Create call record in database
+    console.log('📝 Creating call record in database...')
     const { data: callRecord, error: callError } = await supabase
       .from('call_records')
       .insert({
@@ -99,35 +100,50 @@ serve(async (req) => {
       .single()
 
     if (callError) {
-      console.error('Failed to create call record:', callError)
+      console.error('❌ Failed to create call record:', callError)
       throw new Error(`Failed to create call record: ${callError.message}`)
     }
 
-    console.log('Call record created:', callRecord.id)
+    console.log('✅ Call record created:', callRecord.id)
 
     // Create SIP participant (make the outbound call)
-    console.log('Creating SIP participant to dial:', phoneNumber, 'from:', callerIdNumber)
-    console.log('Using trunk:', OUTBOUND_TRUNK_ID, 'room:', roomName)
+    console.log('📞 Creating SIP participant...')
+    console.log('  → Dialing:', phoneNumber)
+    console.log('  → From:', callerIdNumber)
+    console.log('  → Trunk:', OUTBOUND_TRUNK_ID)
+    console.log('  → Room:', roomName)
+    console.log('  → Record:', recordCall)
 
-    const sipParticipant = await sipClient.createSipParticipant(
-      OUTBOUND_TRUNK_ID,
-      phoneNumber,
-      roomName,
-      {
-        participantIdentity: `sip-outbound-${callRecord.id}`,
-        participantName: phoneNumber,
-        // Set the outbound caller ID number
-        ...(callerIdNumber && { sipNumber: callerIdNumber }),
-        // Enable noise reduction for better quality
-        krispEnabled: true,
-        // Enable recording if requested
-        ...(recordCall && {
-          // Recording will be handled by LiveKit egress webhook
-        }),
-      }
-    )
+    const sipOptions = {
+      participantIdentity: `sip-outbound-${callRecord.id}`,
+      participantName: phoneNumber,
+      // Set the outbound caller ID number
+      ...(callerIdNumber && { sipNumber: callerIdNumber }),
+      // Enable noise reduction for better quality
+      krispEnabled: true,
+      // Enable recording if requested
+      ...(recordCall && {
+        // Recording will be handled by LiveKit egress webhook
+      }),
+    }
 
-    console.log('SIP participant created:', sipParticipant.participantId)
+    console.log('  → SIP Options:', JSON.stringify(sipOptions, null, 2))
+
+    let sipParticipant
+    try {
+      sipParticipant = await sipClient.createSipParticipant(
+        OUTBOUND_TRUNK_ID,
+        phoneNumber,
+        roomName,
+        sipOptions
+      )
+      console.log('✅ SIP participant created:', sipParticipant.participantId)
+      console.log('  → SIP Call ID:', sipParticipant.sipCallId || 'N/A')
+    } catch (sipError) {
+      console.error('❌ Failed to create SIP participant:', sipError)
+      console.error('  → Error details:', JSON.stringify(sipError, null, 2))
+      throw new Error(`Failed to create SIP participant: ${sipError.message}`)
+    }
 
     // Update call record with SIP participant info
     await supabase
