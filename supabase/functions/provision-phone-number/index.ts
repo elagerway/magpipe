@@ -110,7 +110,43 @@ serve(async (req) => {
       mms: capabilities.mms === true || capabilities.MMS === true,
     }
 
-    // Step 2: Save the service number to service_numbers table
+    // Step 2: If this is a US number (+1), add it to the SMS campaign
+    let campaignRegistered = false
+    if (phoneNumber.startsWith('+1')) {
+      const campaignId = Deno.env.get('SIGNALWIRE_SMS_CAMPAIGN_ID')
+
+      if (campaignId) {
+        console.log('Registering US number with SMS campaign:', campaignId)
+
+        const campaignUrl = `https://${signalwireSpaceUrl}/api/relay/rest/10dlc/campaign/${campaignId}/associate`
+
+        const campaignBody = JSON.stringify({
+          phone_number: phoneNumber
+        })
+
+        const campaignResponse = await fetch(campaignUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Basic ' + btoa(`${signalwireProjectId}:${signalwireToken}`),
+          },
+          body: campaignBody,
+        })
+
+        if (campaignResponse.ok) {
+          console.log('✅ Number registered with SMS campaign successfully')
+          campaignRegistered = true
+        } else {
+          const errorText = await campaignResponse.text()
+          console.error('⚠️ Failed to register number with SMS campaign:', errorText)
+          // Don't fail the entire provisioning - just log the error
+        }
+      } else {
+        console.warn('⚠️ US number purchased but SIGNALWIRE_SMS_CAMPAIGN_ID not configured')
+      }
+    }
+
+    // Step 3: Save the service number to service_numbers table
     const { error: insertError } = await supabase
       .from('service_numbers')
       .insert({
@@ -135,7 +171,10 @@ serve(async (req) => {
         success: true,
         phoneNumber,
         phoneSid,
-        message: 'Phone number purchased and configured successfully',
+        campaignRegistered,
+        message: campaignRegistered
+          ? 'Phone number purchased, configured, and registered with SMS campaign successfully'
+          : 'Phone number purchased and configured successfully',
         webhooks: {
           voice: `${webhookBaseUrl}/webhook-inbound-call`,
           voiceStatus: `${webhookBaseUrl}/webhook-call-status`,
