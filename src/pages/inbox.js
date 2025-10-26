@@ -1533,7 +1533,15 @@ export default class InboxPage {
 
       if (callError) {
         console.error('Failed to initiate outbound call:', callError);
-        alert(`Failed to initiate call: ${callError.message}`);
+        console.error('Full error details:', JSON.stringify(callError, null, 2));
+
+        // Try to get the error message from the response body
+        let errorMessage = callError.message;
+        if (callError.context) {
+          console.error('Error context:', callError.context);
+        }
+
+        alert(`Failed to initiate call: ${errorMessage}`);
         this.updateCallState('idle');
         return;
       }

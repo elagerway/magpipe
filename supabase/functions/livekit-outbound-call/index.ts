@@ -39,19 +39,27 @@ serve(async (req) => {
     const roomClient = new RoomServiceClient(livekitUrl, livekitApiKey, livekitApiSecret)
 
     // Get user's agent config
+    console.log('Querying agent_configs for user_id:', userId)
     const { data: agentConfig, error: configError } = await supabase
       .from('agent_configs')
       .select('*')
       .eq('user_id', userId)
       .single()
 
-    if (configError || !agentConfig) {
-      throw new Error(`Agent config not found: ${configError?.message}`)
+    if (configError) {
+      console.error('Agent config query error:', configError)
+      throw new Error(`Agent config not found for user ${userId}: ${configError.message}. Please configure your voice AI agent in Settings.`)
     }
+
+    if (!agentConfig) {
+      throw new Error(`No agent configuration found for user ${userId}. Please configure your voice AI agent in Settings.`)
+    }
+
+    console.log('Agent config found:', { userId, active_voice_stack: agentConfig.active_voice_stack })
 
     // Verify user is on LiveKit stack
     if (agentConfig.active_voice_stack !== 'livekit') {
-      throw new Error(`User is not on LiveKit stack (current: ${agentConfig.active_voice_stack})`)
+      throw new Error(`Outbound calling requires LiveKit stack (current: ${agentConfig.active_voice_stack || 'not set'}). Please switch to LiveKit in Settings.`)
     }
 
     // Generate unique room name for this call
