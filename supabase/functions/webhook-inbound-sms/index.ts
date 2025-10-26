@@ -218,7 +218,7 @@ IMPORTANT CONTEXT:
 - Use casual, friendly text message language
 - NEVER mention: "calling", "call back", "speak", "talk", "phone call", "voice"
 - ALWAYS use text-appropriate language: "text", "message", "reply", "send"
-- If they ask to talk/call, say: "I can help via text, or you can call [service_number] to speak with someone"
+- If they ask to talk/call, say: "I can help via text, or you can call ${to} to speak with someone"
 - This is asynchronous messaging - they may not respond immediately`
 
     const smsPrompt = agentConfig.system_prompt
