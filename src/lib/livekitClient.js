@@ -57,7 +57,11 @@ class LiveKitClient {
       });
 
     // Connect to the room
-    const livekitUrl = import.meta.env.VITE_LIVEKIT_URL || 'wss://snapsonic-lnr00zfm.livekit.cloud';
+    const livekitUrl = import.meta.env.VITE_LIVEKIT_URL;
+
+    if (!livekitUrl) {
+      throw new Error('VITE_LIVEKIT_URL environment variable is not set');
+    }
     
     try {
       await this.room.connect(livekitUrl, token);
