@@ -243,10 +243,9 @@ export default class CallsPage {
         ${callRecord.recording_url ? `
           <div class="form-group">
             <strong>Recording:</strong><br>
-            <audio controls style="width: 100%; margin-top: 0.5rem;">
-              <source src="${callRecord.recording_url}" type="audio/mpeg">
-              Your browser does not support audio playback.
-            </audio>
+            <div id="recording-player-container" style="margin-top: 0.5rem;">
+              <span style="color: var(--text-muted);">Loading recording...</span>
+            </div>
           </div>
         ` : ''}
 
@@ -262,5 +261,38 @@ export default class CallsPage {
     `;
 
     callModal.classList.remove('hidden');
+
+    // Fetch signed URL for recording if available
+    if (callRecord.recording_url) {
+      this.loadSignedRecording(callRecord.recording_url);
+    }
+  }
+
+  async loadSignedRecording(recordingUrl) {
+    const container = document.getElementById('recording-player-container');
+    if (!container) return;
+
+    try {
+      const { data, error } = await supabase.functions.invoke('get-signed-recording-url', {
+        body: { recordingUrl }
+      });
+
+      if (error) {
+        console.error('Error getting signed URL:', error);
+        container.innerHTML = '<span style="color: var(--danger);">Error loading recording</span>';
+        return;
+      }
+
+      // Create audio player with signed URL
+      container.innerHTML = `
+        <audio controls style="width: 100%;">
+          <source src="${data.signedUrl}" type="audio/mp4">
+          Your browser does not support audio playback.
+        </audio>
+      `;
+    } catch (error) {
+      console.error('Error loading recording:', error);
+      container.innerHTML = '<span style="color: var(--danger);">Error loading recording</span>';
+    }
   }
 }
