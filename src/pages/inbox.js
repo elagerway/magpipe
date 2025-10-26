@@ -603,103 +603,252 @@ export default class InboxPage {
     return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   }
 
-  showNewConversationModal() {
+  async showNewConversationModal() {
     const threadElement = document.getElementById('message-thread');
+
+    // Load active service numbers
+    const { data: { session } } = await supabase.auth.getSession();
+    const { data: serviceNumbers } = await supabase
+      .from('service_numbers')
+      .select('phone_number, friendly_name')
+      .eq('user_id', session.user.id)
+      .eq('is_active', true)
+      .order('purchased_at', { ascending: false });
+
+    // Default to first service number if available
+    this.selectedServiceNumber = serviceNumbers?.[0]?.phone_number || null;
+    const defaultNumber = serviceNumbers?.[0];
+
     threadElement.innerHTML = `
-      <div class="empty-thread">
-        <div style="max-width: 400px; width: 100%;">
-          <h2 style="margin: 0 0 1.5rem 0; font-size: 1.5rem;">New Conversation</h2>
+      <!-- Thread header with To: and From: fields -->
+      <div class="thread-header" style="
+        display: flex;
+        flex-direction: column;
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid var(--border-color);
+      ">
+        <div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
+          <button class="back-button" id="back-button-new" style="
+            display: none;
+            background: none;
+            border: none;
+            font-size: 1.75rem;
+            cursor: pointer;
+            padding: 0;
+            margin-right: 0.75rem;
+            color: var(--primary-color);
+            line-height: 1;
+          ">←</button>
+          <span style="color: var(--text-secondary); margin-right: 0.75rem; font-size: 0.88rem; min-width: 40px;">To:</span>
+          <input
+            type="tel"
+            id="text-phone"
+            placeholder="Enter phone number"
+            style="
+              flex: 1;
+              border: none;
+              outline: none;
+              background: transparent;
+              font-size: 0.88rem;
+              font-weight: 600;
+              color: var(--text-primary);
+            "
+          />
+        </div>
+        <div style="display: flex; align-items: center;">
+          <span style="color: var(--text-secondary); margin-right: 0.75rem; font-size: 0.88rem; min-width: 40px;">From:</span>
+          <button
+            id="from-number-btn"
+            style="
+              display: flex;
+              align-items: center;
+              gap: 0.5rem;
+              background: none;
+              border: none;
+              padding: 0.25rem 0.5rem;
+              border-radius: var(--radius-sm);
+              cursor: pointer;
+              font-size: 0.88rem;
+              font-weight: 600;
+              color: var(--text-primary);
+            "
+            onmouseover="this.style.background='var(--bg-secondary)'"
+            onmouseout="this.style.background='none'"
+          >
+            <span style="font-size: 1.2rem;">${defaultNumber ? this.getCountryFlag(defaultNumber.phone_number) : '🌍'}</span>
+            <span id="selected-number-display">${defaultNumber ? this.formatPhoneNumber(defaultNumber.phone_number) : 'Select number'}</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </button>
+        </div>
+      </div>
 
-          <div id="new-conv-error" class="hidden" style="margin-bottom: 1rem;"></div>
+      <!-- Empty messages area -->
+      <div class="thread-messages" id="thread-messages" style="flex: 1;"></div>
 
-          <div style="margin-bottom: 1rem;">
-            <label style="display: block; font-weight: 600; margin-bottom: 0.5rem;">Phone Number</label>
-            <input
-              type="tel"
-              id="new-conv-phone"
-              class="form-input"
-              placeholder="+1 (555) 123-4567"
-              style="width: 100%;"
-            />
+      <!-- Message input -->
+      <div class="message-input-container">
+        <textarea
+          id="message-input-new"
+          class="message-input"
+          placeholder="iMessage"
+          rows="1"
+        ></textarea>
+        <button id="send-button-new" class="send-button">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Service Number Selection Modal -->
+      <div id="number-select-modal" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content" style="max-width: 400px;">
+          <h2 style="margin-bottom: 1rem;">Select Number</h2>
+          <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+            ${serviceNumbers?.map(num => `
+              <button
+                class="number-option-btn"
+                data-number="${num.phone_number}"
+                style="
+                  display: flex;
+                  align-items: center;
+                  gap: 0.75rem;
+                  padding: 0.75rem;
+                  border: 2px solid var(--border-color);
+                  border-radius: var(--radius-md);
+                  background: var(--bg-primary);
+                  cursor: pointer;
+                  transition: all 0.2s;
+                "
+                onmouseover="this.style.borderColor='var(--primary-color)'; this.style.background='var(--bg-secondary)'"
+                onmouseout="this.style.borderColor='var(--border-color)'; this.style.background='var(--bg-primary)'"
+              >
+                <span style="font-size: 1.5rem;">${this.getCountryFlag(num.phone_number)}</span>
+                <div style="flex: 1; text-align: left;">
+                  <div style="font-weight: 600; font-size: 0.95rem;">${this.formatPhoneNumber(num.phone_number)}</div>
+                  ${num.friendly_name ? `<div style="font-size: 0.8rem; color: var(--text-secondary);">${num.friendly_name}</div>` : ''}
+                </div>
+              </button>
+            `).join('') || '<p class="text-muted">No active numbers</p>'}
           </div>
-
-          <div style="margin-bottom: 1.5rem;">
-            <label style="display: block; font-weight: 600; margin-bottom: 0.5rem;">Message</label>
-            <textarea
-              id="new-conv-message"
-              class="form-input"
-              placeholder="Type your message..."
-              rows="4"
-              style="width: 100%; resize: vertical;"
-            ></textarea>
-          </div>
-
-          <div style="display: flex; gap: 0.75rem;">
-            <button id="cancel-new-conv" class="btn btn-secondary" style="flex: 1;">
-              Cancel
-            </button>
-            <button id="send-new-conv" class="btn btn-primary" style="flex: 1;">
-              Send Message
-            </button>
-          </div>
+          <button class="btn btn-secondary" id="close-number-modal" style="margin-top: 1rem; width: 100%;">
+            Cancel
+          </button>
         </div>
       </div>
     `;
 
-    // Attach listeners
-    document.getElementById('cancel-new-conv').addEventListener('click', () => {
-      this.selectedContact = null;
-      threadElement.innerHTML = this.renderEmptyState();
+    // Handle mobile back button
+    const isMobile = window.innerWidth <= 768;
+    if (isMobile) {
+      const backBtn = document.getElementById('back-button-new');
+      if (backBtn) {
+        backBtn.style.display = 'block';
+        backBtn.addEventListener('click', () => {
+          this.selectedContact = null;
+          threadElement.innerHTML = this.renderEmptyState();
+          document.getElementById('conversations-container').style.display = 'block';
+          document.getElementById('thread-container').style.display = 'none';
+        });
+      }
+    }
+
+    // From number button - open modal
+    document.getElementById('from-number-btn').addEventListener('click', () => {
+      document.getElementById('number-select-modal').classList.remove('hidden');
     });
 
-    document.getElementById('send-new-conv').addEventListener('click', async () => {
+    // Number option buttons
+    document.querySelectorAll('.number-option-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const number = btn.dataset.number;
+        this.selectedServiceNumber = number;
+
+        // Update display
+        const displayEl = document.getElementById('selected-number-display');
+        const flagEl = document.getElementById('from-number-btn').querySelector('span');
+        displayEl.textContent = this.formatPhoneNumber(number);
+        flagEl.textContent = this.getCountryFlag(number);
+
+        // Close modal
+        document.getElementById('number-select-modal').classList.add('hidden');
+      });
+    });
+
+    // Close modal button
+    document.getElementById('close-number-modal').addEventListener('click', () => {
+      document.getElementById('number-select-modal').classList.add('hidden');
+    });
+
+    // Close modal on backdrop click
+    const modal = document.getElementById('number-select-modal');
+    modal.querySelector('.modal-backdrop').addEventListener('click', () => {
+      modal.classList.add('hidden');
+    });
+
+    // Send button
+    document.getElementById('send-button-new').addEventListener('click', async () => {
       await this.sendNewConversation();
     });
 
     // Focus phone input
-    document.getElementById('new-conv-phone').focus();
+    document.getElementById('text-phone').focus();
+  }
+
+  getCountryFlag(phoneNumber) {
+    // Normalize phone number
+    const cleaned = phoneNumber.replace(/\D/g, '');
+
+    // Check area code for US vs Canada
+    if (cleaned.startsWith('1')) {
+      const areaCode = cleaned.substring(1, 4);
+      // Canadian area codes
+      const canadianAreaCodes = ['204', '226', '236', '249', '250', '289', '306', '343', '365', '403', '416', '418', '431', '437', '438', '450', '506', '514', '519', '579', '581', '587', '604', '613', '639', '647', '672', '705', '709', '778', '780', '782', '807', '819', '825', '867', '873', '902', '905'];
+
+      if (canadianAreaCodes.includes(areaCode)) {
+        return '🇨🇦'; // Canada flag
+      }
+      return '🇺🇸'; // US flag
+    }
+
+    // Default to globe for unknown
+    return '🌍';
   }
 
   async sendNewConversation() {
-    const phoneInput = document.getElementById('new-conv-phone');
-    const messageInput = document.getElementById('new-conv-message');
-    const sendBtn = document.getElementById('send-new-conv');
-    const errorDiv = document.getElementById('new-conv-error');
+    const phoneInput = document.getElementById('text-phone');
+    const messageInput = document.getElementById('message-input-new');
+    const sendBtn = document.getElementById('send-button-new');
+    const threadMessages = document.getElementById('thread-messages');
 
     const phone = phoneInput.value.trim();
     const message = messageInput.value.trim();
+    const serviceNumber = this.selectedServiceNumber;
 
     if (!phone) {
-      errorDiv.className = 'alert alert-error';
-      errorDiv.textContent = 'Please enter a phone number';
+      threadMessages.innerHTML = '<div class="alert alert-error" style="margin: 1rem;">Please enter a phone number</div>';
       return;
     }
 
     if (!message) {
-      errorDiv.className = 'alert alert-error';
-      errorDiv.textContent = 'Please enter a message';
+      threadMessages.innerHTML = '<div class="alert alert-error" style="margin: 1rem;">Please enter a message</div>';
+      return;
+    }
+
+    if (!serviceNumber) {
+      threadMessages.innerHTML = '<div class="alert alert-error" style="margin: 1rem;">Please select a number to send from</div>';
       return;
     }
 
     sendBtn.disabled = true;
-    sendBtn.textContent = 'Sending...';
-    errorDiv.classList.add('hidden');
+    threadMessages.innerHTML = '<div class="alert alert-info" style="margin: 1rem;">Sending message...</div>';
 
     try {
-      // Get user's service number
       const { data: { session } } = await supabase.auth.getSession();
-      const { data: serviceNumbers } = await supabase
-        .from('service_numbers')
-        .select('phone_number')
-        .eq('user_id', session.user.id)
-        .eq('is_active', true)
-        .limit(1);
-
-      const serviceNumber = serviceNumbers?.[0]?.phone_number;
-
-      if (!serviceNumber) {
-        throw new Error('No active service number found');
-      }
 
       // Normalize phone number
       let normalizedPhone = phone.replace(/\D/g, '');
@@ -746,10 +895,8 @@ export default class InboxPage {
 
     } catch (error) {
       console.error('Send new conversation error:', error);
-      errorDiv.className = 'alert alert-error';
-      errorDiv.textContent = error.message || 'Failed to send message';
+      threadMessages.innerHTML = `<div class="alert alert-error" style="margin: 1rem;">${error.message || 'Failed to send message'}</div>`;
       sendBtn.disabled = false;
-      sendBtn.textContent = 'Send Message';
     }
   }
 
