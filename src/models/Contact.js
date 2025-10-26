@@ -9,7 +9,7 @@ export class Contact {
   /**
    * Create a new contact
    * @param {string} userId - User's UUID
-   * @param {Object} contactData - Contact data {name, phone_number, is_whitelisted, notes}
+   * @param {Object} contactData - Contact data {first_name, last_name, phone_number, email, address, is_whitelisted, notes, avatar_url}
    * @returns {Promise<{contact: Object|null, error: Error|null}>}
    */
   static async create(userId, contactData) {
@@ -134,7 +134,7 @@ export class Contact {
   }
 
   /**
-   * Search contacts by name or phone number
+   * Search contacts by name, phone number, or email
    * @param {string} userId - User's UUID
    * @param {string} searchTerm - Search term
    * @returns {Promise<{contacts: Array, error: Error|null}>}
@@ -144,8 +144,8 @@ export class Contact {
       .from('contacts')
       .select('*')
       .eq('user_id', userId)
-      .or(`name.ilike.%${searchTerm}%,phone_number.ilike.%${searchTerm}%`)
-      .order('name', { ascending: true });
+      .or(`first_name.ilike.%${searchTerm}%,last_name.ilike.%${searchTerm}%,phone_number.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%`)
+      .order('first_name', { ascending: true });
 
     if (error) {
       return { contacts: [], error };
@@ -165,7 +165,7 @@ export class Contact {
       .select('*')
       .eq('user_id', userId)
       .eq('is_whitelisted', true)
-      .order('name', { ascending: true });
+      .order('first_name', { ascending: true });
 
     if (error) {
       return { contacts: [], error };
