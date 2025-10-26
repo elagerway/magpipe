@@ -1,11 +1,55 @@
 # Session Notes
 
-**Last Updated:** 2025-10-24
+**Last Updated:** 2025-10-25
 **Active Branch:** Pat-AI
 
 ---
 
-## Current Session (2025-10-24)
+## Current Session (2025-10-25)
+
+### ✅ RESOLVED: LiveKit Egress Recording URL Not Populating in UI
+
+**Problem:**
+- Calls connecting successfully on LiveKit stack
+- Recording egress starting successfully (egress_id saved to database)
+- Recording URLs not appearing in UI after calls end
+- No errors in Render logs
+
+**Root Causes Identified:**
+1. **Webhook deployed with JWT verification** - Supabase Edge Functions require `--no-verify-jwt` flag to accept external webhooks
+2. **LiveKit authentication mechanism** - LiveKit uses project-based authentication for webhooks, not JWT tokens
+
+**Resolution Steps:** ✅
+1. **Created LiveKit Egress Webhook** - `supabase/functions/webhook-livekit-egress/index.ts`
+   - Receives `egress_ended` events from LiveKit
+   - Extracts recording URL from `egress_info.file_results[0].download_url`
+   - Updates `call_records.recording_url` using `egress_id` as lookup key
+
+2. **Fixed Resource Leak** - `agents/livekit-voice-agent/agent.py:614-619`
+   - Added `await livekit_api.aclose()` to properly close aiohttp ClientSession
+   - Prevents "Unclosed client session" asyncio warnings
+
+3. **Deployed Webhook Without JWT Verification**
+   - Command: `npx supabase functions deploy webhook-livekit-egress --no-verify-jwt`
+   - Allows LiveKit to call webhook without Supabase authentication
+   - Tested successfully: `{"ok":true,"updated":1}`
+
+**Verification:**
+- Webhook URL: `https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/webhook-livekit-egress`
+- Already configured in LiveKit Dashboard (user confirmed)
+- Test payload successfully updated call_record with egress_id `EG_KiHuHY3crrSx`
+
+**Recent Related Commits:**
+- `9fd435d` - Implement LiveKit egress webhook for deferred recording URL fetch
+- `f81a67f` - Fix resource leak by closing LiveKit API client after calls
+
+**Next Steps:**
+1. Make test call to verify end-to-end recording flow
+2. Check UI for recording URL after call ends
+
+---
+
+## Previous Session (2025-10-24)
 
 ### ✅ RESOLVED: Service Unavailable Error - LiveKit SIP Integration
 
