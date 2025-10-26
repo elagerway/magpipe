@@ -3,7 +3,7 @@
  */
 
 import { CallRecord } from '../models/CallRecord.js';
-import { getCurrentUser } from '../lib/supabase.js';
+import { getCurrentUser, supabase } from '../lib/supabase.js';
 
 export default class CallsPage {
   constructor() {
@@ -192,18 +192,26 @@ export default class CallsPage {
   }
 
   attachCallItemListeners() {
-    document.querySelectorAll('.call-item').forEach((item) => {
+    const items = document.querySelectorAll('.call-item');
+    console.log(`Found ${items.length} call items to attach listeners to`);
+    items.forEach((item) => {
       item.addEventListener('click', (e) => {
         const callId = e.currentTarget.dataset.id;
+        console.log('Call item clicked, ID:', callId);
         this.showCallDetails(callId);
       });
     });
   }
 
   async showCallDetails(callId) {
+    console.log('showCallDetails called with ID:', callId);
     const { callRecord } = await CallRecord.getById(callId);
+    console.log('Retrieved call record:', callRecord);
 
-    if (!callRecord) return;
+    if (!callRecord) {
+      console.error('No call record found for ID:', callId);
+      return;
+    }
 
     const callModal = document.getElementById('call-modal');
     const callDetails = document.getElementById('call-details');
@@ -262,37 +270,37 @@ export default class CallsPage {
 
     callModal.classList.remove('hidden');
 
-    // Fetch signed URL for recording if available
+    // Load recording directly if available
     if (callRecord.recording_url) {
-      this.loadSignedRecording(callRecord.recording_url);
+      console.log('Loading recording from URL:', callRecord.recording_url);
+      // Wait for DOM to update before loading recording
+      setTimeout(() => {
+        this.loadRecording(callRecord.recording_url);
+      }, 100);
+    } else {
+      console.log('No recording URL found for this call');
     }
   }
 
-  async loadSignedRecording(recordingUrl) {
+  loadRecording(recordingUrl) {
+    console.log('loadRecording called with URL:', recordingUrl);
     const container = document.getElementById('recording-player-container');
-    if (!container) return;
+    if (!container) {
+      console.error('recording-player-container not found in DOM');
+      return;
+    }
 
     try {
-      const { data, error } = await supabase.functions.invoke('get-signed-recording-url', {
-        body: { recordingUrl }
-      });
-
-      if (error) {
-        console.error('Error getting signed URL:', error);
-        container.innerHTML = '<span style="color: var(--danger);">Error loading recording</span>';
-        return;
-      }
-
-      // Create audio player with signed URL
+      // Create audio player with direct URL (S3 bucket is public)
       container.innerHTML = `
-        <audio controls style="width: 100%;">
-          <source src="${data.signedUrl}" type="audio/mp4">
+        <audio controls style="width: 100%;" src="${recordingUrl}">
           Your browser does not support audio playback.
         </audio>
       `;
+      console.log('Audio player created successfully with URL:', recordingUrl);
     } catch (error) {
       console.error('Error loading recording:', error);
-      container.innerHTML = '<span style="color: var(--danger);">Error loading recording</span>';
+      container.innerHTML = `<span style="color: var(--danger);">Error: ${error.message}</span>`;
     }
   }
 }
