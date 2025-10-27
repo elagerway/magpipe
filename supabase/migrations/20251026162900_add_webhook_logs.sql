@@ -7,6 +7,18 @@ CREATE TABLE IF NOT EXISTS public.webhook_logs (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Add missing columns if table already exists
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'webhook_logs' AND column_name = 'source') THEN
+    ALTER TABLE public.webhook_logs ADD COLUMN source TEXT NOT NULL DEFAULT 'unknown';
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'webhook_logs' AND column_name = 'event_type') THEN
+    ALTER TABLE public.webhook_logs ADD COLUMN event_type TEXT;
+  END IF;
+END $$;
+
 -- Index for faster queries
 CREATE INDEX IF NOT EXISTS idx_webhook_logs_source ON public.webhook_logs(source);
 CREATE INDEX IF NOT EXISTS idx_webhook_logs_created_at ON public.webhook_logs(created_at DESC);
