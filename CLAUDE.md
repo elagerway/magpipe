@@ -167,6 +167,74 @@ JavaScript ES6+, HTML5, CSS3 (vanilla, minimal framework usage per user requirem
 - **Custom pipeline**: STT (Deepgram) → LLM (OpenAI) → TTS (ElevenLabs)
 - **Credentials**: Use LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET from environment
 
+## Debugging Infrastructure (NON-NEGOTIABLE)
+
+### Database Call State Tracking
+ALL complex multi-step processes (calls, workflows, integrations) MUST log every state transition to the database. This eliminates "check the console logs" debugging and provides instant visibility into what's happening.
+
+**Implementation Pattern**:
+```sql
+CREATE TABLE call_state_logs (
+  id UUID PRIMARY KEY,
+  call_id UUID REFERENCES call_records(id),
+  room_name TEXT,              -- For correlation
+  state TEXT NOT NULL,         -- State enum
+  component TEXT NOT NULL,     -- 'edge_function', 'agent', 'sip', 'browser'
+  details JSONB,               -- Context about this state
+  error_message TEXT,          -- If state is 'error'
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+**Required State Transitions**:
+1. **Process Initiated** - Log when request received with input parameters
+2. **Component Activation** - Log when each major service/function starts
+3. **Integration Points** - Log before/after external API calls, database operations
+4. **Component Completion** - Log success/failure with output data
+5. **Error Conditions** - Log ALL errors with full context (not just message)
+6. **Process Completion** - Log final state and outcome
+
+**LiveKit Outbound Call Example**:
+```typescript
+// Edge Function logs:
+await logCallState(supabase, null, roomName, 'initiated', 'edge_function', {
+  phone_number, caller_id, user_id
+})
+await logCallState(supabase, null, roomName, 'room_created', 'edge_function', {
+  room_name, max_participants
+})
+await logCallState(supabase, callId, roomName, 'sip_participant_created', 'edge_function', {
+  participant_id, sip_call_id, trunk_id
+})
+await logCallState(supabase, callId, roomName, 'agent_dispatched', 'edge_function', {
+  agent_name, dispatch_metadata
+})
+
+// Agent logs:
+log_call_state(room_name, 'agent_entrypoint_called', 'agent', {
+  room_name, timestamp
+})
+log_call_state(room_name, 'agent_connected', 'agent', {
+  room_name, auto_subscribe: 'AUDIO_ONLY'
+})
+```
+
+**Debugging Workflow**:
+1. Make test call from browser
+2. Query database: `SELECT * FROM call_state_logs WHERE room_name = 'outbound-xxx' ORDER BY created_at`
+3. See exact sequence of states - know immediately where it failed
+4. No need to check console logs, Render logs, LiveKit dashboard separately
+
+**Why This is Required**:
+- ❌ **Without state logging**: "Can you check the Render logs? What about LiveKit dashboard? Did the Edge Function succeed? I don't know what happened."
+- ✅ **With state logging**: Query database, see `initiated → room_created → sip_participant_created → agent_dispatched` but no `agent_entrypoint_called` = agent dispatch broken
+
+**Implementation Requirements**:
+- State logging MUST wrap in try/catch (never throw)
+- State logging MUST be fast (async, no blocking)
+- Helper functions for easy logging (see livekit-outbound-call/index.ts:14-36 and agent.py:64-77)
+- RLS policies for security (service role full access, users see own data only)
+
 ### Stack Switching Rules
 - **Admin-controlled**: Only admin can switch active Voice AI stack
 - **Per-user configuration**: Each user's active stack is stored in database
