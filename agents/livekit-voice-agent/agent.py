@@ -768,7 +768,8 @@ if __name__ == "__main__":
         cli.run_app(WorkerOptions(
             entrypoint_fnc=entrypoint,
             prewarm_fnc=prewarm,
-            agent_name="SW Telephony Agent"
+            agent_name="SW Telephony Agent",
+            num_idle_processes=0  # Disable worker pool to avoid DuplexClosed errors
         ))
     except KeyboardInterrupt:
         logger.info("⚠️ Agent worker stopped by user (KeyboardInterrupt)")
