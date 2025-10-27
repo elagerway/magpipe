@@ -27,6 +27,7 @@ JavaScript ES6+, HTML5, CSS3 (vanilla, minimal framework usage per user requirem
 - **Check before asserting**: Use scripts/queries to verify state before making claims about database contents, SignalWire configuration, file locations, etc.
 - **If uncertain, ask or investigate**: It's better to say "let me check" than to assert something incorrect
 - **NEVER ask user to check logs - check them yourself**: Use direct API calls, CLI commands, or database queries to fetch logs instead of asking the user to copy/paste them. The user should not be a data retrieval service.
+- **NEVER push to GitHub without local testing first**: ALWAYS test changes locally or get explicit user approval before running `git push`. Do not assume code is ready just because it compiles or looks correct. Real-world testing is mandatory before deployment.
 
 ## User Interface Guidelines
 - **Never expose vendor names in user-facing messages**: Do not mention third-party service names like "Retell", "SignalWire", "OpenAI", etc. in error messages, success messages, or any UI text visible to end users
