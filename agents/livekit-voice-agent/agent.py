@@ -11,8 +11,13 @@ import sys
 from typing import Annotated
 
 # Force unbuffered output for immediate log visibility in Render
-sys.stdout.reconfigure(line_buffering=True) if hasattr(sys.stdout, 'reconfigure') else None
-sys.stderr.reconfigure(line_buffering=True) if hasattr(sys.stderr, 'reconfigure') else None
+try:
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(line_buffering=True)
+    if hasattr(sys.stderr, 'reconfigure'):
+        sys.stderr.reconfigure(line_buffering=True)
+except Exception:
+    pass  # Silently continue if reconfigure not available
 
 from livekit import rtc, api
 from livekit.agents import (
