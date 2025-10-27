@@ -1,6 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { SipClient, RoomServiceClient } from 'npm:livekit-server-sdk@2.6.1'
+import { SipClient, RoomServiceClient, AgentDispatchClient } from 'npm:livekit-server-sdk@2.14.0'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -62,6 +62,7 @@ serve(async (req) => {
 
     const sipClient = new SipClient(livekitUrl, livekitApiKey, livekitApiSecret)
     const roomClient = new RoomServiceClient(livekitUrl, livekitApiKey, livekitApiSecret)
+    const dispatchClient = new AgentDispatchClient(livekitUrl, livekitApiKey, livekitApiSecret)
 
     // Get user's agent config
     console.log('Querying agent_configs for user_id:', userId)
@@ -202,8 +203,7 @@ serve(async (req) => {
     // Dispatch AI agent to join the room
     console.log('🤖 Dispatching AI agent to room...')
     try {
-      await roomClient.createDispatch(roomName, {
-        agentName: 'SW Telephony Agent',
+      await dispatchClient.createDispatch(roomName, 'SW Telephony Agent', {
         metadata: JSON.stringify({
           user_id: userId,
           direction: 'outbound',

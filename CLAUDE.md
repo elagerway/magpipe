@@ -35,6 +35,22 @@ JavaScript ES6+, HTML5, CSS3 (vanilla, minimal framework usage per user requirem
 - Keep technical implementation details in backend logs only
 
 ## Database Management
+
+### Environment Variables - CRITICAL
+- **SUPABASE_SERVICE_ROLE_KEY MUST be in .env for programmatic access**
+- **ALWAYS check .env for SUPABASE_SERVICE_ROLE_KEY BEFORE:**
+  - Calling Edge Functions directly via curl (you will get 401 Unauthorized without it)
+  - Querying database programmatically with service privileges
+  - Testing features that bypass Row Level Security (RLS)
+- **If SUPABASE_SERVICE_ROLE_KEY is missing from .env:**
+  - ❌ DO NOT try to call Edge Functions - you will fail with 401
+  - ❌ DO NOT try to query database with service role - you will fail
+  - ✅ Ask user to add it to .env: `SUPABASE_SERVICE_ROLE_KEY=eyJhb...`
+  - ✅ Or use alternative testing (browser UI, have user test manually)
+- **Service role key format**: Starts with `eyJ`, much longer than anon key
+- **Where to find it**: Supabase Dashboard → Settings → API → `service_role` secret
+
+### Database Reset Policy
 - **CRITICAL: NEVER RESET THE DATABASE WITHOUT EXPLICIT USER REQUEST**: DO NOT run `npx supabase db reset` under ANY circumstances unless the user explicitly asks you to reset the database
 - **Database reset deletes ALL data**: Running `db reset` wipes all data including user accounts, agent configurations, contacts, messages, and all other data - this is DESTRUCTIVE and IRREVERSIBLE
 - **For schema changes**: Use `export SUPABASE_ACCESS_TOKEN=sbp_17bff30d68c60e941858872853988d63169b2649 && npx supabase db push` to apply new migrations without clearing data
