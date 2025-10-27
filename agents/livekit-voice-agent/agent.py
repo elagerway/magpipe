@@ -393,15 +393,45 @@ async def entrypoint(ctx: JobContext):
 
     transfer_numbers = transfer_numbers_response.data or []
 
-    # Get greeting message
-    greeting = user_config.get("greeting_template", "Hello! This is Pat. How can I help you today?")
+    # Get direction from metadata to determine agent role
+    direction = room_metadata.get("direction", "inbound")
+    contact_phone = room_metadata.get("contact_phone")
+
+    logger.info(f"📞 Call direction: {direction}")
+    logger.info(f"📞 Contact phone: {contact_phone}")
+
+    # Get greeting message and base prompt
     base_prompt = user_config.get("system_prompt", "You are Pat, a helpful AI assistant.")
 
-    # Voice context suffix - adapts user's single prompt for voice calls
-    VOICE_CONTEXT_SUFFIX = """
+    # Different prompts and behavior based on call direction
+    if direction == "outbound":
+        # OUTBOUND: Agent assists the USER (owner), not the person being called
+        greeting = "I'm ready. I'll help you with this call."
 
-IMPORTANT CONTEXT:
-- You are on a LIVE VOICE CALL with the customer (not texting)
+        OUTBOUND_CONTEXT_SUFFIX = """
+
+IMPORTANT CONTEXT - OUTBOUND CALL:
+- You are assisting YOUR OWNER on an outbound call they initiated
+- Your owner (the user who configured you) is on this call with you
+- There may also be another person on the line who your owner is calling
+- YOUR ROLE: Help your owner during their call - take notes, provide information, assist as requested
+- You are NOT the primary speaker - you are a silent assistant unless your owner addresses you
+- If your owner asks you to say something to the other person, speak on their behalf professionally
+- You can take notes, remind your owner of things, or provide information they request
+- Be ready to help but don't interrupt unless asked
+- Listen to the conversation and be prepared to assist when needed
+- Your owner may say "Pat, [instruction]" to give you commands during the call"""
+
+        system_prompt = f"{base_prompt}{OUTBOUND_CONTEXT_SUFFIX}"
+        logger.info("🔄 Outbound call - Agent assisting USER (owner)")
+    else:
+        # INBOUND: Agent handles the call for the user (traditional behavior)
+        greeting = user_config.get("greeting_template", "Hello! This is Pat. How can I help you today?")
+
+        INBOUND_CONTEXT_SUFFIX = """
+
+IMPORTANT CONTEXT - INBOUND CALL:
+- You are on a LIVE VOICE CALL with a customer calling in (not texting)
 - The customer is SPEAKING to you in real-time
 - Speak naturally and conversationally - use natural spoken language
 - You can ask clarifying questions and have back-and-forth dialogue
@@ -410,9 +440,10 @@ IMPORTANT CONTEXT:
 - Tools available: You can transfer calls, take messages, help customers
 - Be warm, friendly, and professional in your spoken tone"""
 
-    system_prompt = f"{base_prompt}{VOICE_CONTEXT_SUFFIX}"
+        system_prompt = f"{base_prompt}{INBOUND_CONTEXT_SUFFIX}"
+        logger.info("📥 Inbound call - Agent handling customer service")
 
-    logger.info("Voice system prompt applied with context suffix")
+    logger.info(f"Voice system prompt applied for {direction} call")
 
     # Already connected earlier to get service number, don't connect again in session.start
 
