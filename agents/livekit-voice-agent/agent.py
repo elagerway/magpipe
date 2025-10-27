@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 Pat AI Voice Agent - LiveKit Implementation
 Handles real-time voice conversations with STT, LLM, and TTS pipeline
@@ -6,7 +7,12 @@ Handles real-time voice conversations with STT, LLM, and TTS pipeline
 import asyncio
 import logging
 import os
+import sys
 from typing import Annotated
+
+# Force unbuffered output for immediate log visibility in Render
+sys.stdout.reconfigure(line_buffering=True) if hasattr(sys.stdout, 'reconfigure') else None
+sys.stderr.reconfigure(line_buffering=True) if hasattr(sys.stderr, 'reconfigure') else None
 
 from livekit import rtc, api
 from livekit.agents import (
@@ -28,8 +34,20 @@ from supabase import create_client, Client
 load_dotenv()
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
 logger = logging.getLogger(__name__)
+
+# Log immediately on module load to verify script is running
+print("=" * 80, flush=True)
+print("AGENT SCRIPT LOADED - Python process started", flush=True)
+print(f"Python version: {sys.version}", flush=True)
+print(f"Working directory: {os.getcwd()}", flush=True)
+print("=" * 80, flush=True)
+logger.info("🚀 Agent module imported successfully")
 
 # Initialize Supabase client
 supabase_url = os.getenv("SUPABASE_URL")
