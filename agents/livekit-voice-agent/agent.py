@@ -299,12 +299,15 @@ async def entrypoint(ctx: JobContext):
     service_number = None
     caller_number = None
 
+    # ALWAYS connect to room first (required for both inbound and outbound)
+    await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
+    logger.info("✅ Connected to LiveKit room")
+
     # Get user_id from metadata or look up from service number
     user_id = room_metadata.get("user_id")
 
     if not user_id:
-        # Connect and wait for SIP participant to join
-        await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
+        # For inbound calls without metadata, wait for SIP participant to join
 
         # Wait for participant to join
         service_number = None
