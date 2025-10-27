@@ -50,17 +50,12 @@ except:
 tail_supabase_logs() {
     echo "📊 SUPABASE EDGE FUNCTION LOGS (livekit-outbound-call)"
     echo "------------------------------------------------------"
-
-    if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
-        echo "⚠️  SUPABASE_ACCESS_TOKEN not set - skipping Supabase logs"
-        echo ""
-        return
-    fi
-
-    # Using the Supabase CLI logs command (requires linked project)
-    # Note: This might show help if project not linked, but we'll try anyway
-    export SUPABASE_ACCESS_TOKEN="$SUPABASE_ACCESS_TOKEN"
-    timeout 5 npx supabase functions logs livekit-outbound-call 2>&1 | head -30 || echo "Note: Supabase CLI logs may require project linking"
+    echo ""
+    echo "⚠️  Supabase Edge Function logs must be viewed in the Supabase Dashboard:"
+    echo "   https://supabase.com/dashboard/project/mtxbiyilvgwhbdptysex/logs/edge-functions"
+    echo ""
+    echo "   Or use the real-time logs viewer:"
+    echo "   https://supabase.com/dashboard/project/mtxbiyilvgwhbdptysex/logs/edge-functions?severity=info"
     echo ""
 }
 
