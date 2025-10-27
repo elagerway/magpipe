@@ -145,6 +145,24 @@ serve(async (req) => {
       throw new Error(`Failed to create SIP participant: ${sipError.message}`)
     }
 
+    // Dispatch AI agent to join the room
+    console.log('🤖 Dispatching AI agent to room...')
+    try {
+      await roomClient.createDispatch(roomName, {
+        agentName: 'SW Telephony Agent',
+        metadata: JSON.stringify({
+          user_id: userId,
+          direction: 'outbound',
+          contact_phone: phoneNumber,
+          service_number: callerIdNumber,
+        }),
+      })
+      console.log('✅ AI agent dispatched to room')
+    } catch (dispatchError) {
+      console.error('❌ Failed to dispatch AI agent:', dispatchError)
+      // Continue anyway - browser can still join room
+    }
+
     // Update call record with SIP participant info
     await supabase
       .from('call_records')

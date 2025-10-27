@@ -23,6 +23,7 @@ from livekit import rtc, api
 from livekit.agents import (
     AutoSubscribe,
     JobContext,
+    JobProcess,
     WorkerOptions,
     cli,
     llm,
@@ -281,7 +282,11 @@ def create_voice_clone_tool(user_id: str):
 async def entrypoint(ctx: JobContext):
     """Main agent entry point - called for each new LiveKit room"""
 
-    logger.info(f"🚀 AGENT ENTRYPOINT CALLED - Room: {ctx.room.name}")
+    logger.info(f"🚀 ===============================================")
+    logger.info(f"🚀 AGENT ENTRYPOINT CALLED")
+    logger.info(f"🚀 ===============================================")
+    logger.info(f"   → Room: {ctx.room.name}")
+    logger.info(f"   → Timestamp: {datetime.datetime.now().isoformat()}")
 
     # Initialize LiveKit API client for Egress (requires event loop)
     livekit_api = api.LiveKitAPI(livekit_url, livekit_api_key, livekit_api_secret)
@@ -294,8 +299,8 @@ async def entrypoint(ctx: JobContext):
     except:
         logger.warning("Could not parse room metadata")
 
-    logger.info(f"Connecting to room: {ctx.room.name}")
-    logger.info(f"Room metadata: {room_metadata}")
+    logger.info(f"📋 Room metadata: {room_metadata}")
+    logger.info(f"🔌 Connecting to room: {ctx.room.name}")
 
     # Initialize transcript collection and call tracking
     transcript_messages = []
@@ -717,11 +722,24 @@ if __name__ == "__main__":
         # Remove 'healthcheck' from argv so LiveKit CLI doesn't see it
         sys.argv = [sys.argv[0], "start"]
 
+    # Prewarm handler for explicit dispatches
+    async def prewarm(proc: JobProcess):
+        """Prewarm handler - called when agent is explicitly dispatched"""
+        logger.info(f"🔥 PREWARM CALLED - Preparing agent for dispatch")
+        logger.info(f"   → Agent Name: SW Telephony Agent")
+        logger.info(f"   → Worker ID: {os.getenv('WORKER_ID', 'N/A')}")
+        logger.info(f"   → Process ID: {os.getpid()}")
+        logger.info(f"   → Timestamp: {datetime.datetime.now().isoformat()}")
+        # Preload models or do any initialization here if needed
+        # For now, just log that we received the prewarm
+        await proc.wait_for_shutdown()
+
     # Run the agent worker with error handling
     try:
         logger.info("🎬 Starting LiveKit agent worker...")
         cli.run_app(WorkerOptions(
             entrypoint_fnc=entrypoint,
+            prewarm_fnc=prewarm,
             agent_name="SW Telephony Agent"
         ))
     except KeyboardInterrupt:
