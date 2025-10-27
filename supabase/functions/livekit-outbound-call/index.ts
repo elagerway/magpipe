@@ -10,6 +10,31 @@ const corsHeaders = {
 // LiveKit outbound SIP trunk ID
 const OUTBOUND_TRUNK_ID = 'ST_3DmaaWbHL9QT'
 
+// Helper function to log call state to database
+async function logCallState(
+  supabase: any,
+  callId: string | null,
+  roomName: string,
+  state: string,
+  component: string,
+  details?: any,
+  errorMessage?: string
+) {
+  try {
+    await supabase.from('call_state_logs').insert({
+      call_id: callId,
+      room_name: roomName,
+      state,
+      component,
+      details: details ? JSON.stringify(details) : null,
+      error_message: errorMessage,
+    })
+  } catch (err) {
+    console.error('Failed to log call state:', err)
+    // Don't throw - logging should never break the call flow
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -66,6 +91,13 @@ serve(async (req) => {
     const roomName = `outbound-${userId}-${Date.now()}`
     console.log('Creating room:', roomName)
 
+    // Log: Call initiated
+    await logCallState(supabase, null, roomName, 'initiated', 'edge_function', {
+      phone_number: phoneNumber,
+      caller_id: callerIdNumber,
+      user_id: userId,
+    })
+
     // Create LiveKit room with agent metadata
     await roomClient.createRoom({
       name: roomName,
@@ -80,6 +112,12 @@ serve(async (req) => {
     })
 
     console.log('✅ Room created successfully')
+
+    // Log: Room created
+    await logCallState(supabase, null, roomName, 'room_created', 'edge_function', {
+      room_name: roomName,
+      max_participants: 10,
+    })
 
     // Create call record in database
     console.log('📝 Creating call record in database...')
@@ -139,10 +177,26 @@ serve(async (req) => {
       )
       console.log('✅ SIP participant created:', sipParticipant.participantId)
       console.log('  → SIP Call ID:', sipParticipant.sipCallId || 'N/A')
+
+      // Log: SIP participant created
+      await logCallState(supabase, callRecord.id, roomName, 'sip_participant_created', 'edge_function', {
+        participant_id: sipParticipant.participantId,
+        sip_call_id: sipParticipant.sipCallId,
+        trunk_id: OUTBOUND_TRUNK_ID,
+        to_number: phoneNumber,
+        from_number: callerIdNumber,
+      })
     } catch (sipError) {
       console.error('❌ Failed to create SIP participant:', sipError)
       console.error('  → Error details:', JSON.stringify(sipError, null, 2))
-      throw new Error(`Failed to create SIP participant: ${sipError.message}`)
+
+      // Log: SIP participant error
+      await logCallState(supabase, callRecord.id, roomName, 'error', 'sip', {
+        error_type: 'sip_participant_creation_failed',
+        trunk_id: OUTBOUND_TRUNK_ID,
+      }, (sipError as any).message || String(sipError))
+
+      throw new Error(`Failed to create SIP participant: ${(sipError as any).message}`)
     }
 
     // Dispatch AI agent to join the room
@@ -158,8 +212,26 @@ serve(async (req) => {
         }),
       })
       console.log('✅ AI agent dispatched to room')
+
+      // Log: Agent dispatched
+      await logCallState(supabase, callRecord.id, roomName, 'agent_dispatched', 'edge_function', {
+        agent_name: 'SW Telephony Agent',
+        dispatch_metadata: {
+          user_id: userId,
+          direction: 'outbound',
+          contact_phone: phoneNumber,
+          service_number: callerIdNumber,
+        },
+      })
     } catch (dispatchError) {
       console.error('❌ Failed to dispatch AI agent:', dispatchError)
+
+      // Log: Agent dispatch error
+      await logCallState(supabase, callRecord.id, roomName, 'error', 'edge_function', {
+        error_type: 'agent_dispatch_failed',
+        agent_name: 'SW Telephony Agent',
+      }, (dispatchError as any).message || String(dispatchError))
+
       // Continue anyway - browser can still join room
     }
 

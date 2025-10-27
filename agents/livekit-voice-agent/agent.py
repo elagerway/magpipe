@@ -60,6 +60,22 @@ supabase_url = os.getenv("SUPABASE_URL")
 supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 supabase: Client = create_client(supabase_url, supabase_key)
 
+# Helper function to log call state to database
+def log_call_state(room_name: str, state: str, component: str = 'agent', details: dict = None, error_message: str = None):
+    """Log call state to database for debugging"""
+    try:
+        supabase.table('call_state_logs').insert({
+            'call_id': None,  # Will be looked up by room_name if needed
+            'room_name': room_name,
+            'state': state,
+            'component': component,
+            'details': details,
+            'error_message': error_message,
+        }).execute()
+    except Exception as e:
+        logger.error(f"Failed to log call state: {e}")
+        # Don't raise - logging should never break the call flow
+
 # LiveKit API credentials (client initialized in entrypoint where event loop exists)
 livekit_url = os.getenv("LIVEKIT_URL")
 livekit_api_key = os.getenv("LIVEKIT_API_KEY")
@@ -288,6 +304,12 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"   → Room: {ctx.room.name}")
     logger.info(f"   → Timestamp: {datetime.datetime.now().isoformat()}")
 
+    # Log: Agent entrypoint called
+    log_call_state(ctx.room.name, 'agent_entrypoint_called', 'agent', {
+        'room_name': ctx.room.name,
+        'timestamp': datetime.datetime.now().isoformat(),
+    })
+
     # Initialize LiveKit API client for Egress (requires event loop)
     livekit_api = api.LiveKitAPI(livekit_url, livekit_api_key, livekit_api_secret)
 
@@ -312,6 +334,12 @@ async def entrypoint(ctx: JobContext):
     # ALWAYS connect to room first (required for both inbound and outbound)
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
     logger.info("✅ Connected to LiveKit room")
+
+    # Log: Agent connected to room
+    log_call_state(ctx.room.name, 'agent_connected', 'agent', {
+        'room_name': ctx.room.name,
+        'auto_subscribe': 'AUDIO_ONLY',
+    })
 
     # Get user_id from metadata or look up from service number
     user_id = room_metadata.get("user_id")

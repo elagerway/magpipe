@@ -113,6 +113,59 @@ Optimization work MUST be driven by profiling data, not assumptions. Premature o
 
 **Rationale**: Performance problems discovered late require architectural changes that invalidate prior work. Users perceive slow software as broken software. Performance is a feature, not a nice-to-have.
 
+### V. Debugging Infrastructure Required (NON-NEGOTIABLE)
+
+All complex systems MUST include comprehensive debugging infrastructure BEFORE declaring features complete:
+
+**Database Call State Tracking**:
+- Complex multi-step processes (calls, workflows, integrations) MUST log every state transition to database
+- State logs MUST include: timestamp, component name, state identifier, detailed context (JSON), error messages
+- State log table pattern:
+  ```sql
+  CREATE TABLE process_state_logs (
+    id UUID PRIMARY KEY,
+    process_id UUID REFERENCES parent_table(id),
+    process_identifier TEXT,  -- room name, session id, etc.
+    state TEXT NOT NULL,       -- state enum value
+    component TEXT NOT NULL,   -- which service/function logged it
+    details JSONB,             -- context about this state
+    error_message TEXT,        -- if state is 'error'
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  );
+  ```
+
+**Required State Transitions to Log**:
+- Process initiated (with input parameters)
+- Each major component activation (service started, function called, API request sent)
+- Each component completion (success/failure, output data)
+- Integration point calls (external APIs, database operations, message queue sends)
+- All error conditions (with full error context, not just message)
+- Process completion (success/failure, final state)
+
+**Real-World Example - LiveKit Outbound Calls**:
+- ✅ Log: `initiated` - Edge function received request
+- ✅ Log: `room_created` - LiveKit room created successfully
+- ✅ Log: `sip_participant_created` - SIP call initiated to phone number
+- ✅ Log: `agent_dispatched` - AI agent dispatch request sent
+- ✅ Log: `agent_entrypoint_called` - Agent received dispatch and started
+- ✅ Log: `agent_connected` - Agent connected to LiveKit room
+- ✅ Log: `error` - Any failure with component and error details
+
+**Why This is NON-NEGOTIABLE**:
+1. **Eliminates "it works on my machine"**: Database shows exact state progression for every execution
+2. **Stops console log archaeology**: No more "can you check the logs" - query database for full history
+3. **Enables automated debugging**: Scripts can query state logs to diagnose issues
+4. **Provides production visibility**: See what's happening in prod without SSH or log aggregation
+5. **Documents actual behavior**: State logs are truth source for what really happened vs. what should happen
+
+**Implementation Requirements**:
+- State logging MUST NOT throw errors (wrap in try/catch, log failure, continue)
+- State logging MUST be fast (async insert, no blocking waits)
+- State logs MUST be queryable by process ID and timestamp
+- State logs MUST have RLS policies for security (service role full access, users see own only)
+
+**Rationale**: Complex systems fail in complex ways. Without comprehensive state logging, debugging requires manual log correlation across multiple services, which is slow, error-prone, and impossible for production issues after logs rotate. Database state logs provide instant visibility into every execution path, making debugging deterministic instead of guesswork.
+
 ## Quality Standards
 
 ### Code Review Requirements
