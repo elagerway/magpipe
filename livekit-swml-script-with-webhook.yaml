@@ -1,0 +1,54 @@
+version: 1.0.0
+sections:
+  main:
+    # Send webhook at call start
+    - execute:
+        dest: https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/signalwire-status-webhook
+        method: POST
+        params:
+          call_id: "%{call.call_id}"
+          call_state: initiated
+          direction: outbound
+          from: "%{call.from}"
+          to: "%{call.to}"
+          start_time: "%{call.start_time}"
+
+    # Bridge the call to destination number
+    - connect:
+        answer_on_bridge: true
+        # Use the caller ID from LiveKit (the service number)
+        from: "%{call.from}"
+        # Extract the destination number from the SIP URI
+        # LiveKit sends: sip:+16042566768@erik-livekit.dapp.signalwire.com
+        # We extract: +16042566768
+        to: "%{call.to.replace(/^sip:/i, '').replace(/@.*/, '')}"
+        # Use common codecs
+        codecs:
+          - PCMU
+          - PCMA
+        timeout: 30
+        max_duration: 3600
+        # Send webhooks on state changes
+        on_answered:
+          - execute:
+              dest: https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/signalwire-status-webhook
+              method: POST
+              params:
+                call_id: "%{call.call_id}"
+                call_state: answered
+                direction: outbound
+                from: "%{call.from}"
+                to: "%{call.to}"
+                answered_at: "%{call.answered_at}"
+        on_ended:
+          - execute:
+              dest: https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/signalwire-status-webhook
+              method: POST
+              params:
+                call_id: "%{call.call_id}"
+                call_state: completed
+                direction: outbound
+                from: "%{call.from}"
+                to: "%{call.to}"
+                duration: "%{call.duration}"
+                end_time: "%{call.end_time}"

@@ -1,0 +1,67 @@
+{
+  "version": "1.0.0",
+  "sections": {
+    "main": [
+      {
+        "execute": {
+          "dest": "https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/signalwire-status-webhook",
+          "method": "POST",
+          "params": {
+            "call_id": "%{call.call_id}",
+            "call_state": "initiated",
+            "direction": "outbound",
+            "from": "%{call.from}",
+            "to": "%{call.to}",
+            "start_time": "%{call.start_time}"
+          }
+        }
+      },
+      {
+        "connect": {
+          "answer_on_bridge": true,
+          "from": "%{call.from}",
+          "to": "%{call.to.replace(/^sip:/i, '').replace(/@.*/, '')}",
+          "codecs": [
+            "PCMU",
+            "PCMA"
+          ],
+          "timeout": 30,
+          "max_duration": 3600,
+          "on_answered": [
+            {
+              "execute": {
+                "dest": "https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/signalwire-status-webhook",
+                "method": "POST",
+                "params": {
+                  "call_id": "%{call.call_id}",
+                  "call_state": "answered",
+                  "direction": "outbound",
+                  "from": "%{call.from}",
+                  "to": "%{call.to}",
+                  "answered_at": "%{call.answered_at}"
+                }
+              }
+            }
+          ],
+          "on_ended": [
+            {
+              "execute": {
+                "dest": "https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/signalwire-status-webhook",
+                "method": "POST",
+                "params": {
+                  "call_id": "%{call.call_id}",
+                  "call_state": "completed",
+                  "direction": "outbound",
+                  "from": "%{call.from}",
+                  "to": "%{call.to}",
+                  "duration": "%{call.duration}",
+                  "end_time": "%{call.end_time}"
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
