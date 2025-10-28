@@ -24,6 +24,7 @@ from livekit.agents import (
     AutoSubscribe,
     JobContext,
     JobProcess,
+    JobRequest,
     WorkerOptions,
     cli,
     llm,
@@ -750,34 +751,25 @@ if __name__ == "__main__":
         # Remove 'healthcheck' from argv so LiveKit CLI doesn't see it
         sys.argv = [sys.argv[0], "start"]
 
-    # Prewarm handler for explicit dispatches
-    async def prewarm(proc: JobProcess):
-        """Prewarm handler - called when agent is explicitly dispatched"""
-        logger.info(f"🔥 PREWARM CALLED - Preparing agent for dispatch")
-        logger.info(f"   → Agent Name: SW Telephony Agent")
-        logger.info(f"   → Worker ID: {os.getenv('WORKER_ID', 'N/A')}")
-        logger.info(f"   → Process ID: {os.getpid()}")
-        logger.info(f"   → Timestamp: {datetime.datetime.now().isoformat()}")
-        # Preload models or do any initialization here if needed
-        # For now, just log that we received the prewarm
-        await proc.wait_for_shutdown()
+    # Job request handler - accept all room join requests
+    async def request_fnc(req: JobRequest):
+        """Job request handler - decides whether to accept room join requests"""
+        logger.info(f"🎯 JOB REQUEST RECEIVED")
+        logger.info(f"   → Room: {req.room.name}")
+        logger.info(f"   → Room metadata: {req.room.metadata}")
+        logger.info(f"   → Agent name requested: {req.agent_name if hasattr(req, 'agent_name') else 'N/A'}")
 
-    # Prewarm handler for explicit dispatches
-    async def prewarm(proc: JobProcess):
-        """Prewarm handler - called when agent is explicitly dispatched"""
-        logger.info(f"🔥 PREWARM CALLED - Preparing agent for dispatch")
-        logger.info(f"   → Agent Name: SW Telephony Agent")
-        # Preload models or do any initialization here if needed
-        # For now, just log that we received the prewarm
-        await proc.wait_for_shutdown()
+        # Accept all requests - agent will join any room
+        logger.info("   → ✅ ACCEPTING JOB REQUEST")
+        await req.accept()
 
     # Run the agent worker with error handling
     try:
         logger.info("🎬 Starting LiveKit agent worker...")
-        logger.info("   → Agent will respond to dispatches and room creation events")
+        logger.info("   → Agent will automatically join all rooms")
         cli.run_app(WorkerOptions(
             entrypoint_fnc=entrypoint,  # Called when agent joins a room
-            prewarm_fnc=prewarm,  # Called when agent is explicitly dispatched
+            request_fnc=request_fnc,  # Decides whether to accept job requests
             agent_name="SW Telephony Agent",
             num_idle_processes=0  # Disable worker pool to avoid DuplexClosed errors
         ))
