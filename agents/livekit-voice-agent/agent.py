@@ -762,12 +762,22 @@ if __name__ == "__main__":
         # For now, just log that we received the prewarm
         await proc.wait_for_shutdown()
 
+    # Prewarm handler for explicit dispatches
+    async def prewarm(proc: JobProcess):
+        """Prewarm handler - called when agent is explicitly dispatched"""
+        logger.info(f"🔥 PREWARM CALLED - Preparing agent for dispatch")
+        logger.info(f"   → Agent Name: SW Telephony Agent")
+        # Preload models or do any initialization here if needed
+        # For now, just log that we received the prewarm
+        await proc.wait_for_shutdown()
+
     # Run the agent worker with error handling
     try:
         logger.info("🎬 Starting LiveKit agent worker...")
-        logger.info("   → Agent will auto-join any room when participants connect")
+        logger.info("   → Agent will respond to dispatches and room creation events")
         cli.run_app(WorkerOptions(
-            entrypoint_fnc=entrypoint,  # Auto-joins rooms when participants connect
+            entrypoint_fnc=entrypoint,  # Called when agent joins a room
+            prewarm_fnc=prewarm,  # Called when agent is explicitly dispatched
             agent_name="SW Telephony Agent",
             num_idle_processes=0  # Disable worker pool to avoid DuplexClosed errors
         ))
