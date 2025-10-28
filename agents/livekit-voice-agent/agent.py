@@ -770,7 +770,7 @@ if __name__ == "__main__":
         logger.info(f"   → Request ID: {req.id}")
         logger.info(f"   → Room metadata: {req.room.metadata}")
         # Accept all requests - don't filter
-        await req.accept(entrypoint)
+        await req.accept()
 
     # Run the agent worker with error handling
     try:
