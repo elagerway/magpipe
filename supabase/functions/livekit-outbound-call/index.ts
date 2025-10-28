@@ -1,6 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { SipClient, RoomServiceClient, AgentDispatchClient } from 'npm:livekit-server-sdk@2.14.0'
+import { SipClient, RoomServiceClient } from 'npm:livekit-server-sdk@2.14.0'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -62,7 +62,6 @@ serve(async (req) => {
 
     const sipClient = new SipClient(livekitUrl, livekitApiKey, livekitApiSecret)
     const roomClient = new RoomServiceClient(livekitUrl, livekitApiKey, livekitApiSecret)
-    const dispatchClient = new AgentDispatchClient(livekitUrl, livekitApiKey, livekitApiSecret)
 
     // Get user's agent config
     console.log('Querying agent_configs for user_id:', userId)
@@ -200,40 +199,23 @@ serve(async (req) => {
       throw new Error(`Failed to create SIP participant: ${(sipError as any).message}`)
     }
 
-    // Dispatch AI agent to join the room
-    console.log('🤖 Dispatching AI agent to room...')
-    try {
-      await dispatchClient.createDispatch(roomName, 'SW Telephony Agent', {
-        metadata: JSON.stringify({
-          user_id: userId,
-          direction: 'outbound',
-          contact_phone: phoneNumber,
-          service_number: callerIdNumber,
-        }),
-      })
-      console.log('✅ AI agent dispatched to room')
+    // Agent will auto-join based on room metadata (same as inbound)
+    console.log('✅ Room created with metadata - agent will auto-join')
 
-      // Log: Agent dispatched
-      await logCallState(supabase, callRecord.id, roomName, 'agent_dispatched', 'edge_function', {
-        agent_name: 'SW Telephony Agent',
-        dispatch_metadata: {
-          user_id: userId,
-          direction: 'outbound',
-          contact_phone: phoneNumber,
-          service_number: callerIdNumber,
-        },
-      })
-    } catch (dispatchError) {
-      console.error('❌ Failed to dispatch AI agent:', dispatchError)
+    // Log: Room ready for agent
+    await logCallState(supabase, callRecord.id, roomName, 'room_ready_for_agent', 'edge_function', {
+      note: 'Agent will auto-join based on room metadata',
+      metadata: {
+        user_id: userId,
+        direction: 'outbound',
+        contact_phone: phoneNumber,
+        service_number: callerIdNumber,
+      },
+    })
 
-      // Log: Agent dispatch error
-      await logCallState(supabase, callRecord.id, roomName, 'error', 'edge_function', {
-        error_type: 'agent_dispatch_failed',
-        agent_name: 'SW Telephony Agent',
-      }, (dispatchError as any).message || String(dispatchError))
-
-      // Continue anyway - browser can still join room
-    }
+    // REMOVED: Explicit dispatch - agent auto-joins rooms instead
+    // The LiveKit agent worker automatically joins rooms when they're created
+    // This is the same mechanism used for inbound calls
 
     // Update call record with SIP participant info
     await supabase
