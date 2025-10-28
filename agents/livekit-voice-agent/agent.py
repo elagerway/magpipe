@@ -776,7 +776,8 @@ if __name__ == "__main__":
     try:
         logger.info("🎬 Starting LiveKit agent worker...")
         cli.run_app(WorkerOptions(
-            request_fnc=request_fnc,  # Use request filter instead of prewarm
+            request_fnc=request_fnc,  # Use request filter to accept jobs
+            entrypoint_fnc=entrypoint,  # The actual entry point when job is accepted
             agent_name="SW Telephony Agent",
             num_idle_processes=0  # Disable worker pool to avoid DuplexClosed errors
         ))
