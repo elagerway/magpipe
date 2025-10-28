@@ -24,6 +24,7 @@ from livekit.agents import (
     AutoSubscribe,
     JobContext,
     JobProcess,
+    JobRequest,
     WorkerOptions,
     cli,
     llm,
@@ -762,12 +763,20 @@ if __name__ == "__main__":
         # For now, just log that we received the prewarm
         await proc.wait_for_shutdown()
 
+    # Request filter - accept ALL jobs (both inbound and outbound)
+    async def request_fnc(req: JobRequest) -> None:
+        """Accept all job requests - agent joins any room created"""
+        logger.info(f"🎯 Job request received for room: {req.room.name}")
+        logger.info(f"   → Request ID: {req.id}")
+        logger.info(f"   → Room metadata: {req.room.metadata}")
+        # Accept all requests - don't filter
+        await req.accept(entrypoint)
+
     # Run the agent worker with error handling
     try:
         logger.info("🎬 Starting LiveKit agent worker...")
         cli.run_app(WorkerOptions(
-            entrypoint_fnc=entrypoint,
-            prewarm_fnc=prewarm,
+            request_fnc=request_fnc,  # Use request filter instead of prewarm
             agent_name="SW Telephony Agent",
             num_idle_processes=0  # Disable worker pool to avoid DuplexClosed errors
         ))
