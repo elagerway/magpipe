@@ -1,6 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { SipClient, RoomServiceClient } from 'npm:livekit-server-sdk@2.14.0'
+import { SipClient, RoomServiceClient, AgentDispatchClient } from 'npm:livekit-server-sdk@2.14.0'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -62,6 +62,7 @@ serve(async (req) => {
 
     const sipClient = new SipClient(livekitUrl, livekitApiKey, livekitApiSecret)
     const roomClient = new RoomServiceClient(livekitUrl, livekitApiKey, livekitApiSecret)
+    const dispatchClient = new AgentDispatchClient(livekitUrl, livekitApiKey, livekitApiSecret)
 
     // Get user's agent config
     console.log('Querying agent_configs for user_id:', userId)
@@ -100,7 +101,7 @@ serve(async (req) => {
       user_id: userId,
     })
 
-    // Create LiveKit room with agent metadata
+    // Create LiveKit room
     await roomClient.createRoom({
       name: roomName,
       emptyTimeout: 300, // 5 minutes
@@ -120,6 +121,32 @@ serve(async (req) => {
       room_name: roomName,
       max_participants: 10,
     })
+
+    // Explicitly dispatch agent to the room
+    // This replicates what SIP dispatch rules do for inbound calls
+    console.log('📤 Dispatching agent to room...')
+    try {
+      const dispatch = await dispatchClient.createDispatch(roomName, 'SW Telephony Agent', {
+        metadata: JSON.stringify({
+          user_id: userId,
+          direction: 'outbound',
+          contact_phone: phoneNumber,
+        }),
+      })
+      console.log('✅ Agent dispatched:', dispatch.id)
+
+      // Log: Agent dispatched
+      await logCallState(supabase, null, roomName, 'agent_dispatched', 'edge_function', {
+        dispatch_id: dispatch.id,
+        agent_name: 'SW Telephony Agent',
+      })
+    } catch (dispatchError) {
+      console.error('❌ Failed to dispatch agent:', dispatchError)
+      await logCallState(supabase, null, roomName, 'error', 'agent_dispatch', {
+        error_type: 'agent_dispatch_failed',
+      }, (dispatchError as any).message || String(dispatchError))
+      // Don't throw - continue with call even if agent dispatch fails
+    }
 
     // Create call record in database
     console.log('📝 Creating call record in database...')
@@ -201,13 +228,7 @@ serve(async (req) => {
       throw new Error(`Failed to create SIP participant: ${(sipError as any).message}`)
     }
 
-    console.log('✅ SIP participant and room created - agent will auto-join')
-    console.log('  → Agent will automatically join room via request_fnc')
-
-    // Log: Waiting for agent auto-join
-    await logCallState(supabase, callRecord.id, roomName, 'waiting_for_agent', 'edge_function', {
-      note: 'Agent should auto-join via request_fnc when room is created with SIP participant',
-    })
+    console.log('✅ SIP participant created - agent has been dispatched to room')
 
     // Update call record with SIP participant info
     await supabase

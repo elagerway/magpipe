@@ -295,6 +295,16 @@ def create_voice_clone_tool(user_id: str):
     return clone_voice_from_sample
 
 
+async def prewarm(proc: JobProcess):
+    """
+    Prewarm function for explicit agent dispatch.
+    This is called when the agent receives an explicit dispatch request.
+    """
+    logger.info(f"🔥 PREWARM CALLED - Agent received explicit dispatch")
+    # Keep the process running until shutdown
+    await proc.wait_for_shutdown()
+
+
 async def entrypoint(ctx: JobContext):
     """Main agent entry point - called for each new LiveKit room"""
 
@@ -757,6 +767,7 @@ if __name__ == "__main__":
         logger.info("   → Agent will join rooms automatically via LiveKit Cloud dispatch rules")
         cli.run_app(WorkerOptions(
             entrypoint_fnc=entrypoint,  # Called when agent joins a room
+            prewarm_fnc=prewarm,  # Called for explicit agent dispatch
             agent_name="SW Telephony Agent",
             num_idle_processes=0  # Disable worker pool to avoid DuplexClosed errors
         ))
