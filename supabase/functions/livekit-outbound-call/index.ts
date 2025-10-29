@@ -88,7 +88,9 @@ serve(async (req) => {
     }
 
     // Generate unique room name for this call
-    const roomName = `outbound-${userId}-${Date.now()}`
+    // Use 'call-outbound-' prefix to match LiveKit dispatch rules (which use 'call-' prefix)
+    // This ensures the agent automatically joins outbound rooms just like inbound rooms
+    const roomName = `call-outbound-${userId}-${Date.now()}`
     console.log('Creating room:', roomName)
 
     // Log: Call initiated
