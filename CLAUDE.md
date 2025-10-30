@@ -358,3 +358,4 @@ log_call_state(room_name, 'agent_connected', 'agent', {
 - **Function references**: When referencing these tools in prompts or LLM configuration, use the full unique name
 - **Tool cleanup**: When removing tools, filter by user_id prefix to remove all tools belonging to a specific user
 <!-- MANUAL ADDITIONS END -->
+- psql or sql is not installed or accessible, use a Python approach with direct PostgreSQL connection instead
