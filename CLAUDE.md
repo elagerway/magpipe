@@ -183,6 +183,45 @@ JavaScript ES6+, HTML5, CSS3 (vanilla, minimal framework usage per user requirem
 - **Custom pipeline**: STT (Deepgram) → LLM (OpenAI) → TTS (ElevenLabs)
 - **Credentials**: Use LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET from environment
 
+### LiveKit Agent Dispatch - FAILED APPROACHES (DO NOT RETRY)
+
+**Problem**: LiveKit agent not joining outbound call rooms automatically
+
+**❌ APPROACH 1: Explicit Dispatch via AgentDispatchClient (Commits: 6493101)**
+- **What we tried**: Used `AgentDispatchClient.createDispatch(roomName, agentName)` in Edge Function to explicitly send agent to room
+- **Result**: FAILED - Dispatch sent successfully but agent never received it
+- **Why it failed**: Agent worker on Render not properly registered with LiveKit Cloud to receive dispatch messages. Despite having `prewarm_fnc` configured, no dispatch messages reach the agent.
+- **Evidence**: Call state logs show `agent_dispatched` from Edge Function, but never `agent_entrypoint_called` or `agent_connected` from agent
+- **DO NOT retry explicit dispatch** - this requires agent worker registration with LiveKit Cloud that we cannot configure
+
+**❌ APPROACH 2: Auto-join with request_fnc (Commits: 9d72c5d, cbcc14e)**
+- **What we tried**: Added `request_fnc` to agent WorkerOptions to automatically accept all job requests when rooms are created
+- **Result**: FAILED - Agent never receives job requests
+- **Why it failed**: `request_fnc` requires LiveKit Cloud to send job requests to the agent worker. Job requests are only sent based on agent dispatch rules configured in LiveKit Cloud dashboard (not via SDK). Without dispatch rules configured for our room patterns, no job requests are generated.
+- **Evidence**: No "JOB REQUEST RECEIVED" logs from agent despite multiple test calls
+- **DO NOT retry request_fnc** - requires LiveKit Cloud agent dispatch rules which we cannot configure programmatically
+
+**❌ APPROACH 3: Room prefix matching (Commit: f25c8b3)**
+- **What we tried**: Changed outbound room prefix from `outbound-` to `call-outbound-` to match existing SIP dispatch rule pattern (`call-`)
+- **Result**: FAILED - Room prefix alone doesn't trigger agent dispatch
+- **Why it failed**: Confused SIP dispatch rules (which route SIP calls to rooms) with agent dispatch rules (which send agents to rooms). These are SEPARATE systems. The SIP dispatch rule with `roomPrefix: 'call-'` only affects where incoming SIP calls create rooms - it does NOT automatically send agents to those rooms.
+- **Evidence**: Inbound calls work, suggesting agent dispatch rules ARE configured somewhere for inbound patterns, but changing outbound room prefix didn't help
+- **DO NOT retry room prefix changes alone** - this doesn't create agent dispatch rules
+
+**✅ WHAT ACTUALLY WORKS FOR INBOUND**:
+- Inbound calls successfully trigger agent auto-join
+- This means agent dispatch rules ARE configured somewhere in LiveKit Cloud
+- These rules are NOT visible/manageable via SDK
+- They must be configured in LiveKit Cloud dashboard UI
+
+**🎯 REQUIRED SOLUTION**:
+Agent dispatch rules MUST be configured in LiveKit Cloud dashboard (cloud.livekit.io):
+1. Navigate to project → Agent Dispatch settings
+2. Create rule: Room pattern `call-*` → Agent `SW Telephony Agent`
+3. This will make agent auto-join for both inbound (`call-{number}`) and outbound (`call-outbound-{userId}-{timestamp}`) rooms
+
+**CRITICAL LEARNING**: LiveKit agent dispatch is controlled by LiveKit Cloud dashboard configuration, NOT by code. You cannot programmatically configure agent dispatch rules via the SDK. Stop trying code-based solutions - this requires dashboard configuration.
+
 ## Debugging Infrastructure (NON-NEGOTIABLE)
 
 ### Database Call State Tracking

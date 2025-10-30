@@ -129,11 +129,53 @@ serve(async (req) => {
       })
     }
 
+    // Request approval via SMS for all successfully queued numbers
+    const successfulNumbers = results.filter(r => r.success).map(r => r.phone_number)
+
+    if (successfulNumbers.length > 0) {
+      // Get the deletion record ID for the first number (they're all in the same batch)
+      const { data: deletionRecord } = await supabase
+        .from('numbers_to_delete')
+        .select('id')
+        .eq('phone_number', successfulNumbers[0])
+        .eq('user_id', user.id)
+        .single()
+
+      if (deletionRecord) {
+        // Request approval
+        const approvalUrl = `${supabaseUrl}/functions/v1/request-deletion-approval`
+
+        try {
+          const approvalResponse = await fetch(approvalUrl, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${supabaseKey}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              deletionRecordId: deletionRecord.id,
+              phoneNumbers: successfulNumbers.join(', '),
+              userId: user.id
+            })
+          })
+
+          if (!approvalResponse.ok) {
+            console.error('Failed to request approval:', await approvalResponse.text())
+          } else {
+            console.log('✅ Approval request sent')
+          }
+        } catch (approvalError) {
+          console.error('Error requesting approval:', approvalError)
+        }
+      }
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
         results,
-        scheduled_deletion_date: scheduledDeletionDate.toISOString()
+        scheduled_deletion_date: scheduledDeletionDate.toISOString(),
+        approval_requested: successfulNumbers.length > 0
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )

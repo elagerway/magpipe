@@ -23,12 +23,12 @@ serve(async (req) => {
 
     console.log('Processing scheduled deletions...')
 
-    // Get all numbers scheduled for deletion that are past their scheduled date
+    // Get all numbers scheduled for deletion that are past their scheduled date AND approved
     const now = new Date().toISOString()
     const { data: numbersToDelete, error: fetchError } = await supabase
       .from('numbers_to_delete')
       .select('*')
-      .eq('deletion_status', 'pending')
+      .eq('deletion_status', 'approved') // Only process approved deletions
       .lte('scheduled_deletion_date', now)
 
     if (fetchError) {
