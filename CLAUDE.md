@@ -111,6 +111,54 @@ JavaScript ES6+, HTML5, CSS3 (vanilla, minimal framework usage per user requirem
 
 ## Feature Implementation & Testing
 
+### CRITICAL: Test Recursively BEFORE Committing to Git (NON-NEGOTIABLE)
+
+**The Rule**: NEVER commit code to git without testing it first. Period. No exceptions.
+
+**Required Testing Workflow**:
+1. **Implement change** (fix bug, add feature, refactor code)
+2. **Write/update tests** for the specific change
+3. **Run all related tests** to verify nothing broke:
+   - Unit tests for changed functions
+   - Integration tests for changed APIs/endpoints
+   - End-to-end tests for changed user flows
+   - Regression tests for features that depend on changed code
+4. **Manually test in browser/environment** if applicable
+5. **Verify no errors in console/logs**
+6. **ONLY THEN**: `git add` → `git commit` → `git push`
+
+**What "Test Recursively" Means**:
+- Test the thing you changed (obvious)
+- Test everything that USES the thing you changed (downstream impact)
+- Test everything the thing you changed DEPENDS ON (upstream validation)
+- Example: If you modify a database function used by 3 Edge Functions, test all 3 Edge Functions
+
+**Why This is NON-NEGOTIABLE**:
+1. **Prevents production breakage**: Broken code never reaches users
+2. **Saves massive time**: Finding bugs pre-commit takes 5 minutes; post-deploy takes hours
+3. **Maintains codebase trust**: Every commit is known-working
+4. **Enables safe rollback**: If you must revert, you know the previous commit worked
+5. **Documents actual behavior**: Tests show what the code really does, not what you think it does
+
+**What Happened (Example)**:
+- Changed queue-number-deletion calculation logic
+- Created test script that called the API
+- Test script DELETED PRODUCTION NUMBERS from service_numbers table
+- Pushed to git before realizing the damage
+- Had to revert commit, restore all numbers from deletion queue, redeploy
+
+**How to Test Without Breaking Things**:
+1. **Use test data, not production data**: Create test user accounts, use fake phone numbers
+2. **Read-only tests first**: Query database, call GET endpoints, inspect state
+3. **Write tests in sandbox**: Use staging environment or local Supabase instance
+4. **Dry-run mode**: Add flags to scripts that log actions without executing them
+5. **Manual approval**: If must test in production, get explicit user approval first
+
+**Enforcement**:
+- Any commit that breaks existing functionality will be immediately reverted
+- Developer must explain what testing was skipped and why
+- Repeated violations indicate process failure requiring intervention
+
 ### CRITICAL: Breaking Change Prevention
 - **ALWAYS verify changes won't break existing functionality**: Before implementing any new feature, database change, or function modification, you MUST search for all code that might be affected
 - **Breaking Change Analysis Workflow** (MANDATORY for ALL changes):

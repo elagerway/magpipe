@@ -39,7 +39,9 @@ All new functionality MUST be developed following strict TDD methodology:
 2. Verify tests fail (red phase)
 3. Implement minimum code to make tests pass (green phase)
 4. Refactor while maintaining passing tests
-5. Repeat for next requirement
+5. **Run comprehensive tests to verify nothing broke**
+6. ONLY THEN commit to git
+7. Repeat for next requirement
 
 Tests MUST be written BEFORE implementation code. No implementation code may be committed without corresponding tests. Tests MUST cover:
 - Happy path scenarios (expected normal operation)
@@ -47,7 +49,26 @@ Tests MUST be written BEFORE implementation code. No implementation code may be 
 - Error handling and failure modes
 - Integration points between components
 
-**Rationale**: TDD is non-negotiable because it forces clear requirements definition, prevents scope creep, enables fearless refactoring, and provides living documentation. Tests written after implementation are biased toward what was built rather than what should be built.
+**CRITICAL: Test Recursively BEFORE Committing to Git**:
+- After implementing changes, ALWAYS test every related feature to ensure nothing broke
+- Test the specific feature you changed (unit/integration tests)
+- Test features that depend on your changes (downstream impact)
+- Test features your changes depend on (upstream validation)
+- Verify all existing tests still pass
+- **NEVER commit code to git without testing it first** - no exceptions
+- **NEVER push to GitHub without local testing first** - deployment happens after validation, not before
+- If testing requires production/staging environment, get explicit user approval before pushing
+
+**Why Test-Before-Commit is NON-NEGOTIABLE**:
+1. **Prevents cascading failures**: One untested change breaks multiple features
+2. **Saves time**: Finding bugs pre-commit takes minutes; finding them post-deploy takes hours
+3. **Maintains trust**: Users expect working code on every commit
+4. **Enables CI/CD**: Automated deployments require reliable test coverage
+5. **Documents behavior**: Tests show what the code is supposed to do
+
+**Enforcement**: Any commit that breaks existing functionality is grounds for immediate revert. The developer MUST explain what testing was skipped and why.
+
+**Rationale**: TDD is non-negotiable because it forces clear requirements definition, prevents scope creep, enables fearless refactoring, and provides living documentation. Tests written after implementation are biased toward what was built rather than what should be built. Testing AFTER committing means pushing broken code to version control, which destroys confidence in the codebase.
 
 ### IIa. Breaking Change Prevention (NON-NEGOTIABLE)
 
