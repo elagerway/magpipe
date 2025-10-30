@@ -60,12 +60,8 @@ serve(async (req) => {
 
     const results = []
 
-    // Calculate scheduled deletion date (35 days from now)
-    const scheduledDeletionDate = new Date()
-    scheduledDeletionDate.setDate(scheduledDeletionDate.getDate() + 35)
-
     for (const phoneNumber of phone_numbers) {
-      // Get service number details
+      // Get service number details including purchase date
       const { data: serviceNumber, error: fetchError } = await supabase
         .from('service_numbers')
         .select('*')
@@ -98,6 +94,17 @@ serve(async (req) => {
         continue
       }
 
+      // Calculate scheduled deletion date (30 days from purchase date)
+      const purchaseDate = new Date(serviceNumber.created_at)
+      const scheduledDeletionDate = new Date(purchaseDate)
+      scheduledDeletionDate.setDate(purchaseDate.getDate() + 30)
+
+      // If 30 days have already passed, delete immediately (today)
+      const now = new Date()
+      if (scheduledDeletionDate < now) {
+        scheduledDeletionDate.setTime(now.getTime())
+      }
+
       // Add to deletion queue
       const { error: insertError } = await supabase
         .from('numbers_to_delete')
@@ -109,7 +116,7 @@ serve(async (req) => {
           friendly_name: serviceNumber.friendly_name,
           capabilities: serviceNumber.capabilities,
           scheduled_deletion_date: scheduledDeletionDate.toISOString(),
-          deletion_notes: 'Queued via queue-number-deletion function'
+          deletion_notes: `Queued via queue-number-deletion function. Purchase date: ${serviceNumber.created_at}`
         })
 
       if (insertError) {
@@ -122,10 +129,15 @@ serve(async (req) => {
         continue
       }
 
+      // Calculate days until deletion for response
+      const daysUntilDeletion = Math.ceil((scheduledDeletionDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+
       results.push({
         phone_number: phoneNumber,
         success: true,
-        scheduled_deletion_date: scheduledDeletionDate.toISOString()
+        scheduled_deletion_date: scheduledDeletionDate.toISOString(),
+        days_until_deletion: Math.max(0, daysUntilDeletion),
+        purchase_date: serviceNumber.created_at
       })
     }
 
@@ -174,7 +186,6 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         results,
-        scheduled_deletion_date: scheduledDeletionDate.toISOString(),
         approval_requested: successfulNumbers.length > 0
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
