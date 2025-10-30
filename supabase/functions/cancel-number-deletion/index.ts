@@ -68,8 +68,9 @@ serve(async (req) => {
         phone_sid: deletionRecord.phone_sid,
         friendly_name: deletionRecord.friendly_name,
         capabilities: deletionRecord.capabilities,
+        purchased_at: deletionRecord.purchased_at,  // Preserve original purchase date
         is_active: false
-        // Note: created_at and purchased_at will be auto-set by database
+        // Note: created_at will be auto-set by database
         // provider field doesn't exist in service_numbers (only in numbers_to_delete)
       })
       .select()

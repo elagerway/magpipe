@@ -263,6 +263,24 @@ p {
   border-radius: var(--radius-md);
   margin-bottom: var(--spacing-md);
   border-left: 4px solid;
+  position: fixed;
+  bottom: 70px; /* Position above bottom nav (60px nav + 10px spacing) */
+  left: 1rem;
+  right: 1rem;
+  z-index: 1100; /* Above bottom nav (z-index: 1000) */
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 .alert-success {

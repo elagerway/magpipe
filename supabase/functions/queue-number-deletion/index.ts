@@ -115,6 +115,7 @@ serve(async (req) => {
           provider: 'signalwire',  // Default provider (service_numbers doesn't have this field)
           friendly_name: serviceNumber.friendly_name,
           capabilities: serviceNumber.capabilities,
+          purchased_at: serviceNumber.purchased_at,  // Preserve original purchase date
           scheduled_deletion_date: scheduledDeletionDate.toISOString(),
           deletion_notes: `Queued via queue-number-deletion function. Purchase date: ${serviceNumber.purchased_at}`
         })

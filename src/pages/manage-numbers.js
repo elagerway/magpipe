@@ -276,8 +276,11 @@ export default class ManageNumbersPage {
 
       const result = await response.json();
 
+      // Get days until deletion from the result
+      const daysUntilDeletion = result.results?.[0]?.days_until_deletion || 30;
+
       successMessage.className = 'alert alert-success';
-      successMessage.textContent = `Number queued for deletion. It will be permanently deleted in 35 days.`;
+      successMessage.textContent = `Number queued for deletion. It will be permanently deleted in ${daysUntilDeletion} day${daysUntilDeletion !== 1 ? 's' : ''}.`;
 
       // Reload numbers to reflect changes
       await this.loadNumbers();
