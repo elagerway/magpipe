@@ -84,52 +84,42 @@ serve(async (req) => {
     } else {
       console.log(`❌ Deletion rejected for: ${approval.phone_numbers}`)
 
-      // Get the deletion record
-      const { data: deletionRecord } = await supabase
+      // Get all deletion records for this approval
+      const { data: deletionRecords } = await supabase
         .from('numbers_to_delete')
-        .select('*, service_numbers!inner(*)')
-        .eq('id', approval.deletion_record_id)
-        .single()
+        .select('*')
+        .eq('user_id', approval.user_id)
+        .in('phone_number', approval.phone_numbers.split(',').map(n => n.trim()))
 
-      if (deletionRecord) {
-        // Remove from deletion queue
+      if (deletionRecords && deletionRecords.length > 0) {
+        // Update SignalWire label for each number (but do NOT delete from SignalWire)
+        for (const record of deletionRecords) {
+          const updateUrl = `https://${signalwireSpaceUrl}/api/laml/2010-04-01/Accounts/${signalwireProjectId}/IncomingPhoneNumbers/${record.phone_sid}.json`
+
+          await fetch(updateUrl, {
+            method: 'POST',
+            headers: {
+              'Authorization': 'Basic ' + btoa(`${signalwireProjectId}:${signalwireToken}`),
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams({
+              FriendlyName: `removed_from_pat_${record.user_id}`
+            })
+          })
+
+          console.log(`✅ Updated SignalWire label for ${record.phone_number} to removed_from_pat_${record.user_id}`)
+        }
+
+        // Remove from deletion queue (number stays in SignalWire with new label)
         await supabase
           .from('numbers_to_delete')
           .delete()
           .eq('id', approval.deletion_record_id)
 
-        // Update SignalWire number label
-        const phoneNumbers = approval.phone_numbers.split(',').map(n => n.trim())
-
-        for (const phoneNumber of phoneNumbers) {
-          // Find the service number record
-          const { data: serviceNumber } = await supabase
-            .from('service_numbers')
-            .select('phone_sid, user_id')
-            .eq('phone_number', phoneNumber)
-            .maybeSingle()
-
-          if (serviceNumber) {
-            // Update SignalWire label
-            const updateUrl = `https://${signalwireSpaceUrl}/api/laml/2010-04-01/Accounts/${signalwireProjectId}/IncomingPhoneNumbers/${serviceNumber.phone_sid}.json`
-
-            await fetch(updateUrl, {
-              method: 'POST',
-              headers: {
-                'Authorization': 'Basic ' + btoa(`${signalwireProjectId}:${signalwireToken}`),
-                'Content-Type': 'application/x-www-form-urlencoded',
-              },
-              body: new URLSearchParams({
-                FriendlyName: `removed_from_pat_${serviceNumber.user_id}`
-              })
-            })
-
-            console.log(`Updated SignalWire label for ${phoneNumber}`)
-          }
-        }
+        console.log(`✅ Removed from deletion queue - numbers kept in SignalWire with "removed_from_pat" label`)
       }
 
-      return new Response('<?xml version="1.0" encoding="UTF-8"?><Response><Message>Deletion rejected. Numbers removed from queue and labeled in SignalWire.</Message></Response>', {
+      return new Response('<?xml version="1.0" encoding="UTF-8"?><Response><Message>Deletion rejected. Numbers removed from Pat and labeled in SignalWire.</Message></Response>', {
         headers: { 'Content-Type': 'application/xml' }
       })
     }

@@ -60,6 +60,12 @@ A user wants an AI assistant (Pat) to automatically answer phone calls and SMS m
 
 7. **Given** multiple calls and messages have been handled, **When** the user reviews call history, **Then** they can see date, contact name, recordings, and transcripts for each interaction
 
+8. **Given** a user wants to release their service phone number, **When** they queue the number for deletion, **Then** an SMS approval request is sent to the administrator and the number is not deleted until approval is received
+
+9. **Given** an administrator receives a deletion approval SMS, **When** they reply "YES", **Then** the number is approved for deletion and will be released during the next maintenance window
+
+10. **Given** an administrator receives a deletion approval SMS, **When** they reply "NO", **Then** the number is removed from the deletion queue and labeled in the telephony provider as removed from the user's account
+
 ### Edge Cases
 - What happens when a contact sends a message or calls but their number has changed since being added to contacts?
 - How does Pat handle a contact list with duplicate numbers or malformed entries?
@@ -70,6 +76,11 @@ A user wants an AI assistant (Pat) to automatically answer phone calls and SMS m
 - What happens when call recordings or transcripts fail to save?
 - How does Pat behave when conversation history is unavailable or corrupted?
 - What happens if SSO provider is unavailable during registration or login?
+- What happens if the administrator's phone is unreachable when a deletion approval SMS is sent?
+- How does the system handle multiple pending deletion approval requests for the same user?
+- What happens if an administrator responds to an expired deletion approval request?
+- What happens if the administrator responds with text other than YES or NO?
+- How does the system behave if the telephony provider fails to release a number after approval?
 
 ## Requirements
 
@@ -158,6 +169,21 @@ A user wants an AI assistant (Pat) to automatically answer phone calls and SMS m
 - **FR-043**: Users MUST be able to read call transcripts
 - **FR-044**: Users MUST be able to search and filter call/SMS history [NEEDS CLARIFICATION: What search criteria? Date range, contact name, keywords in transcript?]
 
+#### Service Number Deletion & Approval
+- **FR-080**: Users MUST be able to queue their service phone numbers for deletion through the application interface
+- **FR-081**: System MUST send an SMS approval request to the administrator when a number is queued for deletion
+- **FR-082**: The SMS approval request MUST include the phone number(s) to be deleted and the user ID
+- **FR-083**: Administrator MUST be able to approve deletion by replying "YES" (or "Y", "y", "yes") to the SMS
+- **FR-084**: Administrator MUST be able to reject deletion by replying "NO" (or "N", "n", "no") to the SMS
+- **FR-085**: When administrator approves deletion (replies YES), the system MUST schedule the number for release from the telephony provider
+- **FR-086**: When administrator rejects deletion (replies NO), the system MUST remove the number from the deletion queue
+- **FR-087**: When deletion is rejected, the system MUST update the telephony provider's label for that number to "removed_from_pat_{user_id}"
+- **FR-088**: System MUST only process scheduled deletions that have received administrator approval
+- **FR-089**: Approved deletions MUST be executed during the scheduled maintenance window (2 AM UTC daily)
+- **FR-090**: System MUST maintain an audit trail of all deletion requests, approvals, rejections, and executions
+- **FR-091**: Approval requests MUST expire after 24 hours if no response is received from the administrator
+- **FR-092**: System MUST record the timestamp and response text for all administrator approval responses
+
 #### Progressive Web App
 - **FR-045**: System MUST function as a Progressive Web App accessible on mobile devices
 - **FR-046**: System MUST be installable to the user's home screen
@@ -189,6 +215,7 @@ A user wants an AI assistant (Pat) to automatically answer phone calls and SMS m
 - **Conversation Context**: Represents accumulated knowledge about interactions with a specific contact; attributes include contact reference, key topics discussed, preferences, relationship notes, summary of previous interactions
 - **Agent Configuration**: Represents user's customization of Pat's behavior; attributes include voice selection, greeting template, vetting criteria, transfer preferences, response style
 - **Transfer Number**: Represents a phone number destination for call transfers; attributes include user reference, label (descriptive name), phone number, is_default flag, transfer_secret (optional passcode), agent_id, llm_id, creation timestamp
+- **Deletion Approval**: Represents an SMS-based approval request for service number deletion; attributes include deletion record reference, phone numbers to delete, user reference, administrator phone, approval status (pending/approved/rejected/expired), approval SMS ID, response timestamp, response text, expiration timestamp
 
 ---
 

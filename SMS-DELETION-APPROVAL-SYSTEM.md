@@ -35,8 +35,10 @@ Approval ID: a1b2c3d4
 #### If Admin Replies **NO** (or N/n/no):
 1. Approval status → `rejected`
 2. Number removed from deletion queue
-3. SignalWire number label updated to: `removed_from_pat_{user_id}`
-4. Admin receives confirmation: "Deletion rejected. Numbers removed from queue and labeled in SignalWire."
+3. **Number STAYS in SignalWire** (not deleted from provider)
+4. SignalWire number label updated to: `removed_from_pat_{user_id}`
+5. Number is removed from user's Pat account but remains provisioned in SignalWire
+6. Admin receives confirmation: "Deletion rejected. Numbers removed from Pat and labeled in SignalWire."
 
 ## Database Tables
 
@@ -69,10 +71,10 @@ Tracks SMS approval requests.
 
 ### `handle-deletion-approval`
 - **Webhook endpoint for SignalWire**
-- Receives admin's YES/NO response
+- Receives admin's YES/NO response via SMS to +16042566768
 - Updates approval status
-- If YES: Sets deletion_status to 'approved'
-- If NO: Removes from queue + updates SignalWire label
+- If YES: Sets deletion_status to 'approved' (number will be deleted from SignalWire at 2 AM UTC)
+- If NO: Removes from queue + updates SignalWire label to `removed_from_pat_{user_id}` (number STAYS in SignalWire)
 
 ### `queue-number-deletion` (Updated)
 - Queues number for deletion
@@ -85,10 +87,11 @@ Tracks SMS approval requests.
 
 ## Setup Instructions
 
-### 1. Set Admin Phone Number
+### 1. Set Admin Phone Numbers
 ```bash
 # In Supabase Dashboard → Project Settings → Edge Functions → Secrets
-ADMIN_PHONE_NUMBER=+12025551234
+ADMIN_PHONE_NUMBER=+16045628647  # Your personal phone (receives approval SMS)
+ADMIN_SMS_NUMBER=+16042566768    # SignalWire number (sends approval SMS)
 ```
 
 ### 2. Deploy Edge Functions
@@ -106,10 +109,11 @@ npx supabase db push
 ```
 
 ### 4. Configure SignalWire Webhook
-In SignalWire Dashboard, set the webhook for incoming SMS on your admin number to:
+In SignalWire Dashboard, set the webhook for incoming SMS on +16042566768 to:
 ```
-https://your-project.supabase.co/functions/v1/handle-deletion-approval
+https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/handle-deletion-approval
 ```
+**Note**: This number sends the approval SMS TO your phone and receives your YES/NO replies.
 
 ## Testing
 
@@ -134,7 +138,7 @@ curl -X POST https://your-project.supabase.co/functions/v1/queue-number-deletion
 - **24-Hour Expiry**: Approvals expire after 24 hours if no response
 - **Admin Phone**: Only one admin phone number supported (set in env var)
 - **Cron Schedule**: Deletions only process at 2 AM UTC daily
-- **SignalWire Labels**: Rejected numbers get labeled `removed_from_pat_{user_id}`
+- **SignalWire Labels**: Rejected numbers get labeled `removed_from_pat_{user_id}` and remain in SignalWire (not deleted)
 - **Audit Trail**: All approval requests and responses are logged in database
 
 ## Troubleshooting
