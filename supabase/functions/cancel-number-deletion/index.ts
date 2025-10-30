@@ -66,11 +66,11 @@ serve(async (req) => {
         user_id: authUser.user.id,
         phone_number: deletionRecord.phone_number,
         phone_sid: deletionRecord.phone_sid,
-        provider: deletionRecord.provider || 'signalwire',
         friendly_name: deletionRecord.friendly_name,
         capabilities: deletionRecord.capabilities,
-        is_active: false,
-        purchased_at: deletionRecord.created_at
+        is_active: false
+        // Note: created_at and purchased_at will be auto-set by database
+        // provider field doesn't exist in service_numbers (only in numbers_to_delete)
       })
       .select()
       .single()
