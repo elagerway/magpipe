@@ -19,7 +19,8 @@ serve(async (req) => {
     const signalwireProjectId = Deno.env.get('SIGNALWIRE_PROJECT_ID')!
     const signalwireToken = Deno.env.get('SIGNALWIRE_API_TOKEN')!
     const signalwireSpaceUrl = Deno.env.get('SIGNALWIRE_SPACE_URL')!
-    const adminPhone = Deno.env.get('ADMIN_PHONE_NUMBER')! // Set this in Supabase secrets
+    const adminPhone = Deno.env.get('ADMIN_PHONE_NUMBER')! // Admin's personal phone (receives SMS)
+    const adminSmsNumber = Deno.env.get('ADMIN_SMS_NUMBER')! // SignalWire number for admin communications
 
     const { deletionRecordId, phoneNumbers, userId } = await req.json()
 
@@ -66,7 +67,7 @@ Approval ID: ${approval.id.substring(0, 8)}`
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: new URLSearchParams({
-        From: phoneNumbers.split(',')[0].trim(), // Use first number as sender
+        From: adminSmsNumber, // Use dedicated admin communication number
         To: adminPhone,
         Body: smsMessage
       })
