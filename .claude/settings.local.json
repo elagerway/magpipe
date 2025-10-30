@@ -104,7 +104,17 @@
       "Bash(python3:*)",
       "Bash(git commit:*)",
       "Read(//var/folders/bt/jkp6n_2j24s9b3kj9j77tz5c0000gn/T/TemporaryItems/NSIRD_screencaptureui_xHsJDD/**)",
-      "WebFetch(domain:docs.livekit.io)"
+      "WebFetch(domain:docs.livekit.io)",
+      "Bash(./query-call-state-logs.sh:*)",
+      "Bash(ssh -i ~/.ssh/claude_render your-render-service-id@ssh.oregon.render.com \"ps aux | grep python | grep -v grep\")",
+      "Bash(git push:*)",
+      "Bash(ssh:*)",
+      "WebFetch(domain:api-docs.render.com)",
+      "Bash(awk:*)",
+      "Bash(for i in 1 2 3 4 5)",
+      "Bash(do echo \"=== Check $i (waiting 60s) ===\" sleep 60 ssh -i ~/.ssh/claude_render your-render-service-id@ssh.oregon.render.com \"cd /opt/render/project/src && git log -1 --format=''''%h %s''''; ps aux | grep ''''python agent'''' | grep -v grep | head -1 | awk ''''{print \"\"Started:\"\", $9}''''\")",
+      "Bash(source:*)",
+      "Bash(/tmp/query-call-logs.sh:*)"
     ],
     "deny": [],
     "ask": []
