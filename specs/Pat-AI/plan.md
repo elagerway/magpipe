@@ -413,6 +413,428 @@ Setup → Migrations → Supabase Client → User Model → Auth → Phone Verif
 
 **IMPORTANT**: This phase is executed by the /tasks command, NOT by /plan
 
+## Outbound Calling Design Specification
+
+### Overview
+This section defines the phased approach for implementing outbound calling:
+1. **Phase 1**: Get SignalWire SIP calling working from browser (using existing JsSIP client)
+2. **Phase 2**: Add LiveKit bridging for recording and agent participation
+3. **Phase 3**: Implement speaker labeling and tool invocation tracking
+
+The current LiveKit-based implementation will be replaced with a SIP-first approach that allows optional LiveKit bridging when recording or agent features are needed.
+
+### Core Capabilities
+
+#### 1. User Control Requirements
+- **Number Selection**: User can initiate outbound calls from any of their active service numbers
+- **Call Recording**: Optional toggle to record the entire call (default: off)
+- **Agent Participation**: Optional toggle to include Pat AI agent in the call (default: off)
+- **Call Records**: All outbound calls appear in inbox with recordings, transcripts, and tool invocations
+- **Tool Invocation Tracking**: When agent is active, all tool calls (SMS sending, contact adding, etc.) are logged in call record
+
+#### 2. Current Implementation Status
+
+##### 2.1 Existing Outbound Call System ✅
+**Location**: `src/pages/inbox.js:1499` (`initiateCall()` method)
+
+**Current Flow** (Already Working):
+```
+1. User clicks Call button in inbox
+2. Frontend calls: supabase.functions.invoke('livekit-outbound-call')
+   Parameters: { phoneNumber, callerIdNumber, userId, recordCall }
+3. Edge Function creates LiveKit room
+4. Edge Function dials PSTN number via SignalWire
+5. Edge Function connects PSTN to LiveKit room
+6. Frontend gets LiveKit token
+7. Frontend joins LiveKit room
+8. User is connected in LiveKit room with destination caller
+```
+
+**What Works**:
+- ✅ Basic outbound calling via LiveKit
+- ✅ Caller ID selection ("Call from" dropdown)
+- ✅ Number pad dialer interface
+- ✅ Call button UI with hangup transformation
+- ✅ LiveKit room connection
+- ✅ **Recording toggle UI** - Purple toggle switch in header
+- ✅ Recording parameter passed to Edge Function
+
+**What's Missing**:
+- ❌ **Agent participation toggle UI** - Need "Include Agent" toggle next to "Record Call"
+- ❌ Agent joining LiveKit room when enabled
+- ❌ Speaker labeling in transcripts (User vs Agent vs Guest)
+- ❌ Tool invocation tracking when agent is active
+- ❌ Call records with proper direction, recording status, agent status in database
+
+##### 2.2 Phase 1: SignalWire SIP Calling (Priority)
+
+**Goal**: Get basic SIP calling working from browser to PSTN using JsSIP
+
+**Implementation Steps**:
+
+1. **Store SIP Credentials in Database**
+   ```sql
+   -- Add to service_numbers table
+   ALTER TABLE service_numbers ADD COLUMN IF NOT EXISTS
+     sip_username VARCHAR(255),
+     sip_password VARCHAR(255), -- encrypted
+     sip_domain VARCHAR(255) DEFAULT 'erik.signalwire.com',
+     sip_ws_server VARCHAR(255) DEFAULT 'wss://erik.signalwire.com:7443';
+   ```
+
+2. **Provision SIP Endpoint for Each Service Number**
+   - Create Edge Function: `supabase/functions/provision-sip-endpoint/index.ts`
+   - Call SignalWire API to create SIP endpoint
+   - Store credentials in database (encrypted)
+   - Auto-provision when number is purchased/activated
+
+3. **Update Outbound Call Flow in Inbox**
+   ```javascript
+   // src/pages/inbox.js - initiateCall() method
+
+   async initiateCall(phoneNumber, callerIdNumber = null) {
+     // Step 1: Get SIP credentials for the selected service number
+     const { data: serviceNumber } = await supabase
+       .from('service_numbers')
+       .select('sip_username, sip_password, sip_domain, sip_ws_server')
+       .eq('phone_number', callerIdNumber)
+       .eq('is_active', true)
+       .single();
+
+     // Step 2: Initialize SIP client
+     await sipClient.initialize({
+       sipUri: `sip:${serviceNumber.sip_username}@${serviceNumber.sip_domain}`,
+       sipPassword: serviceNumber.sip_password,
+       wsServer: serviceNumber.sip_ws_server,
+       displayName: callerIdNumber
+     });
+
+     // Step 3: Make call via SIP
+     await sipClient.makeCall(phoneNumber, callerIdNumber, {
+       onProgress: () => this.updateCallState('ringing'),
+       onConfirmed: () => this.updateCallState('active'),
+       onFailed: (cause) => this.updateCallState('failed', cause),
+       onEnded: () => this.updateCallState('idle')
+     });
+   }
+   ```
+
+4. **SignalWire Configuration**
+   - Enable SIP endpoints in SignalWire dashboard
+   - Configure allowed domains for WebRTC
+   - Set up STUN/TURN servers if needed
+   - Test SIP registration from browser
+
+5. **Call State Management**
+   - Update UI to show SIP call states (registering, ringing, connected, ended)
+   - Handle SIP errors (registration failed, call rejected, etc.)
+   - Update call button to hangup button when connected
+   - Show call duration timer
+
+**Testing Phase 1**:
+- ✅ SIP registration succeeds
+- ✅ Outbound call rings destination number
+- ✅ Audio flows both ways
+- ✅ Hangup works from either side
+- ✅ Call state updates correctly in UI
+- ✅ Caller ID shows correct number
+
+**Phase 1 Complete When**: User can make basic PSTN calls from browser using SIP, with no recording or agent features.
+
+##### 2.3 Improved Call Flow Architecture
+
+**Updated Flow** (With New Features):
+```
+1. User Interface:
+   - Select "Call From" number
+   - Enter "Call To" number
+   - Toggle [🎙 Record Call] ON/OFF
+   - Toggle [🤖 Include Agent] ON/OFF
+   - Click "Call" button
+
+2. Frontend (src/pages/inbox.js):
+   - Calls Edge Function with recording & agent flags
+   - Waits for LiveKit room creation
+
+3. Edge Function (supabase/functions/livekit-outbound-call):
+   - Creates LiveKit room
+   - If agent enabled:
+     * Connects agent to room FIRST
+     * Waits for agent ready signal
+   - If recording enabled:
+     * Starts LiveKit room recording
+   - Dials PSTN number via SignalWire
+   - Connects PSTN to LiveKit room
+
+4. LiveKit Room:
+   - User participant (via WebRTC from browser)
+   - Agent participant (if enabled)
+   - PSTN caller participant (destination number)
+
+Audio Routing:
+  User ←→ LiveKit Room ←→ PSTN Destination
+           ↕
+      Agent (optional)
+```
+
+##### 2.4 Database Schema Updates
+
+**New Fields in `call_records` table**:
+```sql
+ALTER TABLE call_records ADD COLUMN IF NOT EXISTS
+  call_direction VARCHAR(10) CHECK (call_direction IN ('inbound', 'outbound')),
+  recording_enabled BOOLEAN DEFAULT false,
+  agent_enabled BOOLEAN DEFAULT false,
+  livekit_room_name VARCHAR(255),
+  livekit_recording_url TEXT,
+  tool_invocations JSONB DEFAULT '[]'::jsonb;
+
+-- Index for outbound calls
+CREATE INDEX idx_call_records_direction ON call_records(call_direction);
+CREATE INDEX idx_call_records_outbound_user ON call_records(user_id, call_direction)
+  WHERE call_direction = 'outbound';
+```
+
+**New Fields in `service_numbers` table**:
+```sql
+ALTER TABLE service_numbers ADD COLUMN IF NOT EXISTS
+  sip_username VARCHAR(255),
+  sip_password VARCHAR(255),
+  sip_domain VARCHAR(255),
+  sip_endpoint_id VARCHAR(255);
+
+-- Encrypt SIP credentials
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+```
+
+##### 2.5 UI Components
+
+**Outbound Call Interface**: `src/call-handling/outbound-call-dialer.js`
+
+**Features**:
+- Number pad for dialing
+- Contact picker (auto-fill from contacts)
+- Service number selector (which number to call from)
+- Recording toggle with icon indicator
+- Agent toggle with icon indicator
+- Call duration timer
+- Hang up button
+- Call status display (dialing, ringing, connected)
+
+**UI Wireframe**:
+```
+┌─────────────────────────────────┐
+│  Outbound Call                  │
+├─────────────────────────────────┤
+│  Call From:  [+1 604 243-1596▼] │
+│  Call To:    [+1 555 123-4567 ] │
+│              [📞 Select Contact] │
+│                                  │
+│  ┌─────────────────────────────┐│
+│  │ 1 │ 2 │ 3 │                 ││
+│  │ 4 │ 5 │ 6 │                 ││
+│  │ 7 │ 8 │ 9 │                 ││
+│  │ * │ 0 │ # │                 ││
+│  └─────────────────────────────┘│
+│                                  │
+│  [🎙 Record Call    ] Toggle Off │
+│  [🤖 Include Agent  ] Toggle Off │
+│                                  │
+│  [        📞 Call        ]       │
+└─────────────────────────────────┘
+```
+
+##### 2.6 Transcript Speaker Labeling
+
+**Implementation**: `supabase/functions/process-outbound-transcript/index.ts`
+
+**Logic**:
+```typescript
+interface TranscriptSegment {
+  speaker: 'User' | 'Agent' | 'Guest';
+  text: string;
+  timestamp: number;
+  confidence: number;
+}
+
+// LiveKit provides speaker diarization
+// Map participant IDs to speaker labels:
+const speakerMap = {
+  [userParticipantId]: 'User',
+  [agentParticipantId]: 'Agent',
+  [guestParticipantId]: 'Guest'
+};
+
+// Process transcript
+const labeledTranscript = rawTranscript.segments.map(segment => ({
+  speaker: speakerMap[segment.participantId] || 'Unknown',
+  text: segment.text,
+  timestamp: segment.timestamp,
+  confidence: segment.confidence
+}));
+```
+
+**Display in Inbox**:
+```
+Call Record Detail View:
+┌──────────────────────────────────────┐
+│ Outbound Call to +1 555 123-4567    │
+│ From: +1 604 243-1596                │
+│ Duration: 5:23                       │
+│ Recorded: Yes  │  Agent: Yes         │
+├──────────────────────────────────────┤
+│ Transcript:                          │
+│                                      │
+│ [User] Hello, this is Erik           │
+│ [Guest] Hi Erik, how can I help?     │
+│ [Agent] I can send them the link     │
+│ [User] Yes please, Pat send the link │
+│                                      │
+│ Tool Invocations:                    │
+│ ✓ SMS sent to +1 555 123-4567        │
+│   "Here's the booking link: ..."     │
+└──────────────────────────────────────┘
+```
+
+##### 2.7 Agent Tool Invocation Tracking
+
+**Implementation**: `supabase/functions/livekit-agent-tools/index.ts`
+
+**Tool Tracking**:
+```typescript
+// When agent invokes a tool during outbound call
+async function trackToolInvocation(
+  callRecordId: string,
+  toolName: string,
+  parameters: object,
+  result: object
+) {
+  await supabase
+    .from('call_records')
+    .update({
+      tool_invocations: sql`
+        tool_invocations || jsonb_build_object(
+          'timestamp', now(),
+          'tool', ${toolName},
+          'parameters', ${parameters}::jsonb,
+          'result', ${result}::jsonb
+        )::jsonb
+      `
+    })
+    .eq('id', callRecordId);
+}
+
+// Example tool invocations stored in JSONB:
+[
+  {
+    timestamp: "2025-10-31T12:30:45Z",
+    tool: "send_sms",
+    parameters: {
+      to: "+15551234567",
+      message: "Here's the booking link: https://..."
+    },
+    result: {
+      success: true,
+      message_id: "msg_abc123"
+    }
+  },
+  {
+    timestamp: "2025-10-31T12:31:12Z",
+    tool: "add_to_call",
+    parameters: {
+      phone_number: "+15559876543",
+      name: "Sarah"
+    },
+    result: {
+      success: true,
+      participant_id: "part_xyz789"
+    }
+  }
+]
+```
+
+### Implementation Phases
+
+#### Phase 1: Foundation (Week 1)
+- [ ] Update database schema (call_records, service_numbers)
+- [ ] Create SIP endpoint provisioning logic
+- [ ] Build outbound call dialer UI component
+- [ ] Implement browser SIP client integration
+
+#### Phase 2: Call Bridging (Week 2)
+- [ ] Design and test SWML/CXML script
+- [ ] Implement LiveKit room creation for outbound calls
+- [ ] Build SIP-to-LiveKit bridge logic
+- [ ] Test call flow without agent (recording only)
+
+#### Phase 3: Agent Integration (Week 3)
+- [ ] Connect LiveKit agent to outbound calls
+- [ ] Implement speaker labeling in transcripts
+- [ ] Build tool invocation tracking system
+- [ ] Test agent participation in calls
+
+#### Phase 4: Recording & Transcription (Week 4)
+- [ ] Implement LiveKit recording for outbound calls
+- [ ] Process and store transcripts with speaker labels
+- [ ] Update inbox to display outbound call records
+- [ ] Add tool invocation display in call detail view
+
+#### Phase 5: Polish & Testing (Week 5)
+- [ ] End-to-end testing of all call scenarios
+- [ ] Error handling and edge cases
+- [ ] UI/UX refinement
+- [ ] Performance optimization
+
+### Testing Scenarios
+
+1. **Basic Outbound Call** (No recording, no agent)
+   - User dials number → Call connects → Conversation → Hang up
+   - Expected: Call record created with minimal metadata
+
+2. **Recorded Call** (Recording on, no agent)
+   - User dials with recording enabled → Call connects → Conversation → Hang up
+   - Expected: Call record with recording URL and transcript (User + Guest only)
+
+3. **Agent-Assisted Call** (No recording, agent on)
+   - User dials with agent enabled → Agent joins → Call connects → Agent responds to commands
+   - Expected: Call record with agent participation logged
+
+4. **Fully Enabled Call** (Recording + Agent)
+   - User dials with both toggles on → Agent joins → Call connects → Full conversation with tool invocations
+   - Expected: Call record with recording, 3-speaker transcript, and tool invocation log
+
+5. **Call Failures**
+   - Destination busy
+   - Destination no answer
+   - Destination invalid number
+   - LiveKit connection failure
+   - Agent connection timeout
+
+### Security Considerations
+
+1. **SIP Credentials**: Encrypt sip_password in database using pgcrypto
+2. **LiveKit Tokens**: Generate time-limited tokens for each call
+3. **Recording Consent**: Display "This call is being recorded" message if recording enabled
+4. **Agent Access**: Validate agent permissions before allowing tool invocations
+5. **Call Authorization**: Verify user owns the source service number
+
+### Performance Requirements
+
+- **Call Setup Time**: < 2 seconds from dial to ring
+- **LiveKit Connection**: < 500ms to join room
+- **Agent Join Time**: < 1 second when enabled
+- **Recording Processing**: < 30 seconds post-call for transcript generation
+- **UI Responsiveness**: 60fps during call interface interactions
+
+### Future Enhancements
+
+1. **Multi-party Calls**: Support adding multiple participants during call
+2. **Call Transfer**: Transfer ongoing call to another number
+3. **Call Hold**: Put destination on hold while consulting with agent
+4. **Call Recording Pause**: Pause/resume recording during sensitive parts
+5. **Real-time Transcription**: Display live transcript during call
+6. **Agent Coaching Mode**: Agent whispers suggestions only to user
+
 ## Phase 3+: Future Implementation
 *These phases are beyond the scope of the /plan command*
 
