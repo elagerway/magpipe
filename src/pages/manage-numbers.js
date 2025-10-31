@@ -24,11 +24,32 @@ export default class ManageNumbersPage {
     appElement.innerHTML = `
       <div class="container with-bottom-nav" style="max-width: 1000px; padding-top: 1rem;">
         <div style="margin-bottom: 1.5rem;">
-          <h1 style="margin-bottom: 0.5rem;">My Service Numbers</h1>
-          <p class="text-muted" style="margin-bottom: 1rem;">Manage your phone numbers for Pat AI</p>
-          <button class="btn btn-primary" id="add-number-btn">
-            + Add New Number
+          <button onclick="navigateTo('/settings')" style="
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 0.5rem 0.5rem 0.5rem 0;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+            font-size: 0.875rem;
+            transition: color 0.2s;
+            margin-bottom: 1rem;
+          " onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-secondary)'">
+            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+            Back
           </button>
+
+          <h1 style="margin-bottom: 0.5rem;">My Service Numbers</h1>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <p class="text-muted" style="margin: 0;">Manage your phone numbers for Pat AI</p>
+            <button class="btn btn-primary" id="add-number-btn">
+              + Add New Number
+            </button>
+          </div>
         </div>
 
         <div class="card" style="padding: 1rem;">

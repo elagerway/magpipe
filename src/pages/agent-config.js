@@ -107,6 +107,27 @@ export default class AgentConfigPage {
     appElement.innerHTML = `
       <div class="container with-bottom-nav" style="max-width: 700px; margin: 0 auto; padding-top: 0; padding-bottom: 0;">
         <div class="card agent-config-card" style="padding-bottom: 0; margin-bottom: 0;">
+          ${!this.isInitialSetup ? `
+            <button onclick="navigateTo('/settings')" style="
+              background: none;
+              border: none;
+              color: var(--text-secondary);
+              cursor: pointer;
+              padding: 0.5rem 0.5rem 0.5rem 0;
+              display: flex;
+              align-items: center;
+              gap: 0.25rem;
+              font-size: 0.875rem;
+              transition: color 0.2s;
+              margin-bottom: 1rem;
+            " onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-secondary)'">
+              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+              </svg>
+              Back
+            </button>
+          ` : ''}
+
           <!-- Avatar -->
           ${config?.avatar_url ? `
             <div style="text-align: center; margin-bottom: 0.5rem;">
