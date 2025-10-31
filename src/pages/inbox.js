@@ -1449,16 +1449,12 @@ export default class InboxPage {
         console.log('Hanging up call...');
         this.userHungUp = true;
 
-        // Disconnect from LiveKit if connected
-        if (livekitClient.isConnected) {
-          await livekitClient.disconnect();
-        }
-
-        // Also hangup SIP if still connected (for backward compatibility)
+        // Hangup SIP call
         sipClient.hangup();
 
         // Reset UI
         this.updateCallState('idle');
+        this.transformToCallButton();
         return;
       }
 
@@ -1497,18 +1493,20 @@ export default class InboxPage {
   }
 
   async initiateCall(phoneNumber, callerIdNumber = null) {
-    console.log('Initiating call to:', phoneNumber);
+    console.log('Initiating SIP call to:', phoneNumber);
 
     // Track if user clicks hangup button
     this.userHungUp = false;
 
     try {
-      // Get caller ID number (defaults to first active service number)
+      // Get caller ID number and SIP credentials
       let fromNumber = callerIdNumber;
+      let sipCredentials = null;
+
       if (!fromNumber) {
         const { data: serviceNumbers } = await supabase
           .from('service_numbers')
-          .select('phone_number')
+          .select('phone_number, sip_username, sip_password, sip_domain, sip_ws_server')
           .eq('user_id', this.userId)
           .eq('is_active', true)
           .order('purchased_at', { ascending: false })
@@ -1516,95 +1514,78 @@ export default class InboxPage {
 
         if (serviceNumbers && serviceNumbers.length > 0) {
           fromNumber = serviceNumbers[0].phone_number;
+          sipCredentials = serviceNumbers[0];
         } else {
-          // Use a placeholder number for testing if no service numbers
-          fromNumber = '+10000000000';
-          console.warn('No active service numbers found, using placeholder caller ID');
+          alert('No active service numbers found');
+          return;
         }
+      } else {
+        // Get SIP credentials for the selected caller ID
+        const { data: serviceNumber } = await supabase
+          .from('service_numbers')
+          .select('sip_username, sip_password, sip_domain, sip_ws_server')
+          .eq('phone_number', fromNumber)
+          .eq('is_active', true)
+          .single();
+
+        if (!serviceNumber) {
+          alert('Selected number not found or inactive');
+          return;
+        }
+        sipCredentials = serviceNumber;
       }
 
       // Check if recording is enabled
       const recordCallToggle = document.getElementById('record-call-toggle');
-      const recordCall = recordCallToggle ? recordCallToggle.checked : true;
+      const recordCall = recordCallToggle ? recordCallToggle.checked : false;
 
       // Show connecting state
-      this.updateCallState('connecting');
+      this.updateCallState('connecting', 'Registering...');
 
-      console.log('Initiating LiveKit outbound call via Edge Function...');
+      console.log('🔧 Initializing SIP client...');
 
-      // Call LiveKit Edge Function to initiate outbound call
-      const { data: callResult, error: callError } = await supabase.functions.invoke('livekit-outbound-call', {
-        body: {
-          phoneNumber,
-          callerIdNumber: fromNumber,
-          userId: this.userId,
-          recordCall
+      // Initialize SIP client with credentials
+      await sipClient.initialize({
+        sipUri: `sip:${sipCredentials.sip_username}@${sipCredentials.sip_domain}`,
+        sipPassword: sipCredentials.sip_password,
+        wsServer: sipCredentials.sip_ws_server,
+        displayName: fromNumber
+      });
+
+      console.log('✅ SIP client registered');
+      this.updateCallState('connecting', 'Calling...');
+
+      // Make call via SIP
+      await sipClient.makeCall(phoneNumber, fromNumber, {
+        onProgress: () => {
+          console.log('📞 Call ringing...');
+          this.updateCallState('ringing', 'Ringing...');
+        },
+        onConfirmed: () => {
+          console.log('✅ Call connected');
+          this.updateCallState('established', 'Connected');
+          this.transformToHangupButton();
+        },
+        onFailed: (cause) => {
+          console.error('❌ Call failed:', cause);
+          this.updateCallState('failed', `Call failed: ${cause}`);
+          alert(`Call failed: ${cause}`);
+          this.transformToCallButton();
+        },
+        onEnded: () => {
+          console.log('📞 Call ended');
+          this.updateCallState('idle');
+          this.transformToCallButton();
         }
       });
 
-      if (callError) {
-        console.error('Failed to initiate outbound call:', callError);
-        console.error('Full error details:', JSON.stringify(callError, null, 2));
+      console.log('📞 SIP call initiated');
 
-        // Try to get the error message from the response body
-        let errorMessage = callError.message;
-        if (callError.context) {
-          console.error('Error context:', callError.context);
-        }
-
-        alert(`Failed to initiate call: ${errorMessage}`);
-        this.updateCallState('idle');
-        return;
-      }
-
-      if (!callResult || !callResult.success) {
-        console.error('Call initiation failed:', callResult);
-        alert(`Failed to initiate call: ${callResult?.error || 'Unknown error'}`);
-        this.updateCallState('idle');
-        return;
-      }
-
-      console.log('✅ Outbound call initiated:', callResult);
-
-      // Get LiveKit token to join the room
-      console.log('🎫 Getting LiveKit token to join room...');
-      const { data: tokenData, error: tokenError } = await supabase.functions.invoke('livekit-token', {
-        body: {
-          roomName: callResult.roomName,
-          identity: `user-${this.userId}`,
-          name: 'User'
-        }
-      });
-
-      if (tokenError || !tokenData?.token) {
-        console.error('Failed to get LiveKit token:', tokenError);
-        alert('Failed to join call room');
-        this.updateCallState('idle');
-        return;
-      }
-
-      console.log('✅ Got LiveKit token, joining room...');
-
-      // Join the LiveKit room
-      try {
-        await livekitClient.joinRoom(callResult.roomName, tokenData.token);
-        console.log('✅ Successfully joined LiveKit room!');
-
-        // Update UI to show call is connected
-        this.updateCallState('established');
-        this.showCallStatus('Connected');
-
-      } catch (joinError) {
-        console.error('Failed to join LiveKit room:', joinError);
-        alert('Failed to join call: ' + joinError.message);
-        this.updateCallState('idle');
-        return;
-      }
-
-      console.log('📞 In call via LiveKit. Call ID:', callResult.callId);
     } catch (error) {
       console.error('Failed to initiate call:', error);
       alert(`Failed to initiate call: ${error.message}`);
+      this.updateCallState('idle');
+      this.transformToCallButton();
     }
   }
 
