@@ -573,6 +573,26 @@ export default class InboxPage {
         icon: '⊗',
         text: 'Hung Up',
         class: 'status-hungup'
+      },
+      'outbound_completed': {
+        icon: '✓',
+        text: 'Completed',
+        class: 'status-completed'
+      },
+      'outbound_no_answer': {
+        icon: '⊗',
+        text: 'No Answer',
+        class: 'status-missed'
+      },
+      'outbound_busy': {
+        icon: '⊗',
+        text: 'Busy',
+        class: 'status-busy'
+      },
+      'outbound_failed': {
+        icon: '✕',
+        text: 'Failed',
+        class: 'status-failed'
       }
     };
 
@@ -1578,6 +1598,47 @@ export default class InboxPage {
       console.log('✅ SIP client registered');
       this.updateCallState('connecting', 'Calling...');
 
+      // Create call record
+      const callStartTime = new Date().toISOString();
+
+      // Normalize phone number to E.164 format (+1234567890)
+      let normalizedPhoneNumber = phoneNumber;
+      if (!normalizedPhoneNumber.startsWith('+')) {
+        // Strip all non-digit characters first
+        const digitsOnly = normalizedPhoneNumber.replace(/\D/g, '');
+        // If number starts with 1 and is 11 digits, just add +
+        // Otherwise assume North America and add +1
+        if (digitsOnly.startsWith('1') && digitsOnly.length === 11) {
+          normalizedPhoneNumber = '+' + digitsOnly;
+        } else {
+          normalizedPhoneNumber = '+1' + digitsOnly;
+        }
+      }
+
+      const { data: callRecord, error: callRecordError } = await supabase
+        .from('call_records')
+        .insert({
+          user_id: this.userId,
+          caller_number: normalizedPhoneNumber,
+          contact_phone: normalizedPhoneNumber,
+          service_number: fromNumber,
+          direction: 'outbound',
+          disposition: 'outbound_failed', // Will update on success
+          status: 'failed', // Will update on success
+          started_at: callStartTime
+        })
+        .select()
+        .single();
+
+      if (callRecordError) {
+        console.error('Failed to create call record:', callRecordError);
+      } else {
+        console.log('✅ Call record created:', callRecord.id);
+      }
+
+      const callRecordId = callRecord?.id;
+      let callConnectedTime = null;
+
       // Make call via SIP
       await sipClient.makeCall(phoneNumber, fromNumber, displayName, {
         onProgress: () => {
@@ -1586,17 +1647,67 @@ export default class InboxPage {
         },
         onConfirmed: () => {
           console.log('✅ Call connected');
+          callConnectedTime = new Date();
           this.updateCallState('established', 'Connected');
           this.transformToHangupButton();
         },
-        onFailed: (cause) => {
+        onFailed: async (cause) => {
           console.error('❌ Call failed:', cause);
           this.updateCallState('failed', `Call failed: ${cause}`);
+
+          // Update call record with failure
+          if (callRecordId) {
+            const disposition = cause.toLowerCase().includes('busy') ? 'outbound_busy' : 'outbound_failed';
+            const status = cause.toLowerCase().includes('busy') ? 'busy' : 'failed';
+            await supabase
+              .from('call_records')
+              .update({
+                disposition,
+                status,
+                ended_at: new Date().toISOString(),
+                duration: 0,
+                duration_seconds: 0
+              })
+              .eq('id', callRecordId);
+          }
+
           alert(`Call failed: ${cause}`);
           this.transformToCallButton();
         },
-        onEnded: () => {
+        onEnded: async () => {
           console.log('📞 Call ended');
+
+          // Update call record with final disposition and duration
+          if (callRecordId) {
+            const endTime = new Date();
+            const duration = callConnectedTime
+              ? Math.round((endTime - callConnectedTime) / 1000)
+              : 0;
+
+            const disposition = callConnectedTime
+              ? 'outbound_completed'
+              : 'outbound_no_answer';
+
+            const status = callConnectedTime
+              ? 'completed'
+              : 'no-answer';
+
+            await supabase
+              .from('call_records')
+              .update({
+                disposition,
+                status,
+                ended_at: endTime.toISOString(),
+                duration,
+                duration_seconds: duration,
+                contact_phone: normalizedPhoneNumber,
+                service_number: fromNumber
+              })
+              .eq('id', callRecordId);
+
+            console.log(`✅ Call record updated: ${disposition}, duration: ${duration}s`);
+          }
+
           this.updateCallState('idle');
           this.transformToCallButton();
         }
