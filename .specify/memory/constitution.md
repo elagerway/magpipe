@@ -40,8 +40,9 @@ All new functionality MUST be developed following strict TDD methodology:
 3. Implement minimum code to make tests pass (green phase)
 4. Refactor while maintaining passing tests
 5. **Run comprehensive tests to verify nothing broke**
-6. ONLY THEN commit to git
-7. Repeat for next requirement
+6. **Present results to user and WAIT for explicit permission to commit**
+7. ONLY AFTER PERMISSION commit to git
+8. Repeat for next requirement
 
 Tests MUST be written BEFORE implementation code. No implementation code may be committed without corresponding tests. Tests MUST cover:
 - Happy path scenarios (expected normal operation)
@@ -55,9 +56,12 @@ Tests MUST be written BEFORE implementation code. No implementation code may be 
 - Test features that depend on your changes (downstream impact)
 - Test features your changes depend on (upstream validation)
 - Verify all existing tests still pass
-- **NEVER commit code to git without testing it first** - no exceptions
-- **NEVER push to GitHub without local testing first** - deployment happens after validation, not before
+- **Present test results to user and WAIT for explicit permission**
+- **NEVER commit code to git without testing it first AND getting user's express permission** - no exceptions
+- **NEVER push to GitHub without explicit user permission** - deployment happens after validation AND approval, not before
 - If testing requires production/staging environment, get explicit user approval before pushing
+
+**EXPRESS PERMISSION REQUIRED**: Do NOT run `git commit` or `git push` unless the user explicitly says "commit this", "push this", "looks good, commit it", or similar clear approval. Testing successfully does NOT automatically grant permission to commit - you MUST wait for the user to approve.
 
 **Why Test-Before-Commit is NON-NEGOTIABLE**:
 1. **Prevents cascading failures**: One untested change breaks multiple features

@@ -53,8 +53,46 @@ async function loadCanadianAreaCodes(supabase: SupabaseClient): Promise<Set<stri
 }
 
 /**
+ * Lookup phone number details from SignalWire
+ * Returns country information from carrier lookup
+ */
+async function lookupPhoneNumber(phoneNumber: string): Promise<{ country: string } | null> {
+  try {
+    const signalwireProjectId = Deno.env.get('SIGNALWIRE_PROJECT_ID')
+    const signalwireToken = Deno.env.get('SIGNALWIRE_API_TOKEN')
+    const signalwireSpace = Deno.env.get('SIGNALWIRE_SPACE_URL')
+
+    if (!signalwireProjectId || !signalwireToken || !signalwireSpace) {
+      console.warn('SignalWire credentials not configured, skipping lookup')
+      return null
+    }
+
+    const auth = btoa(`${signalwireProjectId}:${signalwireToken}`)
+    const url = `https://${signalwireSpace}/api/relay/rest/lookup/phone_numbers/${encodeURIComponent(phoneNumber)}`
+
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Basic ${auth}`
+      }
+    })
+
+    if (!response.ok) {
+      console.warn(`SignalWire lookup failed: ${response.status}`)
+      return null
+    }
+
+    const data = await response.json()
+    // SignalWire returns: { country_code: "US", national_format: "...", ... }
+    return { country: data.country_code || 'unknown' }
+  } catch (error) {
+    console.warn('Error during SignalWire lookup:', error)
+    return null
+  }
+}
+
+/**
  * Check if a phone number is a US number (not Canadian)
- * Requires database access to check area codes
+ * Uses area code database with SignalWire lookup as verification
  */
 export async function isUSNumber(
   phoneNumber: string,
@@ -73,12 +111,42 @@ export async function isUSNumber(
   // Load Canadian area codes
   const canadianAreaCodes = await loadCanadianAreaCodes(supabase)
 
-  // If it's a Canadian area code, it's not a US number
-  if (canadianAreaCodes.has(areaCode)) {
+  // Primary check: Area code lookup
+  const isCanadianByAreaCode = canadianAreaCodes.has(areaCode)
+
+  // Secondary verification: SignalWire lookup (if available)
+  const lookupResult = await lookupPhoneNumber(phoneNumber)
+
+  if (lookupResult) {
+    // SignalWire provides authoritative country data
+    const isUSByLookup = lookupResult.country === 'US'
+    const isCanadianByLookup = lookupResult.country === 'CA'
+
+    // If lookup says it's Canadian, trust that
+    if (isCanadianByLookup) {
+      console.log(`SignalWire confirms ${phoneNumber} is Canadian`)
+      return false
+    }
+
+    // If lookup says it's US, trust that
+    if (isUSByLookup) {
+      console.log(`SignalWire confirms ${phoneNumber} is US`)
+      return true
+    }
+
+    // If lookup returns another country, it's not US
+    console.log(`SignalWire reports ${phoneNumber} is from ${lookupResult.country}, not US`)
+    return false
+  }
+
+  // Fallback to area code check if lookup unavailable
+  if (isCanadianByAreaCode) {
+    console.log(`Area code ${areaCode} indicates Canadian number`)
     return false
   }
 
   // It's a North American number (+1) that's not Canadian, so it's US
+  console.log(`Area code ${areaCode} indicates US number`)
   return true
 }
 

@@ -27,7 +27,7 @@ JavaScript ES6+, HTML5, CSS3 (vanilla, minimal framework usage per user requirem
 - **Check before asserting**: Use scripts/queries to verify state before making claims about database contents, SignalWire configuration, file locations, etc.
 - **If uncertain, ask or investigate**: It's better to say "let me check" than to assert something incorrect
 - **NEVER ask user to check logs - check them yourself**: Use direct API calls, CLI commands, or database queries to fetch logs instead of asking the user to copy/paste them. The user should not be a data retrieval service.
-- **NEVER push to GitHub without local testing first**: ALWAYS test changes locally or get explicit user approval before running `git push`. Do not assume code is ready just because it compiles or looks correct. Real-world testing is mandatory before deployment.
+- **NEVER commit or push to GitHub without EXPRESS USER PERMISSION**: NEVER run `git commit` or `git push` without the user's explicit approval. ALWAYS test changes locally FIRST, then present results to the user and WAIT for permission before committing. This is NON-NEGOTIABLE.
 
 ## User Interface Guidelines
 - **Never expose vendor names in user-facing messages**: Do not mention third-party service names like "Retell", "SignalWire", "OpenAI", etc. in error messages, success messages, or any UI text visible to end users
@@ -113,7 +113,7 @@ JavaScript ES6+, HTML5, CSS3 (vanilla, minimal framework usage per user requirem
 
 ### CRITICAL: Test Recursively BEFORE Committing to Git (NON-NEGOTIABLE)
 
-**The Rule**: NEVER commit code to git without testing it first. Period. No exceptions.
+**The Rule**: NEVER commit code to git without testing it first AND getting user's express permission. Period. No exceptions.
 
 **Required Testing Workflow**:
 1. **Implement change** (fix bug, add feature, refactor code)
@@ -125,7 +125,10 @@ JavaScript ES6+, HTML5, CSS3 (vanilla, minimal framework usage per user requirem
    - Regression tests for features that depend on changed code
 4. **Manually test in browser/environment** if applicable
 5. **Verify no errors in console/logs**
-6. **ONLY THEN**: `git add` → `git commit` → `git push`
+6. **Present results to user and WAIT for explicit permission to commit**
+7. **ONLY AFTER PERMISSION**: `git add` → `git commit` → `git push`
+
+**NEVER COMMIT WITHOUT PERMISSION**: Do not run `git commit` or `git push` without the user explicitly saying "commit this" or "push this" or "looks good, commit it". Testing locally does NOT automatically mean you can commit - you MUST wait for permission.
 
 **What "Test Recursively" Means**:
 - Test the thing you changed (obvious)
@@ -357,5 +360,23 @@ log_call_state(room_name, 'agent_connected', 'agent', {
 - **Apply to all custom tools**: This naming convention applies to all Retell custom tools including transfer tools, voicemail tools, callback tools, etc.
 - **Function references**: When referencing these tools in prompts or LLM configuration, use the full unique name
 - **Tool cleanup**: When removing tools, filter by user_id prefix to remove all tools belonging to a specific user
+
+## Phone Number Management
+- **Database is source of truth for ownership**: The `service_numbers` table determines which user owns which phone number. NEVER add numbers to a user just because they exist in SignalWire.
+- **SignalWire is source of truth for metadata**: For numbers that ARE in the database, SignalWire provides accurate purchase dates, SIDs, and capabilities
+- **Workflow for syncing number metadata**:
+  1. Query database to get user's phone numbers: `SELECT phone_number FROM service_numbers WHERE user_id = ?`
+  2. For each number in database, query SignalWire to get `date_created`, `sid`, `capabilities`
+  3. Update database with SignalWire metadata for that specific number
+  4. NEVER add numbers from SignalWire that aren't already in the database for that user
+- **How to query SignalWire for a specific number**:
+  ```bash
+  # Get all SignalWire numbers, then filter for the specific one you need
+  curl -X GET "https://${SIGNALWIRE_SPACE_URL}/api/laml/2010-04-01/Accounts/${SIGNALWIRE_PROJECT_ID}/IncomingPhoneNumbers.json" \
+    -u "${SIGNALWIRE_PROJECT_ID}:${SIGNALWIRE_API_TOKEN}"
+  ```
+- **SignalWire provides**: Real SID, actual purchase date (`date_created`), friendly name, capabilities, current configuration
+- **CRITICAL**: Just because a number exists in SignalWire doesn't mean a specific user purchased it. Other users may have purchased those numbers, or they may be untracked legacy numbers.
 <!-- MANUAL ADDITIONS END -->
 - psql or sql is not installed or accessible, use a Python approach with direct PostgreSQL connection instead
+- Add this to memory, next time you need to get the details about a number (purchase date, etc) , look it up on Signalwire
