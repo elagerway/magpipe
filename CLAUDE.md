@@ -377,6 +377,62 @@ log_call_state(room_name, 'agent_connected', 'agent', {
   ```
 - **SignalWire provides**: Real SID, actual purchase date (`date_created`), friendly name, capabilities, current configuration
 - **CRITICAL**: Just because a number exists in SignalWire doesn't mean a specific user purchased it. Other users may have purchased those numbers, or they may be untracked legacy numbers.
+
+## SignalWire API Access
+- **CRITICAL: Always source .env before calling SignalWire APIs**: The environment variables must be loaded into the shell session for authentication to work
+- **Authentication**: SignalWire APIs use HTTP Basic Auth with `PROJECT_ID:API_TOKEN` credentials from .env
+- **API Endpoints Structure**:
+  - **LAML API** (Voice/SMS): `https://${SIGNALWIRE_SPACE_URL}/api/laml/2010-04-01/Accounts/${SIGNALWIRE_PROJECT_ID}/...`
+  - **Relay API** (SIP Endpoints): `https://${SIGNALWIRE_SPACE_URL}/api/relay/rest/endpoints/sip`
+- **Required Environment Variables**:
+  ```bash
+  SIGNALWIRE_PROJECT_ID=your-signalwire-project-id
+  SIGNALWIRE_API_TOKEN=your-signalwire-api-token
+  SIGNALWIRE_SPACE_URL=erik.signalwire.com
+  ```
+
+### SIP Endpoint Management
+- **List SIP Endpoints**:
+  ```bash
+  source .env && curl -s -u "$SIGNALWIRE_PROJECT_ID:$SIGNALWIRE_API_TOKEN" \
+    "https://erik.signalwire.com/api/relay/rest/endpoints/sip"
+  ```
+- **Update SIP Endpoint (e.g., caller ID)**:
+  ```bash
+  source .env && curl -s -X PUT -u "$SIGNALWIRE_PROJECT_ID:$SIGNALWIRE_API_TOKEN" \
+    -H 'Content-Type: application/json' \
+    -d '{"caller_id":"Erik L"}' \
+    "https://erik.signalwire.com/api/relay/rest/endpoints/sip/${ENDPOINT_ID}"
+  ```
+- **SIP Endpoint Fields**:
+  - `id`: Unique identifier for the endpoint
+  - `username`: SIP username for authentication (e.g., `test_sip_endpoint`)
+  - `caller_id`: Display name shown on outbound calls (CNAM)
+  - `send_as`: Default phone number for outbound calls
+  - `encryption`: SIP encryption level (`optional`, `required`)
+  - `codecs`: Supported audio codecs (OPUS, G722, PCMU, PCMA, etc.)
+
+### Phone Number API (LAML)
+- **List Phone Numbers**:
+  ```bash
+  source .env && curl -s -X GET \
+    "https://${SIGNALWIRE_SPACE_URL}/api/laml/2010-04-01/Accounts/${SIGNALWIRE_PROJECT_ID}/IncomingPhoneNumbers.json" \
+    -u "${SIGNALWIRE_PROJECT_ID}:${SIGNALWIRE_API_TOKEN}"
+  ```
+- **Get Recent Calls**:
+  ```bash
+  source .env && curl -s -X GET \
+    "https://${SIGNALWIRE_SPACE_URL}/api/laml/2010-04-01/Accounts/${SIGNALWIRE_PROJECT_ID}/Calls.json?PageSize=10" \
+    -u "${SIGNALWIRE_PROJECT_ID}:${SIGNALWIRE_API_TOKEN}"
+  ```
+
+### API Authentication Troubleshooting
+- **Problem**: `curl` shows `Authorization: Basic Og==` (empty credentials)
+- **Cause**: Environment variables not loaded into shell session
+- **Solution**: Always run `source .env &&` before curl commands
+- **Verification**: Check env vars are set: `echo "Length: ${#SIGNALWIRE_PROJECT_ID}"` should show `36`
+- **Never**: Hardcode credentials in scripts - always use environment variables
+
 <!-- MANUAL ADDITIONS END -->
 - psql or sql is not installed or accessible, use a Python approach with direct PostgreSQL connection instead
 - Add this to memory, next time you need to get the details about a number (purchase date, etc) , look it up on Signalwire
