@@ -11,6 +11,7 @@ class SIPClient {
     this.currentSession = null;
     this.isRegistered = false;
     this.remoteAudio = null;
+    this.sipDomain = null;  // Store SIP domain for P-Asserted-Identity header
   }
 
   /**
@@ -29,6 +30,11 @@ class SIPClient {
         displayName: config.displayName,
         passwordLength: config.sipPassword?.length
       });
+
+      // Extract and store domain from sipUri (e.g., sip:user@domain.com -> domain.com)
+      const domainMatch = config.sipUri.match(/@(.+)$/);
+      this.sipDomain = domainMatch ? domainMatch[1] : 'erik.signalwire.com';
+      console.log('📡 SIP Domain for caller ID:', this.sipDomain);
 
       // Enable JsSIP debug logging
       JsSIP.debug.enable('JsSIP:*');
@@ -193,7 +199,7 @@ class SIPClient {
         },
         extraHeaders: [
           `X-From-Number: ${fromNumber}`,
-          `P-Asserted-Identity: <sip:${fromNumber}@erik.signalwire.com>`
+          `P-Asserted-Identity: <sip:${fromNumber}@${this.sipDomain}>`
         ],
       };
 
