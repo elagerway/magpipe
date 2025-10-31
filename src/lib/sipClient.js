@@ -137,9 +137,10 @@ class SIPClient {
    * Make an outbound call
    * @param {string} phoneNumber - Phone number to call
    * @param {string} fromNumber - Caller ID number to use
+   * @param {string} displayName - Display name for CNAM (caller name)
    * @param {Object} callbacks - Event callbacks
    */
-  async makeCall(phoneNumber, fromNumber, callbacks = {}) {
+  async makeCall(phoneNumber, fromNumber, displayName, callbacks = {}) {
     if (!this.isRegistered) {
       throw new Error('SIP client not registered');
     }
@@ -199,13 +200,14 @@ class SIPClient {
         },
         extraHeaders: [
           `X-From-Number: ${fromNumber}`,
-          `P-Asserted-Identity: <sip:${fromNumber}@${this.sipDomain}>`
+          `P-Asserted-Identity: <sip:${fromNumber}@${this.sipDomain}>`,
+          `Remote-Party-ID: "${displayName}" <sip:${fromNumber}@${this.sipDomain}>;party=calling;privacy=off;screen=no`
         ],
       };
 
-      // Add caller ID to display name if provided
-      if (fromNumber) {
-        options.fromDisplayName = fromNumber;
+      // Add display name for CNAM (caller name)
+      if (displayName) {
+        options.fromDisplayName = displayName;
       }
 
       this.currentSession = this.userAgent.call(cleanNumber, options);

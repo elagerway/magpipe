@@ -1535,6 +1535,28 @@ export default class InboxPage {
         sipCredentials = serviceNumber;
       }
 
+      // Get user's name for CNAM (Caller Name)
+      const { data: userData } = await supabase
+        .from('users')
+        .select('name')
+        .eq('id', this.userId)
+        .single();
+
+      // Format name as "FirstName L" (first name + last initial)
+      let displayName = fromNumber; // fallback to phone number
+      if (userData && userData.name) {
+        const nameParts = userData.name.trim().split(/\s+/);
+        if (nameParts.length > 1) {
+          // Has first and last name
+          const firstName = nameParts[0];
+          const lastInitial = nameParts[nameParts.length - 1].charAt(0).toUpperCase();
+          displayName = `${firstName} ${lastInitial}`;
+        } else {
+          // Only first name
+          displayName = nameParts[0];
+        }
+      }
+
       // Check if recording is enabled
       const recordCallToggle = document.getElementById('record-call-toggle');
       const recordCall = recordCallToggle ? recordCallToggle.checked : false;
@@ -1543,20 +1565,21 @@ export default class InboxPage {
       this.updateCallState('connecting', 'Registering...');
 
       console.log('🔧 Initializing SIP client...');
+      console.log('📞 Using display name (CNAM):', displayName);
 
       // Initialize SIP client with credentials
       await sipClient.initialize({
         sipUri: `sip:${sipCredentials.sip_username}@${sipCredentials.sip_domain}`,
         sipPassword: sipCredentials.sip_password,
         wsServer: sipCredentials.sip_ws_server,
-        displayName: fromNumber
+        displayName: displayName
       });
 
       console.log('✅ SIP client registered');
       this.updateCallState('connecting', 'Calling...');
 
       // Make call via SIP
-      await sipClient.makeCall(phoneNumber, fromNumber, {
+      await sipClient.makeCall(phoneNumber, fromNumber, displayName, {
         onProgress: () => {
           console.log('📞 Call ringing...');
           this.updateCallState('ringing', 'Ringing...');
