@@ -6,6 +6,43 @@ import { User, AgentConfig } from '../models/index.js';
 import { getCurrentUser, signOut, supabase } from '../lib/supabase.js';
 import { renderBottomNav } from '../components/BottomNav.js';
 
+// ElevenLabs Voices - subset for display purposes
+const ELEVENLABS_VOICES = [
+  { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel', label: 'Rachel (Default)' },
+  { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam', label: 'Adam' },
+  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah', label: 'Sarah' },
+  { id: 'AZnzlk1XvdvUeBnXmlld', name: 'Domi', label: 'Domi' },
+  { id: 'CYw3kZ02Hs0563khs1Fj', name: 'Dave', label: 'Dave' },
+  { id: 'D38z5RcWu1voky8WS1ja', name: 'Fin', label: 'Fin' },
+  { id: 'ErXwobaYiN019PkySvjV', name: 'Antoni', label: 'Antoni' },
+  { id: 'IKne3meq5aSn9XLyUdCD', name: 'Charlie', label: 'Charlie' },
+  { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George', label: 'George' },
+  { id: 'LcfcDJNUP1GQjkzn1xUU', name: 'Emily', label: 'Emily' },
+  { id: 'MF3mGyEYCl7XYWbV9V6O', name: 'Elli', label: 'Elli' },
+  { id: 'N2lVS1w4EtoT3dr4eOWO', name: 'Callum', label: 'Callum' },
+  { id: 'ODq5zmih8GrVes37Dizd', name: 'Patrick', label: 'Patrick' },
+  { id: 'SOYHLrjzK2X1ezoPC6cr', name: 'Harry', label: 'Harry' },
+  { id: 'TX3LPaxmHKxFdv7VOQHJ', name: 'Liam', label: 'Liam' },
+  { id: 'ThT5KcBeYPX3keUQqHPh', name: 'Dorothy', label: 'Dorothy' },
+  { id: 'TxGEqnHWrfWFTfGW9XjX', name: 'Josh', label: 'Josh' },
+  { id: 'VR6AewLTigWG4xSOukaG', name: 'Arnold', label: 'Arnold' },
+  { id: 'XB0fDUnXU5powFXDhCwa', name: 'Charlotte', label: 'Charlotte' },
+  { id: 'XrExE9yKIg1WjnnlVkGX', name: 'Alice', label: 'Alice' },
+  { id: 'Xb7hH8MSUJpSbSDYk0k2', name: 'Matilda', label: 'Matilda' },
+  { id: 'Yko7PKHZNXotIFUBG7I9', name: 'Matthew', label: 'Matthew' },
+  { id: 'ZQe5CZNOzWyzPSCn5a3c', name: 'James', label: 'James' },
+  { id: 'Zlb1dXrM653N07WRdFW3', name: 'Joseph', label: 'Joseph' },
+  { id: 'bVMeCyTHy58xNoL34h3p', name: 'Jeremy', label: 'Jeremy' },
+  { id: 'cjVigY5qzO86Huf0OWal', name: 'Michael', label: 'Michael' },
+  { id: 'flq6f7yk4E4fJM5XTYuZ', name: 'Ethan', label: 'Ethan' },
+  { id: 'g5CIjZEefAph4nQFvHAz', name: 'Chris', label: 'Chris' },
+  { id: 'iP95p4xoKVk53GoZ742B', name: 'Gigi', label: 'Gigi' },
+  { id: 'nPczCjzI2devNBz1zQrb', name: 'Brian', label: 'Brian' },
+  { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel', label: 'Daniel' },
+  { id: 'pqHfZKP75CvOlQylNhV4', name: 'Bill', label: 'Bill' },
+  { id: 't0jbNlBVZ17f02VDIeMI', name: 'Jessie', label: 'Jessie' },
+];
+
 export default class SettingsPage {
   async render() {
     const { user } = await getCurrentUser();
@@ -30,14 +67,15 @@ export default class SettingsPage {
       .eq('user_id', user.id)
       .single();
 
-    // Load active service number
-    const { data: serviceNumber } = await supabase
+    // Load all service numbers
+    const { data: serviceNumbers } = await supabase
       .from('service_numbers')
-      .select('phone_number')
+      .select('phone_number, is_active')
       .eq('user_id', user.id)
-      .eq('is_active', true)
-      .limit(1)
-      .single();
+      .order('is_active', { ascending: false });
+
+    const activeNumbers = serviceNumbers?.filter(n => n.is_active) || [];
+    const inactiveNumbers = serviceNumbers?.filter(n => !n.is_active) || [];
 
     const appElement = document.getElementById('app');
 
@@ -65,17 +103,8 @@ export default class SettingsPage {
           </div>
         </div>
 
-        <!-- Phone Numbers -->
-        <div class="card" style="margin-bottom: 1rem;">
-          <h2 style="margin: 0 0 0.5rem 0;">Phone Numbers</h2>
-          <p class="text-muted" style="margin: 0 0 1rem 0;">Manage your active service numbers</p>
-          <button class="btn btn-primary btn-full" onclick="navigateTo('/manage-numbers')">
-            Manage Numbers
-          </button>
-        </div>
-
         <!-- Profile Section -->
-        <div class="card">
+        <div class="card" style="margin-bottom: 1rem;">
           <h2>Profile</h2>
 
           <!-- Name -->
@@ -122,15 +151,10 @@ export default class SettingsPage {
             </div>
           </div>
 
-          <!-- Service Number (read-only) -->
-          <div class="form-group">
-            <label style="font-weight: 600; margin: 0 0 0.5rem 0;">Service Number</label>
-            <div style="padding: 0.5rem;">${serviceNumber?.phone_number ? this.formatPhoneNumber(serviceNumber.phone_number) : 'Not configured'}</div>
-          </div>
         </div>
 
         <!-- Agent Configuration -->
-        <div class="card">
+        <div class="card" style="margin-bottom: 1rem;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
             <h2 style="margin: 0;">Agent Configuration</h2>
             <button class="btn btn-secondary" onclick="navigateTo('/agent-config')">
@@ -148,10 +172,10 @@ export default class SettingsPage {
                 font-size: 0.875rem;
                 color: var(--text-primary);
                 user-select: all;
-              ">${config.retell_agent_id || 'Not assigned'}</code>
+              ">${config.agent_id || 'Not assigned'}</code>
             </div>
             <div class="form-group">
-              <strong>Voice:</strong> ${config.voice_id}
+              <strong>Voice:</strong> ${this.getVoiceName(config.voice_id, config.cloned_voice_name)}
             </div>
             <div class="form-group">
               <strong>Response Style:</strong> ${config.response_style || 'N/A'}
@@ -166,6 +190,42 @@ export default class SettingsPage {
               <strong>Creativity Level:</strong> ${config.temperature || 'N/A'}
             </div>
           ` : '<p class="text-muted">Agent not configured</p>'}
+        </div>
+
+        <!-- Phone Numbers -->
+        <div class="card" style="margin-bottom: 1rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h2 style="margin: 0;">Phone Numbers</h2>
+            <button class="btn btn-secondary" onclick="navigateTo('/manage-numbers')">
+              Manage Numbers
+            </button>
+          </div>
+
+          ${activeNumbers.length > 0 ? `
+            <div class="form-group">
+              <strong>Active Numbers:</strong> ${activeNumbers.length}
+            </div>
+            ${activeNumbers.map(num => `
+              <div class="form-group" style="padding-left: 1rem;">
+                ${this.formatPhoneNumber(num.phone_number)}
+              </div>
+            `).join('')}
+          ` : ''}
+
+          ${inactiveNumbers.length > 0 ? `
+            <div class="form-group" ${activeNumbers.length > 0 ? 'style="margin-top: 1rem;"' : ''}>
+              <strong>Inactive Numbers:</strong> ${inactiveNumbers.length}
+            </div>
+            ${inactiveNumbers.map(num => `
+              <div class="form-group" style="padding-left: 1rem; color: var(--text-secondary);">
+                ${this.formatPhoneNumber(num.phone_number)}
+              </div>
+            `).join('')}
+          ` : ''}
+
+          ${activeNumbers.length === 0 && inactiveNumbers.length === 0 ? `
+            <p class="text-muted">No service numbers configured</p>
+          ` : ''}
         </div>
 
         <!-- Quick Links -->
@@ -314,6 +374,22 @@ export default class SettingsPage {
     }
 
     return phoneNumber;
+  }
+
+  getVoiceName(voiceId, clonedVoiceName) {
+    // If cloned voice, use that name
+    if (clonedVoiceName) {
+      return clonedVoiceName;
+    }
+
+    // Look up ElevenLabs voice by ID
+    const voice = ELEVENLABS_VOICES.find(v => v.id === voiceId);
+    if (voice) {
+      return voice.label || voice.name;
+    }
+
+    // Fallback to ID if not found
+    return voiceId || 'Not set';
   }
 
   attachEventListeners() {

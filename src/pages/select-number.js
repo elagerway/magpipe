@@ -23,6 +23,25 @@ export default class SelectNumberPage {
 
     appElement.innerHTML = `
       <div class="container" style="max-width: 600px; margin-top: 4rem;">
+        <button onclick="navigateTo('/manage-numbers')" style="
+          background: none;
+          border: none;
+          color: var(--text-secondary);
+          cursor: pointer;
+          padding: 0.5rem 0.5rem 0.5rem 0;
+          display: flex;
+          align-items: center;
+          gap: 0.25rem;
+          font-size: 0.875rem;
+          transition: color 0.2s;
+          margin-bottom: 1rem;
+        " onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-secondary)'">
+          <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+          </svg>
+          Back
+        </button>
+
         <div class="card">
           <h1 class="text-center">Select Your Service Number</h1>
           <p class="text-center text-muted">
