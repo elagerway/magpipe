@@ -61,7 +61,7 @@ export default class ManageNumbersPage {
           <p style="margin-bottom: 1.5rem;">
             Are you sure you want to delete <strong id="delete-number-display"></strong>?
           </p>
-          <p class="text-muted" style="font-size: 0.875rem; margin-bottom: 1.5rem;">
+          <p class="text-muted" style="font-size: 0.875rem; margin-bottom: 1.5rem;" id="delete-modal-warning">
             This number will be deactivated immediately and permanently deleted in 30 days.
           </p>
           <div style="display: flex; gap: 0.75rem;">
@@ -232,9 +232,22 @@ export default class ManageNumbersPage {
     this.numberToDelete = number;
     const modal = document.getElementById('delete-modal');
     const numberDisplay = document.getElementById('delete-number-display');
+    const warningText = document.getElementById('delete-modal-warning');
 
     if (numberDisplay) {
       numberDisplay.textContent = this.formatPhoneNumber(number.phone_number);
+    }
+
+    // Calculate days until deletion (30 days from purchase date)
+    if (warningText && number.purchased_at) {
+      const purchaseDate = new Date(number.purchased_at);
+      const deletionDate = new Date(purchaseDate);
+      deletionDate.setDate(purchaseDate.getDate() + 30);
+
+      const now = new Date();
+      const daysRemaining = Math.max(0, Math.ceil((deletionDate - now) / (1000 * 60 * 60 * 24)));
+
+      warningText.textContent = `This number will be deactivated immediately and permanently deleted in ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''}.`;
     }
 
     modal?.classList.remove('hidden');
