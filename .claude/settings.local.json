@@ -114,7 +114,12 @@
       "Bash(for i in 1 2 3 4 5)",
       "Bash(do echo \"=== Check $i (waiting 60s) ===\" sleep 60 ssh -i ~/.ssh/claude_render your-render-service-id@ssh.oregon.render.com \"cd /opt/render/project/src && git log -1 --format=''''%h %s''''; ps aux | grep ''''python agent'''' | grep -v grep | head -1 | awk ''''{print \"\"Started:\"\", $9}''''\")",
       "Bash(source:*)",
-      "Bash(/tmp/query-call-logs.sh:*)"
+      "Bash(/tmp/query-call-logs.sh:*)",
+      "Bash(/tmp/check-call-status.sh:*)",
+      "Bash(/tmp/test-ui-call.sh:*)",
+      "Bash(\"https://erik.signalwire.com/api/relay/rest/endpoints/sip/0ed5ed8b-fd6a-4964-8c36-6547609260f4\")",
+      "Bash(/tmp/update-db-password.sh)",
+      "Bash(npx playwright test:*)"
     ],
     "deny": [],
     "ask": []

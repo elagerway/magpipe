@@ -29,6 +29,21 @@ JavaScript ES6+, HTML5, CSS3 (vanilla, minimal framework usage per user requirem
 - **NEVER ask user to check logs - check them yourself**: Use direct API calls, CLI commands, or database queries to fetch logs instead of asking the user to copy/paste them. The user should not be a data retrieval service.
 - **NEVER commit or push to GitHub without EXPRESS USER PERMISSION**: NEVER run `git commit` or `git push` without the user's explicit approval. ALWAYS test changes locally FIRST, then present results to the user and WAIT for permission before committing. This is NON-NEGOTIABLE.
 
+## Git Commit Message Guidelines
+- **Do NOT include "Co-Authored-By: Claude" footer**: User prefers clean commit messages without AI attribution
+- **Do NOT include emoji robot or Claude Code link**: Keep commit messages professional and concise
+- **Format**:
+  ```
+  Brief summary (50 chars max)
+
+  Detailed description of changes
+  - What changed
+  - Why it changed
+  - How to test it
+
+  File paths changed: path/to/file.ext:line_numbers
+  ```
+
 ## User Interface Guidelines
 - **Never expose vendor names in user-facing messages**: Do not mention third-party service names like "Retell", "SignalWire", "OpenAI", etc. in error messages, success messages, or any UI text visible to end users
 - Use product-centric language: "Pat AI assistant", "your number", "activate", "deactivate"

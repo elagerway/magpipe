@@ -1,11 +1,225 @@
 # Session Notes
 
-**Last Updated:** 2025-10-25
+**Last Updated:** 2025-11-04
 **Active Branch:** Pat-AI
 
 ---
 
-## Current Session (2025-10-25)
+## Current Session (2025-11-05)
+
+### ✅ COMPLETED: Fixed Critical Bug - Inbound Calls Not Answering
+
+**Problem:**
+Inbound calls stopped working - LiveKit agent was crashing immediately on entrypoint, preventing it from joining rooms and answering calls.
+
+**Root Cause Analysis:**
+
+**What Broke:**
+- Error: `UnboundLocalError: cannot access local variable 'datetime' where it is not associated with a value`
+- Location: `agents/livekit-voice-agent/agent.py:315`
+- Impact: Agent crashed before joining ANY room (inbound or outbound)
+
+**Timeline of Breaking Changes:**
+
+1. **Oct 25 (Commit 43debebe):** Added `import datetime` LOCALLY inside entrypoint function (line ~347)
+   - Used for: `time_window = datetime.datetime.now() - datetime.timedelta(minutes=5)`
+   - This was OK because datetime was only used AFTER the local import
+
+2. **Oct 27 (Commit 45896bf):** Added MORE uses of `datetime.datetime.now()` at TOP of entrypoint (line 288)
+   - Used for: Enhanced logging with timestamps
+   - ERROR: This code ran BEFORE the local `import datetime` on line 347
+   - Python sees local `import datetime` later in function, treats `datetime` as local variable
+   - Accessing it before the import = UnboundLocalError
+
+3. **Oct 27 (Commit 64d3c72):** Added database call state logging
+   - More `datetime.datetime.now()` calls at top of function
+   - Same error - using datetime before local import
+
+4. **Oct 28 (Commit 9d72c5d):** Switched from prewarm to request_fnc
+   - Removed prewarm function that also used `datetime.datetime.now()`
+   - But entrypoint still broken
+
+**The Fix (Commit 1cb757e):**
+- Added `import datetime` to top-level imports (line 8)
+- Now datetime is available throughout entire module
+- Removed need for local import
+
+**Why This Wasn't Caught:**
+
+1. ❌ **No testing before commit** - Violated NON-NEGOTIABLE test-before-commit rule
+2. ❌ **No agent healthcheck** - Agent crashes weren't visible until call attempted
+3. ❌ **No automated tests** - No pytest/unittest to catch Python errors
+4. ❌ **Incremental breakage** - Each commit added datetime usage without noticing missing import
+
+**Lessons Learned:**
+
+1. **NEVER use local imports mid-function** - Always import at module top
+2. **Test agent after EVERY commit** - Place test call to verify it works
+3. **Add Python linting** - Use pylint/flake8/mypy to catch undefined names
+4. **Add agent healthcheck endpoint** - Verify agent is running and healthy
+5. **Follow breaking change prevention workflow** - Search for variable usage before adding new references
+
+**Recent Related Commits:**
+- 1cb757e - Fix critical bug preventing inbound calls from being answered (THE FIX)
+- 45896bf - Add comprehensive logging (INTRODUCED BUG)
+- 64d3c72 - Add database call state tracking (MADE BUG WORSE)
+- 43debebe - Implement multi-vendor call ID tracking (LOCAL IMPORT PATTERN)
+
+**Status:** ✅ Fixed and deployed to Render
+
+---
+
+## Previous Session (2025-11-04)
+
+### 🔄 IN PROGRESS: Outbound Call Recording via Inbound Bridge
+
+**Active Work:** Implementing outbound call recording using CXML-based inbound call bridging approach
+
+**Problem:**
+- Previous approach (SIP Call Handlers with direct SIP) taking too long, overly complex
+- Need simpler solution to record outbound calls with full control
+- User wants faster implementation of this "rather trivial feature"
+
+**New Approach: Simulated Outbound via Inbound Bridge**
+User clicks "Call" → UI shows "Connecting...", "Ringing..." → Behind the scenes we:
+1. Trigger **inbound call** from SignalWire to WebRTC endpoint (user's browser)
+2. User's browser auto-answers the inbound call
+3. Once connected, bridge that call to PSTN destination
+4. Get SignalWire Call SID and control recording programmatically via API
+
+**Architecture:**
+```
+UI Click → Edge Function → SignalWire CXML
+                           ↓
+                    [Dial WebRTC endpoint] → User's browser answers
+                           ↓
+                    [Bridge to PSTN] → Destination phone
+                           ↓
+                    Return Call SID → Start recording via API
+```
+
+**Benefits:**
+- Full control over call flow via CXML
+- Access to SignalWire Call SID for recording control
+- Can use SignalWire's Call Control API for recording/transcription
+- No dependency on SIP Call Handlers
+- Simpler than previous approach
+
+**Implementation Completed:** ✅
+1. ✅ Updated `initiate-bridged-call` Edge Function - Calls SignalWire REST API to initiate call
+2. ✅ Updated `outbound-call-swml` Edge Function - Returns CXML that bridges browser SIP + PSTN
+3. ✅ Created `outbound-call-status` Edge Function - Receives StatusCallback updates from SignalWire
+4. ✅ Updated `inbox.js` - Changed UI to call `initiate-bridged-call` instead of old approach
+5. ✅ Deployed all three Edge Functions with appropriate JWT settings
+
+**Call Flow:**
+1. User clicks "Call" in UI → shows "Connecting..."
+2. `initiate-bridged-call` calls SignalWire REST API with:
+   - To: PSTN destination number
+   - From: User's caller ID
+   - Url: `outbound-call-swml` endpoint for CXML
+   - StatusCallback: `outbound-call-status` endpoint for progress
+3. SignalWire executes CXML from `outbound-call-swml`:
+   - First leg: `<Sip>` dials user's browser (SIP endpoint)
+   - Second leg: `<Number>` dials PSTN destination
+   - Recording: Enabled via `record="record-from-answer"` in CXML
+4. User's browser receives inbound SIP call and auto-answers
+5. Both legs bridged via SignalWire
+6. Recording saved to `call_records.recording_url` via `sip-recording-callback`
+
+**Edge Functions:**
+- `initiate-bridged-call` (JWT required) - User initiates call
+- `outbound-call-swml` (no JWT) - Returns CXML for call bridging
+- `outbound-call-status` (no JWT) - Updates call status in database
+- `sip-recording-callback` (no JWT) - Saves recording URL (already exists)
+
+**Testing Results:** ✅
+1. ✅ Test call successful! Call placed to +16045628647
+2. ✅ Key finding: SignalWire requires `+` signs to be URL-encoded as `%2B` in form data
+3. 🔄 Need to verify: Current test called cell directly, need to test browser→PSTN bridge
+
+**Critical Fix Needed:**
+- URLSearchParams in JavaScript doesn't properly encode `+` in form data
+- Must manually encode phone numbers: `From=%2B1234567890` not `From=+1234567890`
+- Edge Function needs update to handle this encoding
+
+**Next Steps:**
+1. Fix Edge Function to properly encode phone numbers
+2. Test actual flow: SignalWire → Browser SIP → CXML bridges to PSTN
+3. Verify recording appears in database
+
+**Rejected Approaches (DO NOT USE):**
+- ❌ SIP Call Handlers with direct SIP (previous approach) - too complex, taking too long
+- ❌ SIP INFO messages with "Record: on/off" headers - doesn't work for direct SIP
+- ❌ Client-side MediaRecorder API - rejected approach
+- ❌ SIP Domain Applications - deprecated in SignalWire
+- ❌ Manual dashboard configuration - must be programmatic
+
+---
+
+## Previous Session (2025-10-31)
+
+### ✅ COMPLETED: Outbound Calls via SIP on SignalWire
+
+**Active Work:** Implemented complete SIP-based outbound calling with call record tracking
+
+**Problem:**
+- Current outbound calling uses LiveKit Edge Function → LiveKit Room → PSTN
+- User wants simpler SIP-first approach: Browser (JsSIP) → SignalWire (SIP) → PSTN
+- Need call records in inbox for outbound calls
+
+**Context:**
+- JsSIP library already installed (v3.10.1) and implemented in `src/lib/sipClient.js`
+- SIP client has all necessary methods: initialize(), makeCall(), hangup()
+- SIP credentials added to service_numbers table
+- SIP endpoints provisioned in SignalWire
+
+**Completed:** ✅
+1. ✅ Updated `inbox.js:1499-1594` - Changed initiateCall() to use SIP instead of LiveKit
+2. ✅ Updated `inbox.js:1447-1459` - Changed hangup handler to use sipClient.hangup()
+3. ✅ Created migration `20251031120000_add_sip_credentials.sql` - Adds sip_username, sip_password, sip_domain, sip_ws_server columns
+4. ✅ Committed changes as `694f872` - "Switch outbound calling from LiveKit to SignalWire SIP"
+5. ✅ Applied SIP credentials migration via SQL Editor
+6. ✅ Provisioned SIP endpoint in SignalWire and updated database
+7. ✅ **Call Record Tracking** - Added complete outbound call tracking:
+   - Created migration `20251031180000_add_outbound_call_dispositions.sql`
+   - Added outbound dispositions: outbound_completed, outbound_no_answer, outbound_busy, outbound_failed
+   - Implemented call record creation on call initiation
+   - Implemented call record updates on call end with duration and status
+   - Added E.164 phone number normalization
+   - Added UI support for outbound call status icons
+   - Fixed call record field mapping (contact_phone, service_number, duration_seconds)
+8. ✅ Fixed CNAM display - Updated SignalWire SIP endpoint caller_id to show "Erik L"
+9. ✅ Committed call tracking as `17362ba` - "Add outbound call tracking to inbox"
+
+**Testing:** ✅
+- SIP registration working
+- Outbound calls connecting successfully
+- CNAM showing correct name (\"Erik L\")
+- Call records appearing in inbox
+- Duration tracking accurate
+- Status icons displaying correctly
+- Phone numbers formatted consistently
+
+**Recent Related Commits:**
+- `17362ba` - Add outbound call tracking to inbox ✅ **CURRENT**
+- `694f872` - Switch outbound calling from LiveKit to SignalWire SIP
+- `12df3c7` - Add outbound calling design specification and SIP credentials migration
+
+**AI Agent Bridging Research:**
+Explored adding LiveKit AI agent to outbound calls but discovered technical limitations:
+- JsSIP makes direct SIP-to-SIP calls that don't appear in SignalWire's REST API
+- Cannot modify active SIP calls via SignalWire's Call Control API
+- SIP Call-ID from JsSIP ≠ SignalWire Call SID
+- **Decision:** Defer AI agent integration to separate feature - requires different calling flow (e.g., browser calls SignalWire proxy number that executes SWML to bridge PSTN + LiveKit)
+
+**Next Steps:**
+1. Keep current SIP calling implementation for direct PSTN calls
+2. Consider separate feature for AI-assisted outbound calls using different architecture
+
+---
+
+## Previous Session (2025-10-25)
 
 ### ✅ RESOLVED: LiveKit Egress Recording URL Not Populating in UI
 
