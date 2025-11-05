@@ -3,7 +3,7 @@
  */
 
 import { getCurrentUser, supabase } from '../lib/supabase.js';
-import { renderBottomNav, clearUnreadBadge } from '../components/BottomNav.js';
+import { renderBottomNav, clearUnreadBadge, setPhoneNavActive } from '../components/BottomNav.js';
 import { sipClient } from '../lib/sipClient.js';
 import { livekitClient } from '../lib/livekitClient.js';
 
@@ -70,6 +70,9 @@ export default class InboxPage {
 
     this.attachEventListeners();
     this.subscribeToMessages();
+
+    // Expose showCallInterface globally for phone nav button
+    window.showDialpad = () => this.showCallInterface();
   }
 
   subscribeToMessages() {
@@ -388,6 +391,8 @@ export default class InboxPage {
   }
 
   renderMessageThread() {
+    // Deactivate phone nav when showing message thread
+    setPhoneNavActive(false);
     // Check if we're viewing a call or SMS conversation
     if (this.selectedCallId) {
       const conv = this.conversations.find(c => c.type === 'call' && c.callId === this.selectedCallId);
@@ -970,13 +975,21 @@ export default class InboxPage {
     // Use thread element for both mobile and desktop
     threadElement.innerHTML = this.renderCallInterfaceContent();
     threadElement.style.display = 'flex';
+    threadElement.style.flexDirection = 'column';
+    threadElement.style.overflow = 'auto';
+    threadElement.style.background = 'var(--bg-primary)';
 
-    // On mobile, add padding at bottom for navigation bar
+    // On mobile, add padding at bottom for navigation bar and ensure scrolling
     if (isMobile) {
-      threadElement.style.paddingBottom = '80px';
+      threadElement.style.paddingBottom = '100px';
+      threadElement.style.height = '100%';
+      threadElement.style.maxHeight = '100%';
     } else {
       threadElement.style.paddingBottom = '0';
     }
+
+    // Set phone nav button as active
+    setPhoneNavActive(true);
 
     this.attachCallEventListeners();
   }
@@ -988,10 +1001,10 @@ export default class InboxPage {
       <div style="
         display: flex;
         flex-direction: column;
-        height: 100%;
+        min-height: 100%;
         background: var(--bg-primary);
         padding: 1rem 0.5rem;
-        overflow: hidden;
+        overflow: visible;
         position: relative;
       ">
         <!-- Call header -->
@@ -1149,8 +1162,8 @@ export default class InboxPage {
           display: grid;
           grid-template-columns: repeat(3, 1fr);
           gap: 0.5rem;
-          max-width: 300px;
-          margin: 0 auto;
+          max-width: ${isMobile ? '225px' : '300px'};
+          margin: ${isMobile ? '10px auto 0 auto' : '0 auto'};
           width: 100%;
           flex-shrink: 0;
         ">
@@ -1169,14 +1182,15 @@ export default class InboxPage {
         </div>
 
         <!-- Spacer -->
-        <div style="flex: 1; min-height: 0.5rem;"></div>
+        <div style="${isMobile ? 'height: 15px;' : 'height: 2rem;'}"></div>
 
         <!-- Call action button -->
         <div style="
           display: flex;
           justify-content: center;
-          padding: 0.75rem 0 4rem 0;
+          padding: 0;
           flex-shrink: 0;
+          margin-top: ${isMobile ? '20px' : '0'};
         ">
           <button
             id="call-btn"
