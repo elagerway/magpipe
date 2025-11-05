@@ -34,6 +34,27 @@ JavaScript ES6+, HTML5, CSS3 (vanilla, minimal framework usage per user requirem
 - Use product-centric language: "Pat AI assistant", "your number", "activate", "deactivate"
 - Keep technical implementation details in backend logs only
 
+## Outbound SIP Call Configuration
+- **CRITICAL: Caller ID must be from UI dropdown selection**: The caller ID for outbound SIP calls MUST use the number the user selects from the UI dropdown, NOT a hardcoded number
+- **Never hardcode caller ID**: Do not hardcode any phone number as the caller ID in the SIP call handler
+- **Source of caller ID**: The caller ID should come from the `From` parameter passed to the call handler, which originates from the user's selection in the UI
+- **SIP Call Handler Flow**:
+  1. User selects a caller ID number from dropdown in UI
+  2. UI passes this number to the SIP client
+  3. SIP client includes it in the call initiation
+  4. SignalWire sends it as the `From` parameter to the call handler webhook
+  5. Call handler uses this `From` value as the `callerId` in the cXML `<Dial>` tag
+
+## Supabase CLI Limitations
+- **CRITICAL: Supabase CLI doesn't support `logs` command**: The `npx supabase functions logs` command is NOT available in this version of Supabase CLI
+- **DO NOT use**: `npx supabase functions logs <function-name>` - it will fail with "unknown command" error
+- **Instead use**: Direct database queries, browser console, or other logging methods to verify Edge Function execution
+- **Log viewing alternatives**:
+  - Check Supabase Dashboard → Edge Functions → Logs tab
+  - Add console.log statements and check browser console
+  - Query database to verify data was updated
+  - Use curl to test Edge Functions directly
+
 ## Database Management
 
 ### Environment Variables - CRITICAL
@@ -397,16 +418,33 @@ log_call_state(room_name, 'agent_connected', 'agent', {
   source .env && curl -s -u "$SIGNALWIRE_PROJECT_ID:$SIGNALWIRE_API_TOKEN" \
     "https://erik.signalwire.com/api/relay/rest/endpoints/sip"
   ```
-- **Update SIP Endpoint (e.g., caller ID)**:
+- **Update SIP Endpoint (e.g., caller ID, call handler)**:
   ```bash
   source .env && curl -s -X PUT -u "$SIGNALWIRE_PROJECT_ID:$SIGNALWIRE_API_TOKEN" \
     -H 'Content-Type: application/json' \
     -d '{"caller_id":"Erik L"}' \
     "https://erik.signalwire.com/api/relay/rest/endpoints/sip/${ENDPOINT_ID}"
   ```
+- **Configure Call Handler for Recording**:
+  ```bash
+  source .env && curl -s -X PUT -u "$SIGNALWIRE_PROJECT_ID:$SIGNALWIRE_API_TOKEN" \
+    -H 'Content-Type: application/json' \
+    -d '{"call_request_url":"https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/sip-call-handler"}' \
+    "https://erik.signalwire.com/api/relay/rest/endpoints/sip/${ENDPOINT_ID}"
+  ```
 - **SIP Endpoint Fields**:
   - `id`: Unique identifier for the endpoint
   - `username`: SIP username for authentication (e.g., `test_sip_endpoint`)
+  - `caller_id`: Display name for outbound calls
+  - `call_request_url`: Webhook URL that returns CXML for call handling (used for recording)
+  - `call_request_method`: HTTP method for call handler (default: POST)
+
+### Current SIP Endpoints (erik@snapsonic.com)
+- **Endpoint ID**: `0ed5ed8b-fd6a-4964-8c36-6547609260f4`
+- **Username**: `pat_778736359f5a4eee`
+- **Call Handler**: `https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/sip-call-handler`
+- **Recording Callback**: `https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/sip-recording-callback` (configured in CXML)
+- **Purpose**: Automatically records all outbound SIP calls via CXML
   - `caller_id`: Display name shown on outbound calls (CNAM)
   - `send_as`: Default phone number for outbound calls
   - `encryption`: SIP encryption level (`optional`, `required`)
@@ -433,6 +471,47 @@ log_call_state(room_name, 'agent_connected', 'agent', {
 - **Verification**: Check env vars are set: `echo "Length: ${#SIGNALWIRE_PROJECT_ID}"` should show `36`
 - **Never**: Hardcode credentials in scripts - always use environment variables
 
+## SignalWire WebSocket SIP Configuration for Browser Calling
+
+### CRITICAL: Required Settings for PSTN Outbound Calls
+
+**For browser-based SIP calling to PSTN to work, the SIP endpoint requires:**
+
+1. **PSTN Passthrough: ENABLED** (Dashboard only - cannot set via API)
+   - Location: SignalWire Dashboard → SIP → Endpoints → [endpoint] → Settings → PSTN Passthrough
+   - **Without this**: Calls fail with "502 Bad Gateway - DESTINATION_OUT_OF_ORDER"
+   - This allows the SIP endpoint to route calls directly to PSTN
+
+2. **Call Handler: LAML Webhooks** (can set via API)
+   ```bash
+   curl -X PUT -u "$SIGNALWIRE_PROJECT_ID:$SIGNALWIRE_API_TOKEN" \
+     -H 'Content-Type: application/json' \
+     -d '{"call_handler":"laml_webhooks"}' \
+     "https://erik.signalwire.com/api/relay/rest/endpoints/sip/${ENDPOINT_ID}"
+   ```
+   - Must be `laml_webhooks`, NOT `relay_context`
+   - `call_request_url` should be empty `""` for direct calling
+
+3. **WebSocket SIP Configuration** (JsSIP)
+   - **SIP URI**: `sip:test_sip_endpoint@erik-0f619b8e956e.sip.signalwire.com`
+   - **WebSocket URL**: `wss://erik-0f619b8e956e.sip.signalwire.com` (NO PORT - uses 443)
+   - **Registrar**: `erik-0f619b8e956e.sip.signalwire.com`
+   - **Password**: Set via API when creating endpoint
+
+### Database Storage
+Store in `users` and `service_numbers` tables:
+```
+sip_username: test_sip_endpoint
+sip_password: [endpoint password]
+sip_realm: erik-0f619b8e956e.sip.signalwire.com
+sip_ws_server: wss://erik-0f619b8e956e.sip.signalwire.com
+```
+
+### Reference
+- Official Guide: https://developer.signalwire.com/platform/basics/guides/webrtc-with-sip-over-websockets/
+
 <!-- MANUAL ADDITIONS END -->
 - psql or sql is not installed or accessible, use a Python approach with direct PostgreSQL connection instead
 - Add this to memory, next time you need to get the details about a number (purchase date, etc) , look it up on Signalwire
+- PLACE TEST CALLS YOURSELF, STOP ASKING ME TO PLACE CALLS BEFORE YOU HAVE DONE SO YOURSELF
+- do not assume that numbers in the db are not provisioned in signalwire, do a lookup in signalwire if there is any confusion if the number is provisioned or not
