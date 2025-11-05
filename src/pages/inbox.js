@@ -965,40 +965,20 @@ export default class InboxPage {
 
   showCallInterface() {
     const isMobile = window.innerWidth <= 768;
+    const threadElement = document.getElementById('message-thread');
 
+    // Use thread element for both mobile and desktop
+    threadElement.innerHTML = this.renderCallInterfaceContent();
+    threadElement.style.display = 'flex';
+
+    // On mobile, add padding at bottom for navigation bar
     if (isMobile) {
-      // Create full-screen modal for mobile
-      const modal = document.createElement('div');
-      modal.id = 'call-modal';
-      modal.className = 'modal';
-      modal.innerHTML = `
-        <div class="modal-backdrop"></div>
-        <div class="modal-content" style="
-          height: 100vh;
-          max-height: 100vh;
-          width: 100%;
-          max-width: 100%;
-          margin: 0;
-          border-radius: 0;
-          padding: 0;
-          display: flex;
-          flex-direction: column;
-        ">
-          ${this.renderCallInterfaceContent()}
-        </div>
-      `;
-      document.body.appendChild(modal);
-      this.attachCallEventListeners();
+      threadElement.style.paddingBottom = '80px';
     } else {
-      // Desktop: use thread element
-      const threadElement = document.getElementById('message-thread');
-      threadElement.innerHTML = this.renderCallInterfaceContent();
-
-      // Show thread on desktop
-      threadElement.style.display = 'flex';
-
-      this.attachCallEventListeners();
+      threadElement.style.paddingBottom = '0';
     }
+
+    this.attachCallEventListeners();
   }
 
   renderCallInterfaceContent() {
@@ -1014,37 +994,6 @@ export default class InboxPage {
         overflow: hidden;
         position: relative;
       ">
-        <!-- Close button (mobile only) -->
-        ${isMobile ? `
-          <button
-            id="close-call-modal"
-            style="
-              position: absolute;
-              top: 1rem;
-              right: 1rem;
-              width: 32px;
-              height: 32px;
-              border-radius: 50%;
-              border: none;
-              background: var(--bg-secondary);
-              color: var(--text-secondary);
-              cursor: pointer;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              z-index: 10;
-              transition: all 0.15s ease;
-            "
-            onmouseover="this.style.background='var(--border-color)'"
-            onmouseout="this.style.background='var(--bg-secondary)'"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </button>
-        ` : ''}
-
         <!-- Call header -->
         <div style="text-align: center; margin-bottom: 0.5rem; flex-shrink: 0; position: relative;">
 
@@ -1297,7 +1246,6 @@ export default class InboxPage {
   attachCallEventListeners() {
     const searchInput = document.getElementById('call-search-input');
     const deleteBtn = document.getElementById('delete-btn');
-    const closeBtn = document.getElementById('close-call-modal');
     const suggestionsEl = document.getElementById('contact-suggestions');
     const callerIdSelect = document.getElementById('caller-id-select');
     const recordCallToggle = document.getElementById('record-call-toggle');
@@ -1330,16 +1278,6 @@ export default class InboxPage {
 
     // Prompt for microphone access and initialize SIP client
     this.requestMicrophoneAndInitializeSIP();
-
-    // Close button (mobile only)
-    if (closeBtn) {
-      closeBtn.addEventListener('click', () => {
-        const modal = document.getElementById('call-modal');
-        if (modal) {
-          modal.remove();
-        }
-      });
-    }
 
     // Search input for contact autocomplete
     if (searchInput) {
