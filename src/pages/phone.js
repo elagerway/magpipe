@@ -373,6 +373,7 @@ export default class PhonePage {
       .from('service_numbers')
       .select('phone_number')
       .eq('user_id', this.userId)
+      .eq('is_active', true)
       .order('created_at', { ascending: false });
 
     if (error) {
