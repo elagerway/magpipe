@@ -29,8 +29,80 @@ Code MUST be maintainable, readable, and well-documented before it is considered
 - Contain inline comments explaining complex logic or non-obvious decisions
 - Be free of duplication beyond trivial one-liners (DRY principle)
 - Pass linting and static analysis checks with zero warnings
+- **Import all dependencies at module/file top** - NEVER use local imports mid-function (Python, JavaScript, TypeScript)
 
-**Rationale**: Technical debt compounds exponentially. Preventing it at creation time is orders of magnitude cheaper than remediation. Code is read 10x more than it is written; optimize for comprehension.
+**Module-Level Import Enforcement (Python/JavaScript/TypeScript)**:
+- ❌ **FORBIDDEN**: Local imports inside functions, methods, or code blocks
+  ```python
+  # WRONG - will cause UnboundLocalError if variable used before import
+  def my_function():
+      print(datetime.now())  # Uses datetime before import
+      import datetime        # Too late - Python treats datetime as local var
+  ```
+- ✅ **REQUIRED**: All imports at top of file
+  ```python
+  # CORRECT - imports at module top
+  import datetime
+
+  def my_function():
+      print(datetime.now())  # Works - datetime is module-level
+  ```
+
+**Why Local Imports Are Forbidden**:
+1. **UnboundLocalError in Python**: If a variable is assigned/imported anywhere in a function, Python treats it as local. Using it before the assignment/import raises UnboundLocalError.
+2. **Scope confusion**: Readers expect imports at top, not buried mid-function
+3. **Breaking changes**: Adding code before a local import can silently break it
+4. **Testing difficulty**: Local imports complicate mocking and testing
+5. **Performance**: Import overhead on every function call vs. once at module load
+
+**Real-World Incident (2025-11-05) - TWO-STAGE FAILURE**:
+
+**Stage 1 - Introduction of Local Imports (Oct 25)**:
+- Commit 43debebe added `import datetime` inside a function (lines ~347, ~425, ~602)
+- Pattern: Local imports scattered throughout code
+- No immediate breakage - imports came before usage in each block
+
+**Stage 2 - Adding Code Before Local Import (Oct 27)**:
+- Commit 45896bf added `datetime.datetime.now()` at top of entrypoint function (line 288)
+- ERROR: This usage was BEFORE the local import on line 347
+- Python saw local import later in function → treated `datetime` as local variable
+- Using it before import → UnboundLocalError
+- Result: Agent crashed on ALL room joins (inbound + outbound calls completely broken)
+
+**Stage 3 - Incomplete Fix (Nov 5)**:
+- Commit 1cb757e added module-level `import datetime` (line 8)
+- BUT: Missed removing local imports on lines 425 and 602
+- **CRITICAL PYTHON SCOPING RULE**: If ANY `import datetime` exists in a function, Python treats `datetime` as local FOR THAT ENTIRE FUNCTION, even if there's a module-level import
+- Result: First fix worked for line 288, but lines 425 and 602 still crashed with UnboundLocalError
+- Agent still broken - same error in different code paths
+
+**Stage 4 - Complete Fix (Nov 5)**:
+- Commit 2c0cbda removed ALL remaining local imports
+- Only module-level import remains
+- `datetime` now available everywhere without scoping issues
+
+**Impact**:
+- Production feature completely broken for 9 days
+- Multiple partial fixes required due to scattered local imports
+- Each local import created independent failure point
+
+**Root Cause**:
+- Local import anti-pattern violated module-level import convention
+- Multiple local imports made fix incomplete and error-prone
+- No automated detection (linting) to catch the pattern
+
+**Enforcement (MANDATORY BEFORE ANY COMMIT)**:
+1. **Git pre-commit hook AUTOMATICALLY checks** for local imports and blocks commits if found
+   - Install once: `ln -sf ../../.githooks/pre-commit .git/hooks/pre-commit`
+   - See INSTALL-GIT-HOOKS.md for details
+2. **If hook not installed, manual check**: `grep -n "^[[:space:]]\+import " <file.py>` - MUST return ZERO results
+3. **Follow PRE-COMMIT-CHECKLIST.md** for every commit - NO EXCEPTIONS
+4. **Linters MUST flag local imports** (pylint: `import-outside-toplevel`, flake8: `I001`)
+5. **Code reviews MUST reject** any non-top-level imports - NO EXCEPTIONS
+6. **CI/CD MUST fail** if local imports detected
+7. **No exceptions** - if circular import, refactor to eliminate it or use TYPE_CHECKING guard
+
+**Rationale**: Technical debt compounds exponentially. Preventing it at creation time is orders of magnitude cheaper than remediation. Code is read 10x more than it is written; optimize for comprehension. Local imports introduce subtle bugs that bypass static analysis and only appear at runtime under specific conditions.
 
 ### II. Test-Driven Development (NON-NEGOTIABLE)
 
