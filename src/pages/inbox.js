@@ -1071,8 +1071,9 @@ export default class InboxPage {
           </div>
         </div>
 
-        <!-- Caller ID selector and Recording toggle (inline) -->
+        <!-- Caller ID selector -->
         <div style="
+          padding: 0 0.5rem;
           max-width: 300px;
           margin: 0 auto 0.5rem auto;
           width: 100%;
@@ -1085,54 +1086,27 @@ export default class InboxPage {
             margin-bottom: 0.2rem;
             text-align: center;
           ">Call from</label>
-          <div style="
-            display: flex;
-            align-items: center;
-            gap: 1.5rem;
-          ">
-            <select
-              id="caller-id-select"
-              style="
-                flex: 0 0 auto;
-                width: 160px;
-                padding: 0.4rem;
-                border: 1px solid var(--border-color);
-                border-radius: var(--radius-md);
-                background: var(--bg-secondary);
-                color: var(--text-primary);
-                font-size: 0.8rem;
-                cursor: pointer;
-                outline: none;
-              "
-            >
-              <option value="">Loading numbers...</option>
-            </select>
-            <div style="
-              display: flex;
-              align-items: center;
-              gap: 0;
-            ">
-              <label for="record-call-toggle" style="
-                font-size: 0.7rem;
-                color: var(--text-secondary);
-                cursor: pointer;
-                user-select: none;
-                display: flex;
-                align-items: center;
-                gap: 0.2rem;
-                white-space: nowrap;
-              ">
-                <svg id="record-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position: relative;">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <circle cx="12" cy="12" r="3"></circle>
-                </svg>
-                Record Call
-              </label>
-              <label class="toggle-switch" style="margin: 0 0 0 -0.5rem; transform: scale(0.5); transform-origin: center; flex-shrink: 0;">
-                <input type="checkbox" id="record-call-toggle" checked>
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
+          <select
+            id="caller-id-select"
+            style="
+              width: 100%;
+              padding: 0.5rem;
+              border: 1px solid rgba(128, 128, 128, 0.2);
+              border-radius: 8px;
+              background: var(--bg-secondary);
+              color: var(--text-primary);
+              font-size: 1.2rem;
+              font-weight: 300;
+              text-align: center;
+              cursor: pointer;
+              outline: none;
+            "
+          >
+            <option value="">Loading numbers...</option>
+          </select>
+          <!-- Hidden record toggle (kept for compatibility) -->
+          <div style="display: none;">
+            <input type="checkbox" id="record-call-toggle" checked>
           </div>
         </div>
 
@@ -1284,6 +1258,8 @@ export default class InboxPage {
   }
 
   renderDTMFButton(digit, letters) {
+    const digitStyle = digit === '*' ? 'font-size: 3.15rem; font-weight: 300; line-height: 1; position: relative; top: 11px; left: 2px;' :
+                       digit === '#' ? 'font-size: 2rem; font-weight: 400;' : '';
     return `
       <button
         class="dtmf-btn"
@@ -1312,7 +1288,7 @@ export default class InboxPage {
         ontouchstart="this.style.background='var(--border-color)'; this.style.transform='scale(0.95)'"
         ontouchend="this.style.background='var(--bg-secondary)'; this.style.transform='scale(1)'"
       >
-        <span style="line-height: 1;">${digit}</span>
+        <span style="line-height: 1; ${digitStyle}">${digit}</span>
         ${letters ? `<span style="font-size: 0.6rem; font-weight: 600; letter-spacing: 0.05em; margin-top: 0.1rem; color: var(--text-secondary);">${letters}</span>` : ''}
       </button>
     `;
@@ -1367,14 +1343,26 @@ export default class InboxPage {
 
     // Search input for contact autocomplete
     if (searchInput) {
+      // Show recent numbers on focus when input is empty
+      searchInput.addEventListener('focus', async () => {
+        if (searchInput.value.trim().length === 0) {
+          await this.showRecentNumbers(suggestionsEl, searchInput, () => {
+            selectedContact = null;
+            updateDeleteButton();
+          });
+        }
+      });
+
       searchInput.addEventListener('input', async (e) => {
         const query = e.target.value.trim();
         updateDeleteButton();
 
         if (query.length === 0) {
-          suggestionsEl.style.display = 'none';
-          suggestionsEl.innerHTML = '';
-          selectedContact = null;
+          // Show recent numbers when input is cleared
+          await this.showRecentNumbers(suggestionsEl, searchInput, () => {
+            selectedContact = null;
+            updateDeleteButton();
+          });
           return;
         }
 
@@ -1916,6 +1904,124 @@ export default class InboxPage {
       console.error('Failed to search contacts:', error);
       return [];
     }
+  }
+
+  async showRecentNumbers(suggestionsEl, searchInput, onSelectCallback) {
+    try {
+      // Fetch user's service numbers to exclude them
+      const { data: serviceNumbers, error: serviceError } = await supabase
+        .from('service_numbers')
+        .select('phone_number')
+        .eq('user_id', this.userId);
+
+      if (serviceError) {
+        console.error('Error fetching service numbers:', serviceError);
+      }
+
+      const userNumbers = new Set(
+        (serviceNumbers || []).map(sn => sn.phone_number)
+      );
+
+      // Fetch recent call records (both inbound and outbound)
+      const { data, error } = await supabase
+        .from('call_records')
+        .select('caller_number, contact_phone, direction, started_at')
+        .eq('user_id', this.userId)
+        .order('started_at', { ascending: false })
+        .limit(20);
+
+      if (error) {
+        console.error('Error fetching recent numbers:', error);
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        suggestionsEl.style.display = 'none';
+        return;
+      }
+
+      // Extract unique phone numbers (excluding user's service numbers)
+      const seenNumbers = new Set();
+      const recentNumbers = [];
+
+      for (const record of data) {
+        // For outbound calls, use contact_phone (the number we called)
+        // For inbound calls, use caller_number (the number that called us)
+        const phoneNumber = record.direction === 'outbound'
+          ? record.contact_phone
+          : record.caller_number;
+
+        // Skip if it's a user's service number or already seen
+        if (phoneNumber && !userNumbers.has(phoneNumber) && !seenNumbers.has(phoneNumber)) {
+          seenNumbers.add(phoneNumber);
+          recentNumbers.push({
+            phone: phoneNumber,
+            direction: record.direction,
+            date: new Date(record.started_at)
+          });
+
+          if (recentNumbers.length >= 10) break; // Limit to 10 recent numbers
+        }
+      }
+
+      if (recentNumbers.length === 0) {
+        suggestionsEl.style.display = 'none';
+        return;
+      }
+
+      // Display recent numbers
+      suggestionsEl.innerHTML = `
+        <div style="padding: 0.5rem 0.75rem; font-size: 0.75rem; color: var(--text-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">
+          Recent Numbers
+        </div>
+        ${recentNumbers.map(item => `
+          <div class="contact-suggestion" data-phone="${item.phone}" style="
+            padding: 0.75rem;
+            cursor: pointer;
+            border-bottom: 1px solid var(--border-color);
+            transition: background 0.15s;
+          " onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='transparent'">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <div style="font-weight: 600; color: var(--text-primary);">
+                  ${this.formatPhoneNumber(item.phone)}
+                </div>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">
+                  ${item.direction === 'outbound' ? '↗ Outbound' : '↙ Inbound'} • ${this.formatRelativeTime(item.date)}
+                </div>
+              </div>
+            </div>
+          </div>
+        `).join('')}
+      `;
+      suggestionsEl.style.display = 'block';
+
+      // Add click handlers
+      suggestionsEl.querySelectorAll('.contact-suggestion').forEach(suggestion => {
+        suggestion.addEventListener('click', () => {
+          const phone = suggestion.dataset.phone;
+          searchInput.value = phone;
+          suggestionsEl.style.display = 'none';
+          onSelectCallback();
+        });
+      });
+    } catch (error) {
+      console.error('Failed to show recent numbers:', error);
+    }
+  }
+
+  formatRelativeTime(date) {
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString();
   }
 
   async requestMicrophoneAndInitializeSIP() {
