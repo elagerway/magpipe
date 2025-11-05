@@ -422,7 +422,6 @@ async def entrypoint(ctx: JobContext):
                 # This allows us to match the call later when saving transcript
                 if call_sid and service_number:
                     logger.info(f"Updating call_record with LiveKit call ID: {call_sid}")
-                    import datetime
                     time_window = datetime.datetime.now() - datetime.timedelta(minutes=5)
 
                     update_response = supabase.table("call_records") \
@@ -599,7 +598,6 @@ IMPORTANT CONTEXT - INBOUND CALL:
             if not call_record_id and service_number and user_id:
                 logger.info(f"Looking up call by service_number: {service_number} and user_id: {user_id}")
                 # Look for most recent in-progress call for this service number
-                import datetime
                 time_window = datetime.datetime.now() - datetime.timedelta(minutes=5)
 
                 response = supabase.table("call_records") \
