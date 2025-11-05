@@ -4,11 +4,14 @@ Pat AI Voice Agent - LiveKit Implementation
 Handles real-time voice conversations with STT, LLM, and TTS pipeline
 """
 
+import aiohttp
 import asyncio
 import datetime
+import json
 import logging
 import os
 import sys
+import threading
 from typing import Annotated
 
 # Force unbuffered output for immediate log visibility in Render
@@ -166,8 +169,6 @@ def create_transfer_tool(user_id: str, transfer_numbers: list, room_name: str):
 
         # Execute call transfer via SignalWire API
         try:
-            import aiohttp
-
             signalwire_space = os.getenv("SIGNALWIRE_SPACE")
             signalwire_project = os.getenv("SIGNALWIRE_PROJECT_ID")
             signalwire_token = os.getenv("SIGNALWIRE_API_TOKEN")
@@ -246,8 +247,6 @@ def create_voice_clone_tool(user_id: str):
         logger.info(f"Voice cloning requested: {voice_name}")
 
         try:
-            import aiohttp
-
             elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
 
             # Download audio sample
@@ -327,7 +326,6 @@ async def entrypoint(ctx: JobContext):
     # Parse room metadata
     room_metadata = {}
     try:
-        import json
         room_metadata = json.loads(ctx.room.metadata) if ctx.room.metadata else {}
     except:
         logger.warning("Could not parse room metadata")
@@ -717,8 +715,9 @@ IMPORTANT CONTEXT - INBOUND CALL:
     # Start the session - room already connected, so session takes over
     await session.start(room=ctx.room, agent=assistant)
 
-    # Say greeting when participant joins - use instructions parameter
-    await session.generate_reply(instructions=f"Say this greeting to the caller: {greeting}")
+    # Say greeting immediately when participant joins - use say() for instant response
+    # (don't use generate_reply() which adds LLM latency)
+    await session.say(greeting, allow_interruptions=True)
 
     logger.info("✅ Agent session started successfully - ready for calls")
 
@@ -731,8 +730,6 @@ IMPORTANT CONTEXT - INBOUND CALL:
 
 
 if __name__ == "__main__":
-    import sys
-    import threading
     from http.server import HTTPServer, BaseHTTPRequestHandler
 
     # Simple HTTP server for Render health checks
