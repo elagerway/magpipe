@@ -1,0 +1,100 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Knowledge Source List API",
+    "version": "1.0.0",
+    "description": "List all knowledge sources for current user"
+  },
+  "paths": {
+    "/knowledge-source-list": {
+      "get": {
+        "summary": "Get user's knowledge sources",
+        "description": "Returns all knowledge sources with sync status and metadata",
+        "responses": {
+          "200": {
+            "description": "List of knowledge sources",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["sources"],
+                  "properties": {
+                    "sources": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["id", "url", "title", "sync_status", "sync_period", "chunk_count"],
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "url": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "sync_status": {
+                            "type": "string",
+                            "enum": ["pending", "syncing", "completed", "failed"]
+                          },
+                          "sync_period": {
+                            "type": "string",
+                            "enum": ["24h", "7d", "1mo", "3mo"]
+                          },
+                          "last_synced_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "next_sync_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "chunk_count": {
+                            "type": "integer"
+                          },
+                          "error_message": {
+                            "type": "string",
+                            "description": "Present if sync_status is 'failed'"
+                          },
+                          "created_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  }
+}

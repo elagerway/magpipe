@@ -1,0 +1,124 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Admin Agent Chat API",
+    "version": "1.0.0",
+    "description": "Conversational admin agent for configuring Pat AI assistant"
+  },
+  "paths": {
+    "/admin-agent-chat": {
+      "post": {
+        "summary": "Send message to admin agent",
+        "description": "Processes user message through OpenAI GPT-4 with function calling to execute admin actions",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["message"],
+                "properties": {
+                  "message": {
+                    "type": "string",
+                    "description": "User's message to the admin agent",
+                    "minLength": 1,
+                    "maxLength": 2000,
+                    "example": "Make the agent more friendly and casual"
+                  },
+                  "conversation_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Optional: Continue existing conversation. If omitted, creates new conversation."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Agent response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["conversation_id", "response", "requires_confirmation"],
+                  "properties": {
+                    "conversation_id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "description": "ID of conversation (new or existing)"
+                    },
+                    "response": {
+                      "type": "string",
+                      "description": "Agent's text response to user"
+                    },
+                    "requires_confirmation": {
+                      "type": "boolean",
+                      "description": "Whether user needs to confirm an action"
+                    },
+                    "pending_action": {
+                      "type": "object",
+                      "description": "Action awaiting user confirmation",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "enum": ["update_system_prompt", "add_knowledge_source", "remove_knowledge_source"]
+                        },
+                        "preview": {
+                          "type": "string",
+                          "description": "Preview of what will change"
+                        },
+                        "parameters": {
+                          "type": "object",
+                          "description": "Action-specific parameters"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "Message cannot be empty"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Invalid or missing auth token"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Supabase JWT token from auth session"
+      }
+    }
+  }
+}

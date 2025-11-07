@@ -32,6 +32,9 @@ class App {
     // Expose supabase for debugging
     window.supabase = supabase;
 
+    // Set up global dialpad function
+    this.setupGlobalDialpad();
+
     // Register service worker for PWA
     // Temporarily disabled to avoid Chrome extension errors
     // if ('serviceWorker' in navigator) {
@@ -73,6 +76,21 @@ class App {
       this.currentUser = null;
       this.router.navigate('/login');
     }
+  }
+
+  setupGlobalDialpad() {
+    // Make dialpad accessible from anywhere in the app
+    window.showDialpad = () => {
+      // Navigate to inbox and show dialpad
+      this.router.navigate('/inbox');
+      // Wait for page to render then show dialpad
+      setTimeout(() => {
+        const inboxPage = this.router.currentPage;
+        if (inboxPage && inboxPage.showCallInterface) {
+          inboxPage.showCallInterface();
+        }
+      }, 100);
+    };
   }
 
   async registerServiceWorker() {

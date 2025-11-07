@@ -1,0 +1,2 @@
+[sip-call-handler]
+verify_jwt = false

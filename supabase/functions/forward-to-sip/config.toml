@@ -1,0 +1,2 @@
+[forward-to-sip]
+verify_jwt = false

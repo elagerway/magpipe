@@ -119,7 +119,8 @@
       "Bash(/tmp/test-ui-call.sh:*)",
       "Bash(\"https://erik.signalwire.com/api/relay/rest/endpoints/sip/0ed5ed8b-fd6a-4964-8c36-6547609260f4\")",
       "Bash(/tmp/update-db-password.sh)",
-      "Bash(npx playwright test:*)"
+      "Bash(npx playwright test:*)",
+      "Bash(echo -n \"$OPENAI_API_KEY\")"
     ],
     "deny": [],
     "ask": []
