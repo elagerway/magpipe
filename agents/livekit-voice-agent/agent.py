@@ -10,6 +10,7 @@ import datetime
 import json
 import logging
 import os
+import re
 import sys
 import threading
 from typing import Annotated
@@ -39,6 +40,7 @@ from livekit.plugins import deepgram, openai as lkopenai, elevenlabs, silero
 
 from dotenv import load_dotenv
 from supabase import create_client, Client
+import bcrypt
 
 # Load environment variables
 load_dotenv()
@@ -145,6 +147,131 @@ async def get_voice_config(voice_id: str, user_id: str) -> dict:
         "style": 0.0,
         "use_speaker_boost": True,
     }
+
+
+def normalize_voice_to_digits(text: str) -> str:
+    """Convert spoken numbers to digit string (e.g., 'one two three' -> '123')"""
+    # Map of spoken numbers to digits
+    word_to_digit = {
+        "zero": "0", "oh": "0", "o": "0",
+        "one": "1", "won": "1",
+        "two": "2", "to": "2", "too": "2",
+        "three": "3", "tree": "3",
+        "four": "4", "for": "4", "fore": "4",
+        "five": "5",
+        "six": "6", "sicks": "6",
+        "seven": "7",
+        "eight": "8", "ate": "8",
+        "nine": "9", "niner": "9",
+    }
+
+    # Split text into words and convert to digits
+    words = text.lower().split()
+    digits = []
+
+    for word in words:
+        # Remove punctuation
+        clean_word = re.sub(r'[^\w]', '', word)
+
+        # Check if already a digit
+        if clean_word.isdigit():
+            digits.append(clean_word)
+        elif clean_word in word_to_digit:
+            digits.append(word_to_digit[clean_word])
+
+    return ''.join(digits)
+
+
+async def check_phone_admin_access(caller_number: str) -> dict:
+    """Check if caller number is registered for admin access"""
+    try:
+        # Normalize phone number (remove +, spaces, dashes)
+        normalized = re.sub(r'[^\d]', '', caller_number)
+
+        # Query users table for matching phone number
+        response = supabase.table("users") \
+            .select("id, full_name, phone, phone_admin_access_code, phone_admin_locked") \
+            .eq("phone", f"+{normalized}") \
+            .limit(1) \
+            .execute()
+
+        if response.data and len(response.data) > 0:
+            user_data = response.data[0]
+
+            # Check if user has admin access code configured
+            if user_data.get("phone_admin_access_code"):
+                return {
+                    "has_access": True,
+                    "user_id": user_data["id"],
+                    "full_name": user_data.get("full_name", ""),
+                    "access_code_hash": user_data["phone_admin_access_code"],
+                    "is_locked": user_data.get("phone_admin_locked", False),
+                }
+    except Exception as e:
+        logger.error(f"Error checking phone admin access: {e}")
+
+    return {"has_access": False}
+
+
+async def verify_access_code(user_id: str, spoken_code: str, access_code_hash: str) -> bool:
+    """Verify spoken access code against hashed value"""
+    try:
+        # Normalize spoken input to digits
+        code_digits = normalize_voice_to_digits(spoken_code)
+
+        logger.info(f"Verifying access code: spoken='{spoken_code}' normalized='{code_digits}'")
+
+        # Verify with bcrypt
+        return bcrypt.checkpw(code_digits.encode('utf-8'), access_code_hash.encode('utf-8'))
+    except Exception as e:
+        logger.error(f"Error verifying access code: {e}")
+        return False
+
+
+async def log_access_attempt(user_id: str, success: bool, caller_number: str):
+    """Log access code attempt to database"""
+    try:
+        supabase.table("access_code_attempts").insert({
+            "user_id": user_id,
+            "success": success,
+            "attempted_at": datetime.datetime.now().isoformat(),
+            "caller_phone": caller_number,
+        }).execute()
+    except Exception as e:
+        logger.error(f"Failed to log access attempt: {e}")
+
+
+async def check_and_lock_account(user_id: str) -> bool:
+    """Check failed attempts and lock account if threshold exceeded. Returns True if locked."""
+    try:
+        # Get failed attempts in last 15 minutes
+        time_window = datetime.datetime.now() - datetime.timedelta(minutes=15)
+
+        response = supabase.table("access_code_attempts") \
+            .select("*", count="exact") \
+            .eq("user_id", user_id) \
+            .eq("success", False) \
+            .gte("attempted_at", time_window.isoformat()) \
+            .execute()
+
+        failed_count = response.count or 0
+
+        logger.info(f"Failed access attempts for user {user_id}: {failed_count}")
+
+        if failed_count >= 5:
+            # Lock the account
+            supabase.table("users").update({
+                "phone_admin_locked": True,
+                "phone_admin_locked_at": datetime.datetime.now().isoformat(),
+            }).eq("id", user_id).execute()
+
+            logger.warning(f"Account locked for user {user_id} due to {failed_count} failed attempts")
+            return True
+
+        return False
+    except Exception as e:
+        logger.error(f"Error checking/locking account: {e}")
+        return False
 
 
 def create_transfer_tool(user_id: str, transfer_numbers: list, room_name: str):
@@ -439,6 +566,14 @@ async def entrypoint(ctx: JobContext):
         logger.error("Could not determine user_id")
         return
 
+    # Store admin check info for later (after session is created)
+    admin_check_info = None
+    if direction != "outbound" and caller_number:
+        logger.info(f"🔐 Checking phone admin access for caller: {caller_number}")
+        admin_check_info = await check_phone_admin_access(caller_number)
+        if admin_check_info.get("has_access"):
+            logger.info(f"📱 Admin access possible for: {admin_check_info.get('full_name')}")
+
     # Get user configuration
     user_config = await get_user_config(room_metadata)
     if not user_config:
@@ -715,9 +850,119 @@ IMPORTANT CONTEXT - INBOUND CALL:
     # Start the session - room already connected, so session takes over
     await session.start(room=ctx.room, agent=assistant)
 
-    # Say greeting immediately when participant joins - use say() for instant response
-    # (don't use generate_reply() which adds LLM latency)
-    await session.say(greeting, allow_interruptions=True)
+    # Handle phone admin authentication if applicable (after session started)
+    is_admin_authenticated = False
+
+    if admin_check_info and admin_check_info.get("has_access"):
+        admin_user_id = admin_check_info["user_id"]
+        full_name = admin_check_info["full_name"]
+        is_locked = admin_check_info["is_locked"]
+        access_code_hash = admin_check_info["access_code_hash"]
+
+        # Check if account is locked
+        if is_locked:
+            logger.warning(f"⚠️ Account is locked for user {admin_user_id}")
+            await session.say("Your admin access is currently locked due to too many failed attempts. Please reset your access code via the web application.", allow_interruptions=False)
+            # End call by returning
+            return
+
+        # Ask for identity confirmation
+        await session.say(f"Is this {full_name}?", allow_interruptions=True)
+
+        # Wait for user's spoken response using session's built-in speech recognition
+        # We'll listen for the next user speech and check for affirmative
+        identity_confirmed_event = asyncio.Event()
+        identity_confirmed = False
+
+        @session.on("user_speech_committed")
+        def on_identity_response(event):
+            nonlocal identity_confirmed
+            if hasattr(event, 'item') and hasattr(event.item, 'content'):
+                response_text = event.item.content.lower()
+                logger.info(f"Identity confirmation response: {response_text}")
+
+                # Check for affirmative
+                if any(word in response_text for word in ['yes', 'yeah', 'yep', 'correct', 'that\'s me', 'this is']):
+                    identity_confirmed = True
+
+            identity_confirmed_event.set()
+
+        try:
+            # Wait up to 10 seconds for response
+            await asyncio.wait_for(identity_confirmed_event.wait(), timeout=10.0)
+        except asyncio.TimeoutError:
+            logger.warning("Identity confirmation timed out")
+
+        if not identity_confirmed:
+            logger.info("Identity not confirmed - proceeding as regular call")
+            await session.say(greeting, allow_interruptions=True)
+        else:
+            # Ask for access code
+            await session.say("Please say your access code, one digit at a time.", allow_interruptions=False)
+
+            # Wait for access code
+            access_code_event = asyncio.Event()
+            access_code_spoken = ""
+
+            @session.on("user_speech_committed")
+            def on_access_code_response(event):
+                nonlocal access_code_spoken
+                if hasattr(event, 'item') and hasattr(event.item, 'content'):
+                    access_code_spoken = event.item.content
+                    logger.info(f"Access code spoken: {access_code_spoken}")
+                access_code_event.set()
+
+            try:
+                # Wait up to 15 seconds for access code
+                await asyncio.wait_for(access_code_event.wait(), timeout=15.0)
+            except asyncio.TimeoutError:
+                logger.warning("Access code input timed out")
+
+            if access_code_spoken:
+                # Verify access code
+                is_valid = await verify_access_code(admin_user_id, access_code_spoken, access_code_hash)
+
+                # Log attempt
+                await log_access_attempt(admin_user_id, is_valid, caller_number)
+
+                if is_valid:
+                    logger.info(f"✅ Admin authenticated successfully for user {admin_user_id}")
+                    is_admin_authenticated = True
+
+                    # Update system prompt for admin mode
+                    ADMIN_MODE_PROMPT = """
+ADMIN MODE ACTIVATED:
+- You are now speaking with the account owner for admin configuration
+- You can help them update system prompts, add knowledge sources, configure settings
+- Be helpful and guide them through configuration options
+- They can ask questions about their current setup
+- Available actions: update prompts, add/remove knowledge sources, configure transfer numbers
+- Always confirm actions before applying them"""
+
+                    # Update agent's instructions to admin mode
+                    assistant.instructions = f"{base_prompt}{ADMIN_MODE_PROMPT}"
+
+                    await session.say("Access granted. You are now in admin mode. How can I help you configure your assistant?", allow_interruptions=True)
+                else:
+                    logger.warning(f"❌ Invalid access code for user {admin_user_id}")
+
+                    # Check if account should be locked
+                    is_locked = await check_and_lock_account(admin_user_id)
+
+                    if is_locked:
+                        await session.say("Too many failed attempts. Your admin access has been locked. Please reset your access code via the web application.", allow_interruptions=False)
+                        return
+                    else:
+                        await session.say("Incorrect access code. Proceeding as a regular call.", allow_interruptions=True)
+                        await session.say(greeting, allow_interruptions=True)
+            else:
+                # No access code provided - proceed as regular call
+                await session.say("No access code provided. Proceeding as a regular call.", allow_interruptions=True)
+                await session.say(greeting, allow_interruptions=True)
+    else:
+        # Say greeting immediately when participant joins - use say() for instant response
+        # (don't use generate_reply() which adds LLM latency)
+        await session.say(greeting, allow_interruptions=True)
 
     logger.info("✅ Agent session started successfully - ready for calls")
 

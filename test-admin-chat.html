@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Test Admin Chat</title>
+</head>
+<body>
+  <h1>Admin Chat Test</h1>
+  <div id="status"></div>
+  <button onclick="testAuth()">1. Test Auth</button>
+  <button onclick="testFunction()">2. Test Function Call</button>
+
+  <script type="module">
+    import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+    const supabase = createClient(
+      'https://mtxbiyilvgwhbdptysex.supabase.co',
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im10eGJpeWlsdmd3aGJkcHR5c2V4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkxNzE2OTksImV4cCI6MjA3NDc0NzY5OX0.VpOfuXl7S_ZdSpRjD8DGkSbbT4Y5g4rsezYNYGdtNPs'
+    );
+
+    window.testAuth = async function() {
+      const status = document.getElementById('status');
+      const { data: { session }, error } = await supabase.auth.getSession();
+
+      if (error) {
+        status.innerHTML = `<p style="color: red;">Auth Error: ${error.message}</p>`;
+      } else if (!session) {
+        status.innerHTML = `<p style="color: orange;">Not logged in. Please log in at <a href="http://localhost:3000/login">http://localhost:3000/login</a></p>`;
+      } else {
+        status.innerHTML = `<p style="color: green;">Logged in as: ${session.user.email}<br>Access Token: ${session.access_token.substring(0, 50)}...</p>`;
+      }
+    }
+
+    window.testFunction = async function() {
+      const status = document.getElementById('status');
+      status.innerHTML = '<p>Calling function...</p>';
+
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          status.innerHTML = `<p style="color: red;">Not authenticated. Please log in first.</p>`;
+          return;
+        }
+
+        const { data, error } = await supabase.functions.invoke('admin-agent-chat', {
+          body: { message: 'Hello, this is a test message' }
+        });
+
+        if (error) {
+          status.innerHTML = `<p style="color: red;">Function Error: ${JSON.stringify(error, null, 2)}</p>`;
+        } else {
+          status.innerHTML = `<p style="color: green;">Success!<br><pre>${JSON.stringify(data, null, 2)}</pre></p>`;
+        }
+      } catch (err) {
+        status.innerHTML = `<p style="color: red;">Exception: ${err.message}<br>Stack: ${err.stack}</p>`;
+      }
+    }
+  </script>
+</body>
+</html>

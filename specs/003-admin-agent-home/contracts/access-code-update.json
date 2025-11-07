@@ -1,0 +1,158 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Access Code Update API",
+    "version": "1.0.0",
+    "description": "Update phone admin access code with SMS confirmation"
+  },
+  "paths": {
+    "/access-code-update": {
+      "post": {
+        "summary": "Request or verify access code change",
+        "description": "Two-step process: (1) Request sends SMS confirmation, (2) Verify checks code and updates",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["action"],
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "enum": ["request", "verify"],
+                    "description": "request=send SMS, verify=check confirmation code"
+                  },
+                  "new_access_code": {
+                    "type": "string",
+                    "minLength": 4,
+                    "maxLength": 20,
+                    "description": "Required for 'request' action. New access code user wants to set."
+                  },
+                  "confirmation_code": {
+                    "type": "string",
+                    "pattern": "^[0-9]{6}$",
+                    "description": "Required for 'verify' action. 6-digit code from SMS."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success (response varies by action)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "description": "Response for 'request' action",
+                      "required": ["confirmation_id", "expires_at"],
+                      "properties": {
+                        "confirmation_id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "expires_at": {
+                          "type": "string",
+                          "format": "date-time",
+                          "description": "5 minutes from now"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Confirmation code sent to your phone"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "description": "Response for 'verify' action",
+                      "required": ["success"],
+                      "properties": {
+                        "success": {
+                          "type": "boolean",
+                          "example": true
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Access code updated successfully"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "examples": [
+                        "new_access_code is required for request action",
+                        "confirmation_code is required for verify action",
+                        "Access code must be 4-20 characters",
+                        "Confirmation code must be 6 digits"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Verification failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "examples": [
+                        "Invalid confirmation code",
+                        "Confirmation code expired",
+                        "Too many verification attempts"
+                      ]
+                    },
+                    "attempts_remaining": {
+                      "type": "integer",
+                      "description": "Number of attempts left before lockout"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  }
+}

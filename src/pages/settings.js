@@ -5,6 +5,8 @@
 import { User, AgentConfig } from '../models/index.js';
 import { getCurrentUser, signOut, supabase } from '../lib/supabase.js';
 import { renderBottomNav } from '../components/BottomNav.js';
+import { createAccessCodeSettings, addAccessCodeSettingsStyles } from '../components/AccessCodeSettings.js';
+import { createKnowledgeSourceManager, addKnowledgeSourceManagerStyles } from '../components/KnowledgeSourceManager.js';
 
 // ElevenLabs Voices - subset for display purposes
 const ELEVENLABS_VOICES = [
@@ -44,6 +46,11 @@ const ELEVENLABS_VOICES = [
 ];
 
 export default class SettingsPage {
+  constructor() {
+    this.accessCodeSettings = null;
+    this.knowledgeManager = null;
+  }
+
   async render() {
     const { user } = await getCurrentUser();
 
@@ -51,6 +58,10 @@ export default class SettingsPage {
       navigateTo('/login');
       return;
     }
+
+    // Add component styles
+    addAccessCodeSettingsStyles();
+    addKnowledgeSourceManagerStyles();
 
     const { profile } = await User.getProfile(user.id);
     const { config } = await AgentConfig.getByUserId(user.id);
@@ -338,6 +349,18 @@ export default class SettingsPage {
           </button>
         </div>
 
+        <!-- Phone Admin Access Code -->
+        <div class="card">
+          <div id="access-code-container"></div>
+        </div>
+
+        <!-- Knowledge Base -->
+        <div class="card">
+          <h2>Knowledge Base</h2>
+          <p class="text-muted">Add URLs to your assistant's knowledge base so it can reference your website content during conversations</p>
+          <div id="knowledge-source-container"></div>
+        </div>
+
         <!-- Danger Zone -->
         <div class="card" style="border: 2px solid var(--error-color);">
           <h2 style="color: var(--error-color);">Danger Zone</h2>
@@ -393,6 +416,18 @@ export default class SettingsPage {
   }
 
   attachEventListeners() {
+    // Initialize access code settings component
+    const accessCodeContainer = document.getElementById('access-code-container');
+    if (accessCodeContainer) {
+      this.accessCodeSettings = createAccessCodeSettings(accessCodeContainer);
+    }
+
+    // Initialize knowledge source manager component
+    const knowledgeContainer = document.getElementById('knowledge-source-container');
+    if (knowledgeContainer) {
+      this.knowledgeManager = createKnowledgeSourceManager(knowledgeContainer);
+    }
+
     const signoutBtn = document.getElementById('signout-btn');
     const saveNotificationsBtn = document.getElementById('save-notifications-btn');
     const resetConfigBtn = document.getElementById('reset-config-btn');

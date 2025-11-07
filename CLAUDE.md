@@ -4,6 +4,8 @@ Auto-generated from all feature plans. Last updated: 2025-09-29
 
 ## Active Technologies
 - JavaScript ES6+, HTML5, CSS3 (vanilla, minimal framework usage per user requirement) + Supabase JS Client (auth, database, realtime), Service Worker API (PWA), Web Audio API (voice), WebRTC (real-time voice communication), Signalwire (custom telephony integration for calls/SMS - to be researched), Retellai.com (AI agent) (Pat-AI)
+- JavaScript ES6+ (frontend), TypeScript (Supabase Edge Functions), Python 3.11 (LiveKit agent - if phone admin integration needed) (003-admin-agent-home)
+- PostgreSQL (Supabase) with pgvector extension for embeddings (003-admin-agent-home)
 
 ## Project Structure
 ```
@@ -18,6 +20,7 @@ npm test [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECHNO
 JavaScript ES6+, HTML5, CSS3 (vanilla, minimal framework usage per user requirement): Follow standard conventions
 
 ## Recent Changes
+- 003-admin-agent-home: Added JavaScript ES6+ (frontend), TypeScript (Supabase Edge Functions), Python 3.11 (LiveKit agent - if phone admin integration needed)
 - Pat-AI: Added JavaScript ES6+, HTML5, CSS3 (vanilla, minimal framework usage per user requirement) + Supabase JS Client (auth, database, realtime), Service Worker API (PWA), Web Audio API (voice), WebRTC (real-time voice communication), Signalwire (custom telephony integration for calls/SMS - to be researched), Retellai.com (AI agent)
 
 <!-- MANUAL ADDITIONS START -->

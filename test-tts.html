@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Test TTS</title>
+</head>
+<body>
+  <h1>Test Text-to-Speech</h1>
+  <button onclick="testTTS()">Test TTS</button>
+  <div id="status"></div>
+  <audio id="audio" controls style="display: none;"></audio>
+
+  <script type="module">
+    import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+    const supabase = createClient(
+      'https://mtxbiyilvgwhbdptysex.supabase.co',
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im10eGJpeWlsdmd3aGJkcHR5c2V4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkxNzE2OTksImV4cCI6MjA3NDc0NzY5OX0.VpOfuXl7S_ZdSpRjD8DGkSbbT4Y5g4rsezYNYGdtNPs'
+    );
+
+    window.testTTS = async function() {
+      const status = document.getElementById('status');
+      const audio = document.getElementById('audio');
+
+      status.innerHTML = '<p>Testing TTS...</p>';
+
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+
+        if (!session) {
+          status.innerHTML = '<p style="color: red;">Not logged in. Please log in at <a href="http://localhost:3000/login">http://localhost:3000/login</a></p>';
+          return;
+        }
+
+        status.innerHTML = '<p>Calling TTS function...</p>';
+
+        const response = await fetch(
+          'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/text-to-speech',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session.access_token}`,
+              'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im10eGJpeWlsdmd3aGJkcHR5c2V4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkxNzE2OTksImV4cCI6MjA3NDc0NzY5OX0.VpOfuXl7S_ZdSpRjD8DGkSbbT4Y5g4rsezYNYGdtNPs',
+            },
+            body: JSON.stringify({
+              text: 'Hello! This is a test of the text to speech system.',
+            }),
+          }
+        );
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('TTS error:', errorText);
+          status.innerHTML = `<p style="color: red;">TTS failed: ${response.status} ${response.statusText}<br>${errorText}</p>`;
+          return;
+        }
+
+        status.innerHTML = '<p style="color: green;">TTS successful! Playing audio...</p>';
+
+        const audioBlob = await response.blob();
+        const audioUrl = URL.createObjectURL(audioBlob);
+        audio.src = audioUrl;
+        audio.style.display = 'block';
+        await audio.play();
+
+        status.innerHTML = '<p style="color: green;">Audio playing!</p>';
+
+      } catch (err) {
+        console.error('Exception:', err);
+        status.innerHTML = `<p style="color: red;">Exception: ${err.message}</p>`;
+      }
+    }
+  </script>
+</body>
+</html>

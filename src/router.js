@@ -22,8 +22,10 @@ export class Router {
     this.addRoute('/reset-password', () => import('./pages/reset-password.js'), false);
 
     // Protected routes
+    this.addRoute('/agent', () => import('./pages/agent.js'), true);
     this.addRoute('/dashboard', () => import('./pages/dashboard.js'), true);
     this.addRoute('/inbox', () => import('./pages/inbox.js'), true);
+    this.addRoute('/phone', () => import('./pages/phone.js'), true);
     this.addRoute('/verify-phone', () => import('./pages/verify-phone.js'), true);
     this.addRoute('/select-number', () => import('./pages/select-number.js'), true);
     this.addRoute('/manage-numbers', () => import('./pages/manage-numbers.js'), true);

@@ -393,6 +393,12 @@ export default class InboxPage {
   renderMessageThread() {
     // Deactivate phone nav when showing message thread
     setPhoneNavActive(false);
+
+    // Reactivate inbox button
+    const inboxBtn = document.querySelector('.bottom-nav-item[onclick*="inbox"]');
+    if (inboxBtn) {
+      inboxBtn.classList.add('active');
+    }
     // Check if we're viewing a call or SMS conversation
     if (this.selectedCallId) {
       const conv = this.conversations.find(c => c.type === 'call' && c.callId === this.selectedCallId);
@@ -426,7 +432,7 @@ export default class InboxPage {
         <textarea
           id="message-input"
           class="message-input"
-          placeholder="Type a message..."
+          placeholder=""
           rows="1"
         ></textarea>
         <button id="send-button" class="send-button">
@@ -662,114 +668,8 @@ export default class InboxPage {
   }
 
   async showNewConversationModal() {
-    // Show choice modal: Call or Message
-    this.showConversationTypeChoice();
-  }
-
-  showConversationTypeChoice() {
-    // Create dropdown below the + button
-    const newConvBtn = document.getElementById('new-conversation-btn');
-    const existingDropdown = document.getElementById('conversation-type-dropdown');
-
-    // Remove existing dropdown if any
-    if (existingDropdown) {
-      existingDropdown.remove();
-      return; // Toggle behavior - if already open, close it
-    }
-
-    const rect = newConvBtn.getBoundingClientRect();
-
-    const dropdown = document.createElement('div');
-    dropdown.id = 'conversation-type-dropdown';
-    dropdown.style.cssText = `
-      position: fixed;
-      top: ${rect.bottom + 8}px;
-      left: ${rect.left - 150}px;
-      background: var(--bg-primary);
-      border: 1px solid var(--border-color);
-      border-radius: var(--radius-md);
-      box-shadow: var(--shadow-lg);
-      z-index: 1100;
-      min-width: 180px;
-      overflow: hidden;
-    `;
-
-    dropdown.innerHTML = `
-      <button id="dropdown-call-btn" style="
-        width: 100%;
-        padding: 0.875rem 1rem;
-        background: none;
-        border: none;
-        border-bottom: 1px solid var(--border-color);
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-        color: var(--text-primary);
-        font-size: 0.9375rem;
-        transition: background 0.15s ease;
-      ">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
-        </svg>
-        Call
-      </button>
-      <button id="dropdown-message-btn" style="
-        width: 100%;
-        padding: 0.875rem 1rem;
-        background: none;
-        border: none;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-        color: var(--text-primary);
-        font-size: 0.9375rem;
-        transition: background 0.15s ease;
-      ">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-        </svg>
-        Message
-      </button>
-    `;
-
-    document.body.appendChild(dropdown);
-
-    // Add hover effects
-    const buttons = dropdown.querySelectorAll('button');
-    buttons.forEach(btn => {
-      btn.addEventListener('mouseenter', () => {
-        btn.style.background = 'var(--bg-secondary)';
-      });
-      btn.addEventListener('mouseleave', () => {
-        btn.style.background = 'none';
-      });
-    });
-
-    // Add event listeners
-    document.getElementById('dropdown-call-btn').addEventListener('click', () => {
-      dropdown.remove();
-      this.showCallInterface();
-    });
-
-    document.getElementById('dropdown-message-btn').addEventListener('click', () => {
-      dropdown.remove();
-      this.showMessageInterface();
-    });
-
-    // Close dropdown when clicking outside
-    const closeDropdown = (e) => {
-      if (!dropdown.contains(e.target) && e.target !== newConvBtn) {
-        dropdown.remove();
-        document.removeEventListener('click', closeDropdown);
-      }
-    };
-
-    // Delay to prevent immediate close from the button click that opened it
-    setTimeout(() => {
-      document.addEventListener('click', closeDropdown);
-    }, 10);
+    // Directly show the new message interface
+    this.showMessageInterface();
   }
 
   async showMessageInterface() {
@@ -861,7 +761,7 @@ export default class InboxPage {
         <textarea
           id="message-input-new"
           class="message-input"
-          placeholder="iMessage"
+          placeholder=""
           rows="1"
         ></textarea>
         <button id="send-button-new" class="send-button">
@@ -917,11 +817,9 @@ export default class InboxPage {
       const backBtn = document.getElementById('back-button-new');
       if (backBtn) {
         backBtn.style.display = 'block';
-        backBtn.addEventListener('click', () => {
-          this.selectedContact = null;
-          threadElement.innerHTML = this.renderEmptyState();
-          document.getElementById('conversations-container').style.display = 'block';
-          document.getElementById('thread-container').style.display = 'none';
+        backBtn.addEventListener('click', async () => {
+          // On mobile, completely re-render the inbox to show conversation list
+          await this.render();
         });
       }
     }
