@@ -595,9 +595,32 @@ async def entrypoint(ctx: JobContext):
 
     transfer_numbers = transfer_numbers_response.data or []
 
-    # Get direction from metadata to determine agent role
-    direction = room_metadata.get("direction", "inbound")
+    # Get direction from metadata or database to determine agent role
+    direction = room_metadata.get("direction")
     contact_phone = room_metadata.get("contact_phone")
+
+    # If direction not in metadata, check database (for bridged outbound calls)
+    if not direction and service_number:
+        try:
+            # Look up most recent call for this service number to get direction
+            call_lookup = supabase.table("call_records") \
+                .select("direction, contact_phone") \
+                .eq("service_number", service_number) \
+                .order("created_at", desc=True) \
+                .limit(1) \
+                .execute()
+
+            if call_lookup.data and len(call_lookup.data) > 0:
+                direction = call_lookup.data[0].get("direction", "inbound")
+                if not contact_phone:
+                    contact_phone = call_lookup.data[0].get("contact_phone")
+                logger.info(f"📊 Looked up call direction from database: {direction}")
+        except Exception as e:
+            logger.warning(f"Could not look up call direction: {e}")
+            direction = "inbound"  # Default to inbound if lookup fails
+
+    if not direction:
+        direction = "inbound"  # Final fallback
 
     logger.info(f"📞 Call direction: {direction}")
     logger.info(f"📞 Contact phone: {contact_phone}")
@@ -607,25 +630,26 @@ async def entrypoint(ctx: JobContext):
 
     # Different prompts and behavior based on call direction
     if direction == "outbound":
-        # OUTBOUND: Agent assists the USER (owner), not the person being called
-        greeting = "I'm ready. I'll help you with this call."
+        # OUTBOUND: Agent is calling someone on behalf of the owner
+        greeting = ""  # Don't greet - wait for destination to answer
 
         OUTBOUND_CONTEXT_SUFFIX = """
 
 IMPORTANT CONTEXT - OUTBOUND CALL:
-- You are assisting YOUR OWNER on an outbound call they initiated
-- Your owner (the user who configured you) is on this call with you
-- There may also be another person on the line who your owner is calling
-- YOUR ROLE: Help your owner during their call - take notes, provide information, assist as requested
-- You are NOT the primary speaker - you are a silent assistant unless your owner addresses you
-- If your owner asks you to say something to the other person, speak on their behalf professionally
-- You can take notes, remind your owner of things, or provide information they request
-- Be ready to help but don't interrupt unless asked
-- Listen to the conversation and be prepared to assist when needed
-- Your owner may say "Pat, [instruction]" to give you commands during the call"""
+- You are making an outbound call to someone on behalf of your owner
+- The person you're calling will answer first (typically saying "Hello?")
+- WAIT for them to speak first before responding
+- Once they speak, introduce yourself professionally: "Hi, this is Pat calling from [owner's business/name]..."
+- Explain the purpose of your call clearly and concisely
+- Be polite and respectful - they didn't initiate this call, you did
+- If they ask how you got their number, explain you're calling on behalf of [owner]
+- Be prepared for them to be busy or uninterested - respect their time
+- If they want to end the call, politely thank them and hang up
+- Your goal: Have a professional, helpful conversation on behalf of your owner
+- Common scenarios: Sales outreach, appointment reminders, surveys, follow-ups"""
 
         system_prompt = f"{base_prompt}{OUTBOUND_CONTEXT_SUFFIX}"
-        logger.info("🔄 Outbound call - Agent assisting USER (owner)")
+        logger.info("🔄 Outbound call - Agent calling destination on behalf of owner")
     else:
         # INBOUND: Agent handles the call for the user (traditional behavior)
         greeting = user_config.get("greeting_template", "Hello! This is Pat. How can I help you today?")
@@ -960,9 +984,16 @@ ADMIN MODE ACTIVATED:
                 await session.say("No access code provided. Proceeding as a regular call.", allow_interruptions=True)
                 await session.say(greeting, allow_interruptions=True)
     else:
-        # Say greeting immediately when participant joins - use say() for instant response
-        # (don't use generate_reply() which adds LLM latency)
-        await session.say(greeting, allow_interruptions=True)
+        # For inbound calls, greet immediately
+        # For outbound calls, wait for user to speak first
+        if direction == "inbound":
+            # Say greeting immediately when participant joins - use say() for instant response
+            # (don't use generate_reply() which adds LLM latency)
+            await session.say(greeting, allow_interruptions=True)
+            logger.info("📞 Inbound call - Agent greeted caller")
+        else:
+            # Outbound call - don't greet, wait for user to speak
+            logger.info("📞 Outbound call - Agent waiting for user to speak first")
 
     logger.info("✅ Agent session started successfully - ready for calls")
 
