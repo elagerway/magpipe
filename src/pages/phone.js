@@ -107,6 +107,39 @@ export default class PhonePage {
         >
           <option value="">Loading numbers...</option>
         </select>
+
+        <!-- Recording toggle -->
+        <div style="
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-top: 12px;
+          padding: 8px;
+          background: rgba(255, 255, 255, 0.05);
+          border-radius: 8px;
+        ">
+          <input
+            type="checkbox"
+            id="record-call-toggle"
+            checked
+            style="
+              width: 18px;
+              height: 18px;
+              cursor: pointer;
+            "
+          >
+          <label
+            for="record-call-toggle"
+            style="
+              font-size: 14px;
+              color: rgba(255, 255, 255, 0.9);
+              cursor: pointer;
+              user-select: none;
+            "
+          >
+            🎙️ Record call
+          </label>
+        </div>
       </div>
 
       <!-- Phone number input with search -->
@@ -783,6 +816,18 @@ export default class PhonePage {
         }
       }
 
+      // Check if recording is enabled
+      const recordCallToggle = document.getElementById('record-call-toggle');
+      const recordCall = recordCallToggle ? recordCallToggle.checked : false;
+
+      // If recording is enabled, use bridged call approach
+      // Otherwise use direct SIP calling
+      if (recordCall) {
+        console.log('🎙️ Recording enabled - using bridged call approach');
+        await this.initiateBridgedCall(phoneNumber, fromNumber);
+        return;
+      }
+
       // Show connecting state
       this.updateCallState('connecting', 'Registering...');
 
@@ -919,6 +964,82 @@ export default class PhonePage {
 
     } catch (error) {
       console.error('Failed to initiate call:', error);
+      alert(`Failed to initiate call: ${error.message}`);
+      this.updateCallState('idle');
+      this.transformToCallButton();
+    }
+  }
+
+  async initiateBridgedCall(phoneNumber, callerIdNumber) {
+    console.log('📞 Initiating bridged call with recording');
+    console.log('   To:', phoneNumber);
+    console.log('   From:', callerIdNumber);
+
+    try {
+      // Show connecting state
+      this.updateCallState('connecting', 'Registering SIP...');
+
+      // Get SIP credentials for the selected caller ID
+      const { data: serviceNumber } = await supabase
+        .from('service_numbers')
+        .select('sip_username, sip_password, sip_domain, sip_ws_server')
+        .eq('phone_number', callerIdNumber)
+        .eq('is_active', true)
+        .single();
+
+      if (!serviceNumber) {
+        throw new Error('Selected number not found or inactive');
+      }
+
+      // Initialize SIP client so it can receive the incoming call
+      console.log('🔧 Initializing SIP client for incoming call...');
+      await sipClient.initialize({
+        sipUri: `sip:${serviceNumber.sip_username}@${serviceNumber.sip_domain}`,
+        sipPassword: serviceNumber.sip_password,
+        wsServer: serviceNumber.sip_ws_server,
+        displayName: callerIdNumber
+      });
+
+      console.log('✅ SIP client registered and ready');
+      this.updateCallState('connecting', 'Initiating call...');
+
+      // Normalize phone number to E.164 format
+      let normalizedPhoneNumber = phoneNumber;
+      if (!normalizedPhoneNumber.startsWith('+')) {
+        const digitsOnly = normalizedPhoneNumber.replace(/\D/g, '');
+        if (digitsOnly.startsWith('1') && digitsOnly.length === 11) {
+          normalizedPhoneNumber = '+' + digitsOnly;
+        } else {
+          normalizedPhoneNumber = '+1' + digitsOnly;
+        }
+      }
+
+      // Call the Edge Function to initiate bridged call
+      const { data, error } = await supabase.functions.invoke('initiate-bridged-call', {
+        body: {
+          phone_number: normalizedPhoneNumber,
+          caller_id: callerIdNumber
+        }
+      });
+
+      if (error) {
+        throw new Error(error.message || 'Failed to initiate bridged call');
+      }
+
+      console.log('✅ Bridged call initiated:', data);
+      console.log('   Call SID:', data.call_sid);
+      console.log('   Call Record ID:', data.call_record_id);
+
+      // Update UI to show call is in progress
+      this.updateCallState('ringing', 'Your phone will ring shortly...');
+      this.transformToHangupButton();
+
+      // Store call info for hangup
+      this.currentBridgedCallSid = data.call_sid;
+      this.currentCallRecordId = data.call_record_id;
+
+    } catch (error) {
+      console.error('Failed to initiate bridged call:', error);
       alert(`Failed to initiate call: ${error.message}`);
       this.updateCallState('idle');
       this.transformToCallButton();

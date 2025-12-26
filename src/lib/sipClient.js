@@ -247,8 +247,26 @@ class SIPClient {
       });
     });
 
-    // Auto-answer could be implemented here
-    // session.answer(options);
+    // Auto-answer incoming calls (for bridged call recording)
+    console.log('📞 Auto-answering incoming call...');
+    const answerOptions = {
+      mediaConstraints: {
+        audio: true,
+        video: false,
+      },
+      rtcAnswerConstraints: {
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: false,
+      },
+      pcConfig: {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' }
+        ]
+      }
+    };
+
+    session.answer(answerOptions);
   }
 
   /**
