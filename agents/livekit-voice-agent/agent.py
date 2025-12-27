@@ -571,12 +571,17 @@ async def entrypoint(ctx: JobContext):
     contact_phone = room_metadata.get("contact_phone")
 
     # If direction not in metadata, check database (for bridged outbound calls)
-    if not direction and service_number:
+    if not direction and service_number and user_id:
         try:
-            # Look up most recent call for this service number to get direction
+            # Look up the current in-progress call for this service number and user
+            # Must include user_id to avoid matching other users' calls
+            # Must include status to get the current call, not old completed ones
+            logger.info(f"📊 Looking up direction for service_number={service_number}, user_id={user_id}")
             call_lookup = supabase.table("call_records") \
                 .select("direction, contact_phone") \
                 .eq("service_number", service_number) \
+                .eq("user_id", user_id) \
+                .eq("status", "in-progress") \
                 .order("created_at", desc=True) \
                 .limit(1) \
                 .execute()
@@ -585,7 +590,9 @@ async def entrypoint(ctx: JobContext):
                 direction = call_lookup.data[0].get("direction", "inbound")
                 if not contact_phone:
                     contact_phone = call_lookup.data[0].get("contact_phone")
-                logger.info(f"📊 Looked up call direction from database: {direction}")
+                logger.info(f"📊 Found call direction from database: {direction}, contact_phone: {contact_phone}")
+            else:
+                logger.warning(f"📊 No in-progress call found for service_number={service_number}, user_id={user_id}")
         except Exception as e:
             logger.warning(f"Could not look up call direction: {e}")
             direction = "inbound"  # Default to inbound if lookup fails
