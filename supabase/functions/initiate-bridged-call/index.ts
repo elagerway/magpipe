@@ -165,10 +165,13 @@ serve(async (req) => {
         contact_phone: phone_number,
         service_number: caller_id,
         direction: "outbound",
-        disposition: "initiated", // Call disposition
-        status: "initiated",
+        disposition: "outbound_completed", // Optimistic default - updated by status callback if call fails
+        status: "in-progress", // Must be in-progress for agent to find and update
+        started_at: new Date().toISOString(), // Required: NOT NULL constraint
         duration_seconds: 0,
         duration: 0, // Legacy column
+        voice_platform: "livekit", // Track which AI platform
+        telephony_vendor: "signalwire", // Track which vendor
       })
       .select()
       .single();
