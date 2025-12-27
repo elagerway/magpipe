@@ -86,19 +86,36 @@ serve(async (req) => {
     });
 
     // Create call via SignalWire REST API
-    // To: The user's purchased number (will forward to SIP endpoint)
-    // From: System number (+16042566768) to avoid calling yourself
-    // CXML will bridge to PSTN destination
-    const cxmlUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/outbound-call-swml?destination=${encodeURIComponent(phone_number)}`;
+    // Step 1: Call LiveKit SIP URI first
+    // Step 2: CXML will bridge to PSTN destination after LiveKit answers
+    const cxmlUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/outbound-call-swml?destination=${encodeURIComponent(phone_number)}&from=${encodeURIComponent(caller_id)}`;
 
-    // CRITICAL: Use system number as From to avoid loop
-    const systemNumber = "+16042566768";
+    // LiveKit SIP URI (agent will auto-join)
+    // Use the allowed number in LiveKit trunk: +16282954811
+    const livekitSipDomain = Deno.env.get("LIVEKIT_SIP_DOMAIN");
+    if (!livekitSipDomain) {
+      console.error('LIVEKIT_SIP_DOMAIN not configured');
+      return new Response(
+        JSON.stringify({ error: 'LiveKit SIP domain not configured' }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    // Use a known working number from LiveKit trunk (works for inbound)
+    const livekitNumber = '+16042566768';
+    const livekitSipUri = `sip:${livekitNumber}@${livekitSipDomain};transport=tls`;
+    console.log('Calling LiveKit SIP URI:', livekitSipUri);
+    console.log('From caller ID:', caller_id);
+    console.log('Will bridge to PSTN:', phone_number);
 
     // CRITICAL: SignalWire requires + signs to be URL-encoded as %2B
     const formBody = [
-      `To=${encodeURIComponent(caller_id)}`, // Call the user's number (forwards to SIP)
-      `From=${encodeURIComponent(systemNumber)}`, // From system number
-      `Url=${encodeURIComponent(cxmlUrl)}`,
+      `To=${encodeURIComponent(livekitSipUri)}`, // Call LiveKit with allowed number
+      `From=${encodeURIComponent(caller_id)}`, // From selected caller ID (will show on destination phone)
+      `Url=${encodeURIComponent(cxmlUrl)}`, // CXML will dial PSTN after LiveKit answers
       `Method=POST`,
       `StatusCallback=${encodeURIComponent(`${Deno.env.get("SUPABASE_URL")}/functions/v1/outbound-call-status`)}`,
       `StatusCallbackEvent=initiated`,
@@ -138,22 +155,29 @@ serve(async (req) => {
     console.log("Call created successfully:", callData);
 
     // Create call record in database
-    const { data: callRecord, error: insertError } = await serviceRoleClient
+    const { data: callRecord, error: insertError} = await serviceRoleClient
       .from("call_records")
       .insert({
         user_id: user.id,
-        signalwire_call_id: callData.sid,
+        vendor_call_id: callData.sid,
+        call_sid: callData.sid, // Legacy column
+        caller_number: phone_number, // The person being called (contact)
         contact_phone: phone_number,
         service_number: caller_id,
         direction: "outbound",
+        disposition: "initiated", // Call disposition
         status: "initiated",
         duration_seconds: 0,
+        duration: 0, // Legacy column
       })
       .select()
       .single();
 
     if (insertError) {
       console.error("Error creating call record:", insertError);
+      console.error("Insert error details:", JSON.stringify(insertError));
+    } else {
+      console.log("Call record created successfully:", callRecord?.id);
     }
 
     return new Response(
