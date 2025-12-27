@@ -566,36 +566,7 @@ async def entrypoint(ctx: JobContext):
         logger.error("Could not determine user_id")
         return
 
-    # Store admin check info for later (after session is created)
-    admin_check_info = None
-    if direction != "outbound" and caller_number:
-        logger.info(f"🔐 Checking phone admin access for caller: {caller_number}")
-        admin_check_info = await check_phone_admin_access(caller_number)
-        if admin_check_info.get("has_access"):
-            logger.info(f"📱 Admin access possible for: {admin_check_info.get('full_name')}")
-
-    # Get user configuration
-    user_config = await get_user_config(room_metadata)
-    if not user_config:
-        logger.error(f"No user config found for user_id: {user_id}")
-        return
-
-    user_id = user_config["user_id"]
-    logger.info(f"Loaded config for user: {user_id}")
-
-    # Get voice configuration
-    voice_id = user_config.get("voice_id", "11labs-Rachel")
-    voice_config = await get_voice_config(voice_id, user_id)
-
-    # Get transfer numbers
-    transfer_numbers_response = supabase.table("transfer_numbers") \
-        .select("*") \
-        .eq("user_id", user_id) \
-        .execute()
-
-    transfer_numbers = transfer_numbers_response.data or []
-
-    # Get direction from metadata or database to determine agent role
+    # Get direction from metadata or database to determine agent role (MUST be before admin check)
     direction = room_metadata.get("direction")
     contact_phone = room_metadata.get("contact_phone")
 
@@ -624,6 +595,35 @@ async def entrypoint(ctx: JobContext):
 
     logger.info(f"📞 Call direction: {direction}")
     logger.info(f"📞 Contact phone: {contact_phone}")
+
+    # Store admin check info for later (after session is created)
+    admin_check_info = None
+    if direction != "outbound" and caller_number:
+        logger.info(f"🔐 Checking phone admin access for caller: {caller_number}")
+        admin_check_info = await check_phone_admin_access(caller_number)
+        if admin_check_info.get("has_access"):
+            logger.info(f"📱 Admin access possible for: {admin_check_info.get('full_name')}")
+
+    # Get user configuration
+    user_config = await get_user_config(room_metadata)
+    if not user_config:
+        logger.error(f"No user config found for user_id: {user_id}")
+        return
+
+    user_id = user_config["user_id"]
+    logger.info(f"Loaded config for user: {user_id}")
+
+    # Get voice configuration
+    voice_id = user_config.get("voice_id", "11labs-Rachel")
+    voice_config = await get_voice_config(voice_id, user_id)
+
+    # Get transfer numbers
+    transfer_numbers_response = supabase.table("transfer_numbers") \
+        .select("*") \
+        .eq("user_id", user_id) \
+        .execute()
+
+    transfer_numbers = transfer_numbers_response.data or []
 
     # Get greeting message and base prompt
     base_prompt = user_config.get("system_prompt", "You are Pat, a helpful AI assistant.")
