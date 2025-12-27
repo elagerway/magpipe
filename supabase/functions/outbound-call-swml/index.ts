@@ -11,17 +11,19 @@ serve(async (req) => {
     const url = new URL(req.url);
     const destination = url.searchParams.get("destination");
 
+    // Get caller ID from query parameter (selected by user in UI)
+    const from = url.searchParams.get("from");
+
     // Parse form data from SignalWire
     const formData = await req.formData();
     const callSid = formData.get("CallSid") as string;
-    const from = formData.get("From") as string;
     const to = formData.get("To") as string;
 
     console.log("Outbound call CXML requested:", {
       callSid,
-      from,
       to,
       destination,
+      callerId: from,
     });
 
     if (!destination) {
@@ -37,13 +39,18 @@ serve(async (req) => {
       });
     }
 
-    console.log("Bridging to PSTN destination:", destination);
+    console.log("LiveKit answered, now bridging to PSTN:", {
+      destination,
+      callerId: from
+    });
 
-    // Return CXML that dials the PSTN destination
-    // Browser is already connected as the first leg
+    // Return CXML that bridges LiveKit call to PSTN destination
+    // LiveKit is already connected (this CXML executes after LiveKit answers)
+    // Now we dial the PSTN number and bridge the two legs together
+    // IMPORTANT: callerId must be a valid E.164 phone number (not SIP URI)
     const cxml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Dial record="record-from-answer" recordingStatusCallback="${Deno.env.get("SUPABASE_URL")}/functions/v1/sip-recording-callback" recordingStatusCallbackMethod="POST">
+  <Dial record="record-from-answer" recordingStatusCallback="${Deno.env.get("SUPABASE_URL")}/functions/v1/sip-recording-callback" callerId="${from}">
     <Number>${destination}</Number>
   </Dial>
 </Response>`;
