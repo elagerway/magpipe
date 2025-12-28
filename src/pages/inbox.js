@@ -13,6 +13,7 @@ export default class InboxPage {
     this.selectedContact = null;
     this.subscription = null;
     this.userId = null;
+    this.dropdownListenersAttached = false;
   }
 
   async render() {
@@ -32,7 +33,7 @@ export default class InboxPage {
       <div class="inbox-container">
         <!-- Conversation List Sidebar -->
         <div class="conversation-list" id="conversation-list">
-          <div class="inbox-header">
+          <div class="inbox-header" style="position: relative;">
             <h1 style="margin: 0; font-size: 1rem; font-weight: 600;">Inbox</h1>
             <button id="new-conversation-btn" style="
               background: white;
@@ -54,6 +55,109 @@ export default class InboxPage {
               flex-shrink: 0;
               transition: all 0.2s ease;
             " onmouseover="this.style.backgroundImage='linear-gradient(var(--bg-secondary), var(--bg-secondary)), linear-gradient(135deg, #6366f1, #8b5cf6)'" onmouseout="this.style.backgroundImage='linear-gradient(white, white), linear-gradient(135deg, #6366f1, #8b5cf6)'">+</button>
+
+            <!-- New Message Dropdown Menu -->
+            <div id="new-message-dropdown" style="
+              display: none;
+              position: absolute;
+              top: 100%;
+              right: 0;
+              margin-top: 2px;
+              background: var(--bg-primary);
+              border: 1px solid var(--border-color);
+              border-radius: 8px;
+              box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+              min-width: 200px;
+              z-index: 100;
+              overflow: hidden;
+            ">
+              <button class="dropdown-item" data-action="new-message" style="
+                display: flex;
+                align-items: center;
+                gap: 0.75rem;
+                width: 100%;
+                padding: 0.75rem 1rem;
+                border: none;
+                background: none;
+                cursor: pointer;
+                font-size: 0.875rem;
+                color: var(--text-primary);
+                text-align: left;
+                transition: background 0.15s;
+              " onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='none'">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                </svg>
+                <span>New Message</span>
+              </button>
+              <button class="dropdown-item" data-action="new-agent-message" style="
+                display: flex;
+                align-items: center;
+                gap: 0.75rem;
+                width: 100%;
+                padding: 0.75rem 1rem;
+                border: none;
+                background: none;
+                cursor: not-allowed;
+                font-size: 0.875rem;
+                color: var(--text-primary);
+                text-align: left;
+                opacity: 0.5;
+              ">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="3"></circle>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                </svg>
+                <span>New Agent Message</span>
+                <span style="margin-left: auto; font-size: 0.7rem; background: var(--border-color); padding: 0.125rem 0.375rem; border-radius: 4px;">Soon</span>
+              </button>
+              <button class="dropdown-item" data-action="bulk-message" style="
+                display: flex;
+                align-items: center;
+                gap: 0.75rem;
+                width: 100%;
+                padding: 0.75rem 1rem;
+                border: none;
+                background: none;
+                cursor: not-allowed;
+                font-size: 0.875rem;
+                color: var(--text-primary);
+                text-align: left;
+                opacity: 0.5;
+              ">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="9" cy="7" r="4"></circle>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                </svg>
+                <span>Bulk Message</span>
+                <span style="margin-left: auto; font-size: 0.7rem; background: var(--border-color); padding: 0.125rem 0.375rem; border-radius: 4px;">Soon</span>
+              </button>
+              <button class="dropdown-item" data-action="bulk-agent-message" style="
+                display: flex;
+                align-items: center;
+                gap: 0.75rem;
+                width: 100%;
+                padding: 0.75rem 1rem;
+                border: none;
+                background: none;
+                cursor: not-allowed;
+                font-size: 0.875rem;
+                color: var(--text-primary);
+                text-align: left;
+                opacity: 0.5;
+              ">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="9" cy="7" r="4"></circle>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                </svg>
+                <span>Bulk Agent Message</span>
+                <span style="margin-left: auto; font-size: 0.7rem; background: var(--border-color); padding: 0.125rem 0.375rem; border-radius: 4px;">Soon</span>
+              </button>
+            </div>
           </div>
           <div id="conversations">
             ${this.renderConversationList()}
@@ -1025,6 +1129,15 @@ export default class InboxPage {
       .eq('is_active', true)
       .order('purchased_at', { ascending: false });
 
+    // Load contacts for autocomplete
+    const { data: contacts } = await supabase
+      .from('contacts')
+      .select('id, name, phone_number, company, job_title')
+      .eq('user_id', session.user.id)
+      .order('name', { ascending: true });
+
+    this.newMessageContacts = contacts || [];
+
     // Default to first service number if available
     this.selectedServiceNumber = serviceNumbers?.[0]?.phone_number || null;
     const defaultNumber = serviceNumbers?.[0];
@@ -1037,7 +1150,7 @@ export default class InboxPage {
         padding: 0.75rem 1rem;
         border-bottom: 1px solid var(--border-color);
       ">
-        <div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
+        <div style="display: flex; align-items: center; margin-bottom: 0.5rem; position: relative;">
           <button class="back-button" id="back-button-new" style="
             display: none;
             background: none;
@@ -1050,20 +1163,39 @@ export default class InboxPage {
             line-height: 1;
           ">←</button>
           <span style="color: var(--text-secondary); margin-right: 0.75rem; font-size: 0.88rem; min-width: 40px;">To:</span>
-          <input
-            type="tel"
-            id="text-phone"
-            placeholder="Enter phone number"
-            style="
-              flex: 1;
-              border: none;
-              outline: none;
-              background: transparent;
-              font-size: 0.88rem;
-              font-weight: 600;
-              color: var(--text-primary);
-            "
-          />
+          <div style="flex: 1; position: relative;">
+            <input
+              type="text"
+              id="text-phone"
+              placeholder="Search contacts or enter number"
+              autocomplete="off"
+              style="
+                width: 100%;
+                border: none;
+                outline: none;
+                background: transparent;
+                font-size: 0.88rem;
+                font-weight: 600;
+                color: var(--text-primary);
+              "
+            />
+            <!-- Contact suggestions dropdown -->
+            <div id="contact-suggestions" style="
+              display: none;
+              position: absolute;
+              top: 100%;
+              left: -40px;
+              right: 0;
+              margin-top: 0.5rem;
+              background: var(--bg-primary);
+              border: 1px solid var(--border-color);
+              border-radius: 8px;
+              box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+              max-height: 250px;
+              overflow-y: auto;
+              z-index: 100;
+            "></div>
+          </div>
         </div>
         <div style="display: flex; align-items: center;">
           <span style="color: var(--text-secondary); margin-right: 0.75rem; font-size: 0.88rem; min-width: 40px;">From:</span>
@@ -1201,6 +1333,91 @@ export default class InboxPage {
     // Send button
     document.getElementById('send-button-new').addEventListener('click', async () => {
       await this.sendNewConversation();
+    });
+
+    // Contact search functionality
+    const phoneInput = document.getElementById('text-phone');
+    const suggestionsEl = document.getElementById('contact-suggestions');
+
+    phoneInput.addEventListener('input', (e) => {
+      const query = e.target.value.trim().toLowerCase();
+
+      if (query.length === 0) {
+        suggestionsEl.style.display = 'none';
+        return;
+      }
+
+      // Filter contacts by name or phone number
+      const filtered = this.newMessageContacts.filter(c => {
+        const nameMatch = c.name?.toLowerCase().includes(query);
+        const phoneMatch = c.phone_number?.replace(/\D/g, '').includes(query.replace(/\D/g, ''));
+        const companyMatch = c.company?.toLowerCase().includes(query);
+        return nameMatch || phoneMatch || companyMatch;
+      }).slice(0, 8); // Limit to 8 results
+
+      if (filtered.length === 0) {
+        suggestionsEl.style.display = 'none';
+        return;
+      }
+
+      // Render suggestions
+      suggestionsEl.innerHTML = filtered.map(contact => `
+        <div class="contact-suggestion" data-phone="${contact.phone_number}" data-name="${contact.name || ''}" style="
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          padding: 0.75rem 1rem;
+          cursor: pointer;
+          transition: background 0.15s;
+        " onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='none'">
+          <div style="
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 0.875rem;
+          ">${(contact.name || contact.phone_number || '?').charAt(0).toUpperCase()}</div>
+          <div style="flex: 1; min-width: 0;">
+            <div style="font-weight: 600; font-size: 0.875rem; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+              ${contact.name || 'Unknown'}
+            </div>
+            <div style="font-size: 0.75rem; color: var(--text-secondary);">
+              ${this.formatPhoneNumber(contact.phone_number)}${contact.company ? ` · ${contact.company}` : ''}
+            </div>
+          </div>
+        </div>
+      `).join('');
+
+      suggestionsEl.style.display = 'block';
+
+      // Attach click handlers to suggestions
+      suggestionsEl.querySelectorAll('.contact-suggestion').forEach(el => {
+        el.addEventListener('click', () => {
+          const phone = el.dataset.phone;
+          suggestionsEl.style.display = 'none';
+          // Use openNewConversation which handles existing threads
+          this.openNewConversation(phone);
+        });
+      });
+    });
+
+    // Close suggestions on outside click
+    document.addEventListener('click', (e) => {
+      if (!suggestionsEl.contains(e.target) && e.target !== phoneInput) {
+        suggestionsEl.style.display = 'none';
+      }
+    });
+
+    // Close suggestions on Escape
+    phoneInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        suggestionsEl.style.display = 'none';
+      }
     });
 
     // Focus phone input
@@ -2577,7 +2794,18 @@ export default class InboxPage {
     const sendBtn = document.getElementById('send-button-new');
     const threadMessages = document.getElementById('thread-messages');
 
-    const phone = phoneInput.value.trim();
+    // Use stored phone from contact selection, or extract from input value
+    let phone = phoneInput.dataset.selectedPhone || phoneInput.value.trim();
+
+    // If no stored phone, try to extract phone number from input (in case user typed "Name +1234567890")
+    if (!phoneInput.dataset.selectedPhone && phone) {
+      // Extract just digits and + from the value for phone number
+      const phoneMatch = phone.match(/\+?[\d\s()-]+$/);
+      if (phoneMatch) {
+        phone = phoneMatch[0].replace(/[\s()-]/g, '');
+      }
+    }
+
     const message = messageInput.value.trim();
     const serviceNumber = this.selectedServiceNumber;
 
@@ -2655,11 +2883,49 @@ export default class InboxPage {
   attachEventListeners() {
     this.attachConversationListeners();
 
-    // New conversation button
+    // Only attach dropdown listeners once
+    if (!this.dropdownListenersAttached) {
+      this.attachDropdownListeners();
+      this.dropdownListenersAttached = true;
+    }
+  }
+
+  attachDropdownListeners() {
+    // New conversation button - toggle dropdown
     const newConvBtn = document.getElementById('new-conversation-btn');
-    if (newConvBtn) {
-      newConvBtn.addEventListener('click', () => {
-        this.showNewConversationModal();
+    const dropdown = document.getElementById('new-message-dropdown');
+
+    if (newConvBtn && dropdown) {
+      newConvBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+      });
+
+      // Close dropdown on outside click
+      document.addEventListener('click', (e) => {
+        if (!dropdown.contains(e.target) && e.target !== newConvBtn) {
+          dropdown.style.display = 'none';
+        }
+      });
+
+      // Close dropdown on Escape key
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          dropdown.style.display = 'none';
+        }
+      });
+
+      // Handle dropdown item clicks
+      dropdown.querySelectorAll('.dropdown-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+          const action = item.dataset.action;
+          dropdown.style.display = 'none';
+
+          if (action === 'new-message') {
+            this.showNewConversationModal();
+          }
+          // Future actions: new-agent-message, bulk-message, bulk-agent-message
+        });
       });
     }
   }
