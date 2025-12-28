@@ -717,8 +717,10 @@ IMPORTANT CONTEXT - INBOUND CALL:
             model="gpt-4o-mini",  # Fastest with good quality
             temperature=0.7,
         ),
-        tts=deepgram.TTS(
-            model="aura-asteria-en",  # Very low latency
+        tts=elevenlabs.TTS(
+            model="eleven_flash_v2_5",  # Fastest ElevenLabs model
+            voice_id="21m00Tcm4TlvDq8ikWAM",  # Rachel
+            api_key=os.getenv("ELEVENLABS_API_KEY") or os.getenv("ELEVEN_API_KEY"),
         ),
     )
 
