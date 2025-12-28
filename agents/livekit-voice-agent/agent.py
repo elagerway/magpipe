@@ -1041,12 +1041,8 @@ ADMIN MODE ACTIVATED:
 
     logger.info("✅ Agent session started successfully - ready for calls")
 
-    # Close LiveKit API client to avoid resource leaks
-    try:
-        await livekit_api.aclose()
-        logger.info("🔌 LiveKit API client closed")
-    except Exception as e:
-        logger.warning(f"Error closing LiveKit API client: {e}")
+    # NOTE: Don't close livekit_api here - the background recording task needs it
+    # It will be cleaned up when the process exits
 
 
 if __name__ == "__main__":
