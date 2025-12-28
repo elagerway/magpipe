@@ -88,7 +88,8 @@ serve(async (req) => {
     // Create call via SignalWire REST API
     // Step 1: Call LiveKit SIP URI first
     // Step 2: CXML will bridge to PSTN destination after LiveKit answers
-    const cxmlUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/outbound-call-swml?destination=${encodeURIComponent(phone_number)}&from=${encodeURIComponent(caller_id)}`;
+    // CRITICAL: Pass direction=outbound and user_id so agent can identify the call correctly
+    const cxmlUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/outbound-call-swml?destination=${encodeURIComponent(phone_number)}&from=${encodeURIComponent(caller_id)}&direction=outbound&user_id=${encodeURIComponent(user.id)}`;
 
     // LiveKit SIP URI (agent will auto-join)
     // Use the allowed number in LiveKit trunk: +16282954811
