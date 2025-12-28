@@ -549,24 +549,31 @@ export default class PhonePage {
 
   async requestMicrophoneAndInitializeSIP() {
     try {
-      // First check if permission is already blocked
-      let isBlocked = false;
+      // Check current permission state
+      let permissionState = 'prompt'; // default to prompt if we can't check
       try {
         const permissionStatus = await navigator.permissions.query({ name: 'microphone' });
-        isBlocked = permissionStatus.state === 'denied';
-        console.log('🎤 Microphone permission state:', permissionStatus.state);
+        permissionState = permissionStatus.state;
+        console.log('🎤 Microphone permission state:', permissionState);
       } catch (e) {
         console.log('Could not check permission status:', e);
       }
 
-      if (isBlocked) {
-        // Show instructions to unblock
+      // If already granted, skip the modal and go straight to SIP init
+      if (permissionState === 'granted') {
+        console.log('✅ Microphone already granted, initializing SIP...');
+        await this.initializeSIPClient();
+        return;
+      }
+
+      // If blocked/denied, show instructions
+      if (permissionState === 'denied') {
         alert('⚠️ Microphone is BLOCKED\n\nTo enable calling:\n\n1. Look at your browser address bar (where it shows localhost:3000)\n2. Click the camera/lock icon on the LEFT side\n3. Find "Microphone" and change it to "Allow"\n4. Refresh this page\n5. Try again');
         this.updateSIPStatus('error', 'Mic blocked');
         return;
       }
 
-      // Show a custom prompt asking user to grant microphone access
+      // Permission state is 'prompt' - show our custom modal first
       const promptModal = document.createElement('div');
       promptModal.id = 'mic-permission-modal';
       promptModal.style.cssText = `
