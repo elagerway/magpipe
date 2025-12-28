@@ -573,15 +573,17 @@ async def entrypoint(ctx: JobContext):
     # If direction not in metadata, check database (for bridged outbound calls)
     if not direction and service_number and user_id:
         try:
-            # Look up the current in-progress call for this service number and user
+            # Look up the most recent call for this service number and user (within last 60 seconds)
             # Must include user_id to avoid matching other users' calls
-            # Must include status to get the current call, not old completed ones
-            logger.info(f"📊 Looking up direction for service_number={service_number}, user_id={user_id}")
+            # Use time-based filter instead of status because SignalWire status callback may fire before agent
+            from datetime import datetime, timedelta
+            one_minute_ago = (datetime.utcnow() - timedelta(seconds=60)).isoformat()
+            logger.info(f"📊 Looking up direction for service_number={service_number}, user_id={user_id}, since={one_minute_ago}")
             call_lookup = supabase.table("call_records") \
                 .select("direction, contact_phone") \
                 .eq("service_number", service_number) \
                 .eq("user_id", user_id) \
-                .eq("status", "in-progress") \
+                .gte("created_at", one_minute_ago) \
                 .order("created_at", desc=True) \
                 .limit(1) \
                 .execute()
@@ -592,7 +594,7 @@ async def entrypoint(ctx: JobContext):
                     contact_phone = call_lookup.data[0].get("contact_phone")
                 logger.info(f"📊 Found call direction from database: {direction}, contact_phone: {contact_phone}")
             else:
-                logger.warning(f"📊 No in-progress call found for service_number={service_number}, user_id={user_id}")
+                logger.warning(f"📊 No recent call found for service_number={service_number}, user_id={user_id}")
         except Exception as e:
             logger.warning(f"Could not look up call direction: {e}")
             direction = "inbound"  # Default to inbound if lookup fails
