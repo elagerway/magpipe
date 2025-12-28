@@ -1039,6 +1039,16 @@ ADMIN MODE ACTIVATED:
             # Outbound call - don't greet, wait for user to speak
             logger.info("📞 Outbound call - Agent waiting for user to speak first")
 
+            # Warm up TTS connection in background (reduces first-response latency)
+            async def warmup_tts():
+                try:
+                    # Make a tiny TTS request to establish the connection
+                    # This warms up the ElevenLabs WebSocket before user speaks
+                    await session.say("", allow_interruptions=True)
+                except Exception as e:
+                    logger.debug(f"TTS warmup (expected to be silent): {e}")
+            asyncio.ensure_future(warmup_tts())
+
     logger.info("✅ Agent session started successfully - ready for calls")
 
     # NOTE: Don't close livekit_api here - the background recording task needs it
