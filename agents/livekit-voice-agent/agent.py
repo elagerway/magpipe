@@ -705,9 +705,9 @@ IMPORTANT CONTEXT - INBOUND CALL:
     # VAD tuning: lower min_silence_duration = faster response (default is 0.5s)
     session = AgentSession(
         vad=silero.VAD.load(
-            min_silence_duration=0.3,  # Respond faster after user stops (default 0.5)
-            min_speech_duration=0.1,   # Detect speech quickly (default 0.1)
-            activation_threshold=0.5,  # Sensitivity (default 0.5)
+            min_silence_duration=0.15,  # Very fast response (default 0.5s)
+            min_speech_duration=0.05,   # Detect speech quickly (default 0.1)
+            activation_threshold=0.4,   # More sensitive (default 0.5)
         ),
         stt=deepgram.STT(
             model="nova-2-phonecall",
@@ -717,8 +717,9 @@ IMPORTANT CONTEXT - INBOUND CALL:
             model="gpt-4-turbo",  # Fast with good quality
             temperature=0.7,
         ),
-        tts=deepgram.TTS(
-            model="aura-asteria-en",  # Fast Deepgram TTS (female voice)
+        tts=elevenlabs.TTS(
+            model_id="eleven_turbo_v2_5",  # Low-latency streaming model
+            voice_id="21m00Tcm4TlvDq8ikWAM",  # Rachel - default preset voice
         ),
     )
 
@@ -856,67 +857,64 @@ IMPORTANT CONTEXT - INBOUND CALL:
         # Run async cleanup - use ensure_future to handle async properly
         asyncio.ensure_future(delayed_cleanup())
 
-    # Start recording the call using LiveKit Egress BEFORE starting session
-    try:
-        logger.info(f"🎙️ Starting call recording for room: {ctx.room.name}")
-
-        from livekit.protocol import egress as proto_egress
-
-        # Check AWS credentials
-        aws_key = os.getenv("AWS_ACCESS_KEY_ID")
-        aws_secret = os.getenv("AWS_SECRET_ACCESS_KEY")
-        aws_region = os.getenv("AWS_REGION", "us-west-2")
-        aws_bucket = os.getenv("AWS_S3_BUCKET", "pat-livekit-recordings")
-
-        logger.info(f"AWS config check: key={'set' if aws_key else 'MISSING'}, secret={'set' if aws_secret else 'MISSING'}, region={aws_region}, bucket={aws_bucket}")
-
-        # Configure S3 upload for recording storage
-        s3_upload = proto_egress.S3Upload(
-            access_key=aws_key,
-            secret=aws_secret,
-            region=aws_region,
-            bucket=aws_bucket,
-        )
-
-        # Webhook URL for egress completion notifications
-        supabase_url = os.getenv("SUPABASE_URL")
-        webhook_url = f"{supabase_url}/functions/v1/webhook-livekit-egress"
-
-        logger.info(f"🔗 Egress webhook URL: {webhook_url}")
-        logger.info("Note: Configure this URL in LiveKit Dashboard > Project Settings > Webhooks")
-
-        # Create room composite egress to record audio with S3 storage
-        # Clean up filename: remove underscore before + and remove + from phone number
-        # Transform: call-_+16045628647_abc -> call-16045628647_abc
-        clean_room_name = ctx.room.name.replace("_+", "")
-
-        egress_request = proto_egress.RoomCompositeEgressRequest(
-            room_name=ctx.room.name,
-            audio_only=True,  # Only record audio, not video
-            file_outputs=[
-                proto_egress.EncodedFileOutput(
-                    file_type=proto_egress.EncodedFileType.MP4,
-                    filepath=f"recordings/{clean_room_name}.mp4",
-                    s3=s3_upload,
-                )
-            ],
-        )
-
-        logger.info("📤 Sending egress start request to LiveKit...")
-        egress_response = await asyncio.wait_for(
-            livekit_api.egress.start_room_composite_egress(egress_request),
-            timeout=10.0  # 10 second timeout
-        )
-        egress_id = egress_response.egress_id
-        logger.info(f"✅ Recording started with egress_id: {egress_id}")
-    except asyncio.TimeoutError:
-        logger.error("❌ Recording start timed out after 10 seconds")
-    except Exception as e:
-        logger.error(f"❌ Failed to start recording: {e}", exc_info=True)
-        # Continue with call even if recording fails
-
-    # Start the session - room already connected, so session takes over
+    # Start the session FIRST for lowest latency - recording starts in background
     await session.start(room=ctx.room, agent=assistant)
+    logger.info("✅ Session started - agent is now listening")
+
+    # Start recording in background (don't block the conversation)
+    async def start_recording_background():
+        nonlocal egress_id
+        try:
+            logger.info(f"🎙️ Starting call recording for room: {ctx.room.name}")
+
+            from livekit.protocol import egress as proto_egress
+
+            # Check AWS credentials
+            aws_key = os.getenv("AWS_ACCESS_KEY_ID")
+            aws_secret = os.getenv("AWS_SECRET_ACCESS_KEY")
+            aws_region = os.getenv("AWS_REGION", "us-west-2")
+            aws_bucket = os.getenv("AWS_S3_BUCKET", "pat-livekit-recordings")
+
+            if not aws_key or not aws_secret:
+                logger.warning("⚠️ AWS credentials not set - recording disabled")
+                return
+
+            # Configure S3 upload for recording storage
+            s3_upload = proto_egress.S3Upload(
+                access_key=aws_key,
+                secret=aws_secret,
+                region=aws_region,
+                bucket=aws_bucket,
+            )
+
+            # Create room composite egress to record audio with S3 storage
+            clean_room_name = ctx.room.name.replace("_+", "")
+
+            egress_request = proto_egress.RoomCompositeEgressRequest(
+                room_name=ctx.room.name,
+                audio_only=True,
+                file_outputs=[
+                    proto_egress.EncodedFileOutput(
+                        file_type=proto_egress.EncodedFileType.MP4,
+                        filepath=f"recordings/{clean_room_name}.mp4",
+                        s3=s3_upload,
+                    )
+                ],
+            )
+
+            egress_response = await asyncio.wait_for(
+                livekit_api.egress.start_room_composite_egress(egress_request),
+                timeout=10.0
+            )
+            egress_id = egress_response.egress_id
+            logger.info(f"✅ Recording started with egress_id: {egress_id}")
+        except asyncio.TimeoutError:
+            logger.error("❌ Recording start timed out")
+        except Exception as e:
+            logger.error(f"❌ Failed to start recording: {e}")
+
+    # Fire and forget - recording starts while agent is already listening
+    asyncio.ensure_future(start_recording_background())
 
     # Handle phone admin authentication if applicable (after session started)
     is_admin_authenticated = False
