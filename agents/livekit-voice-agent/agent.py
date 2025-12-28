@@ -701,21 +701,24 @@ IMPORTANT CONTEXT - INBOUND CALL:
     # TODO: Add transfer and data collection tools once basic calling works
     assistant = Agent(instructions=system_prompt)
 
-    # Initialize AgentSession
+    # Initialize AgentSession with low-latency configuration
+    # VAD tuning: lower min_silence_duration = faster response (default is 0.5s)
     session = AgentSession(
-        vad=silero.VAD.load(),
+        vad=silero.VAD.load(
+            min_silence_duration=0.3,  # Respond faster after user stops (default 0.5)
+            min_speech_duration=0.1,   # Detect speech quickly (default 0.1)
+            activation_threshold=0.5,  # Sensitivity (default 0.5)
+        ),
         stt=deepgram.STT(
             model="nova-2-phonecall",
             language="en-US",
         ),
         llm=lkopenai.LLM(
-            model="gpt-4o-mini",
+            model="gpt-4-turbo",  # Fast with good quality
             temperature=0.7,
         ),
-        tts=elevenlabs.TTS(
-            api_key=os.getenv("ELEVENLABS_API_KEY"),
-            voice_id=voice_config["voice_id"],
-            model="eleven_turbo_v2_5",
+        tts=deepgram.TTS(
+            model="aura-asteria-en",  # Fast Deepgram TTS (female voice)
         ),
     )
 
