@@ -762,16 +762,16 @@ IMPORTANT CONTEXT - INBOUND CALL:
             # If not found by call_sid, try to find by service_number and recent timestamp
             if not call_record_id and service_number and user_id:
                 logger.info(f"Looking up call by service_number: {service_number} and user_id: {user_id}")
-                # Look for most recent in-progress call for this service number
-                time_window = datetime.datetime.now() - datetime.timedelta(minutes=5)
+                # Look for most recent call for this service number (within last 5 minutes)
+                # Don't filter by status - SignalWire may have already updated it to "completed"
+                time_window = datetime.datetime.utcnow() - datetime.timedelta(minutes=5)
 
                 response = supabase.table("call_records") \
                     .select("id") \
                     .eq("service_number", service_number) \
                     .eq("user_id", user_id) \
-                    .eq("status", "in-progress") \
-                    .gte("started_at", time_window.isoformat()) \
-                    .order("started_at", desc=True) \
+                    .gte("created_at", time_window.isoformat()) \
+                    .order("created_at", desc=True) \
                     .limit(1) \
                     .execute()
 
