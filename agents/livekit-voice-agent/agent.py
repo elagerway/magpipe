@@ -571,29 +571,45 @@ async def entrypoint(ctx: JobContext):
     contact_phone = room_metadata.get("contact_phone")
 
     # If direction not in metadata, check database (for bridged outbound calls)
-    if not direction and service_number and user_id:
+    if not direction and user_id:
         try:
-            # Look up the most recent call for this service number and user (within last 60 seconds)
-            # Must include user_id to avoid matching other users' calls
+            # Look up the most recent call for this user (within last 60 seconds)
             # Use time-based filter instead of status because SignalWire status callback may fire before agent
             one_minute_ago = (datetime.datetime.utcnow() - datetime.timedelta(seconds=60)).isoformat()
-            logger.info(f"📊 Looking up direction for service_number={service_number}, user_id={user_id}, since={one_minute_ago}")
-            call_lookup = supabase.table("call_records") \
-                .select("direction, contact_phone") \
-                .eq("service_number", service_number) \
-                .eq("user_id", user_id) \
-                .gte("created_at", one_minute_ago) \
-                .order("created_at", desc=True) \
-                .limit(1) \
-                .execute()
+            logger.info(f"📊 Looking up direction for user_id={user_id}, since={one_minute_ago}")
+
+            # First try with service_number (for inbound calls where it matches)
+            call_lookup = None
+            if service_number:
+                logger.info(f"📊 Trying lookup with service_number={service_number}")
+                call_lookup = supabase.table("call_records") \
+                    .select("direction, contact_phone") \
+                    .eq("service_number", service_number) \
+                    .eq("user_id", user_id) \
+                    .gte("created_at", one_minute_ago) \
+                    .order("created_at", desc=True) \
+                    .limit(1) \
+                    .execute()
+
+            # If no match, try without service_number (for bridged outbound where LiveKit trunk number != caller_id)
+            if not call_lookup or not call_lookup.data or len(call_lookup.data) == 0:
+                logger.info(f"📊 No match with service_number, trying without (for bridged outbound)")
+                call_lookup = supabase.table("call_records") \
+                    .select("direction, contact_phone, service_number") \
+                    .eq("user_id", user_id) \
+                    .gte("created_at", one_minute_ago) \
+                    .order("created_at", desc=True) \
+                    .limit(1) \
+                    .execute()
 
             if call_lookup.data and len(call_lookup.data) > 0:
                 direction = call_lookup.data[0].get("direction", "inbound")
                 if not contact_phone:
                     contact_phone = call_lookup.data[0].get("contact_phone")
-                logger.info(f"📊 Found call direction from database: {direction}, contact_phone: {contact_phone}")
+                found_service_number = call_lookup.data[0].get("service_number")
+                logger.info(f"📊 Found call direction from database: {direction}, contact_phone: {contact_phone}, service_number: {found_service_number}")
             else:
-                logger.warning(f"📊 No recent call found for service_number={service_number}, user_id={user_id}")
+                logger.warning(f"📊 No recent call found for user_id={user_id}")
         except Exception as e:
             logger.warning(f"Could not look up call direction: {e}")
             direction = "inbound"  # Default to inbound if lookup fails
