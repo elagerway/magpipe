@@ -57,10 +57,14 @@ serve(async (req) => {
     // Add opt-out instructions (USA SMS compliance) only when sending FROM a US number
     const messageBody = fromIsUSNumber ? `${message}\n\nSTOP to opt out` : message
 
+    // Build status callback URL for delivery receipts
+    const statusCallbackUrl = `${supabaseUrl}/functions/v1/webhook-sms-status`;
+
     const smsData = new URLSearchParams({
       From: fromNumber,
       To: contactPhone,
       Body: messageBody,
+      StatusCallback: statusCallbackUrl,
     })
 
     const auth = btoa(`${signalwireProjectId}:${signalwireApiToken}`)
@@ -86,8 +90,9 @@ serve(async (req) => {
     }
 
     const smsResult = await smsResponse.json()
+    const messageSid = smsResult.sid;
 
-    // Log the outbound SMS
+    // Log the outbound SMS with message_sid for delivery tracking
     await supabase
       .from('sms_messages')
       .insert({
@@ -96,7 +101,8 @@ serve(async (req) => {
         recipient_number: contactPhone,
         direction: 'outbound',
         content: message,
-        status: 'sent',
+        status: 'pending',  // Will be updated by webhook-sms-status
+        message_sid: messageSid,
         sent_at: new Date().toISOString(),
         is_ai_generated: false,
       })

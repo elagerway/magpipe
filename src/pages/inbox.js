@@ -450,6 +450,9 @@ export default class InboxPage {
     const isAI = msg.is_ai_generated === true;
     const timestamp = new Date(msg.sent_at || msg.created_at);
 
+    // Get delivery status indicator for outbound messages
+    const deliveryStatus = this.getDeliveryStatusIcon(msg);
+
     return `
       <div class="message-bubble ${isInbound ? 'inbound' : 'outbound'} ${isAI ? 'ai-message' : ''}">
         ${isAI ? `
@@ -464,9 +467,56 @@ export default class InboxPage {
           </div>
         ` : ''}
         <div class="message-content">${msg.content}</div>
-        <div class="message-time">${this.formatTime(timestamp)}</div>
+        <div class="message-time">
+          ${this.formatTime(timestamp)}
+          ${deliveryStatus}
+        </div>
       </div>
     `;
+  }
+
+  getDeliveryStatusIcon(msg) {
+    // Only show delivery status for outbound messages
+    if (msg.direction === 'inbound') return '';
+
+    const status = msg.status || 'sent';
+
+    switch (status) {
+      case 'delivered':
+        // Double checkmark for delivered
+        return `<span class="delivery-status delivered" title="Delivered">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="1 12 5 16 11 6"></polyline>
+            <polyline points="9 12 13 16 22 6"></polyline>
+          </svg>
+        </span>`;
+      case 'sent':
+        // Single checkmark for sent
+        return `<span class="delivery-status sent" title="Sent">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="4 12 9 17 20 6"></polyline>
+          </svg>
+        </span>`;
+      case 'pending':
+        // Clock icon for pending
+        return `<span class="delivery-status pending" title="Sending...">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polyline points="12 6 12 12 16 14"></polyline>
+          </svg>
+        </span>`;
+      case 'failed':
+      case 'undelivered':
+        // X icon for failed
+        return `<span class="delivery-status failed" title="Not delivered">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </span>`;
+      default:
+        return '';
+    }
   }
 
   renderCallDetailView(call) {
