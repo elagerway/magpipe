@@ -107,39 +107,6 @@ export default class PhonePage {
         >
           <option value="">Loading numbers...</option>
         </select>
-
-        <!-- Recording toggle -->
-        <div style="
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          margin-top: 12px;
-          padding: 8px;
-          background: rgba(255, 255, 255, 0.05);
-          border-radius: 8px;
-        ">
-          <input
-            type="checkbox"
-            id="record-call-toggle"
-            checked
-            style="
-              width: 18px;
-              height: 18px;
-              cursor: pointer;
-            "
-          >
-          <label
-            for="record-call-toggle"
-            style="
-              font-size: 14px;
-              color: rgba(255, 255, 255, 0.9);
-              cursor: pointer;
-              user-select: none;
-            "
-          >
-            🎙️ Record call
-          </label>
-        </div>
       </div>
 
       <!-- Phone number input with search -->
@@ -214,13 +181,87 @@ export default class PhonePage {
         "></div>
       </div>
 
+      <!-- Agent toggle and Bulk Calling link -->
+      <div style="
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0 0.5rem;
+        max-width: 300px;
+        margin: 0 auto 0.5rem auto;
+        width: 100%;
+      ">
+        <!-- Agent toggle -->
+        <label style="
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          cursor: pointer;
+          user-select: none;
+        ">
+          <div style="position: relative; width: 44px; height: 24px;">
+            <input
+              type="checkbox"
+              id="agent-toggle"
+              checked
+              style="
+                opacity: 0;
+                width: 0;
+                height: 0;
+                position: absolute;
+              "
+            >
+            <div id="agent-toggle-track" style="
+              position: absolute;
+              top: 0;
+              left: 0;
+              right: 0;
+              bottom: 0;
+              background: #10b981;
+              border-radius: 12px;
+              transition: background 0.2s ease;
+            "></div>
+            <div id="agent-toggle-thumb" style="
+              position: absolute;
+              top: 2px;
+              left: 22px;
+              width: 20px;
+              height: 20px;
+              background: white;
+              border-radius: 50%;
+              transition: left 0.2s ease;
+              box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+            "></div>
+          </div>
+          <span style="font-size: 14px; color: var(--text-primary);">Agent</span>
+        </label>
+
+        <!-- Bulk Calling link -->
+        <a href="#" id="bulk-calling-link" style="
+          font-size: 13px;
+          color: #6366f1;
+          text-decoration: none;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        ">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+            <circle cx="9" cy="7" r="4"></circle>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+          </svg>
+          Bulk Calling
+        </a>
+      </div>
+
       <!-- DTMF Keypad -->
       <div style="
         display: grid;
         grid-template-columns: repeat(3, 1fr);
         gap: 0.5rem;
-        max-width: ${isMobile ? '225px' : '300px'};
-        margin: ${isMobile ? '10px auto 0 auto' : '0 auto'};
+        max-width: ${isMobile ? '216px' : '264px'};
+        margin: ${isMobile ? '8px auto 0 auto' : '0 auto'};
         width: 100%;
         flex-shrink: 0;
       ">
@@ -241,10 +282,12 @@ export default class PhonePage {
       <!-- Spacer -->
       <div style="${isMobile ? 'height: 15px;' : 'height: 2rem;'}"></div>
 
-      <!-- Call action button -->
+      <!-- Call action buttons -->
       <div style="
+        position: relative;
         display: flex;
         justify-content: center;
+        align-items: center;
         padding: 0;
         flex-shrink: 0;
         margin-top: ${isMobile ? '10px' : '0'};
@@ -270,13 +313,40 @@ export default class PhonePage {
             <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
           </svg>
         </button>
+
+        <!-- Mute button (hidden until call is active) -->
+        <button
+          id="mute-btn"
+          style="
+            position: absolute;
+            left: calc(50% + 44px);
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            border: none;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+          "
+        >
+          <svg id="mute-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+            <line x1="12" y1="19" x2="12" y2="23"></line>
+            <line x1="8" y1="23" x2="16" y2="23"></line>
+          </svg>
+        </button>
       </div>
     `;
   }
 
   renderDTMFButton(digit, letters) {
-    const digitStyle = digit === '*' ? 'font-size: 3.15rem; font-weight: 300; line-height: 1; position: relative; top: 11px; left: 2px;' :
-                       digit === '#' ? 'font-size: 2rem; font-weight: 400;' : '';
+    const digitStyle = digit === '*' ? 'font-size: 2.6rem; font-weight: 300; line-height: 1; position: relative; top: 10px; left: 1px;' :
+                       digit === '#' ? 'font-size: 1.7rem; font-weight: 400;' : '';
     return `
       <button
         class="dtmf-btn"
@@ -292,12 +362,12 @@ export default class PhonePage {
           flex-direction: column;
           align-items: center;
           justify-content: center;
-          font-size: 1.5rem;
+          font-size: 1.45rem;
           font-weight: 300;
           transition: all 0.15s ease;
           user-select: none;
           -webkit-tap-highlight-color: transparent;
-          padding: 0.5rem;
+          padding: 0.4rem;
         "
         onmousedown="this.style.background='var(--border-color)'; this.style.transform='scale(0.95)'"
         onmouseup="this.style.background='var(--bg-secondary)'; this.style.transform='scale(1)'"
@@ -306,7 +376,7 @@ export default class PhonePage {
         ontouchend="this.style.background='var(--bg-secondary)'; this.style.transform='scale(1)'"
       >
         <span style="line-height: 1; ${digitStyle}">${digit}</span>
-        ${letters ? `<span style="font-size: 0.6rem; font-weight: 600; letter-spacing: 0.05em; margin-top: 0.1rem; color: var(--text-secondary);">${letters}</span>` : ''}
+        ${letters ? `<span style="font-size: 0.6rem; font-weight: 600; letter-spacing: 0.05em; margin-top: 0.05rem; color: var(--text-secondary);">${letters}</span>` : ''}
       </button>
     `;
   }
@@ -321,16 +391,69 @@ export default class PhonePage {
     // Load service numbers for caller ID
     this.loadServiceNumbers();
 
+    // Agent toggle animation
+    const agentToggle = document.getElementById('agent-toggle');
+    const agentToggleTrack = document.getElementById('agent-toggle-track');
+    const agentToggleThumb = document.getElementById('agent-toggle-thumb');
+
+    if (agentToggle && agentToggleTrack && agentToggleThumb) {
+      agentToggle.addEventListener('change', () => {
+        if (agentToggle.checked) {
+          agentToggleTrack.style.background = '#10b981';
+          agentToggleThumb.style.left = '22px';
+        } else {
+          agentToggleTrack.style.background = '#6b7280';
+          agentToggleThumb.style.left = '2px';
+        }
+      });
+    }
+
+    // Bulk Calling link
+    const bulkCallingLink = document.getElementById('bulk-calling-link');
+    if (bulkCallingLink) {
+      bulkCallingLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        window.navigateTo('/bulk-calling');
+      });
+    }
+
+    // Mute button
+    const muteBtn = document.getElementById('mute-btn');
+    if (muteBtn) {
+      this.isMuted = false;
+      muteBtn.addEventListener('click', () => {
+        this.toggleMute();
+      });
+    }
+
     // Call button - handles both call and hangup actions
     if (callBtn) {
       callBtn.addEventListener('click', async () => {
+        console.log('🔘 Call button clicked!', callBtn.dataset.action);
+
         // Check if this is a hangup action (button is red)
         if (callBtn.dataset.action === 'hangup') {
           console.log('Hanging up call...');
           this.userHungUp = true;
 
-          // Hangup SIP call
-          sipClient.hangup();
+          // Check if this is a bridged call
+          if (this.currentBridgedCallSid) {
+            console.log('🔴 Terminating bridged call:', this.currentBridgedCallSid);
+            try {
+              // Call Edge Function to terminate the SignalWire call
+              await supabase.functions.invoke('terminate-call', {
+                body: { call_sid: this.currentBridgedCallSid }
+              });
+              console.log('✅ Bridged call terminated');
+            } catch (error) {
+              console.error('Failed to terminate bridged call:', error);
+            }
+            this.currentBridgedCallSid = null;
+            this.currentCallRecordId = null;
+          } else {
+            // Hangup SIP call
+            sipClient.hangup();
+          }
 
           // Reset UI
           this.transformToCallButton();
@@ -779,11 +902,12 @@ export default class PhonePage {
           return;
         }
       } else {
-        // Get SIP credentials for the selected caller ID
+        // Verify the selected caller ID is valid and active
         const { data: serviceNumber } = await supabase
           .from('service_numbers')
-          .select('sip_username, sip_password, sip_domain, sip_ws_server')
+          .select('phone_number')
           .eq('phone_number', fromNumber)
+          .eq('user_id', this.userId)
           .eq('is_active', true)
           .single();
 
@@ -791,15 +915,26 @@ export default class PhonePage {
           alert('Selected number not found or inactive');
           return;
         }
-        sipCredentials = serviceNumber;
       }
 
-      // Get user's name for CNAM (Caller Name)
+      // Get user's name and SIP credentials from users table
       const { data: userData } = await supabase
         .from('users')
-        .select('name')
+        .select('name, sip_username, sip_password, sip_realm, sip_ws_server')
         .eq('id', this.userId)
         .single();
+
+      if (!userData || !userData.sip_username || !userData.sip_password) {
+        alert('SIP credentials not configured');
+        return;
+      }
+
+      sipCredentials = {
+        sip_username: userData.sip_username,
+        sip_password: userData.sip_password,
+        sip_domain: userData.sip_realm,
+        sip_ws_server: userData.sip_ws_server
+      };
 
       // Format name as "FirstName L" (first name + last initial)
       let displayName = fromNumber; // fallback to phone number
@@ -816,14 +951,14 @@ export default class PhonePage {
         }
       }
 
-      // Check if recording is enabled
-      const recordCallToggle = document.getElementById('record-call-toggle');
-      const recordCall = recordCallToggle ? recordCallToggle.checked : false;
+      // Check if agent mode is enabled
+      const agentToggle = document.getElementById('agent-toggle');
+      const agentEnabled = agentToggle ? agentToggle.checked : false;
+      console.log('🤖 Agent toggle state:', agentEnabled);
 
-      // If recording is enabled, use bridged call approach
-      // Otherwise use direct SIP calling
-      if (recordCall) {
-        console.log('🎙️ Recording enabled - using bridged call approach');
+      // If agent is enabled, use bridged call approach (includes recording)
+      if (agentEnabled) {
+        console.log('🤖 Agent enabled - using bridged call approach');
         await this.initiateBridgedCall(phoneNumber, fromNumber);
         return;
       }
@@ -970,37 +1105,67 @@ export default class PhonePage {
     }
   }
 
-  async initiateBridgedCall(phoneNumber, callerIdNumber) {
-    console.log('📞 Initiating bridged call with recording');
+  async initiateLivekitCall(phoneNumber, callerIdNumber) {
+    console.log('📞 Initiating LiveKit outbound call with recording');
     console.log('   To:', phoneNumber);
     console.log('   From:', callerIdNumber);
 
     try {
       // Show connecting state
-      this.updateCallState('connecting', 'Registering SIP...');
+      this.updateCallState('connecting', 'Initiating call...');
 
-      // Get SIP credentials for the selected caller ID
-      const { data: serviceNumber } = await supabase
-        .from('service_numbers')
-        .select('sip_username, sip_password, sip_domain, sip_ws_server')
-        .eq('phone_number', callerIdNumber)
-        .eq('is_active', true)
-        .single();
-
-      if (!serviceNumber) {
-        throw new Error('Selected number not found or inactive');
+      // Normalize phone number to E.164 format
+      let normalizedPhoneNumber = phoneNumber;
+      if (!normalizedPhoneNumber.startsWith('+')) {
+        const digitsOnly = normalizedPhoneNumber.replace(/\D/g, '');
+        if (digitsOnly.startsWith('1') && digitsOnly.length === 11) {
+          normalizedPhoneNumber = '+' + digitsOnly;
+        } else {
+          normalizedPhoneNumber = '+1' + digitsOnly;
+        }
       }
 
-      // Initialize SIP client so it can receive the incoming call
-      console.log('🔧 Initializing SIP client for incoming call...');
-      await sipClient.initialize({
-        sipUri: `sip:${serviceNumber.sip_username}@${serviceNumber.sip_domain}`,
-        sipPassword: serviceNumber.sip_password,
-        wsServer: serviceNumber.sip_ws_server,
-        displayName: callerIdNumber
+      // Call the LiveKit outbound call Edge Function
+      const { data, error } = await supabase.functions.invoke('livekit-outbound-call', {
+        body: {
+          phoneNumber: normalizedPhoneNumber,
+          callerIdNumber: callerIdNumber,
+          userId: this.userId,
+          recordCall: true
+        }
       });
 
-      console.log('✅ SIP client registered and ready');
+      if (error) {
+        throw new Error(error.message || 'Failed to initiate LiveKit call');
+      }
+
+      console.log('✅ LiveKit call initiated:', data);
+      console.log('   Call ID:', data.callId);
+      console.log('   Room:', data.roomName);
+
+      // Update UI to show call is in progress
+      this.updateCallState('ringing', 'Calling...');
+      this.transformToHangupButton();
+
+      // Store call info for hangup
+      this.currentCallRecordId = data.callId;
+      this.currentRoomName = data.roomName;
+
+    } catch (error) {
+      console.error('Failed to initiate LiveKit call:', error);
+      alert(`Failed to initiate call: ${error.message}`);
+      this.updateCallState('idle');
+      this.transformToCallButton();
+    }
+  }
+
+  async initiateBridgedCall(phoneNumber, callerIdNumber) {
+    console.log('📞 Initiating bridged call with agent + recording');
+    console.log('   To:', phoneNumber);
+    console.log('   From:', callerIdNumber);
+
+    try {
+      // Update UI
       this.updateCallState('connecting', 'Initiating call...');
 
       // Normalize phone number to E.164 format
@@ -1015,6 +1180,10 @@ export default class PhonePage {
       }
 
       // Call the Edge Function to initiate bridged call
+      // This will:
+      // 1. SignalWire calls LiveKit SIP URI (agent auto-joins)
+      // 2. LiveKit answers, CXML bridges to destination PSTN number
+      // 3. All parties connected with recording
       const { data, error } = await supabase.functions.invoke('initiate-bridged-call', {
         body: {
           phone_number: normalizedPhoneNumber,
@@ -1031,12 +1200,17 @@ export default class PhonePage {
       console.log('   Call Record ID:', data.call_record_id);
 
       // Update UI to show call is in progress
-      this.updateCallState('ringing', 'Your phone will ring shortly...');
+      this.updateCallState('connecting', 'Calling...');
       this.transformToHangupButton();
 
       // Store call info for hangup
       this.currentBridgedCallSid = data.call_sid;
       this.currentCallRecordId = data.call_record_id;
+
+      // Subscribe to call record status updates to detect when call ends
+      if (data.call_record_id) {
+        this.subscribeToCallStatus(data.call_record_id);
+      }
 
     } catch (error) {
       console.error('Failed to initiate bridged call:', error);
@@ -1046,8 +1220,52 @@ export default class PhonePage {
     }
   }
 
+  subscribeToCallStatus(callRecordId) {
+    // Unsubscribe from any previous subscription
+    if (this.callStatusSubscription) {
+      this.callStatusSubscription.unsubscribe();
+    }
+
+    console.log('📡 Subscribing to call status updates for:', callRecordId);
+
+    // Subscribe to realtime updates on the call record
+    this.callStatusSubscription = supabase
+      .channel(`call-status-${callRecordId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'call_records',
+          filter: `id=eq.${callRecordId}`,
+        },
+        (payload) => {
+          console.log('📡 Call status update:', payload.new.status);
+
+          // Check if call ended
+          if (payload.new.status === 'completed' || payload.new.status === 'failed' || payload.new.status === 'no-answer') {
+            console.log('📞 Call ended (detected via realtime):', payload.new.status);
+
+            // Clean up
+            this.callStatusSubscription?.unsubscribe();
+            this.callStatusSubscription = null;
+            this.currentBridgedCallSid = null;
+            this.currentCallRecordId = null;
+
+            // Reset UI
+            this.transformToCallButton();
+            this.updateCallState('idle');
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log('📡 Subscription status:', status);
+      });
+  }
+
   transformToHangupButton() {
     const callBtn = document.getElementById('call-btn');
+    const muteBtn = document.getElementById('mute-btn');
     if (!callBtn) return;
 
     // Change to red hangup button
@@ -1057,6 +1275,11 @@ export default class PhonePage {
     callBtn.disabled = false;
     callBtn.style.opacity = '1';
     callBtn.style.cursor = 'pointer';
+
+    // Show mute button
+    if (muteBtn) {
+      muteBtn.style.display = 'flex';
+    }
 
     // Update hover effects
     callBtn.onmouseover = () => {
@@ -1080,6 +1303,7 @@ export default class PhonePage {
 
   transformToCallButton() {
     const callBtn = document.getElementById('call-btn');
+    const muteBtn = document.getElementById('mute-btn');
     if (!callBtn) return;
 
     // Change back to green call button
@@ -1089,6 +1313,13 @@ export default class PhonePage {
     callBtn.disabled = false;
     callBtn.style.opacity = '1';
     callBtn.style.cursor = 'pointer';
+
+    // Hide mute button and reset mute state
+    if (muteBtn) {
+      muteBtn.style.display = 'none';
+      this.isMuted = false;
+      this.updateMuteButtonUI();
+    }
 
     // Restore hover effects
     callBtn.onmouseover = () => {
@@ -1158,6 +1389,52 @@ export default class PhonePage {
         // Transform back to call button
         this.transformToCallButton();
         break;
+    }
+  }
+
+  toggleMute() {
+    this.isMuted = !this.isMuted;
+    console.log('🔇 Mute toggled:', this.isMuted);
+
+    // Mute/unmute the actual audio via SIP client
+    try {
+      sipClient.setMute(this.isMuted);
+    } catch (e) {
+      console.error('Failed to toggle mute:', e);
+    }
+
+    this.updateMuteButtonUI();
+  }
+
+  updateMuteButtonUI() {
+    const muteBtn = document.getElementById('mute-btn');
+    if (!muteBtn) return;
+
+    if (this.isMuted) {
+      // Muted state - red background, muted icon
+      muteBtn.style.background = '#ef4444';
+      muteBtn.style.color = 'white';
+      muteBtn.innerHTML = `
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="1" y1="1" x2="23" y2="23"></line>
+          <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"></path>
+          <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"></path>
+          <line x1="12" y1="19" x2="12" y2="23"></line>
+          <line x1="8" y1="23" x2="16" y2="23"></line>
+        </svg>
+      `;
+    } else {
+      // Unmuted state - default background, microphone icon
+      muteBtn.style.background = 'var(--bg-secondary)';
+      muteBtn.style.color = 'var(--text-primary)';
+      muteBtn.innerHTML = `
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+          <line x1="12" y1="19" x2="12" y2="23"></line>
+          <line x1="8" y1="23" x2="16" y2="23"></line>
+        </svg>
+      `;
     }
   }
 }
