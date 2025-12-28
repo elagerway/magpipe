@@ -702,10 +702,10 @@ IMPORTANT CONTEXT - INBOUND CALL:
     assistant = Agent(instructions=system_prompt)
 
     # Initialize AgentSession with low-latency configuration
-    # VAD tuning: lower min_silence_duration = faster response (default is 0.5s)
+    # VAD tuning: higher min_silence_duration = waits longer before responding
     session = AgentSession(
         vad=silero.VAD.load(
-            min_silence_duration=0.4,   # Balanced response (default 0.5s)
+            min_silence_duration=0.55,  # Wait longer for user to finish (default 0.5s)
             min_speech_duration=0.1,    # Default speech detection
             activation_threshold=0.5,   # Default sensitivity
         ),
