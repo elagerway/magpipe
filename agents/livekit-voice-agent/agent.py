@@ -1039,15 +1039,36 @@ ADMIN MODE ACTIVATED:
             # Outbound call - don't greet, wait for user to speak
             logger.info("📞 Outbound call - Agent waiting for user to speak first")
 
-            # Warm up TTS connection in background (reduces first-response latency)
-            async def warmup_tts():
+            # Warm up ALL connections in background (reduces first-response latency)
+            async def warmup_connections():
                 try:
-                    # Make a tiny TTS request to establish the connection
-                    # This warms up the ElevenLabs WebSocket before user speaks
+                    # 1. Warm up LLM (OpenAI) connection - make a tiny request
+                    openai_key = os.getenv("OPENAI_API_KEY")
+                    if openai_key:
+                        async with aiohttp.ClientSession() as http:
+                            async with http.post(
+                                "https://api.openai.com/v1/chat/completions",
+                                headers={
+                                    "Authorization": f"Bearer {openai_key}",
+                                    "Content-Type": "application/json",
+                                },
+                                json={
+                                    "model": "gpt-4o-mini",
+                                    "messages": [{"role": "user", "content": "hi"}],
+                                    "max_tokens": 1,
+                                },
+                                timeout=aiohttp.ClientTimeout(total=5.0),
+                            ) as resp:
+                                await resp.read()
+                        logger.info("🔥 LLM connection warmed up")
+
+                    # 2. Warm up TTS (ElevenLabs) connection
                     await session.say("", allow_interruptions=True)
+                    logger.info("🔥 TTS connection warmed up")
+
                 except Exception as e:
-                    logger.debug(f"TTS warmup (expected to be silent): {e}")
-            asyncio.ensure_future(warmup_tts())
+                    logger.debug(f"Connection warmup: {e}")
+            asyncio.ensure_future(warmup_connections())
 
     logger.info("✅ Agent session started successfully - ready for calls")
 
