@@ -714,7 +714,7 @@ IMPORTANT CONTEXT - INBOUND CALL:
             language="en-US",
         ),
         llm=lkopenai.LLM(
-            model="gpt-4-turbo",  # Fast with good quality
+            model="gpt-4o-mini",  # Fastest with good quality
             temperature=0.7,
         ),
         tts=elevenlabs.TTS(
