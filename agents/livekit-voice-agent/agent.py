@@ -721,6 +721,7 @@ IMPORTANT CONTEXT - INBOUND CALL:
             model="eleven_flash_v2_5",  # Fastest ElevenLabs model
             voice_id="21m00Tcm4TlvDq8ikWAM",  # Rachel
             api_key=os.getenv("ELEVENLABS_API_KEY") or os.getenv("ELEVEN_API_KEY"),
+            chunk_length_schedule=[50, 80, 120, 150],  # Smaller chunks for faster first audio
         ),
     )
 
