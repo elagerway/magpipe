@@ -524,6 +524,12 @@ export default class InboxPage {
               `).join('')}
             </div>
           </div>
+        ` : call.transcript ? `
+          <div class="call-detail-transcript">
+            <div class="transcript-plain" style="padding: 12px; background: var(--card-bg, #f9fafb); border-radius: 8px; margin: 8px;">
+              <p style="margin: 0; line-height: 1.5; color: var(--text-primary, #111827);">${call.transcript}</p>
+            </div>
+          </div>
         ` : `
           <div class="call-detail-no-transcript">
             <p>No transcript available for this call.</p>
