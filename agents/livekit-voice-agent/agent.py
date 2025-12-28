@@ -576,8 +576,7 @@ async def entrypoint(ctx: JobContext):
             # Look up the most recent call for this service number and user (within last 60 seconds)
             # Must include user_id to avoid matching other users' calls
             # Use time-based filter instead of status because SignalWire status callback may fire before agent
-            from datetime import datetime, timedelta
-            one_minute_ago = (datetime.utcnow() - timedelta(seconds=60)).isoformat()
+            one_minute_ago = (datetime.datetime.utcnow() - datetime.timedelta(seconds=60)).isoformat()
             logger.info(f"📊 Looking up direction for service_number={service_number}, user_id={user_id}, since={one_minute_ago}")
             call_lookup = supabase.table("call_records") \
                 .select("direction, contact_phone") \
