@@ -34,6 +34,7 @@ export class Router {
     this.addRoute('/calls', () => import('./pages/calls.js'), true);
     this.addRoute('/messages', () => import('./pages/messages.js'), true);
     this.addRoute('/settings', () => import('./pages/settings.js'), true);
+    this.addRoute('/bulk-calling', () => import('./pages/bulk-calling.js'), true);
   }
 
   addRoute(path, loader, requiresAuth = false) {
