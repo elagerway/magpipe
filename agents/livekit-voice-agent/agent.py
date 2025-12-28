@@ -720,6 +720,7 @@ IMPORTANT CONTEXT - INBOUND CALL:
         tts=elevenlabs.TTS(
             model="eleven_turbo_v2_5",  # Low-latency streaming model
             voice_id="21m00Tcm4TlvDq8ikWAM",  # Rachel - default preset voice
+            api_key=os.getenv("ELEVENLABS_API_KEY") or os.getenv("ELEVEN_API_KEY"),
         ),
     )
 
