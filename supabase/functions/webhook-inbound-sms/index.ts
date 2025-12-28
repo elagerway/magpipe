@@ -62,6 +62,10 @@ serve(async (req) => {
     if (insertError) {
       console.error('Error logging SMS:', insertError)
     } else {
+      // Auto-enrich contact if not exists (fire and forget)
+      autoEnrichContact(serviceNumber.user_id, from, supabase)
+        .catch(err => console.error('Auto-enrich error:', err))
+
       // Check for opt-out/opt-in keywords (USA SMS compliance)
       // Only process STOP for US numbers, not Canadian numbers
       const { isUSNumber } = await import('../_shared/sms-compliance.ts')
@@ -340,5 +344,118 @@ async function sendSMS(
     }
   } catch (error) {
     console.error('Error sending SMS:', error)
+  }
+}
+
+/**
+ * Auto-enrich contact if phone number doesn't exist in contacts
+ * Called when new SMS interactions occur
+ */
+async function autoEnrichContact(
+  userId: string,
+  phoneNumber: string,
+  supabase: any
+) {
+  // Normalize phone number (ensure E.164 format)
+  const normalizedPhone = phoneNumber.startsWith('+')
+    ? phoneNumber
+    : `+${phoneNumber.replace(/\D/g, '')}`
+
+  try {
+    // Check if contact already exists
+    const { data: existingContact, error: checkError } = await supabase
+      .from('contacts')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('phone_number', normalizedPhone)
+      .maybeSingle()
+
+    if (checkError) {
+      console.error('Error checking for existing contact:', checkError)
+      return
+    }
+
+    if (existingContact) {
+      console.log('Contact already exists for', normalizedPhone)
+      return
+    }
+
+    console.log('No contact found for', normalizedPhone, '- attempting lookup')
+
+    // Call the contact-lookup Edge Function
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+
+    const response = await fetch(
+      `${supabaseUrl}/functions/v1/contact-lookup`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${supabaseKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ phone: normalizedPhone }),
+      }
+    )
+
+    const data = await response.json()
+
+    if (!response.ok || data.notFound || !data.success) {
+      // No data found - create a basic contact with just the phone number
+      console.log('No enrichment data found for', normalizedPhone, '- creating basic contact')
+      const { error: createError } = await supabase
+        .from('contacts')
+        .insert({
+          user_id: userId,
+          phone_number: normalizedPhone,
+          name: 'Unknown',
+          first_name: 'Unknown',
+          is_whitelisted: false
+        })
+
+      if (createError) {
+        console.error('Error creating basic contact:', createError)
+      } else {
+        console.log('Created basic contact for', normalizedPhone)
+      }
+      return
+    }
+
+    // Create enriched contact
+    const contact = data.contact
+    const firstName = contact.first_name || (contact.name ? contact.name.split(' ')[0] : 'Unknown')
+    const lastName = contact.last_name || (contact.name ? contact.name.split(' ').slice(1).join(' ') : null)
+    const fullName = contact.name || [firstName, lastName].filter(Boolean).join(' ') || 'Unknown'
+
+    const contactData = {
+      user_id: userId,
+      phone_number: normalizedPhone,
+      name: fullName,
+      first_name: firstName,
+      last_name: lastName,
+      email: contact.email || null,
+      address: contact.address || null,
+      company: contact.company || null,
+      job_title: contact.job_title || null,
+      avatar_url: contact.avatar_url || null,
+      linkedin_url: contact.linkedin_url || null,
+      twitter_url: contact.twitter_url || null,
+      facebook_url: contact.facebook_url || null,
+      enriched_at: new Date().toISOString(),
+      is_whitelisted: false
+    }
+
+    const { error: createError } = await supabase
+      .from('contacts')
+      .insert(contactData)
+
+    if (createError) {
+      console.error('Error creating enriched contact:', createError)
+    } else {
+      console.log('Created enriched contact for', normalizedPhone, contactData)
+    }
+
+  } catch (error) {
+    console.error('Error in autoEnrichContact:', error)
   }
 }

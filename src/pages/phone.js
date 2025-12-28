@@ -44,6 +44,18 @@ export default class PhonePage {
 
     this.attachEventListeners();
     this.requestMicrophoneAndInitializeSIP();
+
+    // Check for dial parameter in URL (e.g., /phone?dial=+16045551234)
+    const urlParams = new URLSearchParams(window.location.search);
+    const dialNumber = urlParams.get('dial');
+    if (dialNumber) {
+      const dialInput = document.getElementById('call-search-input');
+      if (dialInput) {
+        dialInput.value = dialNumber;
+      }
+      // Clear the URL parameter without reloading
+      window.history.replaceState({}, '', '/phone');
+    }
   }
 
   renderDialpadContent() {

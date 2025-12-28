@@ -44,11 +44,11 @@ export class Router {
   async init() {
     // Handle browser back/forward
     window.addEventListener('popstate', () => {
-      this.loadRoute(window.location.pathname);
+      this.loadRoute(window.location.pathname + window.location.search);
     });
 
-    // Handle initial route
-    await this.loadRoute(window.location.pathname);
+    // Handle initial route (include query string)
+    await this.loadRoute(window.location.pathname + window.location.search);
   }
 
   async navigate(path, replace = false) {
@@ -61,7 +61,9 @@ export class Router {
     await this.loadRoute(path);
   }
 
-  async loadRoute(path) {
+  async loadRoute(fullPath) {
+    // Strip query string for route lookup, but preserve it for the page
+    const path = fullPath.split('?')[0];
     const route = this.routes.get(path);
 
     if (!route) {
