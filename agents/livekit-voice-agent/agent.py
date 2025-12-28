@@ -718,7 +718,7 @@ IMPORTANT CONTEXT - INBOUND CALL:
             temperature=0.7,
         ),
         tts=elevenlabs.TTS(
-            model_id="eleven_turbo_v2_5",  # Low-latency streaming model
+            model="eleven_turbo_v2_5",  # Low-latency streaming model
             voice_id="21m00Tcm4TlvDq8ikWAM",  # Rachel - default preset voice
         ),
     )
