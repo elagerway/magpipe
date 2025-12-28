@@ -714,7 +714,7 @@ IMPORTANT CONTEXT - INBOUND CALL:
             language="en-US",
         ),
         llm=lkopenai.LLM(
-            model="gpt-4o-mini",  # Fastest with good quality
+            model="gpt-4-turbo",
             temperature=0.7,
         ),
         tts=elevenlabs.TTS(
@@ -1053,7 +1053,7 @@ ADMIN MODE ACTIVATED:
                                     "Content-Type": "application/json",
                                 },
                                 json={
-                                    "model": "gpt-4o-mini",
+                                    "model": "gpt-4-turbo",
                                     "messages": [{"role": "user", "content": "hi"}],
                                     "max_tokens": 1,
                                 },
