@@ -705,9 +705,9 @@ IMPORTANT CONTEXT - INBOUND CALL:
     # VAD tuning: lower min_silence_duration = faster response (default is 0.5s)
     session = AgentSession(
         vad=silero.VAD.load(
-            min_silence_duration=0.15,  # Very fast response (default 0.5s)
-            min_speech_duration=0.05,   # Detect speech quickly (default 0.1)
-            activation_threshold=0.4,   # More sensitive (default 0.5)
+            min_silence_duration=0.4,   # Balanced response (default 0.5s)
+            min_speech_duration=0.1,    # Default speech detection
+            activation_threshold=0.5,   # Default sensitivity
         ),
         stt=deepgram.STT(
             model="nova-2-phonecall",
