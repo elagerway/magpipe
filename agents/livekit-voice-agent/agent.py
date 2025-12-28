@@ -702,12 +702,12 @@ IMPORTANT CONTEXT - INBOUND CALL:
     assistant = Agent(instructions=system_prompt)
 
     # Initialize AgentSession with low-latency configuration
-    # VAD tuning: higher min_silence_duration = waits longer before responding
+    # VAD tuning: higher activation_threshold = less sensitive to background noise
     session = AgentSession(
         vad=silero.VAD.load(
             min_silence_duration=0.55,  # Wait longer for user to finish (default 0.5s)
-            min_speech_duration=0.1,    # Default speech detection
-            activation_threshold=0.5,   # Default sensitivity
+            min_speech_duration=0.15,   # Require slightly longer speech to trigger
+            activation_threshold=0.6,   # Higher = less sensitive to background noise (default 0.5)
         ),
         stt=deepgram.STT(
             model="nova-2-phonecall",
