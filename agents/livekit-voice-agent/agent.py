@@ -776,24 +776,41 @@ IMPORTANT CONTEXT - INBOUND CALL:
                     logger.warning(f"⚠️ No call_record found with livekit_call_id: {call_sid}")
 
             # If not found by call_sid, try to find by service_number and recent timestamp
-            if not call_record_id and service_number and user_id:
-                logger.info(f"Looking up call by service_number: {service_number} and user_id: {user_id}")
-                # Look for most recent call for this service number (within last 5 minutes)
+            if not call_record_id and user_id:
+                # Look for most recent call for this user (within last 5 minutes)
                 # Don't filter by status - SignalWire may have already updated it to "completed"
                 time_window = datetime.datetime.utcnow() - datetime.timedelta(minutes=5)
 
-                response = supabase.table("call_records") \
-                    .select("id") \
-                    .eq("service_number", service_number) \
-                    .eq("user_id", user_id) \
-                    .gte("created_at", time_window.isoformat()) \
-                    .order("created_at", desc=True) \
-                    .limit(1) \
-                    .execute()
+                # First try with service_number (for inbound calls where it matches)
+                if service_number:
+                    logger.info(f"Looking up call by service_number: {service_number} and user_id: {user_id}")
+                    response = supabase.table("call_records") \
+                        .select("id") \
+                        .eq("service_number", service_number) \
+                        .eq("user_id", user_id) \
+                        .gte("created_at", time_window.isoformat()) \
+                        .order("created_at", desc=True) \
+                        .limit(1) \
+                        .execute()
 
-                if response.data and len(response.data) > 0:
-                    call_record_id = response.data[0]["id"]
-                    logger.info(f"Found call_record by service_number: {call_record_id}")
+                    if response.data and len(response.data) > 0:
+                        call_record_id = response.data[0]["id"]
+                        logger.info(f"Found call_record by service_number: {call_record_id}")
+
+                # If no match, try without service_number (for bridged outbound where LiveKit trunk != caller_id)
+                if not call_record_id:
+                    logger.info(f"No match with service_number, trying user_id only (for bridged outbound)")
+                    response = supabase.table("call_records") \
+                        .select("id") \
+                        .eq("user_id", user_id) \
+                        .gte("created_at", time_window.isoformat()) \
+                        .order("created_at", desc=True) \
+                        .limit(1) \
+                        .execute()
+
+                    if response.data and len(response.data) > 0:
+                        call_record_id = response.data[0]["id"]
+                        logger.info(f"Found call_record by user_id only: {call_record_id}")
 
             if call_record_id:
                 # Save egress_id for deferred recording URL fetch
