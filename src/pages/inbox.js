@@ -113,6 +113,15 @@ export default class InboxPage {
         console.log('📞 Call updated in inbox:', payload);
         this.handleCallUpdate(payload.new);
       })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'sms_messages',
+        filter: `user_id=eq.${this.userId}`
+      }, (payload) => {
+        console.log('📨 SMS status updated:', payload);
+        this.handleSmsUpdate(payload.new);
+      })
       .subscribe((status) => {
         console.log('Inbox subscription status:', status);
       });
@@ -120,6 +129,22 @@ export default class InboxPage {
 
   async handleNewMessage(message) {
     console.log('handleNewMessage called with:', message);
+
+    // Skip full reload for outbound messages we just sent - UI already has it
+    if (message.direction === 'outbound') {
+      // Just update local data without re-rendering
+      const contactPhone = message.recipient_number;
+      const conv = this.conversations?.find(c => c.phone === contactPhone);
+      if (conv && conv.messages) {
+        const exists = conv.messages.some(m => m.id === message.id);
+        if (!exists) {
+          conv.messages.push(message);
+        }
+      }
+      return;
+    }
+
+    // For inbound messages, do the full update
     console.log('Currently selected contact:', this.selectedContact);
 
     // Reload conversations to update list
@@ -193,6 +218,35 @@ export default class InboxPage {
       const threadElement = document.getElementById('message-thread');
       if (threadElement) {
         threadElement.innerHTML = this.renderMessageThread();
+      }
+    }
+  }
+
+  handleSmsUpdate(message) {
+    console.log('Handling SMS update:', message);
+
+    // Update the message in our local data
+    if (this.conversations) {
+      for (const conv of this.conversations) {
+        if (conv.messages) {
+          const msgIndex = conv.messages.findIndex(m => m.id === message.id);
+          if (msgIndex !== -1) {
+            conv.messages[msgIndex] = { ...conv.messages[msgIndex], ...message };
+            break;
+          }
+        }
+      }
+    }
+
+    // Update just the delivery status icon without re-rendering entire thread
+    const msgElement = document.querySelector(`.message-bubble[data-message-id="${message.id}"]`);
+    if (msgElement) {
+      const statusEl = msgElement.querySelector('.delivery-status');
+      if (statusEl) {
+        const newStatusHtml = this.getDeliveryStatusIcon(message);
+        if (newStatusHtml) {
+          statusEl.outerHTML = newStatusHtml;
+        }
       }
     }
   }
@@ -454,7 +508,7 @@ export default class InboxPage {
     const deliveryStatus = this.getDeliveryStatusIcon(msg);
 
     return `
-      <div class="message-bubble ${isInbound ? 'inbound' : 'outbound'} ${isAI ? 'ai-message' : ''}">
+      <div class="message-bubble ${isInbound ? 'inbound' : 'outbound'} ${isAI ? 'ai-message' : ''}" data-message-id="${msg.id}">
         ${isAI ? `
           <div class="ai-badge">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -491,18 +545,11 @@ export default class InboxPage {
           </svg>
         </span>`;
       case 'sent':
-        // Single checkmark for sent
-        return `<span class="delivery-status sent" title="Sent">
+      case 'pending':
+        // Single checkmark for sent/pending
+        return `<span class="delivery-status sent" title="${status === 'pending' ? 'Sending...' : 'Sent'}">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="4 12 9 17 20 6"></polyline>
-          </svg>
-        </span>`;
-      case 'pending':
-        // Clock icon for pending
-        return `<span class="delivery-status pending" title="Sending...">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"></circle>
-            <polyline points="12 6 12 12 16 14"></polyline>
           </svg>
         </span>`;
       case 'failed':
@@ -2637,16 +2684,40 @@ export default class InboxPage {
       input.value = '';
       input.style.height = 'auto';
 
-      // Add message to UI immediately
+      // Fetch the newly created message to get its ID
+      const { data: newMsgData } = await supabase
+        .from('sms_messages')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .eq('recipient_number', this.selectedContact)
+        .eq('content', message)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      // Add message to UI with proper ID and status
       const threadMessages = document.getElementById('thread-messages');
+      const msgId = newMsgData?.id || `temp-${Date.now()}`;
+      const statusIcon = this.getDeliveryStatusIcon({ status: newMsgData?.status || 'pending', direction: 'outbound' });
       const newMessage = `
-        <div class="message-bubble outbound">
+        <div class="message-bubble outbound" data-message-id="${msgId}">
           <div class="message-content">${message}</div>
-          <div class="message-time">${this.formatTime(new Date())}</div>
+          <div class="message-time">
+            ${this.formatTime(new Date())}
+            ${statusIcon}
+          </div>
         </div>
       `;
       threadMessages.insertAdjacentHTML('beforeend', newMessage);
       threadMessages.scrollTop = threadMessages.scrollHeight;
+
+      // Also add to local conversations data
+      if (newMsgData) {
+        const conv = this.conversations?.find(c => c.phone === this.selectedContact);
+        if (conv && conv.messages) {
+          conv.messages.push(newMsgData);
+        }
+      }
 
     } catch (error) {
       console.error('Error sending message:', error);
