@@ -83,7 +83,21 @@ Deno.serve(async (req) => {
     const mp3Url = fullRecordingUrl + '.mp3';
     console.log(`📥 Downloading recording from: ${mp3Url}`);
 
-    const audioResponse = await fetch(mp3Url, { headers: downloadHeaders });
+    // First request to get redirect URL (SignalWire returns 302 to pre-signed S3 URL)
+    let audioResponse = await fetch(mp3Url, {
+      headers: downloadHeaders,
+      redirect: 'manual'  // Don't auto-follow to see the redirect
+    });
+
+    // If we got a redirect, follow it without auth (pre-signed URL)
+    if (audioResponse.status === 302 || audioResponse.status === 301) {
+      const redirectUrl = audioResponse.headers.get('Location');
+      console.log(`📥 Following redirect to: ${redirectUrl?.substring(0, 100)}...`);
+      if (redirectUrl) {
+        audioResponse = await fetch(redirectUrl);  // No auth needed for pre-signed URL
+      }
+    }
+
     if (!audioResponse.ok) {
       console.error(`Failed to download recording: ${audioResponse.status}`);
       // Still update with SignalWire URL as fallback
@@ -137,7 +151,8 @@ Deno.serve(async (req) => {
     console.log(`✅ Updated call record ${callRecord.id} with recording URL`);
 
     // Transcribe with speaker diarization asynchronously
-    transcribeWithDiarization(audioBlob, callRecord.id, supabase).catch(err => {
+    // Pass call direction to label speakers correctly
+    transcribeWithDiarization(audioBlob, callRecord.id, callRecord.direction || 'outbound', supabase).catch(err => {
       console.error('Transcription failed:', err);
     });
 
@@ -151,8 +166,12 @@ Deno.serve(async (req) => {
 /**
  * Transcribe audio with speaker diarization using Deepgram
  * Falls back to OpenAI Whisper if Deepgram not available
+ *
+ * Speaker labeling based on call direction:
+ * - Outbound: Speaker who speaks first is usually the Callee (they answer), our user is Caller
+ * - Inbound: Speaker who speaks first is usually the Caller (external), our user is Callee
  */
-async function transcribeWithDiarization(audioBlob: Blob, callRecordId: string, supabase: any) {
+async function transcribeWithDiarization(audioBlob: Blob, callRecordId: string, direction: string, supabase: any) {
   try {
     const deepgramApiKey = Deno.env.get('DEEPGRAM_API_KEY');
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
@@ -213,9 +232,20 @@ async function transcribeWithDiarization(audioBlob: Blob, callRecordId: string, 
           segments.push({ speaker: currentSpeaker, text: currentText.trim() });
         }
 
-        // Format as "User: ... / Caller: ..." for inbox parsing
+        // Format with proper labels based on call direction
+        // For outbound: first speaker (0) is usually callee who answers, speaker 1 is our user
+        // For inbound: first speaker (0) is usually the external caller, speaker 1 is our user
         transcript = segments.map(seg => {
-          const label = seg.speaker === 0 ? 'User' : 'Caller';
+          let label: string;
+          if (direction === 'outbound') {
+            // Outbound: our user called someone
+            // Speaker 0 = Callee (person who answered), Speaker 1 = You (our user)
+            label = seg.speaker === 0 ? 'Callee' : 'You';
+          } else {
+            // Inbound: someone called our user
+            // Speaker 0 = Caller (external person), Speaker 1 = You (our user)
+            label = seg.speaker === 0 ? 'Caller' : 'You';
+          }
           return `${label}: ${seg.text}`;
         }).join('\n');
       } else {
@@ -245,8 +275,8 @@ async function transcribeWithDiarization(audioBlob: Blob, callRecordId: string, 
       }
 
       const whisperResult = await whisperResponse.json();
-      // Format as single speaker since Whisper doesn't do diarization
-      transcript = `User: ${whisperResult.text}`;
+      // Whisper doesn't do diarization, so just provide the raw transcript
+      transcript = whisperResult.text;
     }
 
     console.log(`✅ Transcription completed: ${transcript.substring(0, 100)}...`);
