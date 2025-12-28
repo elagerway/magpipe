@@ -628,6 +628,33 @@ p {
 
 .message-bubble.outbound .message-time {
   text-align: right;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.25rem;
+}
+
+/* SMS Delivery Status Indicators */
+.delivery-status {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.25rem;
+}
+
+.delivery-status.delivered svg {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.delivery-status.sent svg {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.delivery-status.pending svg {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.delivery-status.failed svg {
+  color: #ff6b6b;
 }
 
 .message-bubble.ai-message {
