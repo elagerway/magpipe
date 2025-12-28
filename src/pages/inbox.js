@@ -518,7 +518,7 @@ export default class InboxPage {
             <div class="transcript-messages">
               ${messages.map(msg => `
                 <div class="transcript-bubble ${msg.speaker}">
-                  <div class="transcript-speaker-label">${msg.speaker === 'agent' ? 'Pat (AI)' : 'Caller'}</div>
+                  <div class="transcript-speaker-label">${this.getSpeakerDisplayLabel(msg.speakerLabel)}</div>
                   <div class="transcript-content">${msg.text}</div>
                 </div>
               `).join('')}
@@ -2473,23 +2473,43 @@ export default class InboxPage {
     if (!transcript) return [];
 
     // Parse transcript in "Speaker: Message" format
-    // Supports both "Agent:/User:" (from Retell) and "Pat:/Caller:" formats
+    // Supports:
+    // - "Agent:/Pat:" (AI agent) -> right side
+    // - "You:" (our user in direct calls) -> right side
+    // - "User:/Caller:/Callee:" (other party) -> left side
     const lines = transcript.split('\n').filter(line => line.trim().length > 0);
     const messages = [];
 
     for (const line of lines) {
-      // Match "Agent:", "Pat:", "User:", or "Caller:" at the start
-      const match = line.match(/^(Agent|Pat|User|Caller):\s*(.+)$/);
+      // Match speaker labels at the start
+      const match = line.match(/^(Agent|Pat|You|User|Caller|Callee):\s*(.+)$/);
       if (match) {
         const [, speaker, text] = match;
+        // Agent, Pat, You = right side (our side)
+        // User, Caller, Callee = left side (other party)
+        const isOurSide = (speaker === 'Agent' || speaker === 'Pat' || speaker === 'You');
         messages.push({
-          speaker: (speaker === 'Agent' || speaker === 'Pat') ? 'agent' : 'user',
+          speaker: isOurSide ? 'agent' : 'user',
+          speakerLabel: speaker,  // Keep original label for display
           text: text.trim()
         });
       }
     }
 
     return messages;
+  }
+
+  getSpeakerDisplayLabel(speakerLabel) {
+    // Map transcript speaker labels to display names
+    const labelMap = {
+      'Agent': 'Pat (AI)',
+      'Pat': 'Pat (AI)',
+      'You': 'You',
+      'User': 'Caller',
+      'Caller': 'Caller',
+      'Callee': 'Callee'
+    };
+    return labelMap[speakerLabel] || speakerLabel || 'Unknown';
   }
 
   formatSentiment(sentiment) {

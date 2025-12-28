@@ -292,6 +292,33 @@ export default class PhonePage {
         flex-shrink: 0;
         margin-top: ${isMobile ? '10px' : '0'};
       ">
+        <!-- Transfer button (hidden until call is active) -->
+        <button
+          id="transfer-btn"
+          style="
+            position: absolute;
+            right: calc(50% + 44px);
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            border: none;
+            background: var(--bg-secondary);
+            color: var(--text-secondary);
+            cursor: not-allowed;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            opacity: 0.5;
+          "
+          disabled
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="15 14 20 9 15 4"></polyline>
+            <path d="M4 20v-7a4 4 0 0 1 4-4h12"></path>
+          </svg>
+        </button>
+
         <button
           id="call-btn"
           style="
@@ -423,6 +450,14 @@ export default class PhonePage {
       this.isMuted = false;
       muteBtn.addEventListener('click', () => {
         this.toggleMute();
+      });
+    }
+
+    // Transfer button
+    const transferBtn = document.getElementById('transfer-btn');
+    if (transferBtn) {
+      transferBtn.addEventListener('click', () => {
+        this.showTransferModal();
       });
     }
 
@@ -1273,6 +1308,7 @@ export default class PhonePage {
   transformToHangupButton() {
     const callBtn = document.getElementById('call-btn');
     const muteBtn = document.getElementById('mute-btn');
+    const transferBtn = document.getElementById('transfer-btn');
     if (!callBtn) return;
 
     // Change to red hangup button
@@ -1286,6 +1322,15 @@ export default class PhonePage {
     // Show mute button
     if (muteBtn) {
       muteBtn.style.display = 'flex';
+    }
+
+    // Show and enable transfer button
+    if (transferBtn) {
+      transferBtn.style.display = 'flex';
+      transferBtn.disabled = false;
+      transferBtn.style.opacity = '1';
+      transferBtn.style.cursor = 'pointer';
+      transferBtn.style.color = 'var(--text-primary)';
     }
 
     // Update hover effects
@@ -1311,6 +1356,7 @@ export default class PhonePage {
   transformToCallButton() {
     const callBtn = document.getElementById('call-btn');
     const muteBtn = document.getElementById('mute-btn');
+    const transferBtn = document.getElementById('transfer-btn');
     if (!callBtn) return;
 
     // Change back to green call button
@@ -1326,6 +1372,14 @@ export default class PhonePage {
       muteBtn.style.display = 'none';
       this.isMuted = false;
       this.updateMuteButtonUI();
+    }
+
+    // Hide transfer button
+    if (transferBtn) {
+      transferBtn.style.display = 'none';
+      transferBtn.disabled = true;
+      transferBtn.style.opacity = '0.5';
+      transferBtn.style.cursor = 'not-allowed';
     }
 
     // Restore hover effects
@@ -1442,6 +1496,281 @@ export default class PhonePage {
           <line x1="8" y1="23" x2="16" y2="23"></line>
         </svg>
       `;
+    }
+  }
+
+  async showTransferModal() {
+    console.log('📞 Opening transfer modal...');
+
+    // Load transfer numbers from database
+    const { data: transferNumbers, error } = await supabase
+      .from('transfer_numbers')
+      .select('id, label, phone_number')
+      .eq('user_id', this.userId)
+      .order('is_default', { ascending: false });
+
+    if (error) {
+      console.error('Failed to load transfer numbers:', error);
+    }
+
+    // Create modal
+    const modal = document.createElement('div');
+    modal.id = 'transfer-modal';
+    modal.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+    `;
+
+    const hasTransferNumbers = transferNumbers && transferNumbers.length > 0;
+
+    modal.innerHTML = `
+      <div style="
+        background: var(--bg-primary);
+        border-radius: 16px;
+        padding: 1.5rem;
+        max-width: 350px;
+        width: 90%;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      ">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+          <h3 style="margin: 0; font-size: 1.25rem; color: var(--text-primary);">Transfer Call</h3>
+          <button id="close-transfer-modal" style="
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: var(--text-secondary);
+            padding: 0;
+            line-height: 1;
+          ">&times;</button>
+        </div>
+
+        ${hasTransferNumbers ? `
+          <div style="margin-bottom: 1rem;">
+            <p style="margin: 0 0 0.75rem 0; font-size: 0.875rem; color: var(--text-secondary);">Select a destination:</p>
+            <div id="transfer-options" style="display: flex; flex-direction: column; gap: 0.5rem;">
+              ${transferNumbers.map(tn => `
+                <button class="transfer-option" data-phone="${tn.phone_number}" style="
+                  display: flex;
+                  align-items: center;
+                  justify-content: space-between;
+                  padding: 0.75rem 1rem;
+                  background: var(--bg-secondary);
+                  border: 1px solid var(--border-color);
+                  border-radius: 8px;
+                  cursor: pointer;
+                  transition: all 0.15s ease;
+                ">
+                  <span style="font-weight: 500; color: var(--text-primary);">${tn.label}</span>
+                  <span style="font-size: 0.875rem; color: var(--text-secondary);">${this.formatPhoneNumber(tn.phone_number)}</span>
+                </button>
+              `).join('')}
+            </div>
+          </div>
+          <div style="border-top: 1px solid var(--border-color); padding-top: 1rem;">
+            <p style="margin: 0 0 0.5rem 0; font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Or enter a number:</p>
+        ` : `
+          <div style="margin-bottom: 1rem;">
+            <p style="margin: 0 0 0.5rem 0; font-size: 0.875rem; color: var(--text-secondary);">Enter a number to transfer to:</p>
+        `}
+            <div style="display: flex; gap: 0.5rem;">
+              <input
+                type="tel"
+                id="custom-transfer-number"
+                placeholder="(555) 123-4567"
+                style="
+                  flex: 1;
+                  padding: 0.75rem;
+                  border: 1px solid var(--border-color);
+                  border-radius: 8px;
+                  font-size: 1rem;
+                  background: var(--bg-secondary);
+                  color: var(--text-primary);
+                "
+              />
+              <button id="transfer-custom-btn" style="
+                padding: 0.75rem 1rem;
+                background: linear-gradient(135deg, #6366f1, #8b5cf6);
+                color: white;
+                border: none;
+                border-radius: 8px;
+                font-weight: 600;
+                cursor: pointer;
+              ">Transfer</button>
+            </div>
+          </div>
+        ${!hasTransferNumbers ? `
+          <p style="margin: 1rem 0 0 0; font-size: 0.75rem; color: var(--text-secondary); text-align: center;">
+            Tip: Add transfer numbers in Agent Config for quick access
+          </p>
+        ` : ''}
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // Event listeners
+    document.getElementById('close-transfer-modal').addEventListener('click', () => {
+      modal.remove();
+    });
+
+    // Click outside to close
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        modal.remove();
+      }
+    });
+
+    // Transfer option buttons
+    modal.querySelectorAll('.transfer-option').forEach(btn => {
+      btn.addEventListener('mouseover', () => {
+        btn.style.background = 'var(--bg-primary)';
+        btn.style.borderColor = '#6366f1';
+      });
+      btn.addEventListener('mouseout', () => {
+        btn.style.background = 'var(--bg-secondary)';
+        btn.style.borderColor = 'var(--border-color)';
+      });
+      btn.addEventListener('click', async () => {
+        const phoneNumber = btn.dataset.phone;
+        modal.remove();
+        await this.executeTransfer(phoneNumber);
+      });
+    });
+
+    // Custom number transfer
+    document.getElementById('transfer-custom-btn').addEventListener('click', async () => {
+      const input = document.getElementById('custom-transfer-number');
+      let phoneNumber = input.value.trim();
+      if (!phoneNumber) {
+        input.style.borderColor = '#ef4444';
+        return;
+      }
+      // Normalize to E.164
+      const digitsOnly = phoneNumber.replace(/\D/g, '');
+      if (digitsOnly.length === 10) {
+        phoneNumber = '+1' + digitsOnly;
+      } else if (digitsOnly.length === 11 && digitsOnly.startsWith('1')) {
+        phoneNumber = '+' + digitsOnly;
+      } else {
+        phoneNumber = '+' + digitsOnly;
+      }
+      modal.remove();
+      await this.executeTransfer(phoneNumber);
+    });
+
+    // Enter key on custom input
+    document.getElementById('custom-transfer-number').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        document.getElementById('transfer-custom-btn').click();
+      }
+    });
+  }
+
+  async executeTransfer(targetNumber) {
+    console.log('📞 Executing transfer to:', targetNumber);
+
+    try {
+      // Update UI to show transfer in progress
+      const sipStatusText = document.getElementById('sip-status-text');
+      if (sipStatusText) {
+        sipStatusText.textContent = 'Transferring...';
+        sipStatusText.style.color = '#6366f1';
+      }
+
+      // Get user's SIP username for matching the call
+      const { data: userData } = await supabase
+        .from('users')
+        .select('sip_username')
+        .eq('id', this.userId)
+        .single();
+
+      // Get the current destination number from the input
+      const searchInput = document.getElementById('call-search-input');
+      const currentToNumber = searchInput?.value?.trim() || '';
+
+      if (this.currentBridgedCallSid) {
+        // For bridged calls, call Edge Function to handle transfer
+        console.log('📞 Using Edge Function for bridged call transfer');
+        const { data, error } = await supabase.functions.invoke('transfer-call', {
+          body: {
+            call_sid: this.currentBridgedCallSid,
+            target_number: targetNumber
+          }
+        });
+
+        if (error) throw error;
+
+        console.log('✅ Bridged call transfer initiated:', data);
+        if (sipStatusText) {
+          sipStatusText.textContent = 'Transferred';
+          sipStatusText.style.color = '#10b981';
+        }
+
+        // Clean up
+        this.currentBridgedCallSid = null;
+        this.currentCallRecordId = null;
+        setTimeout(() => {
+          this.transformToCallButton();
+          this.updateCallState('idle');
+        }, 1500);
+      } else if (sipClient && sipClient.isCallActive()) {
+        // For direct SIP calls, use SignalWire REST API via Edge Function
+        console.log('📞 Using SignalWire API for direct SIP transfer');
+        const { data, error } = await supabase.functions.invoke('sip-transfer-call', {
+          body: {
+            sip_username: userData?.sip_username,
+            target_number: targetNumber,
+            current_to_number: currentToNumber
+          }
+        });
+
+        if (error) throw error;
+
+        if (data.error) {
+          throw new Error(data.error);
+        }
+
+        console.log('✅ SIP call transfer initiated:', data);
+        if (sipStatusText) {
+          sipStatusText.textContent = 'Transferred';
+          sipStatusText.style.color = '#10b981';
+        }
+
+        // Hang up our SIP leg since the call is now transferred
+        sipClient.hangup();
+
+        setTimeout(() => {
+          this.transformToCallButton();
+          this.updateCallState('idle');
+        }, 1500);
+      } else {
+        throw new Error('No active call to transfer');
+      }
+    } catch (error) {
+      console.error('❌ Transfer failed:', error);
+      const sipStatusText = document.getElementById('sip-status-text');
+      if (sipStatusText) {
+        sipStatusText.textContent = 'Transfer failed';
+        sipStatusText.style.color = '#ef4444';
+      }
+      alert(`Transfer failed: ${error.message}`);
+
+      // Restore previous state
+      setTimeout(() => {
+        if (sipStatusText) {
+          sipStatusText.textContent = 'Connected';
+          sipStatusText.style.color = '#10b981';
+        }
+      }, 2000);
     }
   }
 }

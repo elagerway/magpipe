@@ -339,6 +339,13 @@ class SIPClient {
   }
 
   /**
+   * Check if call is active (established)
+   */
+  isCallActive() {
+    return this.currentSession !== null && this.currentSession.isEstablished();
+  }
+
+  /**
    * Get current call status
    */
   getCallStatus() {
@@ -346,6 +353,72 @@ class SIPClient {
     if (this.currentSession.isInProgress()) return 'connecting';
     if (this.currentSession.isEstablished()) return 'active';
     return 'idle';
+  }
+
+  /**
+   * Transfer call to another number using SIP REFER
+   * @param {string} targetNumber - Phone number to transfer to
+   * @returns {Promise<boolean>} - True if transfer was successful
+   */
+  async transfer(targetNumber) {
+    if (!this.currentSession || !this.currentSession.isEstablished()) {
+      console.error('No active call to transfer');
+      return false;
+    }
+
+    try {
+      // Clean the target number
+      const cleanNumber = targetNumber.replace(/[^\d+]/g, '');
+
+      console.log('📞 Initiating SIP REFER transfer to:', cleanNumber);
+
+      // JsSIP uses the refer() method for call transfer
+      // The target can be a SIP URI or phone number
+      const referTarget = cleanNumber.startsWith('+')
+        ? `sip:${cleanNumber}@${this.sipDomain}`
+        : `sip:+${cleanNumber}@${this.sipDomain}`;
+
+      return new Promise((resolve, reject) => {
+        const eventHandlers = {
+          requestSucceeded: (e) => {
+            console.log('✅ REFER request accepted');
+            resolve(true);
+          },
+          requestFailed: (e) => {
+            console.error('❌ REFER request failed:', e.cause);
+            reject(new Error(e.cause || 'REFER failed'));
+          },
+          trying: (e) => {
+            console.log('📞 REFER trying...');
+          },
+          progress: (e) => {
+            console.log('📞 REFER progress:', e.status_code);
+          },
+          accepted: (e) => {
+            console.log('✅ REFER accepted by remote party');
+          },
+          failed: (e) => {
+            console.error('❌ REFER failed:', e.cause);
+            reject(new Error(e.cause || 'Transfer failed'));
+          }
+        };
+
+        try {
+          this.currentSession.refer(referTarget, {
+            eventHandlers,
+            extraHeaders: [
+              'Referred-By: <' + this.userAgent.configuration.uri + '>'
+            ]
+          });
+        } catch (err) {
+          console.error('Error calling refer:', err);
+          reject(err);
+        }
+      });
+    } catch (error) {
+      console.error('Transfer error:', error);
+      return false;
+    }
   }
 }
 
