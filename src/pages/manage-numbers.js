@@ -9,6 +9,7 @@ export default class ManageNumbersPage {
   constructor() {
     this.serviceNumbers = [];
     this.numbersToDelete = [];
+    this.user = null;
   }
 
   async render() {
@@ -18,6 +19,8 @@ export default class ManageNumbersPage {
       navigateTo('/login');
       return;
     }
+
+    this.user = user;
 
     const appElement = document.getElementById('app');
 
@@ -126,20 +129,22 @@ export default class ManageNumbersPage {
     const errorMessage = document.getElementById('error-message');
 
     try {
-      // Load active/inactive service numbers
+      // Load active/inactive service numbers for current user only
       const { data: numbers, error } = await supabase
         .from('service_numbers')
         .select('*')
+        .eq('user_id', this.user.id)
         .order('purchased_at', { ascending: false });
 
       if (error) throw error;
 
       this.serviceNumbers = numbers || [];
 
-      // Load numbers scheduled for deletion
+      // Load numbers scheduled for deletion for current user only
       const { data: toDelete, error: deleteError } = await supabase
         .from('numbers_to_delete')
         .select('*')
+        .eq('user_id', this.user.id)
         .eq('deletion_status', 'pending')
         .order('scheduled_deletion_date', { ascending: true });
 
@@ -166,8 +171,10 @@ export default class ManageNumbersPage {
   renderNumbers() {
     const container = document.getElementById('numbers-container');
 
-    const activeNumbers = this.serviceNumbers.filter(n => n.is_active);
-    const inactiveNumbers = this.serviceNumbers.filter(n => !n.is_active);
+    // Filter out US Relay numbers - they're shown as reference on Canadian numbers
+    const isUSRelay = (n) => n.friendly_name?.includes('Auto US Relay');
+    const activeNumbers = this.serviceNumbers.filter(n => n.is_active && !isUSRelay(n));
+    const inactiveNumbers = this.serviceNumbers.filter(n => !n.is_active && !isUSRelay(n));
 
     container.innerHTML = `
       ${activeNumbers.length > 0 ? `
@@ -378,6 +385,27 @@ export default class ManageNumbersPage {
     const hasSms = capabilities.sms !== false;
     const hasMms = capabilities.mms !== false;
 
+    // Check if this is a US Relay number and find the associated Canadian number
+    const canadianAreaCodes = ['+1604', '+1778', '+1236', '+1250', '+1587', '+1403', '+1780', '+1825'];
+    const isUSRelay = number.friendly_name?.includes('Auto US Relay');
+    const isCanadian = canadianAreaCodes.some(code => number.phone_number.startsWith(code));
+
+    let relayForNumber = null;
+    let usRelayNumber = null;
+
+    if (isUSRelay) {
+      // Find the Canadian number (non-relay number with Canadian area code)
+      relayForNumber = this.serviceNumbers.find(n =>
+        !n.friendly_name?.includes('Auto US Relay') &&
+        canadianAreaCodes.some(code => n.phone_number.startsWith(code))
+      );
+    } else if (isCanadian) {
+      // Find the US Relay number for this Canadian number
+      usRelayNumber = this.serviceNumbers.find(n =>
+        n.friendly_name?.includes('Auto US Relay')
+      );
+    }
+
     return `
       <div class="number-card" style="
         padding: 1rem;
@@ -395,6 +423,16 @@ export default class ManageNumbersPage {
             <div style="font-size: 0.75rem; color: var(--text-secondary);">
               ${number.friendly_name || 'Pat AI - ' + number.user_id?.substring(0, 8)}
             </div>
+            ${isUSRelay && relayForNumber ? `
+              <div style="font-size: 0.75rem; color: var(--primary-color); margin-top: 0.25rem;">
+                Relay for: ${this.formatPhoneNumber(relayForNumber.phone_number)}
+              </div>
+            ` : ''}
+            ${isCanadian && usRelayNumber ? `
+              <div style="font-size: 0.75rem; color: var(--primary-color); margin-top: 0.25rem;">
+                US Relay: ${this.formatPhoneNumber(usRelayNumber.phone_number)}
+              </div>
+            ` : ''}
           </div>
           <label class="toggle-switch" style="flex-shrink: 0;">
             <input

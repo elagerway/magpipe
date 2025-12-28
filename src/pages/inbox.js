@@ -331,12 +331,12 @@ export default class InboxPage {
         const iconSvg = isOutbound
           ? `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                <polyline points="23 7 23 1 17 1"></polyline>
-               <line x1="13 11 23 1"></line>
+               <line x1="13" y1="11" x2="23" y2="1"></line>
                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
              </svg>` // phone-outgoing
           : `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                <polyline points="16 2 16 8 22 8"></polyline>
-               <line x1="23 1 16 8"></line>
+               <line x1="23" y1="1" x2="16" y2="8"></line>
                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
              </svg>`; // phone-incoming
 
@@ -346,20 +346,20 @@ export default class InboxPage {
         const serviceNumber = conv.call.service_number || conv.call.caller_number;
 
         return `
-          <div class="conversation-item ${isSelected ? 'selected' : ''}" data-call-id="${conv.callId}" data-type="call">
-            <div class="conversation-avatar call-avatar">
+          <div class="conversation-item ${isSelected ? 'selected' : ''}" data-call-id="${conv.callId}" data-type="call" style="display: flex !important; flex-direction: row !important; gap: 0.75rem;">
+            <div class="conversation-avatar call-avatar" style="flex-shrink: 0;">
               ${iconSvg}
             </div>
-            <div class="conversation-content">
-              <div class="conversation-header">
+            <div class="conversation-content" style="flex: 1 !important; min-width: 0;">
+              <div class="conversation-header" style="display: flex !important; justify-content: space-between !important; align-items: baseline; width: 100%;">
                 <span class="conversation-name">${this.formatPhoneNumber(primaryNumber)}</span>
-                <span class="conversation-time">${this.formatTimestamp(conv.lastActivity)}</span>
+                <span class="conversation-time" style="white-space: nowrap; margin-left: 0.5rem;">${this.formatTimestamp(conv.lastActivity)}</span>
               </div>
               <div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 2px;">
                 ${isOutbound ? 'From' : 'To'}: ${this.formatPhoneNumber(serviceNumber)}
               </div>
               <div class="conversation-preview">
-                <span class="call-status-indicator ${conv.statusInfo.class}">${conv.statusInfo.icon}</span>
+                <span class="call-status-indicator ${conv.statusInfo.class}" style="color: ${conv.statusInfo.color}; margin-right: 0.25rem;">${conv.statusInfo.icon}</span>
                 ${conv.lastMessage}
               </div>
             </div>
@@ -367,18 +367,18 @@ export default class InboxPage {
         `;
       } else {
         return `
-          <div class="conversation-item ${isSelected ? 'selected' : ''}" data-phone="${conv.phone}" data-type="sms">
-            <div class="conversation-avatar sms-avatar">
+          <div class="conversation-item ${isSelected ? 'selected' : ''}" data-phone="${conv.phone}" data-type="sms" style="display: flex !important; flex-direction: row !important; gap: 0.75rem;">
+            <div class="conversation-avatar sms-avatar" style="flex-shrink: 0;">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
               </svg>
             </div>
-            <div class="conversation-content">
-              <div class="conversation-header">
+            <div class="conversation-content" style="flex: 1 !important; min-width: 0;">
+              <div class="conversation-header" style="display: flex !important; justify-content: space-between !important; align-items: baseline; width: 100%;">
                 <span class="conversation-name">${this.formatPhoneNumber(conv.phone)}</span>
-                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <div style="display: flex; align-items: center; gap: 0.5rem; margin-left: 0.5rem;">
                   ${conv.unreadCount > 0 ? `<span class="conversation-unread-badge">${conv.unreadCount > 99 ? '99+' : conv.unreadCount}</span>` : ''}
-                  <span class="conversation-time">${this.formatTimestamp(conv.lastActivity)}</span>
+                  <span class="conversation-time" style="white-space: nowrap;">${this.formatTimestamp(conv.lastActivity)}</span>
                 </div>
               </div>
               <div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 2px;">To: ${Array.from(conv.serviceNumbers).map(n => this.formatPhoneNumber(n)).join(', ')}</div>
@@ -538,79 +538,94 @@ export default class InboxPage {
       'completed': {
         icon: '✓',
         text: 'Completed',
-        class: 'status-completed'
+        class: 'status-completed',
+        color: '#10b981'
       },
       'in-progress': {
         icon: '⟳',
         text: 'In Progress',
-        class: 'status-progress'
+        class: 'status-progress',
+        color: '#6366f1'
       },
       'no-answer': {
         icon: '⊗',
         text: 'No Answer',
-        class: 'status-missed'
+        class: 'status-missed',
+        color: '#ef4444'
       },
       'failed': {
         icon: '✕',
         text: 'Failed',
-        class: 'status-failed'
+        class: 'status-failed',
+        color: '#ef4444'
       },
       'busy': {
         icon: '⊗',
         text: 'Busy',
-        class: 'status-busy'
+        class: 'status-busy',
+        color: '#f59e0b'
       },
       'answered_by_pat': {
         icon: '✓',
         text: 'Answered by Pat',
-        class: 'status-completed'
+        class: 'status-completed',
+        color: '#10b981'
       },
       'transferred_to_user': {
         icon: '↗',
         text: 'Transferred',
-        class: 'status-transferred'
+        class: 'status-transferred',
+        color: '#6366f1'
       },
       'screened_out': {
         icon: '🚫',
         text: 'Screened Out',
-        class: 'status-screened'
+        class: 'status-screened',
+        color: '#9ca3af'
       },
       'voicemail': {
         icon: '💬',
         text: 'Voicemail',
-        class: 'status-voicemail'
+        class: 'status-voicemail',
+        color: '#8b5cf6'
       },
       'Caller Hungup': {
         icon: '⊗',
         text: 'Hung Up',
-        class: 'status-hungup'
+        class: 'status-hungup',
+        color: '#f59e0b'
       },
       'outbound_completed': {
         icon: '✓',
         text: 'Completed',
-        class: 'status-completed'
+        class: 'status-completed',
+        color: '#10b981'
       },
       'outbound_no_answer': {
         icon: '⊗',
         text: 'No Answer',
-        class: 'status-missed'
+        class: 'status-missed',
+        color: '#ef4444'
       },
       'outbound_busy': {
         icon: '⊗',
         text: 'Busy',
-        class: 'status-busy'
+        class: 'status-busy',
+        color: '#f59e0b'
       },
       'outbound_failed': {
         icon: '✕',
         text: 'Failed',
-        class: 'status-failed'
+        class: 'status-failed',
+        color: '#ef4444'
       }
     };
 
     return statusMap[status] || {
       icon: '•',
       text: status || 'Unknown',
-      class: 'status-unknown'
+      class: 'status-unknown',
+      color: '#9ca3af'
     };
   }
 
