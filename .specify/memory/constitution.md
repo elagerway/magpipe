@@ -210,7 +210,57 @@ Optimization work MUST be driven by profiling data, not assumptions. Premature o
 
 **Rationale**: Performance problems discovered late require architectural changes that invalidate prior work. Users perceive slow software as broken software. Performance is a feature, not a nice-to-have.
 
-### V. Debugging Infrastructure Required (NON-NEGOTIABLE)
+### V. Outbound Call Architecture (NON-NEGOTIABLE)
+
+**CRITICAL: LiveKit SIP Trunk Does NOT Work for Direct Outbound**:
+
+The LiveKit SIP trunk feature for DIRECT outbound calls has been attempted multiple times and has NEVER worked in this project. All attempts result in "object cannot be found" errors when creating SIP participants via `livekit-outbound-call` Edge Function.
+
+**Forbidden Actions**:
+- ❌ NEVER attempt to use LiveKit SIP trunk (`ST_3DmaaWbHL9QT`) for direct outbound calls
+- ❌ NEVER call the `livekit-outbound-call` Edge Function for production features
+- ❌ NEVER implement outbound calls by having LiveKit create SIP participants directly
+
+**Required Architecture for Direct Outbound Calls (No Recording)**:
+- ✅ ALL direct outbound calls MUST use browser WebRTC SIP directly to SignalWire
+- ✅ NO LiveKit intermediary for direct outbound calls
+- ✅ Browser establishes SIP connection, dials destination directly through SignalWire
+
+**Required Architecture for Outbound Call Recording (Bridged Conference)**:
+- ✅ Recording IS POSSIBLE via bridged conference approach
+- ✅ Architecture: SignalWire calls browser SIP endpoint (browser auto-answers) + SignalWire bridges to PSTN destination
+- ✅ Both legs joined in SignalWire conference which supports recording
+- ✅ Uses `initiate-bridged-call`, `outbound-call-swml`, and `outbound-call-status` Edge Functions
+- ✅ Browser must auto-answer incoming SIP calls for bridging to work
+
+**Bridged Conference Call Flow**:
+1. User clicks Call button with recording enabled
+2. Frontend calls `initiate-bridged-call` Edge Function with destination number
+3. Edge Function calls SignalWire API to initiate call to browser's SIP number
+4. Browser auto-answers the incoming SIP call
+5. SignalWire fetches CXML from `outbound-call-swml` Edge Function
+6. CXML instructs SignalWire to `<Dial>` the destination number with recording enabled
+7. SignalWire bridges browser leg + PSTN leg in conference, records the conference
+8. Recording saved to database via `sip-recording-callback` Edge Function
+
+**If Asked to Implement Outbound Recording**:
+1. Use the bridged conference approach (described above)
+2. DO NOT attempt LiveKit SIP trunk approach
+3. Ensure browser SIP auto-answer is implemented
+4. Verify `initiate-bridged-call`, `outbound-call-swml`, and `sip-recording-callback` Edge Functions are deployed
+
+**Historical Context**:
+- LiveKit SIP trunk for direct outbound repeatedly attempted and failed
+- Every attempt failed with "object cannot be found" when creating SIP participant
+- Hours wasted on this approach before documenting it as non-working
+- Bridged conference approach is the ONLY working method for outbound recording
+- This limitation is now documented to prevent future wasted attempts on LiveKit trunk
+
+**Enforcement**: Before implementing ANY outbound call feature, verify it uses the correct architecture. Code reviews MUST reject any use of `livekit-outbound-call` Edge Function for production features.
+
+**Rationale**: Repeating failed approaches wastes time and money. LiveKit SIP trunk limitation has been confirmed through multiple independent attempts. The bridged conference approach is proven to work for recording. Document what works and what doesn't to avoid repeating mistakes.
+
+### VI. Debugging Infrastructure Required (NON-NEGOTIABLE)
 
 All complex systems MUST include comprehensive debugging infrastructure BEFORE declaring features complete:
 
@@ -284,6 +334,22 @@ All complex systems MUST include comprehensive debugging infrastructure BEFORE d
 - Every feature MUST have a quickstart guide demonstrating end-to-end usage
 
 ## Development Workflow
+
+### Test Credentials (MANDATORY)
+
+**CRITICAL: NEVER use erik@snapsonic.com or any user's real credentials for testing**
+
+All automated testing MUST use the dedicated test account:
+- **Email**: `claude-test@snapsonic.test`
+- **Password**: `TestPass123!`
+
+**Why This Is Non-Negotiable**:
+- Using real user credentials wastes tokens on unnecessary authentication
+- Risks affecting production data
+- Creates noise in analytics and logs
+- Violates principle of test isolation
+
+**API Testing**: Use `TEST_USER_TOKEN` from `.env` when available for Edge Function testing.
 
 ### Feature Development Process
 1. **Specification**: Create feature spec defining user value and requirements (no implementation details)
