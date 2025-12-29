@@ -16,6 +16,16 @@
   padding: 1rem;
 }
 
+/* Hide mobile header on desktop */
+.modal-mobile-header {
+  display: none;
+}
+
+/* Desktop-only elements */
+.desktop-only {
+  display: block;
+}
+
 .modal.hidden {
   display: none;
 }
@@ -79,30 +89,89 @@
   }
 }
 
-/* Mobile modal styles */
+/* Mobile modal styles - full screen view with back button */
 @media (max-width: 768px) {
   .modal {
     padding: 0;
+    overflow: hidden; /* Don't scroll on modal itself */
+  }
+
+  .modal-backdrop {
+    display: none; /* Hide backdrop on mobile - it's a full page view */
   }
 
   .modal-content {
     width: 100%;
     height: 100vh;
+    height: 100dvh;
     max-width: 100%;
     max-height: 100vh;
+    max-height: 100dvh;
     margin: 0;
     border-radius: 0;
-    animation: modalSlideUp 0.2s ease-out;
+    padding-top: 0;
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 5rem);
+    overflow-y: auto; /* Scroll on modal-content */
+    -webkit-overflow-scrolling: touch;
+    animation: modalSlideIn 0.25s ease-out;
   }
 
-  @keyframes modalSlideUp {
+  /* Mobile back button header */
+  .modal-content .modal-mobile-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    margin: 0 -1.5rem 1rem -1.5rem;
+    padding: 1rem 1.5rem;
+  }
+
+  .modal-content .modal-mobile-header .back-btn {
+    background: none;
+    border: none;
+    padding: 0.5rem;
+    margin: -0.5rem;
+    margin-right: 0.5rem;
+    cursor: pointer;
+    color: var(--primary-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .modal-content .modal-mobile-header h2 {
+    margin: 0;
+    font-size: 1.125rem;
+    font-weight: 600;
+  }
+
+  /* Hide the X close button on mobile (back button replaces it) */
+  .modal-content #close-modal-btn {
+    display: none;
+  }
+
+  /* Show mobile header on mobile */
+  .modal-mobile-header {
+    display: flex;
+  }
+
+  /* Hide desktop-only elements on mobile */
+  .desktop-only {
+    display: none;
+  }
+
+  @keyframes modalSlideIn {
     from {
       opacity: 0;
-      transform: translateY(20px);
+      transform: translateX(100%);
     }
     to {
       opacity: 1;
-      transform: translateY(0);
+      transform: translateX(0);
     }
   }
 }

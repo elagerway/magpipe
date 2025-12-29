@@ -110,7 +110,17 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
         <div id="contact-modal" class="modal hidden">
           <div class="modal-backdrop"></div>
           <div class="modal-content card" style="position: relative;">
-            <!-- Close X button -->
+            <!-- Mobile header with back button -->
+            <div class="modal-mobile-header">
+              <button type="button" class="back-btn" id="modal-back-btn">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M19 12H5"></path>
+                  <path d="M12 19l-7-7 7-7"></path>
+                </svg>
+              </button>
+              <h2 id="modal-title-mobile">Add Contact</h2>
+            </div>
+            <!-- Close X button (desktop only) -->
             <button type="button" id="close-modal-btn" style="
               position: absolute;
               top: 0.75rem;
@@ -129,7 +139,7 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
                 <line x1="6" y1="6" x2="18" y2="18"></line>
               </svg>
             </button>
-            <h2 id="modal-title">Add Contact</h2>
+            <h2 id="modal-title" class="desktop-only">Add Contact</h2>
             <form id="contact-form">
               <!-- Avatar Upload -->
               <div class="form-group">
@@ -497,7 +507,9 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
       this.editingContactId = null;
       this.avatarFile = null;
       this.enrichedAvatarUrl = null;
+      // Update both desktop and mobile titles
       document.getElementById('modal-title').textContent = 'Add Contact';
+      document.getElementById('modal-title-mobile').textContent = 'Add Contact';
       contactForm.reset();
       document.getElementById('contact-whitelisted').checked = true;
       this.resetAvatarPreview();
@@ -554,6 +566,14 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
       contactModal.classList.add('hidden');
     });
 
+    // Close modal (mobile back button)
+    const modalBackBtn = document.getElementById('modal-back-btn');
+    if (modalBackBtn) {
+      modalBackBtn.addEventListener('click', () => {
+        contactModal.classList.add('hidden');
+      });
+    }
+
     // Close modal when clicking backdrop
     contactModal.addEventListener('click', (e) => {
       if (e.target === contactModal || e.target.classList.contains('modal-backdrop')) {
@@ -600,7 +620,9 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
           this.editingContactId = contactId;
           this.avatarFile = null;
           this.enrichedAvatarUrl = null;
+          // Update both desktop and mobile titles
           document.getElementById('modal-title').textContent = 'Edit Contact';
+          document.getElementById('modal-title-mobile').textContent = 'Edit Contact';
           document.getElementById('contact-first-name').value = contact.first_name || '';
           document.getElementById('contact-last-name').value = contact.last_name || '';
           document.getElementById('contact-phone').value = contact.phone_number;
