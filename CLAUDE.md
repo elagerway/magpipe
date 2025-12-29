@@ -32,6 +32,15 @@ JavaScript ES6+, HTML5, CSS3 (vanilla, minimal framework usage per user requirem
 - **NEVER ask user to check logs - check them yourself**: Use direct API calls, CLI commands, or database queries to fetch logs instead of asking the user to copy/paste them. The user should not be a data retrieval service.
 - **NEVER commit or push to GitHub without EXPRESS USER PERMISSION**: NEVER run `git commit` or `git push` without the user's explicit approval. ALWAYS test changes locally FIRST, then present results to the user and WAIT for permission before committing. This is NON-NEGOTIABLE.
 
+## Test Credentials - USE THESE, NOT USER'S CREDENTIALS
+- **CRITICAL: NEVER use erik@snapsonic.com or any user's real credentials for testing**
+- **Always use the dedicated test account**:
+  - Email: `claude-test@snapsonic.test`
+  - Password: `TestPass123!`
+- **Why this matters**: Using real user credentials in tests is wasteful (burns tokens with unnecessary auth flows) and risky (could affect production data)
+- **For Playwright/browser tests**: Always use the test account above
+- **For API tests**: Use `TEST_USER_TOKEN` from `.env` when available
+
 ## Git Commit Message Guidelines
 - **Do NOT include "Co-Authored-By: Claude" footer**: User prefers clean commit messages without AI attribution
 - **Do NOT include emoji robot or Claude Code link**: Keep commit messages professional and concise
@@ -255,6 +264,19 @@ JavaScript ES6+, HTML5, CSS3 (vanilla, minimal framework usage per user requirem
 - **Multi-stack support**: Pat supports multiple Voice AI providers (Retell, LiveKit) that can be swapped by admin
 - **Provider-specific features**: Each provider has different capabilities and limitations
 - **Stack selection**: Active stack is controlled via database configuration, NOT hardcoded
+
+### CRITICAL: LiveKit SIP Trunk Does NOT Work for Direct Outbound
+- **NEVER use LiveKit SIP trunk for direct outbound calls**: The LiveKit SIP trunk (`ST_3DmaaWbHL9QT`) does NOT work and has NEVER worked
+- **DO NOT call `livekit-outbound-call` Edge Function**: This approach has been tried multiple times and always fails with "object cannot be found"
+- **Direct outbound calls use browser SIP ONLY**: Outbound calls go through browser WebRTC SIP directly to SignalWire, NOT through LiveKit trunk
+
+### Outbound Call Recording Via Bridged Conference
+- **Recording IS possible via bridged conference approach**: Both legs (browser SIP + PSTN destination) are bridged into a SignalWire conference which can be recorded
+- **Bridged approach architecture**:
+  1. SignalWire calls the browser's SIP endpoint (browser auto-answers)
+  2. SignalWire bridges that leg to the PSTN destination number
+  3. Both legs are in a SignalWire conference that supports recording
+- **This is the ONLY working approach for outbound call recording**: Do not attempt LiveKit trunk or other methods
 
 ### Voice AI Providers
 
@@ -527,6 +549,141 @@ sip_ws_server: wss://erik-0f619b8e956e.sip.signalwire.com
 
 ### Reference
 - Official Guide: https://developer.signalwire.com/platform/basics/guides/webrtc-with-sip-over-websockets/
+
+## Playwright Testing Framework
+
+### Authentication for Playwright Tests
+Since the user authenticates via Google OAuth, password-based login doesn't work in tests. Use magic link OTP approach:
+
+```javascript
+// 1. Generate magic link OTP via admin API
+const response = await fetch('https://mtxbiyilvgwhbdptysex.supabase.co/auth/v1/admin/generate_link', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+    'apikey': SUPABASE_SERVICE_ROLE_KEY,
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({ type: 'magiclink', email: 'erik@snapsonic.com' })
+});
+const data = await response.json();
+const otp = data.email_otp;
+
+// 2. Verify OTP to get session
+const verifyResponse = await fetch('https://mtxbiyilvgwhbdptysex.supabase.co/auth/v1/verify', {
+  method: 'POST',
+  headers: {
+    'apikey': SUPABASE_ANON_KEY,
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({ type: 'email', token: otp, email: 'erik@snapsonic.com' })
+});
+const session = await verifyResponse.json();
+
+// 3. Inject session into browser localStorage
+await page.goto('http://localhost:3000');
+await page.evaluate((sessionData) => {
+  const storageKey = 'sb-mtxbiyilvgwhbdptysex-auth-token';
+  localStorage.setItem(storageKey, JSON.stringify({
+    access_token: sessionData.access_token,
+    refresh_token: sessionData.refresh_token,
+    expires_in: 3600,
+    expires_at: Math.floor(Date.now() / 1000) + 3600,
+    token_type: 'bearer',
+    user: sessionData.user
+  }));
+}, session);
+
+// 4. Navigate to protected page
+await page.goto('http://localhost:3000/inbox');
+```
+
+### Test Scripts Available
+- **`./test-bridged-call.sh [phone] [caller_id]`**: Initiates bridged outbound call via API
+  - Uses `TEST_USER_TOKEN` from `.env`
+  - Defaults: phone=+16045628647, caller_id=+16042566768
+
+### Environment Variables for Testing
+Add to `.env`:
+```bash
+TEST_USER_TOKEN=<jwt_access_token>  # Generated via magic link OTP
+TEST_USER_ID=77873635-9f5a-4eee-90f3-d145aed0c2c4
+```
+
+### Regenerating Test Token
+Tokens expire after 1 hour. Regenerate with:
+```bash
+# Generate magic link
+curl -s -X POST "https://mtxbiyilvgwhbdptysex.supabase.co/auth/v1/admin/generate_link" \
+  -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+  -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"type": "magiclink", "email": "erik@snapsonic.com"}' | jq -r '.email_otp'
+
+# Verify OTP (replace OTP_CODE with the output above)
+curl -s -X POST "https://mtxbiyilvgwhbdptysex.supabase.co/auth/v1/verify" \
+  -H "apikey: $VITE_SUPABASE_ANON_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"type": "email", "token": "OTP_CODE", "email": "erik@snapsonic.com"}' | jq -r '.access_token'
+```
+
+### Running Playwright Tests
+```bash
+# Run specific test
+npx playwright test tests/test-outbound-direction.spec.js --headed
+
+# Run all tests
+npx playwright test
+
+# Debug mode
+npx playwright test --debug
+```
+
+### Common Playwright Issues and Solutions
+
+1. **Call button not found on inbox page**
+   - The call button (#call-btn) is on the Phone page, not Inbox
+   - Solution: Navigate to Phone via bottom nav: `await page.click('text=Phone')`
+
+2. **Microphone permission modal blocks interaction**
+   - App shows "Allow Microphone" modal on Phone page
+   - Solution: Click the allow button before proceeding:
+   ```javascript
+   const allowMicBtn = page.locator('text=Allow Microphone');
+   if (await allowMicBtn.isVisible()) {
+     await allowMicBtn.click();
+   }
+   ```
+
+3. **Bottom nav intercepts clicks on call button**
+   - Error: `<nav class="bottom-nav">…</nav> intercepts pointer events`
+   - Solution: Use force click on ALL buttons that may be behind the nav:
+   ```javascript
+   await callBtn.click({ force: true });
+   await hangupBtn.click({ force: true });
+   ```
+
+4. **SIP registration takes time**
+   - Wait 15+ seconds for SIP to register before making calls
+   - Check logs for "SIP registered successfully"
+
+5. **Session injection format**
+   - Supabase expects specific localStorage format:
+   ```javascript
+   localStorage.setItem('sb-mtxbiyilvgwhbdptysex-auth-token', JSON.stringify({
+     access_token, refresh_token, expires_in: 3600,
+     expires_at: Math.floor(Date.now() / 1000) + 3600,
+     token_type: 'bearer', user
+   }));
+   ```
+
+6. **Console logs not captured**
+   - Add console listener BEFORE navigating: `page.on('console', msg => ...)`
+
+### Test File Locations
+- `tests/test-outbound-direction.spec.js` - Tests outbound call direction detection
+- `tests/test-outbound-call-with-record.spec.js` - Tests call record creation
+- `./test-bridged-call.sh` - Shell script for API-based call testing
 
 <!-- MANUAL ADDITIONS END -->
 - psql or sql is not installed or accessible, use a Python approach with direct PostgreSQL connection instead
