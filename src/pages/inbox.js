@@ -739,6 +739,10 @@ export default class InboxPage {
         const primaryNumber = conv.phone; // The contact number
         const serviceNumber = conv.call.service_number || conv.call.caller_number;
 
+        // Look up contact name
+        const contact = this.contactsMap?.[primaryNumber];
+        const contactName = contact ? [contact.first_name, contact.last_name].filter(Boolean).join(' ') || contact.name : null;
+
         return `
           <div class="conversation-item ${isSelected ? 'selected' : ''}" data-call-id="${conv.callId}" data-type="call" style="display: flex !important; flex-direction: row !important; gap: 0.75rem;">
             <div class="conversation-avatar call-avatar" style="flex-shrink: 0;">
@@ -746,11 +750,11 @@ export default class InboxPage {
             </div>
             <div class="conversation-content" style="flex: 1 !important; min-width: 0;">
               <div class="conversation-header" style="display: flex !important; justify-content: space-between !important; align-items: baseline; width: 100%;">
-                <span class="conversation-name">${this.formatPhoneNumber(primaryNumber)}</span>
+                <span class="conversation-name">${contactName || this.formatPhoneNumber(primaryNumber)}</span>
                 <span class="conversation-time" style="white-space: nowrap; margin-left: 0.5rem;">${this.formatTimestamp(conv.lastActivity)}</span>
               </div>
               <div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 2px;">
-                ${isOutbound ? 'From' : 'To'}: ${this.formatPhoneNumber(serviceNumber)}
+                ${contactName ? this.formatPhoneNumber(primaryNumber) + ' • ' : ''}${isOutbound ? 'From' : 'To'}: ${this.formatPhoneNumber(serviceNumber)}
               </div>
               <div class="conversation-preview">
                 <span class="call-status-indicator ${conv.statusInfo.class}" style="color: ${conv.statusInfo.color}; margin-right: 0.25rem;">${conv.statusInfo.icon}</span>
@@ -1031,6 +1035,10 @@ export default class InboxPage {
     const statusInfo = this.getCallStatusInfo(call.status);
     const messages = this.parseTranscript(call.transcript);
 
+    // Look up contact for this call
+    const contact = this.contactsMap?.[call.contact_phone];
+    const contactName = contact ? [contact.first_name, contact.last_name].filter(Boolean).join(' ') || contact.name : null;
+
     return `
       <div class="thread-header" style="display: flex; align-items: center; gap: 0.75rem; justify-content: space-between;">
         <div style="display: flex; align-items: center; gap: 0.5rem;">
@@ -1045,9 +1053,12 @@ export default class InboxPage {
             color: var(--primary-color);
             line-height: 1;
           ">←</button>
-          <h2 style="margin: 0; font-size: calc(1.125rem - 5px); font-weight: 600; line-height: 1;">
-            ${this.formatPhoneNumber(call.contact_phone)}
-          </h2>
+          <div>
+            <h2 style="margin: 0; font-size: calc(1.125rem - 5px); font-weight: 600; line-height: 1;">
+              ${contactName || this.formatPhoneNumber(call.contact_phone)}
+            </h2>
+            ${contactName ? `<div style="font-size: 0.75rem; color: var(--text-secondary);">${this.formatPhoneNumber(call.contact_phone)}</div>` : ''}
+          </div>
         </div>
         <div style="font-size: 0.875rem; color: var(--text-secondary); display: flex; gap: 0.5rem; align-items: center; white-space: nowrap;">
           <span>${call.direction === 'inbound' ? 'Incoming' : 'Outgoing'} Call</span>
