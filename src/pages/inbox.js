@@ -43,6 +43,7 @@ export default class InboxPage {
     this.subscription = null;
     this.userId = null;
     this.dropdownListenersAttached = false;
+    this.lastFetchTime = 0;
   }
 
   async render() {
@@ -54,10 +55,16 @@ export default class InboxPage {
     }
 
     // Load voice recognition early (small module) for UI check
-    await loadVoiceRecognition();
+    loadVoiceRecognition(); // Don't await - load in background
 
     this.userId = user.id;
-    await this.loadConversations(user.id);
+
+    // Use cached data if fetched within last 30 seconds
+    const now = Date.now();
+    if (this.conversations.length === 0 || (now - this.lastFetchTime) > 30000) {
+      await this.loadConversations(user.id);
+      this.lastFetchTime = now;
+    }
 
     const appElement = document.getElementById('app');
 
