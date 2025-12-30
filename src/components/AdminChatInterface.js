@@ -1586,7 +1586,7 @@ export function addAdminChatStyles() {
       font-weight: 500;
     }
 
-    /* Mobile header */
+    /* Mobile header - hidden on desktop */
     .chat-mobile-header {
       display: none;
     }
@@ -1595,7 +1595,8 @@ export function addAdminChatStyles() {
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 8px;
+      width: 40px;
+      height: 40px;
       background: transparent;
       border: none;
       color: #3b82f6;
@@ -1616,11 +1617,17 @@ export function addAdminChatStyles() {
 
     /* Mobile responsive */
     @media (max-width: 768px) {
+      .admin-chat-interface {
+        flex-direction: column;
+      }
+
       .chat-mobile-header {
         display: flex;
-        padding: 12px;
-        border-bottom: 1px solid var(--border-color, #e5e7eb);
-        background: var(--bg-primary, #fff);
+        align-items: center;
+        padding: 8px 12px;
+        border-bottom: 1px solid #e5e7eb;
+        background: #fff;
+        flex-shrink: 0;
       }
 
       .chat-sidebar {
@@ -1628,15 +1635,20 @@ export function addAdminChatStyles() {
         position: fixed;
         top: 0;
         left: 0;
-        right: 0;
+        width: 85%;
+        max-width: 300px;
         bottom: 0;
         z-index: 1000;
-        background: var(--bg-primary, #fff);
-        padding-top: 50px;
+        background: #fff;
+        box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+        transform: translateX(-100%);
+        transition: transform 0.3s ease;
       }
 
       .chat-sidebar.open {
-        display: block;
+        display: flex;
+        flex-direction: column;
+        transform: translateX(0);
       }
 
       .close-sidebar-btn {
