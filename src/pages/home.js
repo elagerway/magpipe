@@ -10,7 +10,7 @@ export default class HomePage {
       <div class="container" style="padding-top: 4rem;">
         <div style="max-width: 800px; margin: 0 auto; text-align: center;">
           <h1 style="font-size: 3rem; margin-bottom: 1rem;">
-            Meet Pat
+            Solo Mobile
           </h1>
           <p style="font-size: 1.25rem; color: var(--text-secondary); margin-bottom: 2rem;">
             Your personal AI assistant for calls and SMS messages
@@ -29,7 +29,7 @@ export default class HomePage {
             <div class="card">
               <h3>📞 Smart Call Handling</h3>
               <p class="text-muted">
-                Pat answers calls, screens unknown callers, and maintains conversation context.
+                Answers calls, screens unknown callers, and maintains conversation context.
               </p>
             </div>
 
