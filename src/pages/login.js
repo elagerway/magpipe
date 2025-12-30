@@ -12,7 +12,7 @@ export default class LoginPage {
       <div class="container" style="max-width: 400px; padding-top: 20px;">
         <div class="card">
           <h1 class="text-center" style="margin-top: 0; padding-top: 0;">Welcome Back</h1>
-          <p class="text-center text-muted">Sign in to your Pat account</p>
+          <p class="text-center text-muted">Sign in to your Solo Mobile account</p>
 
           <div id="error-message" class="hidden"></div>
 
