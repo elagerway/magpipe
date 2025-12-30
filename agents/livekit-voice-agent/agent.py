@@ -768,7 +768,7 @@ IMPORTANT CONTEXT - INBOUND CALL:
             language="en-US",
         ),
         llm=lkopenai.LLM(
-            model="gpt-4.1",
+            model="gpt-4.1-mini",  # Mini for lower latency (half vs full gpt-4.1)
             temperature=0.7,
         ),
         tts=elevenlabs.TTS(
@@ -1133,7 +1133,7 @@ ADMIN MODE ACTIVATED:
                                     "Content-Type": "application/json",
                                 },
                                 json={
-                                    "model": "gpt-4.1",
+                                    "model": "gpt-4.1-mini",
                                     "messages": [{"role": "user", "content": "hi"}],
                                     "max_tokens": 1,
                                 },
