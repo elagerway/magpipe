@@ -60,14 +60,22 @@ export function createAdminChatInterface(container) {
   const sidebar = document.createElement('div');
   sidebar.className = 'chat-sidebar';
 
-  // Mobile close button for sidebar
+  // Sidebar header with close button
+  const sidebarHeader = document.createElement('div');
+  sidebarHeader.className = 'sidebar-header';
+
+  const sidebarTitle = document.createElement('span');
+  sidebarTitle.textContent = 'Chat History';
+  sidebarHeader.appendChild(sidebarTitle);
+
   const closeSidebarBtn = document.createElement('button');
   closeSidebarBtn.className = 'close-sidebar-btn';
   closeSidebarBtn.innerHTML = '&times;';
   closeSidebarBtn.addEventListener('click', () => {
     sidebar.classList.remove('open');
   });
-  sidebar.appendChild(closeSidebarBtn);
+  sidebarHeader.appendChild(closeSidebarBtn);
+  sidebar.appendChild(sidebarHeader);
 
   // Toggle sidebar on history button click
   historyBtn.addEventListener('click', () => {
@@ -82,7 +90,10 @@ export function createAdminChatInterface(container) {
     </svg>
     New chat
   `;
-  newChatBtn.addEventListener('click', startNewChat);
+  newChatBtn.addEventListener('click', () => {
+    startNewChat();
+    sidebar.classList.remove('open');
+  });
   sidebar.appendChild(newChatBtn);
 
   const conversationList = document.createElement('div');
@@ -498,6 +509,9 @@ export function createAdminChatInterface(container) {
       });
 
       renderConversations();
+
+      // Close sidebar on mobile after selecting
+      sidebar.classList.remove('open');
     } catch (error) {
       console.error('Load conversation error:', error);
       showError(error.message || 'Failed to load conversation');
@@ -1603,16 +1617,19 @@ export function addAdminChatStyles() {
       cursor: pointer;
     }
 
+    .sidebar-header {
+      display: none;
+    }
+
     .close-sidebar-btn {
       display: none;
-      position: absolute;
-      top: 10px;
-      right: 10px;
       background: none;
       border: none;
-      font-size: 24px;
+      font-size: 28px;
       cursor: pointer;
-      color: var(--text-muted, #9ca3af);
+      color: #6b7280;
+      padding: 0;
+      line-height: 1;
     }
 
     /* Mobile responsive */
@@ -1649,6 +1666,16 @@ export function addAdminChatStyles() {
         display: flex;
         flex-direction: column;
         transform: translateX(0);
+      }
+
+      .sidebar-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px;
+        border-bottom: 1px solid #e5e7eb;
+        font-weight: 600;
+        color: #374151;
       }
 
       .close-sidebar-btn {
