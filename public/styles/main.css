@@ -435,13 +435,13 @@ p {
 
 /* Add padding to content to account for bottom nav */
 .with-bottom-nav {
-  padding-bottom: 100px !important;
+  padding-bottom: 70px !important;
 }
 
 /* Ensure containers have proper spacing on mobile */
 @media (max-width: 768px) {
   .with-bottom-nav {
-    padding-bottom: 120px !important;
+    padding-bottom: calc(70px + env(safe-area-inset-bottom, 0px)) !important;
   }
 
   .container {
