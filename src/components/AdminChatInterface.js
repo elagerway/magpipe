@@ -42,9 +42,45 @@ export function createAdminChatInterface(container) {
   const chatContainer = document.createElement('div');
   chatContainer.className = 'admin-chat-interface';
 
+  // Mobile header with history toggle
+  const mobileHeader = document.createElement('div');
+  mobileHeader.className = 'chat-mobile-header';
+
+  const historyBtn = document.createElement('button');
+  historyBtn.className = 'history-toggle-btn';
+  historyBtn.innerHTML = `
+    <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+    </svg>
+  `;
+  mobileHeader.appendChild(historyBtn);
+  chatContainer.appendChild(mobileHeader);
+
   // Sidebar
   const sidebar = document.createElement('div');
   sidebar.className = 'chat-sidebar';
+
+  // Sidebar header with close button
+  const sidebarHeader = document.createElement('div');
+  sidebarHeader.className = 'sidebar-header';
+
+  const sidebarTitle = document.createElement('span');
+  sidebarTitle.textContent = 'Chat History';
+  sidebarHeader.appendChild(sidebarTitle);
+
+  const closeSidebarBtn = document.createElement('button');
+  closeSidebarBtn.className = 'close-sidebar-btn';
+  closeSidebarBtn.innerHTML = '&times;';
+  closeSidebarBtn.addEventListener('click', () => {
+    sidebar.classList.remove('open');
+  });
+  sidebarHeader.appendChild(closeSidebarBtn);
+  sidebar.appendChild(sidebarHeader);
+
+  // Toggle sidebar on history button click
+  historyBtn.addEventListener('click', () => {
+    sidebar.classList.toggle('open');
+  });
 
   const newChatBtn = document.createElement('button');
   newChatBtn.className = 'new-chat-button';
@@ -54,7 +90,10 @@ export function createAdminChatInterface(container) {
     </svg>
     New chat
   `;
-  newChatBtn.addEventListener('click', startNewChat);
+  newChatBtn.addEventListener('click', () => {
+    startNewChat();
+    sidebar.classList.remove('open');
+  });
   sidebar.appendChild(newChatBtn);
 
   const conversationList = document.createElement('div');
@@ -470,6 +509,9 @@ export function createAdminChatInterface(container) {
       });
 
       renderConversations();
+
+      // Close sidebar on mobile after selecting
+      sidebar.classList.remove('open');
     } catch (error) {
       console.error('Load conversation error:', error);
       showError(error.message || 'Failed to load conversation');
@@ -1558,10 +1600,86 @@ export function addAdminChatStyles() {
       font-weight: 500;
     }
 
+    /* Mobile header - hidden on desktop */
+    .chat-mobile-header {
+      display: none;
+    }
+
+    .history-toggle-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 40px;
+      height: 40px;
+      background: transparent;
+      border: none;
+      color: #3b82f6;
+      cursor: pointer;
+    }
+
+    .sidebar-header {
+      display: none;
+    }
+
+    .close-sidebar-btn {
+      display: none;
+      background: none;
+      border: none;
+      font-size: 28px;
+      cursor: pointer;
+      color: #6b7280;
+      padding: 0;
+      line-height: 1;
+    }
+
     /* Mobile responsive */
     @media (max-width: 768px) {
+      .admin-chat-interface {
+        flex-direction: column;
+      }
+
+      .chat-mobile-header {
+        display: flex;
+        align-items: center;
+        padding: 8px 12px;
+        border-bottom: 1px solid #e5e7eb;
+        background: #fff;
+        flex-shrink: 0;
+      }
+
       .chat-sidebar {
         display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 85%;
+        max-width: 300px;
+        bottom: 0;
+        z-index: 1000;
+        background: #fff;
+        box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+        transform: translateX(-100%);
+        transition: transform 0.3s ease;
+      }
+
+      .chat-sidebar.open {
+        display: flex;
+        flex-direction: column;
+        transform: translateX(0);
+      }
+
+      .sidebar-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px;
+        border-bottom: 1px solid #e5e7eb;
+        font-weight: 600;
+        color: #374151;
+      }
+
+      .close-sidebar-btn {
+        display: block;
       }
 
       .chat-bubble {

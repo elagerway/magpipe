@@ -43,6 +43,26 @@ class App {
   }
 
   async checkAuth() {
+    // First try to get the existing session (restores from storage)
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+    if (sessionError) {
+      console.error('Error restoring session:', sessionError);
+    }
+
+    // If we have a session, try to refresh it to ensure it's still valid
+    if (session) {
+      const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError) {
+        console.warn('Session refresh failed:', refreshError.message);
+        // Session might be expired, user will need to re-login
+      } else if (refreshedSession) {
+        this.currentUser = refreshedSession.user;
+        return;
+      }
+    }
+
+    // Fall back to getUser if session restoration didn't work
     const { user, error } = await getCurrentUser();
 
     if (error) {

@@ -49,6 +49,8 @@ export default class SettingsPage {
   constructor() {
     this.accessCodeSettings = null;
     this.knowledgeManager = null;
+    this.cachedData = null;
+    this.lastFetchTime = 0;
   }
 
   async render() {
@@ -63,40 +65,42 @@ export default class SettingsPage {
     addAccessCodeSettingsStyles();
     addKnowledgeSourceManagerStyles();
 
-    const { profile } = await User.getProfile(user.id);
+    // Use cached data if fetched within last 30 seconds
+    const now = Date.now();
+    let profile, billingInfo, config, notifPrefs, serviceNumbers;
 
-    // Also fetch Stripe-related fields
-    const { data: billingInfo } = await supabase
-      .from('users')
-      .select('plan, stripe_customer_id, stripe_subscription_id, stripe_subscription_status, stripe_current_period_end')
-      .eq('id', user.id)
-      .single();
+    if (this.cachedData && (now - this.lastFetchTime) < 30000) {
+      ({ profile, billingInfo, config, notifPrefs, serviceNumbers } = this.cachedData);
+    } else {
+      // Fetch all data in parallel for speed
+      const [profileResult, billingResult, configResult, notifResult, numbersResult] = await Promise.all([
+        User.getProfile(user.id),
+        supabase.from('users').select('plan, stripe_customer_id, stripe_subscription_id, stripe_subscription_status, stripe_current_period_end').eq('id', user.id).single(),
+        AgentConfig.getByUserId(user.id),
+        supabase.from('notification_preferences').select('*').eq('user_id', user.id).single(),
+        supabase.from('service_numbers').select('phone_number, is_active').eq('user_id', user.id).order('is_active', { ascending: false })
+      ]);
+
+      profile = profileResult.profile;
+      billingInfo = billingResult.data;
+      config = configResult.config;
+      notifPrefs = notifResult.data;
+      serviceNumbers = numbersResult.data;
+
+      // Cache the data
+      this.cachedData = { profile, billingInfo, config, notifPrefs, serviceNumbers };
+      this.lastFetchTime = now;
+    }
 
     // Merge billing info into profile
     if (billingInfo) {
       Object.assign(profile, billingInfo);
     }
 
-    const { config } = await AgentConfig.getByUserId(user.id);
-
     console.log('Profile data:', {
       phone_number: profile?.phone_number,
       phone_verified: profile?.phone_verified
     });
-
-    // Load notification preferences
-    const { data: notifPrefs } = await supabase
-      .from('notification_preferences')
-      .select('*')
-      .eq('user_id', user.id)
-      .single();
-
-    // Load all service numbers
-    const { data: serviceNumbers } = await supabase
-      .from('service_numbers')
-      .select('phone_number, is_active')
-      .eq('user_id', user.id)
-      .order('is_active', { ascending: false });
 
     const activeNumbers = serviceNumbers?.filter(n => n.is_active) || [];
     const inactiveNumbers = serviceNumbers?.filter(n => !n.is_active) || [];
