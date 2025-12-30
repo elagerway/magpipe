@@ -116,61 +116,69 @@ serve(async (req) => {
 
     console.log('✅ Room created successfully')
 
-    // Log: Room created
-    await logCallState(supabase, null, roomName, 'room_created', 'edge_function', {
+    // Fire-and-forget logging (don't await)
+    logCallState(supabase, null, roomName, 'room_created', 'edge_function', {
       room_name: roomName,
       max_participants: 10,
     })
 
-    // Explicitly dispatch agent to the room
-    // This replicates what SIP dispatch rules do for inbound calls
-    console.log('📤 Dispatching agent to room...')
-    try {
-      const dispatch = await dispatchClient.createDispatch(roomName, 'SW Telephony Agent', {
-        metadata: JSON.stringify({
+    // Run agent dispatch and call record creation IN PARALLEL for speed
+    console.log('⚡ Starting parallel: dispatch agent + create call record')
+
+    const [dispatchResult, callRecordResult] = await Promise.allSettled([
+      // Dispatch agent
+      (async () => {
+        try {
+          const dispatch = await dispatchClient.createDispatch(roomName, 'SW Telephony Agent', {
+            metadata: JSON.stringify({
+              user_id: userId,
+              direction: 'outbound',
+              contact_phone: phoneNumber,
+            }),
+          })
+          console.log('✅ Agent dispatched:', dispatch.id)
+          // Fire-and-forget logging
+          logCallState(supabase, null, roomName, 'agent_dispatched', 'edge_function', {
+            dispatch_id: dispatch.id,
+            agent_name: 'SW Telephony Agent',
+          })
+          return dispatch
+        } catch (dispatchError) {
+          console.error('❌ Failed to dispatch agent:', dispatchError)
+          logCallState(supabase, null, roomName, 'error', 'agent_dispatch', {
+            error_type: 'agent_dispatch_failed',
+          }, (dispatchError as any).message || String(dispatchError))
+          return null // Don't throw - continue with call
+        }
+      })(),
+      // Create call record
+      supabase
+        .from('call_records')
+        .insert({
           user_id: userId,
-          direction: 'outbound',
+          caller_number: callerIdNumber || '+10000000000',
           contact_phone: phoneNumber,
-        }),
-      })
-      console.log('✅ Agent dispatched:', dispatch.id)
+          service_number: callerIdNumber || '+10000000000',
+          direction: 'outbound',
+          status: 'initiated',
+          disposition: 'transferred_to_user',
+          started_at: new Date().toISOString(),
+          livekit_room_id: roomName,
+        })
+        .select()
+        .single()
+    ])
 
-      // Log: Agent dispatched
-      await logCallState(supabase, null, roomName, 'agent_dispatched', 'edge_function', {
-        dispatch_id: dispatch.id,
-        agent_name: 'SW Telephony Agent',
-      })
-    } catch (dispatchError) {
-      console.error('❌ Failed to dispatch agent:', dispatchError)
-      await logCallState(supabase, null, roomName, 'error', 'agent_dispatch', {
-        error_type: 'agent_dispatch_failed',
-      }, (dispatchError as any).message || String(dispatchError))
-      // Don't throw - continue with call even if agent dispatch fails
+    // Check call record result
+    if (callRecordResult.status === 'rejected' || !callRecordResult.value?.data) {
+      const error = callRecordResult.status === 'rejected'
+        ? callRecordResult.reason
+        : callRecordResult.value?.error
+      console.error('❌ Failed to create call record:', error)
+      throw new Error(`Failed to create call record: ${error?.message || 'Unknown error'}`)
     }
 
-    // Create call record in database
-    console.log('📝 Creating call record in database...')
-    const { data: callRecord, error: callError } = await supabase
-      .from('call_records')
-      .insert({
-        user_id: userId,
-        caller_number: callerIdNumber || '+10000000000', // From number (service number)
-        contact_phone: phoneNumber, // To number
-        service_number: callerIdNumber || '+10000000000',
-        direction: 'outbound',
-        status: 'initiated',
-        disposition: 'transferred_to_user',
-        started_at: new Date().toISOString(),
-        livekit_room_id: roomName,
-      })
-      .select()
-      .single()
-
-    if (callError) {
-      console.error('❌ Failed to create call record:', callError)
-      throw new Error(`Failed to create call record: ${callError.message}`)
-    }
-
+    const callRecord = callRecordResult.value.data
     console.log('✅ Call record created:', callRecord.id)
 
     // Create SIP participant (make the outbound call)
