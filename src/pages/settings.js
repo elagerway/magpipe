@@ -64,6 +64,19 @@ export default class SettingsPage {
     addKnowledgeSourceManagerStyles();
 
     const { profile } = await User.getProfile(user.id);
+
+    // Also fetch Stripe-related fields
+    const { data: billingInfo } = await supabase
+      .from('users')
+      .select('plan, stripe_customer_id, stripe_subscription_id, stripe_subscription_status, stripe_current_period_end')
+      .eq('id', user.id)
+      .single();
+
+    // Merge billing info into profile
+    if (billingInfo) {
+      Object.assign(profile, billingInfo);
+    }
+
     const { config } = await AgentConfig.getByUserId(user.id);
 
     console.log('Profile data:', {
@@ -88,6 +101,10 @@ export default class SettingsPage {
     const activeNumbers = serviceNumbers?.filter(n => n.is_active) || [];
     const inactiveNumbers = serviceNumbers?.filter(n => !n.is_active) || [];
 
+    // Check for billing success/canceled in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const billingStatus = urlParams.get('billing');
+
     const appElement = document.getElementById('app');
 
     appElement.innerHTML = `
@@ -96,6 +113,17 @@ export default class SettingsPage {
 
         <div id="error-message" class="hidden"></div>
         <div id="success-message" class="hidden"></div>
+
+        ${billingStatus === 'success' ? `
+          <div class="alert alert-success" style="margin-bottom: 1rem;">
+            You've successfully upgraded to Pro! Enjoy unlimited features.
+          </div>
+        ` : ''}
+        ${billingStatus === 'canceled' ? `
+          <div class="alert alert-warning" style="margin-bottom: 1rem;">
+            Checkout was canceled. You can upgrade anytime from the Billing section below.
+          </div>
+        ` : ''}
 
         <!-- User ID -->
         <div class="card" style="margin-bottom: 1rem;">
@@ -162,6 +190,50 @@ export default class SettingsPage {
             </div>
           </div>
 
+        </div>
+
+        <!-- Billing & Plan Section -->
+        <div class="card" style="margin-bottom: 1rem;">
+          <h2>Billing & Plan</h2>
+          <div id="billing-section">
+            <div class="billing-plan" style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; background: var(--bg-secondary); border-radius: var(--radius-md); margin-bottom: 1rem;">
+              <div>
+                <div style="font-weight: 600; font-size: 1.1rem;">
+                  ${profile?.plan === 'pro' ? 'Pro Plan' : 'Free Plan'}
+                  ${profile?.plan === 'pro' ? '<span style="background: var(--success-color); color: white; padding: 0.125rem 0.5rem; border-radius: 1rem; font-size: 0.75rem; margin-left: 0.5rem;">ACTIVE</span>' : ''}
+                </div>
+                <div style="color: var(--text-secondary); font-size: 0.875rem; margin-top: 0.25rem;">
+                  ${profile?.plan === 'pro' ? '$9.99/month' : 'Limited features'}
+                </div>
+              </div>
+              ${profile?.plan === 'pro' ? `
+                <button class="btn btn-secondary" id="manage-billing-btn">
+                  Manage Billing
+                </button>
+              ` : `
+                <button class="btn btn-primary" id="upgrade-btn">
+                  Upgrade to Pro
+                </button>
+              `}
+            </div>
+
+            ${profile?.plan === 'free' ? `
+              <div style="border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem;">
+                <h3 style="margin: 0 0 0.75rem 0; font-size: 1rem;">Pro Plan Features</h3>
+                <ul style="margin: 0; padding-left: 1.25rem; color: var(--text-secondary);">
+                  <li style="margin-bottom: 0.5rem;">Unlimited phone numbers</li>
+                  <li style="margin-bottom: 0.5rem;">Voice cloning capabilities</li>
+                  <li style="margin-bottom: 0.5rem;">Priority support</li>
+                  <li style="margin-bottom: 0.5rem;">Advanced analytics</li>
+                  <li>Unlimited calls, minutes, and SMS</li>
+                </ul>
+              </div>
+            ` : `
+              <div style="color: var(--text-secondary); font-size: 0.875rem;">
+                ${profile?.stripe_current_period_end ? `Next billing date: ${new Date(profile.stripe_current_period_end).toLocaleDateString()}` : ''}
+              </div>
+            `}
+          </div>
         </div>
 
         <!-- Agent Configuration -->
@@ -420,6 +492,79 @@ export default class SettingsPage {
     const accessCodeContainer = document.getElementById('access-code-container');
     if (accessCodeContainer) {
       this.accessCodeSettings = createAccessCodeSettings(accessCodeContainer);
+    }
+
+    // Billing buttons
+    const upgradeBtn = document.getElementById('upgrade-btn');
+    const manageBillingBtn = document.getElementById('manage-billing-btn');
+
+    if (upgradeBtn) {
+      upgradeBtn.addEventListener('click', async () => {
+        upgradeBtn.disabled = true;
+        upgradeBtn.textContent = 'Loading...';
+
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session) throw new Error('Not authenticated');
+
+          const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/stripe-create-checkout`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              successUrl: `${window.location.origin}/settings?billing=success`,
+              cancelUrl: `${window.location.origin}/settings?billing=canceled`
+            })
+          });
+
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || 'Failed to create checkout session');
+
+          // Redirect to Stripe Checkout
+          window.location.href = data.url;
+        } catch (error) {
+          console.error('Upgrade error:', error);
+          alert('Failed to start checkout. Please try again.');
+          upgradeBtn.disabled = false;
+          upgradeBtn.textContent = 'Upgrade to Pro';
+        }
+      });
+    }
+
+    if (manageBillingBtn) {
+      manageBillingBtn.addEventListener('click', async () => {
+        manageBillingBtn.disabled = true;
+        manageBillingBtn.textContent = 'Loading...';
+
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session) throw new Error('Not authenticated');
+
+          const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/stripe-create-portal`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              returnUrl: `${window.location.origin}/settings`
+            })
+          });
+
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || 'Failed to create portal session');
+
+          // Redirect to Stripe Billing Portal
+          window.location.href = data.url;
+        } catch (error) {
+          console.error('Billing portal error:', error);
+          alert('Failed to open billing portal. Please try again.');
+          manageBillingBtn.disabled = false;
+          manageBillingBtn.textContent = 'Manage Billing';
+        }
+      });
     }
 
     // Initialize knowledge source manager component

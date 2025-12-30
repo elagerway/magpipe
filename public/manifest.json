@@ -1,7 +1,7 @@
 {
-  "name": "Pat - AI Call & SMS Assistant",
-  "short_name": "Pat",
-  "description": "Your personal AI assistant for calls and SMS messages",
+  "name": "SoloMobile - AI Phone Assistant",
+  "short_name": "SoloMobile",
+  "description": "Your AI-powered phone assistant for calls and SMS",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",

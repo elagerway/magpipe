@@ -1,7 +1,7 @@
 {
-  "name": "pat-ai-assistant",
+  "name": "solomobile",
   "version": "1.0.0",
-  "description": "Pat AI Call & SMS Agent PWA - An AI-powered assistant that handles phone calls and SMS messages",
+  "description": "SoloMobile - AI-powered phone assistant for calls and SMS",
   "type": "module",
   "scripts": {
     "dev": "vite",
