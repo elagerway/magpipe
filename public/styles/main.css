@@ -1051,7 +1051,7 @@ p {
 
 .message-input-container {
   padding: 1rem 1rem 0.87rem 1rem;
-  margin-bottom: 0;
+  margin-bottom: 1rem;
   border-top: 1px solid var(--border-color);
   background: var(--bg-primary);
   display: flex;
