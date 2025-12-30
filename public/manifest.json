@@ -1,6 +1,6 @@
 {
-  "name": "SoloMobile - AI Phone Assistant",
-  "short_name": "SoloMobile",
+  "name": "Solo Mobile - AI Phone Assistant",
+  "short_name": "Solo Mobile",
   "description": "Your AI-powered phone assistant for calls and SMS",
   "start_url": "/",
   "display": "standalone",
