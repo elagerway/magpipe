@@ -49,10 +49,9 @@ export function createAdminChatInterface(container) {
   const historyBtn = document.createElement('button');
   historyBtn.className = 'history-toggle-btn';
   historyBtn.innerHTML = `
-    <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+    <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
     </svg>
-    History
   `;
   mobileHeader.appendChild(historyBtn);
   chatContainer.appendChild(mobileHeader);
@@ -1595,13 +1594,11 @@ export function addAdminChatStyles() {
     .history-toggle-btn {
       display: flex;
       align-items: center;
-      gap: 6px;
-      padding: 8px 12px;
-      background: var(--bg-secondary, #f3f4f6);
-      border: 1px solid var(--border-color, #e5e7eb);
-      border-radius: 8px;
-      font-size: 14px;
-      color: var(--text-primary, #374151);
+      justify-content: center;
+      padding: 8px;
+      background: transparent;
+      border: none;
+      color: #3b82f6;
       cursor: pointer;
     }
 
