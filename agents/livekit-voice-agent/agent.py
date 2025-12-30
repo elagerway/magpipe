@@ -464,21 +464,72 @@ async def entrypoint(ctx: JobContext):
     transcript_messages = []
     call_sid = None
     call_start_time = asyncio.get_event_loop().time()
-    service_number = None
+    service_number = room_metadata.get("service_number")
     caller_number = None
+    fast_path_complete = False
+    user_config = None
+    voice_config = None
+    transfer_numbers = []
 
-    # ALWAYS connect to room first (required for both inbound and outbound)
-    await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
-    logger.info("✅ Connected to LiveKit room")
-
-    # Log: Agent connected to room
-    log_call_state(ctx.room.name, 'agent_connected', 'agent', {
-        'room_name': ctx.room.name,
-        'auto_subscribe': 'AUDIO_ONLY',
-    })
-
-    # Get user_id from metadata or look up from service number
+    # Get user_id and direction from metadata (outbound calls have these)
     user_id = room_metadata.get("user_id")
+    direction = room_metadata.get("direction")
+    contact_phone = room_metadata.get("contact_phone")
+
+    # FAST PATH for outbound calls with complete metadata
+    if user_id and direction == "outbound":
+        logger.info("🚀 FAST PATH: Outbound call with full metadata - skipping lookups")
+
+        # Connect to room
+        await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
+        logger.info("✅ Connected to LiveKit room")
+
+        # Log connection
+        log_call_state(ctx.room.name, 'agent_connected', 'agent', {
+            'room_name': ctx.room.name,
+            'auto_subscribe': 'AUDIO_ONLY',
+            'fast_path': True,
+        })
+
+        # Fetch user config, voice config, and transfer numbers in PARALLEL
+        logger.info("⚡ Fetching configs in parallel...")
+        user_config_task = get_user_config(room_metadata)
+
+        user_config = await user_config_task
+        if not user_config:
+            logger.error(f"No user config found for user_id: {user_id}")
+            return
+
+        # Get voice config and transfer numbers in parallel
+        voice_id = user_config.get("voice_id", "11labs-Rachel")
+        voice_config_task = get_voice_config(voice_id, user_id)
+
+        async def get_transfer_nums():
+            resp = supabase.table("transfer_numbers").select("*").eq("user_id", user_id).execute()
+            return resp.data or []
+
+        transfer_task = get_transfer_nums()
+
+        voice_config, transfer_numbers = await asyncio.gather(voice_config_task, transfer_task)
+
+        logger.info(f"✅ Configs loaded - proceeding to session start")
+
+        # Skip to session creation (jump past inbound logic)
+        admin_check_info = None
+        fast_path_complete = True
+
+    else:
+        # STANDARD PATH for inbound calls - need to look up user from SIP participant
+
+        # Connect to room first
+        await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
+        logger.info("✅ Connected to LiveKit room")
+
+        # Log: Agent connected to room
+        log_call_state(ctx.room.name, 'agent_connected', 'agent', {
+            'room_name': ctx.room.name,
+            'auto_subscribe': 'AUDIO_ONLY',
+        })
 
     if not user_id:
         # For inbound calls without metadata, wait for SIP participant to join
@@ -628,26 +679,29 @@ async def entrypoint(ctx: JobContext):
         if admin_check_info.get("has_access"):
             logger.info(f"📱 Admin access possible for: {admin_check_info.get('full_name')}")
 
-    # Get user configuration
-    user_config = await get_user_config(room_metadata)
-    if not user_config:
-        logger.error(f"No user config found for user_id: {user_id}")
-        return
+    # Get user configuration (skip if already fetched in fast path)
+    if not fast_path_complete:
+        user_config = await get_user_config(room_metadata)
+        if not user_config:
+            logger.error(f"No user config found for user_id: {user_id}")
+            return
 
-    user_id = user_config["user_id"]
-    logger.info(f"Loaded config for user: {user_id}")
+        user_id = user_config["user_id"]
+        logger.info(f"Loaded config for user: {user_id}")
 
-    # Get voice configuration
-    voice_id = user_config.get("voice_id", "11labs-Rachel")
-    voice_config = await get_voice_config(voice_id, user_id)
+        # Get voice configuration
+        voice_id = user_config.get("voice_id", "11labs-Rachel")
+        voice_config = await get_voice_config(voice_id, user_id)
 
-    # Get transfer numbers
-    transfer_numbers_response = supabase.table("transfer_numbers") \
-        .select("*") \
-        .eq("user_id", user_id) \
-        .execute()
+        # Get transfer numbers
+        transfer_numbers_response = supabase.table("transfer_numbers") \
+            .select("*") \
+            .eq("user_id", user_id) \
+            .execute()
 
-    transfer_numbers = transfer_numbers_response.data or []
+        transfer_numbers = transfer_numbers_response.data or []
+    else:
+        logger.info("⚡ Using pre-fetched configs from fast path")
 
     # Get greeting message and base prompt
     base_prompt = user_config.get("system_prompt", "You are Pat, a helpful AI assistant.")
