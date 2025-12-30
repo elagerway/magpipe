@@ -52,7 +52,15 @@ class IndexedDBStorage {
         const transaction = db.transaction(STORE_NAME, 'readonly');
         const store = transaction.objectStore(STORE_NAME);
         const request = store.get(key);
-        request.onsuccess = () => resolve(request.result || null);
+        request.onsuccess = () => {
+          const value = request.result;
+          // If IndexedDB is empty (browser cleared it), fall back to localStorage backup
+          if (value === undefined || value === null) {
+            resolve(localStorage.getItem(key));
+          } else {
+            resolve(value);
+          }
+        };
         request.onerror = () => resolve(localStorage.getItem(key));
       });
     } catch {
