@@ -768,7 +768,7 @@ IMPORTANT CONTEXT - INBOUND CALL:
             language="en-US",
         ),
         llm=lkopenai.LLM(
-            model="gpt-4.1-mini",  # Mini for lower latency (half vs full gpt-4.1)
+            model="gpt-4.1-nano",  # Nano for minimum latency (fastest OpenAI model)
             temperature=0.7,
         ),
         tts=elevenlabs.TTS(
@@ -781,6 +781,32 @@ IMPORTANT CONTEXT - INBOUND CALL:
 
     # Track egress (recording) ID
     egress_id = None
+
+    # Latency tracking
+    latency_start_time = None
+
+    # Track user speech start for latency measurement
+    @session.on("user_started_speaking")
+    def on_user_started_speaking():
+        nonlocal latency_start_time
+        latency_start_time = asyncio.get_event_loop().time()
+        logger.info(f"⏱️ [LATENCY] User started speaking at {latency_start_time:.3f}")
+
+    @session.on("user_stopped_speaking")
+    def on_user_stopped_speaking():
+        if latency_start_time:
+            elapsed = asyncio.get_event_loop().time() - latency_start_time
+            logger.info(f"⏱️ [LATENCY] User stopped speaking, speech duration: {elapsed*1000:.0f}ms")
+
+    @session.on("agent_started_speaking")
+    def on_agent_started_speaking():
+        if latency_start_time:
+            elapsed = asyncio.get_event_loop().time() - latency_start_time
+            logger.info(f"⏱️ [LATENCY] Agent started speaking, total latency: {elapsed*1000:.0f}ms (user speech start → agent audio)")
+
+    @session.on("agent_stopped_speaking")
+    def on_agent_stopped_speaking():
+        logger.info(f"⏱️ [LATENCY] Agent stopped speaking")
 
     # Track transcript in real-time using conversation_item_added event
     @session.on("conversation_item_added")
@@ -1133,7 +1159,7 @@ ADMIN MODE ACTIVATED:
                                     "Content-Type": "application/json",
                                 },
                                 json={
-                                    "model": "gpt-4.1-mini",
+                                    "model": "gpt-4.1-nano",
                                     "messages": [{"role": "user", "content": "hi"}],
                                     "max_tokens": 1,
                                 },
