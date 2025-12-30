@@ -3,7 +3,8 @@
  * Handles navigation and route rendering
  */
 
-import { getCurrentUser } from './lib/supabase.js';
+import { getCurrentUser, supabase } from './lib/supabase.js';
+import { initImpersonationBanner } from './components/ImpersonationBanner.js';
 
 export class Router {
   constructor() {
@@ -20,6 +21,7 @@ export class Router {
     this.addRoute('/verify-email', () => import('./pages/verify-email.js'), false);
     this.addRoute('/forgot-password', () => import('./pages/forgot-password.js'), false);
     this.addRoute('/reset-password', () => import('./pages/reset-password.js'), false);
+    this.addRoute('/impersonate', () => import('./pages/impersonate.js'), false);
 
     // Protected routes
     this.addRoute('/agent', () => import('./pages/agent.js'), true);
@@ -35,13 +37,19 @@ export class Router {
     this.addRoute('/messages', () => import('./pages/messages.js'), true);
     this.addRoute('/settings', () => import('./pages/settings.js'), true);
     this.addRoute('/bulk-calling', () => import('./pages/bulk-calling.js'), true);
+
+    // Admin routes (role-protected)
+    this.addRoute('/admin', () => import('./pages/admin.js'), true, ['admin', 'support']);
   }
 
-  addRoute(path, loader, requiresAuth = false) {
-    this.routes.set(path, { loader, requiresAuth });
+  addRoute(path, loader, requiresAuth = false, requiredRoles = null) {
+    this.routes.set(path, { loader, requiresAuth, requiredRoles });
   }
 
   async init() {
+    // Initialize impersonation banner
+    initImpersonationBanner();
+
     // Handle browser back/forward
     window.addEventListener('popstate', () => {
       this.loadRoute(window.location.pathname + window.location.search);
@@ -80,6 +88,21 @@ export class Router {
         // Redirect to login
         this.navigate('/login', true);
         return;
+      }
+
+      // Check role requirements
+      if (route.requiredRoles && route.requiredRoles.length > 0) {
+        const { data: profile } = await supabase
+          .from('users')
+          .select('role')
+          .eq('id', user.id)
+          .single();
+
+        if (!profile || !route.requiredRoles.includes(profile.role)) {
+          // User doesn't have required role, redirect to dashboard
+          this.navigate('/dashboard', true);
+          return;
+        }
       }
     }
 
