@@ -897,11 +897,20 @@ IMPORTANT CONTEXT - INBOUND CALL:
         except Exception as e:
             logger.error(f"Error saving transcript: {e}", exc_info=True)
 
-    # Register cleanup handler
+    # Track if cleanup has been triggered to avoid duplicate saves
+    cleanup_triggered = False
+
+    # Register cleanup handler for participant disconnect
     @ctx.room.on("participant_disconnected")
     def on_participant_disconnected(participant):
+        nonlocal cleanup_triggered
         logger.info(f"📞 Participant disconnected: {participant.identity}")
         logger.info(f"📝 Transcript has {len(transcript_messages)} messages before save")
+
+        if cleanup_triggered:
+            logger.info("⚠️ Cleanup already triggered, skipping")
+            return
+        cleanup_triggered = True
 
         # Wait a moment for any pending transcriptions to complete
         async def delayed_cleanup():
@@ -910,8 +919,25 @@ IMPORTANT CONTEXT - INBOUND CALL:
             logger.info(f"📝 Final transcript message count: {len(transcript_messages)}")
             await on_call_end()
 
-        # Run async cleanup - use ensure_future to handle async properly
-        asyncio.ensure_future(delayed_cleanup())
+        # Run async cleanup - use create_task for proper tracking
+        asyncio.create_task(delayed_cleanup())
+
+    # Also handle room disconnection as fallback (fires when room closes)
+    @ctx.room.on("disconnected")
+    def on_room_disconnected():
+        nonlocal cleanup_triggered
+        logger.info(f"🚪 Room disconnected event fired")
+
+        if cleanup_triggered:
+            logger.info("⚠️ Cleanup already triggered, skipping")
+            return
+        cleanup_triggered = True
+
+        async def room_cleanup():
+            logger.info("⏳ Room disconnected - saving transcript...")
+            await on_call_end()
+
+        asyncio.create_task(room_cleanup())
 
     # Start the session FIRST for lowest latency - recording starts in background
     await session.start(room=ctx.room, agent=assistant)
