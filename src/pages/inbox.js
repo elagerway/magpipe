@@ -4,9 +4,37 @@
 
 import { getCurrentUser, supabase } from '../lib/supabase.js';
 import { renderBottomNav, clearUnreadBadge, setPhoneNavActive } from '../components/BottomNav.js';
-import { sipClient } from '../lib/sipClient.js';
-import { livekitClient } from '../lib/livekitClient.js';
-import { isSupported as isVoiceSupported, VoiceRecognition } from '../lib/voiceRecognition.js';
+
+// Lazy load heavy libraries only when needed for calls
+let sipClient = null;
+let livekitClient = null;
+let VoiceRecognition = null;
+let isVoiceSupported = () => false;
+
+async function loadSipClient() {
+  if (!sipClient) {
+    const module = await import('../lib/sipClient.js');
+    sipClient = module.sipClient;
+  }
+  return sipClient;
+}
+
+async function loadLivekitClient() {
+  if (!livekitClient) {
+    const module = await import('../lib/livekitClient.js');
+    livekitClient = module.livekitClient;
+  }
+  return livekitClient;
+}
+
+async function loadVoiceRecognition() {
+  if (!VoiceRecognition) {
+    const module = await import('../lib/voiceRecognition.js');
+    VoiceRecognition = module.VoiceRecognition;
+    isVoiceSupported = module.isSupported;
+  }
+  return { VoiceRecognition, isVoiceSupported };
+}
 
 export default class InboxPage {
   constructor() {
@@ -24,6 +52,9 @@ export default class InboxPage {
       navigateTo('/login');
       return;
     }
+
+    // Load voice recognition early (small module) for UI check
+    await loadVoiceRecognition();
 
     this.userId = user.id;
     await this.loadConversations(user.id);
@@ -2723,6 +2754,9 @@ Examples:
   async initiateCall(phoneNumber, callerIdNumber = null) {
     console.log('Initiating SIP call to:', phoneNumber);
 
+    // Load SIP client on demand
+    sipClient = await loadSipClient();
+
     // Track if user clicks hangup button
     this.userHungUp = false;
 
@@ -2943,6 +2977,9 @@ Examples:
     console.log('📞 Initiating bridged call with recording');
     console.log('   To:', phoneNumber);
     console.log('   From:', callerIdNumber);
+
+    // Load SIP client on demand
+    sipClient = await loadSipClient();
 
     try {
       // Show connecting state
@@ -3447,6 +3484,9 @@ Examples:
     const sipStatusText = document.getElementById('sip-status-text');
 
     if (!sipLed || !sipStatusText) return;
+
+    // Load SIP client on demand
+    sipClient = await loadSipClient();
 
     // Set to connecting state
     this.updateSIPStatus('connecting');
