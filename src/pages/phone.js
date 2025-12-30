@@ -4,7 +4,16 @@
 
 import { getCurrentUser, supabase } from '../lib/supabase.js';
 import { renderBottomNav, setPhoneNavActive } from '../components/BottomNav.js';
-import { sipClient } from '../lib/sipClient.js';
+
+// Lazy load SIP client to reduce initial bundle size (281KB)
+let sipClient = null;
+async function loadSipClient() {
+  if (!sipClient) {
+    const module = await import('../lib/sipClient.js');
+    sipClient = module.sipClient;
+  }
+  return sipClient;
+}
 
 export default class PhonePage {
   constructor() {
@@ -497,7 +506,7 @@ export default class PhonePage {
             }
             this.currentBridgedCallSid = null;
             this.currentCallRecordId = null;
-          } else {
+          } else if (sipClient) {
             // Hangup SIP call
             sipClient.hangup();
           }
@@ -745,7 +754,8 @@ export default class PhonePage {
       // Build SIP URI from user record
       const sipUri = `sip:${userRecord.sip_username}@${userRecord.sip_realm}`;
 
-      // Initialize SIP client
+      // Lazy load and initialize SIP client
+      await loadSipClient();
       await sipClient.initialize({
         sipUri,
         sipPassword: userRecord.sip_password,
@@ -1023,7 +1033,8 @@ export default class PhonePage {
       console.log('🔧 Initializing SIP client...');
       console.log('📞 Using display name (CNAM):', displayName);
 
-      // Initialize SIP client with credentials
+      // Lazy load and initialize SIP client with credentials
+      await loadSipClient();
       await sipClient.initialize({
         sipUri: `sip:${sipCredentials.sip_username}@${sipCredentials.sip_domain}`,
         sipPassword: sipCredentials.sip_password,
@@ -1471,7 +1482,7 @@ export default class PhonePage {
 
     // Mute/unmute the actual audio via SIP client
     try {
-      sipClient.setMute(this.isMuted);
+      if (sipClient) sipClient.setMute(this.isMuted);
     } catch (e) {
       console.error('Failed to toggle mute:', e);
     }
@@ -1758,7 +1769,7 @@ export default class PhonePage {
         }
 
         // Hang up our SIP leg since the call is now transferred
-        sipClient.hangup();
+        if (sipClient) sipClient.hangup();
 
         setTimeout(() => {
           this.transformToCallButton();
