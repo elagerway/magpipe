@@ -1060,32 +1060,23 @@ export default class InboxPage {
         </div>
       </div>
 
-      <div class="thread-messages" id="thread-messages" style="overflow-y: auto;">
+      <div class="thread-messages" id="thread-messages">
         ${call.recording_url ? `
-          <div class="call-detail-recording" style="padding: 0 6px 6px 6px;">
-            <audio controls src="${call.recording_url}" style="width: 100%; height: 40px; padding: 0;"></audio>
+          <div style="width: 100%; margin-bottom: 0.5rem;">
+            <audio controls src="${call.recording_url}" style="width: 100%; height: 40px;"></audio>
           </div>
         ` : ''}
 
-        ${messages.length > 0 ? `
-          <div class="call-detail-transcript">
-            <div class="transcript-messages">
-              ${messages.map(msg => `
-                <div class="transcript-bubble ${msg.speaker}">
-                  <div class="transcript-speaker-label">${this.getSpeakerDisplayLabel(msg.speakerLabel)}</div>
-                  <div class="transcript-content">${msg.text}</div>
-                </div>
-              `).join('')}
-            </div>
+        ${messages.length > 0 ? messages.map(msg => `
+          <div class="message-bubble ${msg.speaker === 'agent' ? 'outbound' : 'inbound'}">
+            <div class="message-content">${msg.text}</div>
           </div>
-        ` : call.transcript ? `
-          <div class="call-detail-transcript">
-            <div class="transcript-plain" style="padding: 12px; background: var(--card-bg, #f9fafb); border-radius: 8px; margin: 8px;">
-              <p style="margin: 0; line-height: 1.5; color: var(--text-primary, #111827);">${call.transcript}</p>
-            </div>
+        `).join('') : call.transcript ? `
+          <div class="message-bubble inbound" style="max-width: 100%;">
+            <div class="message-content">${call.transcript}</div>
           </div>
         ` : `
-          <div class="call-detail-no-transcript">
+          <div style="padding: 3rem 1.5rem; text-align: center; color: var(--text-secondary);">
             <p>No transcript available for this call.</p>
           </div>
         `}
@@ -3752,88 +3743,98 @@ Examples:
   }
 
   attachConversationListeners() {
-    const isMobile = window.innerWidth <= 768;
+    // Use event delegation - single listener on parent instead of one per item
+    // This dramatically improves mobile scroll performance
+    const conversationsEl = document.getElementById('conversations');
+    if (!conversationsEl || conversationsEl.dataset.delegated) return;
 
-    // Click on conversation to view thread
-    document.querySelectorAll('.conversation-item').forEach(item => {
-      item.addEventListener('click', async () => {
-        const type = item.dataset.type;
+    // Mark as delegated to prevent duplicate listeners
+    conversationsEl.dataset.delegated = 'true';
 
-        if (type === 'call') {
-          // Handle call conversation click
-          this.selectedCallId = item.dataset.callId;
-          this.selectedContact = null;
-        } else {
-          // Handle SMS conversation click
-          this.selectedContact = item.dataset.phone;
-          this.selectedCallId = null;
+    conversationsEl.addEventListener('click', async (e) => {
+      const item = e.target.closest('.conversation-item');
+      if (!item) return;
 
-          // Clear unread badge when viewing a conversation
-          clearUnreadBadge();
+      const isMobile = window.innerWidth <= 768;
+      const type = item.dataset.type;
 
-          // Mark this conversation as viewed
-          const lastViewedKey = `conversation_last_viewed_sms_${this.selectedContact}`;
-          localStorage.setItem(lastViewedKey, new Date().toISOString());
+      if (type === 'call') {
+        // Handle call conversation click
+        this.selectedCallId = item.dataset.callId;
+        this.selectedContact = null;
+      } else {
+        // Handle SMS conversation click
+        this.selectedContact = item.dataset.phone;
+        this.selectedCallId = null;
 
-          // Clear unread count for this conversation
-          const conv = this.conversations.find(c => c.type === 'sms' && c.phone === this.selectedContact);
-          if (conv) {
-            conv.unreadCount = 0;
-          }
+        // Clear unread badge when viewing a conversation
+        clearUnreadBadge();
+
+        // Mark this conversation as viewed
+        const lastViewedKey = `conversation_last_viewed_sms_${this.selectedContact}`;
+        localStorage.setItem(lastViewedKey, new Date().toISOString());
+
+        // Clear unread count for this conversation
+        const conv = this.conversations.find(c => c.type === 'sms' && c.phone === this.selectedContact);
+        if (conv) {
+          conv.unreadCount = 0;
         }
+      }
 
-        // Update conversation list to update selection
-        const conversationsEl = document.getElementById('conversations');
-        if (conversationsEl) {
-          conversationsEl.innerHTML = this.renderConversationList();
-          this.attachConversationListeners();
+      // Update conversation list to update selection (no need to re-attach listeners with delegation)
+      conversationsEl.innerHTML = this.renderConversationList();
+
+      // Update thread view
+      const threadElement = document.getElementById('message-thread');
+      threadElement.innerHTML = this.renderMessageThread();
+
+      // Attach input listeners only for SMS threads
+      if (type === 'sms') {
+        this.attachMessageInputListeners();
+      }
+
+      // Show thread on mobile
+      if (isMobile) {
+        threadElement.classList.add('show');
+      }
+
+      // Attach back button listener
+      this.attachBackButtonListener(threadElement, conversationsEl, isMobile);
+
+      // Scroll to bottom of messages for SMS
+      if (type === 'sms') {
+        const threadMessages = document.getElementById('thread-messages');
+        if (threadMessages) {
+          setTimeout(() => {
+            threadMessages.scrollTop = threadMessages.scrollHeight;
+          }, 100);
         }
+      }
+    });
+  }
 
-        // Update thread view
-        const threadElement = document.getElementById('message-thread');
-        threadElement.innerHTML = this.renderMessageThread();
+  attachBackButtonListener(threadElement, conversationsEl, isMobile) {
+    const backButton = document.getElementById('back-button');
+    if (!backButton) return;
 
-        // Attach input listeners only for SMS threads
-        if (type === 'sms') {
-          this.attachMessageInputListeners();
-        }
+    // Use a single listener approach - remove old and add new
+    const newBackButton = backButton.cloneNode(true);
+    backButton.parentNode.replaceChild(newBackButton, backButton);
 
-        // Show thread on mobile
-        if (isMobile) {
-          threadElement.classList.add('show');
-        }
+    newBackButton.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (isMobile) {
+        threadElement.classList.remove('show');
+      } else {
+        // On desktop, clear selection
+        this.selectedContact = null;
+        this.selectedCallId = null;
+        threadElement.innerHTML = this.renderEmptyState();
 
-        // Attach back button listener
-        const backButton = document.getElementById('back-button');
-        if (backButton) {
-          backButton.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            if (isMobile) {
-              threadElement.classList.remove('show');
-            } else {
-              // On desktop, clear selection
-              this.selectedContact = null;
-              this.selectedCallId = null;
-              threadElement.innerHTML = this.renderEmptyState();
-
-              // Update conversation list
-              conversationsEl.innerHTML = this.renderConversationList();
-              this.attachConversationListeners();
-            }
-          });
-        }
-
-        // Scroll to bottom of messages for SMS
-        if (type === 'sms') {
-          const threadMessages = document.getElementById('thread-messages');
-          if (threadMessages) {
-            setTimeout(() => {
-              threadMessages.scrollTop = threadMessages.scrollHeight;
-            }, 100);
-          }
-        }
-      });
+        // Update conversation list
+        conversationsEl.innerHTML = this.renderConversationList();
+      }
     });
   }
 
