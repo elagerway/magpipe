@@ -51,6 +51,9 @@ export class Router {
     // Initialize impersonation banner
     initImpersonationBanner();
 
+    // Start preloading Inbox immediately (most common first navigation)
+    this.preloadInbox();
+
     // Handle browser back/forward
     window.addEventListener('popstate', () => {
       this.loadRoute(window.location.pathname + window.location.search);
@@ -58,6 +61,20 @@ export class Router {
 
     // Handle initial route (include query string)
     await this.loadRoute(window.location.pathname + window.location.search);
+  }
+
+  // Preload inbox module early for fast first navigation
+  async preloadInbox() {
+    try {
+      const route = this.routes.get('/inbox');
+      if (route && !this.pageCache.has('/inbox')) {
+        const pageModule = await route.loader();
+        const Page = pageModule.default;
+        this.pageCache.set('/inbox', new Page());
+      }
+    } catch (e) {
+      // Ignore preload errors
+    }
   }
 
   async navigate(path, replace = false) {
@@ -145,8 +162,8 @@ export class Router {
     const tabs = ['/agent', '/inbox', '/phone', '/contacts', '/settings'];
     const toPreload = tabs.filter(t => t !== currentPath && !this.pageCache.has(t));
 
-    // Preload after a short delay to not block current render
-    setTimeout(() => {
+    // Preload immediately but don't block - use requestIdleCallback if available
+    const preload = () => {
       toPreload.forEach(async (path) => {
         try {
           const route = this.routes.get(path);
@@ -159,7 +176,13 @@ export class Router {
           // Ignore preload errors
         }
       });
-    }, 1000);
+    };
+
+    if ('requestIdleCallback' in window) {
+      requestIdleCallback(preload);
+    } else {
+      setTimeout(preload, 100);
+    }
   }
 
   renderError(error) {
