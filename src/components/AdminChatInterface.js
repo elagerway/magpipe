@@ -80,7 +80,7 @@ export function createAdminChatInterface(container) {
   const textInput = document.createElement('input');
   textInput.type = 'text';
   textInput.className = 'chat-input';
-  textInput.placeholder = 'Ask me to configure your assistant...';
+  textInput.placeholder = 'Ask anything...';
   textInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -315,7 +315,7 @@ export function createAdminChatInterface(container) {
     if (loading) {
       textInput.placeholder = 'Sending...';
     } else {
-      textInput.placeholder = 'Ask me to configure your assistant...';
+      textInput.placeholder = 'Ask anything...';
     }
   }
 
