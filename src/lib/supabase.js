@@ -52,7 +52,15 @@ class IndexedDBStorage {
         const transaction = db.transaction(STORE_NAME, 'readonly');
         const store = transaction.objectStore(STORE_NAME);
         const request = store.get(key);
-        request.onsuccess = () => resolve(request.result || null);
+        request.onsuccess = () => {
+          const value = request.result;
+          // If IndexedDB is empty (browser cleared it), fall back to localStorage backup
+          if (value === undefined || value === null) {
+            resolve(localStorage.getItem(key));
+          } else {
+            resolve(value);
+          }
+        };
         request.onerror = () => resolve(localStorage.getItem(key));
       });
     } catch {
@@ -112,15 +120,45 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
+// User cache for performance
+let cachedUser = null;
+let userCacheTime = 0;
+const USER_CACHE_TTL = 60000; // 1 minute cache
+
+// Clear cache on auth state change
+supabase.auth.onAuthStateChange((event) => {
+  if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
+    cachedUser = null;
+    userCacheTime = 0;
+  } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+    userCacheTime = 0; // Force refresh on next call
+  }
+});
+
 /**
- * Get the current authenticated user
+ * Get the current authenticated user (with caching)
+ * @param {boolean} forceRefresh - Force refresh from API
  * @returns {Promise<{user: Object|null, error: Error|null}>}
  */
-export async function getCurrentUser() {
+export async function getCurrentUser(forceRefresh = false) {
+  const now = Date.now();
+
+  // Return cached user if valid
+  if (!forceRefresh && cachedUser && (now - userCacheTime) < USER_CACHE_TTL) {
+    return { user: cachedUser, error: null };
+  }
+
   const {
     data: { user },
     error,
   } = await supabase.auth.getUser();
+
+  // Update cache
+  if (user && !error) {
+    cachedUser = user;
+    userCacheTime = now;
+  }
+
   return { user, error };
 }
 

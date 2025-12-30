@@ -12,6 +12,8 @@ export default class ContactsPage {
     this.filteredContacts = [];
     this.editingContact = null;
     this.avatarFile = null;
+    this.lastFetchTime = 0;
+    this.userId = null;
   }
 
   async render() {
@@ -24,53 +26,55 @@ export default class ContactsPage {
 
     this.userId = user.id;
 
-    // Fetch contacts
-    const { contacts } = await Contact.list(user.id, { orderBy: 'first_name', ascending: true });
-    this.contacts = contacts;
-    this.filteredContacts = contacts;
+    // Use cached data if fetched within last 30 seconds
+    const now = Date.now();
+    if (this.contacts.length === 0 || (now - this.lastFetchTime) > 30000) {
+      const { contacts } = await Contact.list(user.id, { orderBy: 'first_name', ascending: true });
+      this.contacts = contacts;
+      this.filteredContacts = contacts;
+      this.lastFetchTime = now;
+    }
 
     const appElement = document.getElementById('app');
 
     appElement.innerHTML = `
-      <div class="container with-bottom-nav" style="padding-top: 0;">
-        <div class="card" style="margin-bottom: 0;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
-            <h1 style="margin: 0; font-size: 1.5rem;">Contacts</h1>
-            <div style="display: flex; gap: 0.5rem; flex-shrink: 0;">
-              <button id="import-contacts-btn" class="btn btn-secondary" style="display: flex; align-items: center; gap: 0.25rem; padding: 0.5rem 0.75rem; font-size: 0.875rem;">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                  <polyline points="7 10 12 15 17 10"></polyline>
-                  <line x1="12" y1="15" x2="12" y2="3"></line>
-                </svg>
-                <span class="btn-text">Import</span>
-              </button>
-              <button class="btn btn-primary" id="add-contact-btn" style="display: flex; align-items: center; gap: 0.25rem; padding: 0.5rem 0.75rem; font-size: 0.875rem;">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="12" y1="5" x2="12" y2="19"></line>
-                  <line x1="5" y1="12" x2="19" y2="12"></line>
-                </svg>
-                <span class="btn-text">Add</span>
-              </button>
-            </div>
+      <div class="container with-bottom-nav" style="padding-top: 1rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+          <h1 style="margin: 0; font-size: 1.5rem;">Contacts</h1>
+          <div style="display: flex; gap: 0.5rem; flex-shrink: 0;">
+            <button id="import-contacts-btn" class="btn btn-secondary" style="display: flex; align-items: center; gap: 0.25rem; padding: 0.5rem 0.75rem; font-size: 0.875rem;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              <span class="btn-text">Import</span>
+            </button>
+            <button class="btn btn-primary" id="add-contact-btn" style="display: flex; align-items: center; gap: 0.25rem; padding: 0.5rem 0.75rem; font-size: 0.875rem;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              <span class="btn-text">Add</span>
+            </button>
           </div>
+        </div>
 
-        <div class="card" style="margin-bottom: 2rem;">
+        <div style="margin-bottom: 0.5rem;">
           <input
             type="search"
             id="search-input"
             class="form-input"
-            placeholder="Search contacts by name or phone number..."
+            placeholder="Search contacts by name"
+            style="width: 100%;"
           />
         </div>
 
-        <div id="error-message" class="hidden"></div>
-        <div id="success-message" class="hidden"></div>
+        <div id="error-message" class="hidden" style="display: none;"></div>
+        <div id="success-message" class="hidden" style="display: none;"></div>
 
-        <div class="card">
-          <div id="contacts-list">
-            ${this.renderContactsList()}
-          </div>
+        <div id="contacts-list">
+          ${this.renderContactsList()}
         </div>
 
         <!-- Import CSV Modal -->
@@ -334,7 +338,7 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
           position: relative;
           display: flex;
           align-items: flex-start;
-          padding: 1rem;
+          padding: 0.75rem 0;
           border-bottom: 1px solid var(--border-color);
         ">
 
