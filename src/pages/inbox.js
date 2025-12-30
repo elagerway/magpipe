@@ -211,8 +211,12 @@ export default class InboxPage {
       ${renderBottomNav('/inbox')}
     `;
 
-    this.attachEventListeners();
-    this.subscribeToMessages();
+    // Defer heavy operations to allow UI to be scrollable immediately
+    requestAnimationFrame(() => {
+      this.attachEventListeners();
+      // Defer subscription even more to not block
+      setTimeout(() => this.subscribeToMessages(), 100);
+    });
 
     // Expose showCallInterface globally for phone nav button
     window.showDialpad = () => this.showCallInterface();
@@ -596,32 +600,16 @@ export default class InboxPage {
   }
 
   async loadConversations(userId) {
-    // Load all SMS messages, calls, and contacts
-    const { data: messages, error: msgError } = await supabase
-      .from('sms_messages')
-      .select('*')
-      .eq('user_id', userId)
-      .order('sent_at', { ascending: false });
+    // Load all data in parallel for speed
+    const [messagesResult, callsResult, contactsResult] = await Promise.all([
+      supabase.from('sms_messages').select('*').eq('user_id', userId).order('sent_at', { ascending: false }),
+      supabase.from('call_records').select('*').eq('user_id', userId).order('started_at', { ascending: false }),
+      supabase.from('contacts').select('*').eq('user_id', userId)
+    ]);
 
-    console.log('Messages loaded:', messages, msgError);
-
-    const { data: calls, error: callError } = await supabase
-      .from('call_records')
-      .select('*')
-      .eq('user_id', userId)
-      .order('started_at', { ascending: false });
-
-    console.log('Calls loaded:', calls, callError);
-    console.log('Number of calls:', calls?.length || 0);
-    if (calls && calls.length > 0) {
-      console.log('First call record:', calls[0]);
-    }
-
-    // Load contacts to match with conversations
-    const { data: contacts, error: contactError } = await supabase
-      .from('contacts')
-      .select('*')
-      .eq('user_id', userId);
+    const messages = messagesResult.data;
+    const calls = callsResult.data;
+    const contacts = contactsResult.data;
 
     // Create a map of phone number to contact for quick lookup
     this.contactsMap = {};
