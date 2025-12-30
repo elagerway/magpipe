@@ -42,9 +42,38 @@ export function createAdminChatInterface(container) {
   const chatContainer = document.createElement('div');
   chatContainer.className = 'admin-chat-interface';
 
+  // Mobile header with history toggle
+  const mobileHeader = document.createElement('div');
+  mobileHeader.className = 'chat-mobile-header';
+
+  const historyBtn = document.createElement('button');
+  historyBtn.className = 'history-toggle-btn';
+  historyBtn.innerHTML = `
+    <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+    </svg>
+    History
+  `;
+  mobileHeader.appendChild(historyBtn);
+  chatContainer.appendChild(mobileHeader);
+
   // Sidebar
   const sidebar = document.createElement('div');
   sidebar.className = 'chat-sidebar';
+
+  // Mobile close button for sidebar
+  const closeSidebarBtn = document.createElement('button');
+  closeSidebarBtn.className = 'close-sidebar-btn';
+  closeSidebarBtn.innerHTML = '&times;';
+  closeSidebarBtn.addEventListener('click', () => {
+    sidebar.classList.remove('open');
+  });
+  sidebar.appendChild(closeSidebarBtn);
+
+  // Toggle sidebar on history button click
+  historyBtn.addEventListener('click', () => {
+    sidebar.classList.toggle('open');
+  });
 
   const newChatBtn = document.createElement('button');
   newChatBtn.className = 'new-chat-button';
@@ -1558,10 +1587,63 @@ export function addAdminChatStyles() {
       font-weight: 500;
     }
 
+    /* Mobile header */
+    .chat-mobile-header {
+      display: none;
+    }
+
+    .history-toggle-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 12px;
+      background: var(--bg-secondary, #f3f4f6);
+      border: 1px solid var(--border-color, #e5e7eb);
+      border-radius: 8px;
+      font-size: 14px;
+      color: var(--text-primary, #374151);
+      cursor: pointer;
+    }
+
+    .close-sidebar-btn {
+      display: none;
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: none;
+      border: none;
+      font-size: 24px;
+      cursor: pointer;
+      color: var(--text-muted, #9ca3af);
+    }
+
     /* Mobile responsive */
     @media (max-width: 768px) {
+      .chat-mobile-header {
+        display: flex;
+        padding: 12px;
+        border-bottom: 1px solid var(--border-color, #e5e7eb);
+        background: var(--bg-primary, #fff);
+      }
+
       .chat-sidebar {
         display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 1000;
+        background: var(--bg-primary, #fff);
+        padding-top: 50px;
+      }
+
+      .chat-sidebar.open {
+        display: block;
+      }
+
+      .close-sidebar-btn {
+        display: block;
       }
 
       .chat-bubble {
