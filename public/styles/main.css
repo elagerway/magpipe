@@ -1207,6 +1207,7 @@ p {
 
   .message-input-container {
     padding: 0.75rem 1rem;
+    padding-bottom: 1rem;
     margin-bottom: 0;
     flex-shrink: 0;
   }
