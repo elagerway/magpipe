@@ -10,6 +10,7 @@ export class Router {
   constructor() {
     this.routes = new Map();
     this.currentRoute = null;
+    this.pageCache = new Map(); // Cache page instances
     this.setupRoutes();
   }
 
@@ -80,7 +81,7 @@ export class Router {
       return;
     }
 
-    // Check authentication
+    // Check authentication (getCurrentUser uses caching)
     if (route.requiresAuth) {
       const { user } = await getCurrentUser();
 
@@ -106,18 +107,59 @@ export class Router {
       }
     }
 
-    // Load and render page
+    // Load and render page (with caching for main tabs)
     try {
-      const pageModule = await route.loader();
-      const Page = pageModule.default;
-      const page = new Page();
+      const cacheable = ['/agent', '/inbox', '/phone', '/contacts', '/settings'];
+      let page;
+
+      if (cacheable.includes(path) && this.pageCache.has(path)) {
+        // Use cached page instance
+        page = this.pageCache.get(path);
+      } else {
+        // Create new page instance
+        const pageModule = await route.loader();
+        const Page = pageModule.default;
+        page = new Page();
+
+        // Cache main tab pages
+        if (cacheable.includes(path)) {
+          this.pageCache.set(path, page);
+        }
+      }
 
       this.currentRoute = path;
       await page.render();
+
+      // Preload other main tabs in background after first render
+      if (cacheable.includes(path)) {
+        this.preloadTabs(path);
+      }
     } catch (error) {
       console.error('Error loading route:', error);
       this.renderError(error);
     }
+  }
+
+  // Preload other main tabs in background
+  preloadTabs(currentPath) {
+    const tabs = ['/agent', '/inbox', '/phone', '/contacts', '/settings'];
+    const toPreload = tabs.filter(t => t !== currentPath && !this.pageCache.has(t));
+
+    // Preload after a short delay to not block current render
+    setTimeout(() => {
+      toPreload.forEach(async (path) => {
+        try {
+          const route = this.routes.get(path);
+          if (route) {
+            const pageModule = await route.loader();
+            const Page = pageModule.default;
+            this.pageCache.set(path, new Page());
+          }
+        } catch (e) {
+          // Ignore preload errors
+        }
+      });
+    }, 1000);
   }
 
   renderError(error) {
