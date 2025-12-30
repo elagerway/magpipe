@@ -12,6 +12,8 @@ export default class ContactsPage {
     this.filteredContacts = [];
     this.editingContact = null;
     this.avatarFile = null;
+    this.lastFetchTime = 0;
+    this.userId = null;
   }
 
   async render() {
@@ -24,10 +26,14 @@ export default class ContactsPage {
 
     this.userId = user.id;
 
-    // Fetch contacts
-    const { contacts } = await Contact.list(user.id, { orderBy: 'first_name', ascending: true });
-    this.contacts = contacts;
-    this.filteredContacts = contacts;
+    // Use cached data if fetched within last 30 seconds
+    const now = Date.now();
+    if (this.contacts.length === 0 || (now - this.lastFetchTime) > 30000) {
+      const { contacts } = await Contact.list(user.id, { orderBy: 'first_name', ascending: true });
+      this.contacts = contacts;
+      this.filteredContacts = contacts;
+      this.lastFetchTime = now;
+    }
 
     const appElement = document.getElementById('app');
 

@@ -18,6 +18,7 @@ async function loadSipClient() {
 export default class PhonePage {
   constructor() {
     this.userId = null;
+    this.sipInitialized = false;
   }
 
   async render() {
@@ -52,7 +53,14 @@ export default class PhonePage {
     setPhoneNavActive(true);
 
     this.attachEventListeners();
-    this.requestMicrophoneAndInitializeSIP();
+
+    // Only initialize SIP once
+    if (!this.sipInitialized) {
+      this.requestMicrophoneAndInitializeSIP();
+    } else {
+      // Update status from existing SIP client state
+      this.updateSIPStatusFromClient();
+    }
 
     // Check for dial parameter in URL (e.g., /phone?dial=+16045551234)
     const urlParams = new URLSearchParams(window.location.search);
@@ -764,9 +772,23 @@ export default class PhonePage {
       });
 
       this.updateSIPStatus('registered');
+      this.sipInitialized = true;
     } catch (error) {
       console.error('SIP initialization failed:', error);
       this.updateSIPStatus('error', error.message);
+    }
+  }
+
+  // Update SIP status from existing client state (used on re-render)
+  async updateSIPStatusFromClient() {
+    if (sipClient && sipClient.isRegistered && sipClient.isRegistered()) {
+      this.updateSIPStatus('registered');
+    } else if (sipClient && sipClient.isConnected && sipClient.isConnected()) {
+      this.updateSIPStatus('connecting');
+    } else {
+      // Re-initialize if needed
+      this.sipInitialized = false;
+      this.requestMicrophoneAndInitializeSIP();
     }
   }
 
