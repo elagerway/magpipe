@@ -375,6 +375,7 @@ p {
   justify-content: space-around;
   align-items: center;
   padding: 0.5rem 0;
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
   z-index: 1000;
   box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
 }
@@ -1135,9 +1136,13 @@ p {
 @media (max-width: 768px) {
   .inbox-container {
     grid-template-columns: 1fr;
-    position: relative;
-    height: calc(100vh - 60px); /* Account for bottom nav */
-    max-height: calc(100vh - 60px);
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: calc(60px + env(safe-area-inset-bottom, 0px)); /* Position above bottom nav */
+    height: auto;
+    max-height: none;
   }
 
   .conversation-list {
@@ -1202,7 +1207,6 @@ p {
 
   .message-input-container {
     padding: 0.75rem 1rem;
-    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
     margin-bottom: 0;
     flex-shrink: 0;
   }
