@@ -1359,7 +1359,7 @@ export function addAdminChatStyles() {
       display: flex;
       gap: 8px;
       padding: 16px;
-      padding-bottom: 80px;
+      padding-bottom: 16px;
       border-top: 1px solid #e5e7eb;
       background: #f9fafb;
     }
@@ -1570,7 +1570,7 @@ export function addAdminChatStyles() {
 
       .chat-input-container {
         padding: 12px;
-        padding-bottom: 90px;
+        padding-bottom: 12px;
       }
 
       .chat-send-button {
