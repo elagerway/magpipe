@@ -4,6 +4,7 @@
 
 import { User } from '../models/User.js';
 import { getCurrentUser, supabase } from '../lib/supabase.js';
+import { canAddPhoneNumber } from '../services/planService.js';
 
 export default class SelectNumberPage {
   constructor() {
@@ -19,7 +20,62 @@ export default class SelectNumberPage {
       return;
     }
 
+    // Check if user can add more phone numbers
+    const phoneCheck = await canAddPhoneNumber(user.id);
+
     const appElement = document.getElementById('app');
+
+    // If user can't add more numbers, show upgrade prompt
+    if (!phoneCheck.canAdd) {
+      appElement.innerHTML = `
+        <div class="container" style="max-width: 600px; margin-top: 4rem;">
+          <button onclick="navigateTo('/manage-numbers')" style="
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 0.5rem 0.5rem 0.5rem 0;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+            font-size: 0.875rem;
+            transition: color 0.2s;
+            margin-bottom: 1rem;
+          " onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-secondary)'">
+            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+            Back
+          </button>
+
+          <div class="card" style="text-align: center;">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">
+              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin: 0 auto; color: var(--warning-color);">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+              </svg>
+            </div>
+            <h2 style="margin-bottom: 0.5rem;">Phone Number Limit Reached</h2>
+            <p class="text-muted" style="margin-bottom: 1.5rem;">
+              Your Free plan includes ${phoneCheck.limit} phone number${phoneCheck.limit > 1 ? 's' : ''}.
+              You currently have ${phoneCheck.current} number${phoneCheck.current > 1 ? 's' : ''}.
+            </p>
+            <div style="background: var(--bg-secondary); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1.5rem;">
+              <h3 style="margin: 0 0 0.5rem 0; font-size: 1rem;">Upgrade to Pro for:</h3>
+              <ul style="text-align: left; margin: 0; padding-left: 1.25rem; color: var(--text-secondary);">
+                <li>Unlimited phone numbers</li>
+                <li>Voice cloning</li>
+                <li>Unlimited calls, minutes, and SMS</li>
+                <li>Priority support</li>
+              </ul>
+            </div>
+            <button class="btn btn-primary btn-full" onclick="navigateTo('/settings')">
+              Upgrade to Pro - $9.99/month
+            </button>
+          </div>
+        </div>
+      `;
+      return;
+    }
 
     appElement.innerHTML = `
       <div class="container" style="max-width: 600px; margin-top: 4rem;">

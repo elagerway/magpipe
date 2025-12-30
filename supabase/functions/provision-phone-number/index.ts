@@ -50,6 +50,23 @@ serve(async (req) => {
       )
     }
 
+    // Check plan limits for phone numbers
+    const { data: phoneNumberCheck } = await supabase.rpc('check_phone_number_limit', {
+      p_user_id: user.id
+    })
+
+    if (phoneNumberCheck && !phoneNumberCheck.can_add_more) {
+      return new Response(
+        JSON.stringify({
+          error: 'Phone number limit reached',
+          message: `Your ${phoneNumberCheck.plan} plan allows ${phoneNumberCheck.limit} phone number(s). Please upgrade to Pro for unlimited numbers.`,
+          current: phoneNumberCheck.current_count,
+          limit: phoneNumberCheck.limit
+        }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     console.log('Provisioning number:', phoneNumber, 'for user:', user.id)
 
     const webhookBaseUrl = `${supabaseUrl}/functions/v1`
