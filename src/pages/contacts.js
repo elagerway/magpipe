@@ -34,23 +34,23 @@ export default class ContactsPage {
     appElement.innerHTML = `
       <div class="container with-bottom-nav" style="padding-top: 0;">
         <div class="card" style="margin-bottom: 0;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
             <h1 style="margin: 0; font-size: 1.5rem;">Contacts</h1>
-            <div style="display: flex; gap: 0.5rem;">
-              <button id="import-contacts-btn" class="btn btn-secondary" style="display: flex; align-items: center; gap: 0.5rem;">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <div style="display: flex; gap: 0.5rem; flex-shrink: 0;">
+              <button id="import-contacts-btn" class="btn btn-secondary" style="display: flex; align-items: center; gap: 0.25rem; padding: 0.5rem 0.75rem; font-size: 0.875rem;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                   <polyline points="7 10 12 15 17 10"></polyline>
                   <line x1="12" y1="15" x2="12" y2="3"></line>
                 </svg>
-                Import
+                <span class="btn-text">Import</span>
               </button>
-              <button class="btn btn-primary" id="add-contact-btn" style="display: flex; align-items: center; gap: 0.5rem;">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <button class="btn btn-primary" id="add-contact-btn" style="display: flex; align-items: center; gap: 0.25rem; padding: 0.5rem 0.75rem; font-size: 0.875rem;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="12" y1="5" x2="12" y2="19"></line>
                   <line x1="5" y1="12" x2="19" y2="12"></line>
                 </svg>
-                Add
+                <span class="btn-text">Add</span>
               </button>
             </div>
           </div>
@@ -335,28 +335,8 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
           display: flex;
           align-items: flex-start;
           padding: 1rem;
-          padding-right: 2.5rem;
           border-bottom: 1px solid var(--border-color);
         ">
-          <!-- Delete X button in top right -->
-          <button class="delete-contact-btn" data-id="${contact.id}" style="
-            position: absolute;
-            top: 0.5rem;
-            right: 0.5rem;
-            background: none;
-            border: none;
-            cursor: pointer;
-            color: var(--text-muted);
-            padding: 0.25rem;
-            line-height: 1;
-            opacity: 0.5;
-            transition: opacity 0.2s, color 0.2s;
-          " title="Delete contact">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </button>
 
           <div style="display: flex; align-items: flex-start; gap: 1rem; flex: 1;">
             <div style="
