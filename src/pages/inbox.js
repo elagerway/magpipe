@@ -3881,8 +3881,11 @@ Examples:
         this.selectedCallId = null;
         threadElement.innerHTML = this.renderEmptyState();
 
-        // Update conversation list
-        conversationsEl.innerHTML = this.renderConversationList();
+        // Update conversation list - use fresh reference to avoid stale DOM issues
+        const freshConversationsEl = document.getElementById('conversations');
+        if (freshConversationsEl) {
+          freshConversationsEl.innerHTML = this.renderConversationList();
+        }
       }
     });
   }
