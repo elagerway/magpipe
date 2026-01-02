@@ -1,4 +1,3 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 /**
@@ -10,7 +9,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
  * 2. Bridges to the destination number with recording
  * 3. Uses the caller_id for the outbound leg to destination
  */
-serve(async (req) => {
+Deno.serve(async (req) => {
   try {
     // Parse URL parameters
     const url = new URL(req.url);

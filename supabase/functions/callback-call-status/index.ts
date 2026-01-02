@@ -1,4 +1,3 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 /**
@@ -9,7 +8,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
  * - Records duration and disposition
  * - Handles both legs (user's phone and destination)
  */
-serve(async (req) => {
+Deno.serve(async (req) => {
   try {
     // Parse URL to get call_record_id
     const url = new URL(req.url);
