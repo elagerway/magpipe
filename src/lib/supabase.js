@@ -45,8 +45,16 @@ class IndexedDBStorage {
 
   async getItem(key) {
     try {
+      // Check localStorage FIRST (synchronous) - critical for cold start
+      // This ensures we don't wait for IndexedDB to initialize
+      const localValue = localStorage.getItem(key);
+      if (localValue) {
+        return localValue;
+      }
+
+      // Only check IndexedDB if localStorage is empty
       const db = await this.dbPromise;
-      if (!db) return localStorage.getItem(key);
+      if (!db) return null;
 
       return new Promise((resolve) => {
         const transaction = db.transaction(STORE_NAME, 'readonly');
@@ -54,14 +62,9 @@ class IndexedDBStorage {
         const request = store.get(key);
         request.onsuccess = () => {
           const value = request.result;
-          // If IndexedDB is empty (browser cleared it), fall back to localStorage backup
-          if (value === undefined || value === null) {
-            resolve(localStorage.getItem(key));
-          } else {
-            resolve(value);
-          }
+          resolve(value || null);
         };
-        request.onerror = () => resolve(localStorage.getItem(key));
+        request.onerror = () => resolve(null);
       });
     } catch {
       return localStorage.getItem(key);
