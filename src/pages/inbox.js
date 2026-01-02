@@ -3889,7 +3889,7 @@ Examples:
       });
     }
 
-    // Message action button
+    // Message action button - open SMS thread directly (already on inbox page)
     const messageBtn = document.getElementById('message-action-btn');
     if (messageBtn) {
       messageBtn.addEventListener('click', (e) => {
@@ -3897,7 +3897,7 @@ Examples:
         e.stopPropagation();
         const phoneNumber = messageBtn.dataset.phone;
         if (phoneNumber) {
-          window.navigateTo(`/inbox?contact=${encodeURIComponent(phoneNumber)}`);
+          this.openNewConversation(phoneNumber);
         }
       });
     }
