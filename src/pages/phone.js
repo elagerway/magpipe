@@ -19,6 +19,23 @@ export default class PhonePage {
   constructor() {
     this.userId = null;
     this.sipInitialized = false;
+    this.userPhoneNumber = null; // User's personal cell phone for callback calls
+  }
+
+  async loadUserPhoneNumber() {
+    try {
+      const { data } = await supabase
+        .from('users')
+        .select('phone_number')
+        .eq('id', this.userId)
+        .single();
+
+      if (data?.phone_number) {
+        this.userPhoneNumber = data.phone_number;
+      }
+    } catch (error) {
+      console.error('Failed to load user phone number:', error);
+    }
   }
 
   async render() {
@@ -30,6 +47,9 @@ export default class PhonePage {
     }
 
     this.userId = user.id;
+
+    // Fetch user's personal phone number for callback validation
+    await this.loadUserPhoneNumber();
 
     const appElement = document.getElementById('app');
     const isMobile = window.innerWidth <= 768;
@@ -906,6 +926,80 @@ export default class PhonePage {
     return phone;
   }
 
+  normalizePhoneForComparison(phone) {
+    // Strip to just digits for comparison
+    if (!phone) return '';
+    const digits = phone.replace(/\D/g, '');
+    // Remove leading 1 for US numbers to normalize
+    if (digits.length === 11 && digits[0] === '1') {
+      return digits.substring(1);
+    }
+    return digits;
+  }
+
+  showOwnNumberModal() {
+    // Create modal overlay
+    const modal = document.createElement('div');
+    modal.id = 'own-number-modal';
+    modal.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    `;
+
+    modal.innerHTML = `
+      <div style="
+        background: var(--bg-primary);
+        border-radius: 12px;
+        padding: 1.5rem;
+        max-width: 320px;
+        margin: 1rem;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+      ">
+        <h3 style="margin: 0 0 0.75rem 0; color: var(--text-primary); font-size: 1.125rem;">
+          You are dialing your own number.
+        </h3>
+        <p style="margin: 0 0 1.25rem 0; color: var(--text-secondary); font-size: 0.875rem; line-height: 1.5;">
+          You cannot call your own phone number using the callback feature. Please dial a different number.
+        </p>
+        <button id="own-number-modal-ok" style="
+          width: 100%;
+          padding: 0.75rem;
+          background: var(--primary-color, #6366f1);
+          color: white;
+          border: none;
+          border-radius: 8px;
+          font-size: 1rem;
+          font-weight: 500;
+          cursor: pointer;
+        ">
+          OK
+        </button>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // Close on button click
+    document.getElementById('own-number-modal-ok').addEventListener('click', () => {
+      modal.remove();
+    });
+
+    // Close on backdrop click
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        modal.remove();
+      }
+    });
+  }
+
   formatRelativeTime(date) {
     const now = new Date();
     const diffMs = now - date;
@@ -1049,140 +1143,11 @@ export default class PhonePage {
         return;
       }
 
-      // Show connecting state
-      this.updateCallState('connecting', 'Registering...');
-
-      console.log('🔧 Initializing SIP client...');
-      console.log('📞 Using display name (CNAM):', displayName);
-
-      // Lazy load and initialize SIP client with credentials
-      await loadSipClient();
-      await sipClient.initialize({
-        sipUri: `sip:${sipCredentials.sip_username}@${sipCredentials.sip_domain}`,
-        sipPassword: sipCredentials.sip_password,
-        wsServer: sipCredentials.sip_ws_server,
-        displayName: displayName
-      });
-
-      console.log('✅ SIP client registered');
-      this.updateCallState('connecting', 'Calling...');
-
-      // Create call record
-      const callStartTime = new Date().toISOString();
-
-      // Normalize phone number to E.164 format (+1234567890)
-      let normalizedPhoneNumber = phoneNumber;
-      if (!normalizedPhoneNumber.startsWith('+')) {
-        // Strip all non-digit characters first
-        const digitsOnly = normalizedPhoneNumber.replace(/\D/g, '');
-        // If number starts with 1 and is 11 digits, just add +
-        // Otherwise assume North America and add +1
-        if (digitsOnly.startsWith('1') && digitsOnly.length === 11) {
-          normalizedPhoneNumber = '+' + digitsOnly;
-        } else {
-          normalizedPhoneNumber = '+1' + digitsOnly;
-        }
-      }
-
-      const { data: callRecord, error: callRecordError } = await supabase
-        .from('call_records')
-        .insert({
-          user_id: this.userId,
-          caller_number: normalizedPhoneNumber,
-          contact_phone: normalizedPhoneNumber,
-          service_number: fromNumber,
-          direction: 'outbound',
-          disposition: 'outbound_failed', // Will update on success
-          status: 'failed', // Will update on success
-          started_at: callStartTime
-        })
-        .select()
-        .single();
-
-      if (callRecordError) {
-        console.error('Failed to create call record:', callRecordError);
-      } else {
-        console.log('✅ Call record created:', callRecord.id);
-      }
-
-      const callRecordId = callRecord?.id;
-      let callConnectedTime = null;
-
-      // Make call via SIP
-      await sipClient.makeCall(phoneNumber, fromNumber, displayName, {
-        onProgress: () => {
-          console.log('📞 Call ringing...');
-          this.updateCallState('ringing', 'Ringing...');
-        },
-        onConfirmed: () => {
-          console.log('✅ Call connected');
-          callConnectedTime = new Date();
-          this.updateCallState('established', 'Connected');
-          this.transformToHangupButton();
-        },
-        onFailed: async (cause) => {
-          console.error('❌ Call failed:', cause);
-          this.updateCallState('failed', `Call failed: ${cause}`);
-
-          // Update call record with failure
-          if (callRecordId) {
-            const disposition = cause.toLowerCase().includes('busy') ? 'outbound_busy' : 'outbound_failed';
-            const status = cause.toLowerCase().includes('busy') ? 'busy' : 'failed';
-            await supabase
-              .from('call_records')
-              .update({
-                disposition,
-                status,
-                ended_at: new Date().toISOString(),
-                duration: 0,
-                duration_seconds: 0
-              })
-              .eq('id', callRecordId);
-          }
-
-          alert(`Call failed: ${cause}`);
-          this.transformToCallButton();
-        },
-        onEnded: async () => {
-          console.log('📞 Call ended');
-
-          // Update call record with final disposition and duration
-          if (callRecordId) {
-            const endTime = new Date();
-            const duration = callConnectedTime
-              ? Math.round((endTime - callConnectedTime) / 1000)
-              : 0;
-
-            const disposition = callConnectedTime
-              ? 'outbound_completed'
-              : 'outbound_no_answer';
-
-            const status = callConnectedTime
-              ? 'completed'
-              : 'no-answer';
-
-            await supabase
-              .from('call_records')
-              .update({
-                disposition,
-                status,
-                ended_at: endTime.toISOString(),
-                duration,
-                duration_seconds: duration,
-                contact_phone: normalizedPhoneNumber,
-                service_number: fromNumber
-              })
-              .eq('id', callRecordId);
-
-            console.log(`✅ Call record updated: ${disposition}, duration: ${duration}s`);
-          }
-
-          this.updateCallState('idle');
-          this.transformToCallButton();
-        }
-      });
-
-      console.log('📞 SIP call initiated');
+      // Use callback approach for direct calls
+      // This calls the user's cell phone first, then bridges to destination
+      console.log('📞 Using callback approach for direct call');
+      await this.initiateCallbackCall(phoneNumber, fromNumber);
+      console.log('📞 Callback call initiated');
 
     } catch (error) {
       console.error('Failed to initiate call:', error);
@@ -1301,6 +1266,79 @@ export default class PhonePage {
 
     } catch (error) {
       console.error('Failed to initiate bridged call:', error);
+      alert(`Failed to initiate call: ${error.message}`);
+      this.updateCallState('idle');
+      this.transformToCallButton();
+    }
+  }
+
+  /**
+   * Initiate a callback-style direct call
+   * 1. SignalWire calls the user's cell phone first
+   * 2. When user answers, plays whisper "Outbound call from Solo Mobile"
+   * 3. Then bridges to destination with recording
+   */
+  async initiateCallbackCall(phoneNumber, callerIdNumber) {
+    console.log('📞 Initiating callback call');
+    console.log('   To:', phoneNumber);
+    console.log('   From:', callerIdNumber);
+
+    try {
+      // Normalize phone number to E.164 format
+      let normalizedPhoneNumber = phoneNumber;
+      if (!normalizedPhoneNumber.startsWith('+')) {
+        const digitsOnly = normalizedPhoneNumber.replace(/\D/g, '');
+        if (digitsOnly.startsWith('1') && digitsOnly.length === 11) {
+          normalizedPhoneNumber = '+' + digitsOnly;
+        } else {
+          normalizedPhoneNumber = '+1' + digitsOnly;
+        }
+      }
+
+      // Check if user is trying to call their own phone number
+      if (this.userPhoneNumber && this.normalizePhoneForComparison(normalizedPhoneNumber) === this.normalizePhoneForComparison(this.userPhoneNumber)) {
+        this.showOwnNumberModal();
+        return;
+      }
+
+      // Update UI
+      this.updateCallState('connecting', 'Calling your phone...');
+
+      // Call the Edge Function to initiate callback call
+      // This will:
+      // 1. SignalWire calls user's cell phone
+      // 2. When answered, whisper plays, then bridges to destination
+      const { data, error } = await supabase.functions.invoke('initiate-callback-call', {
+        body: {
+          destination_number: normalizedPhoneNumber,
+          caller_id: callerIdNumber
+        }
+      });
+
+      if (error) {
+        console.error('📞 Callback call error:', error);
+        throw new Error(error.message || 'Failed to initiate callback call');
+      }
+
+      console.log('✅ Callback call initiated:', data);
+      console.log('   Call SID:', data.call_sid);
+      console.log('   Call Record ID:', data.call_record_id);
+
+      // Update UI to show call is in progress
+      this.updateCallState('connecting', 'Answer your phone...');
+      this.transformToHangupButton();
+
+      // Store call info for hangup
+      this.currentBridgedCallSid = data.call_sid;
+      this.currentCallRecordId = data.call_record_id;
+
+      // Subscribe to call record status updates to detect when call ends
+      if (data.call_record_id) {
+        this.subscribeToCallStatus(data.call_record_id);
+      }
+
+    } catch (error) {
+      console.error('Failed to initiate callback call:', error);
       alert(`Failed to initiate call: ${error.message}`);
       this.updateCallState('idle');
       this.transformToCallButton();
