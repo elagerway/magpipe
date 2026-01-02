@@ -2,6 +2,8 @@
  * Home/Landing Page
  */
 
+import { getCurrentUser } from '../lib/supabase.js';
+
 // Store the install prompt for later use
 let deferredPrompt = null;
 
@@ -18,6 +20,13 @@ window.addEventListener('beforeinstallprompt', (e) => {
 
 export default class HomePage {
   async render() {
+    // If user is already logged in, redirect to dashboard
+    const { user } = await getCurrentUser();
+    if (user) {
+      window.router?.navigate('/dashboard', true);
+      return;
+    }
+
     const appElement = document.getElementById('app');
 
     // Check if running as installed PWA
