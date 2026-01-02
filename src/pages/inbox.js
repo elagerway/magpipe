@@ -233,12 +233,15 @@ export default class InboxPage {
   }
 
   openNewConversation(phoneNumber) {
+    console.log('openNewConversation called with:', phoneNumber);
+
     // Set the selected contact and show the message input
     this.selectedContact = phoneNumber;
     this.selectedCallId = null;
 
     // Check if conversation exists
     const existingConv = this.conversations.find(c => c.type === 'sms' && c.phone === phoneNumber);
+    console.log('Existing SMS conv found:', !!existingConv);
 
     if (!existingConv) {
       // Create a new conversation entry temporarily
@@ -648,7 +651,7 @@ export default class InboxPage {
           phone,
           serviceNumbers: new Set([serviceNumber]), // Track all service numbers
           messages: [],
-          lastActivity: new Date(msg.sent_at || msg.created_at),
+          lastActivity: new Date(msg.sent_at || msg.created_at || Date.now()),
           lastMessage: msg.content,
           unreadCount: 0,
         };
@@ -662,14 +665,14 @@ export default class InboxPage {
       if (msg.direction === 'inbound') {
         const lastViewedKey = `conversation_last_viewed_sms_${phone}`;
         const lastViewed = localStorage.getItem(lastViewedKey);
-        const msgDate = new Date(msg.sent_at || msg.created_at);
+        const msgDate = new Date(msg.sent_at || msg.created_at || Date.now());
 
         if (!lastViewed || msgDate > new Date(lastViewed)) {
           smsGrouped[phone].unreadCount++;
         }
       }
 
-      const msgDate = new Date(msg.sent_at || msg.created_at);
+      const msgDate = new Date(msg.sent_at || msg.created_at || Date.now());
       if (msgDate > smsGrouped[phone].lastActivity) {
         smsGrouped[phone].lastActivity = msgDate;
         smsGrouped[phone].lastMessage = msg.content;
@@ -707,7 +710,7 @@ export default class InboxPage {
         callId: call.id,
         phone: phoneNumber,
         call: call,
-        lastActivity: new Date(call.started_at),
+        lastActivity: new Date(call.started_at || call.created_at || Date.now()),
         lastMessage: `${call.direction === 'inbound' ? 'Incoming' : 'Outgoing'} Call • ${durationText}`,
         statusInfo: statusInfo,
       });
@@ -1257,24 +1260,56 @@ export default class InboxPage {
   }
 
   formatTimestamp(date) {
-    const now = new Date();
-    const diffMs = now - date;
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
+    try {
+      // Handle invalid dates
+      if (!date) return '';
 
-    if (diffMins < 1) return 'now';
-    if (diffMins < 60) return `${diffMins}m`;
-    if (diffHours < 24) return `${diffHours}h`;
-    if (diffDays === 0) return 'Today';
-    if (diffDays === 1) return 'Yesterday';
-    if (diffDays < 7) return `${diffDays}d`;
+      // Convert string to Date if needed
+      let dateObj;
+      if (date instanceof Date) {
+        dateObj = date;
+      } else {
+        dateObj = new Date(date);
+      }
 
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      // Check if valid date - multiple safety checks
+      if (!dateObj || typeof dateObj.getTime !== 'function') return '';
+      if (isNaN(dateObj.getTime())) return '';
+
+      const now = new Date();
+      const diffMs = now - dateObj;
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMs / 3600000);
+      const diffDays = Math.floor(diffMs / 86400000);
+
+      if (diffMins < 1) return 'now';
+      if (diffMins < 60) return `${diffMins}m`;
+      if (diffHours < 24) return `${diffHours}h`;
+      if (diffDays === 0) return 'Today';
+      if (diffDays === 1) return 'Yesterday';
+      if (diffDays < 7) return `${diffDays}d`;
+
+      // Final safety check before calling toLocaleDateString
+      if (typeof dateObj.toLocaleDateString !== 'function') return '';
+      return dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    } catch (err) {
+      console.error('formatTimestamp error:', err, 'date:', date);
+      return '';
+    }
   }
 
   formatTime(date) {
-    return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    try {
+      if (!date) return '';
+      const dateObj = date instanceof Date ? date : new Date(date);
+      if (!dateObj || typeof dateObj.getTime !== 'function') return '';
+      if (isNaN(dateObj.getTime())) return '';
+      if (typeof dateObj.toLocaleTimeString !== 'function') return '';
+      return dateObj.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    } catch (err) {
+      console.error('formatTime error:', err);
+      return '';
+    }
   }
 
   async showNewConversationModal() {
@@ -3382,17 +3417,28 @@ Examples:
   }
 
   formatRelativeTime(date) {
-    const now = new Date();
-    const diffMs = now - date;
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
+    try {
+      if (!date) return '';
+      const dateObj = date instanceof Date ? date : new Date(date);
+      if (!dateObj || typeof dateObj.getTime !== 'function') return '';
+      if (isNaN(dateObj.getTime())) return '';
 
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString();
+      const now = new Date();
+      const diffMs = now - dateObj;
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMs / 3600000);
+      const diffDays = Math.floor(diffMs / 86400000);
+
+      if (diffMins < 1) return 'Just now';
+      if (diffMins < 60) return `${diffMins}m ago`;
+      if (diffHours < 24) return `${diffHours}h ago`;
+      if (diffDays < 7) return `${diffDays}d ago`;
+      if (typeof dateObj.toLocaleDateString !== 'function') return '';
+      return dateObj.toLocaleDateString();
+    } catch (err) {
+      console.error('formatRelativeTime error:', err);
+      return '';
+    }
   }
 
   async requestMicrophoneAndInitializeSIP() {
@@ -3911,15 +3957,32 @@ Examples:
 
     // Message action button - open SMS thread directly (already on inbox page)
     const messageBtn = document.getElementById('message-action-btn');
+    console.log('Attaching Message button listener:', !!messageBtn, messageBtn?.dataset?.phone);
     if (messageBtn) {
       messageBtn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
         const phoneNumber = messageBtn.dataset.phone;
-        if (phoneNumber) {
-          this.openNewConversation(phoneNumber);
+        console.log('Message button clicked, phone:', phoneNumber);
+
+        // Visual feedback
+        messageBtn.style.backgroundColor = '#e0e0ff';
+        setTimeout(() => { messageBtn.style.backgroundColor = ''; }, 200);
+
+        if (phoneNumber && phoneNumber !== 'undefined' && phoneNumber !== 'null') {
+          try {
+            this.openNewConversation(phoneNumber);
+          } catch (err) {
+            console.error('Error in openNewConversation:', err);
+            alert('Error: ' + err.message);
+          }
+        } else {
+          console.error('No valid phone number on message button:', phoneNumber);
+          alert('No phone number available for this call');
         }
       });
+    } else {
+      console.warn('Message button not found when attaching listener');
     }
   }
 
