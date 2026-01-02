@@ -40,6 +40,7 @@ export default class InboxPage {
   constructor() {
     this.conversations = [];
     this.selectedContact = null;
+    this.selectedCallId = null;
     this.subscription = null;
     this.userId = null;
     this.dropdownListenersAttached = false;
@@ -60,6 +61,13 @@ export default class InboxPage {
     loadVoiceRecognition(); // Don't await - load in background
 
     this.userId = user.id;
+
+    // Clear selection on mobile (no item should be highlighted on first view)
+    const isMobile = window.innerWidth <= 768;
+    if (isMobile) {
+      this.selectedContact = null;
+      this.selectedCallId = null;
+    }
 
     // Load hidden conversations from localStorage
     this.loadHiddenConversations();
