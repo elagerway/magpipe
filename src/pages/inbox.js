@@ -44,6 +44,8 @@ export default class InboxPage {
     this.userId = null;
     this.dropdownListenersAttached = false;
     this.lastFetchTime = 0;
+    this.hiddenConversations = new Set(); // Track hidden conversations locally
+    this.swipeState = null; // Track active swipe
   }
 
   async render() {
@@ -58,6 +60,9 @@ export default class InboxPage {
     loadVoiceRecognition(); // Don't await - load in background
 
     this.userId = user.id;
+
+    // Load hidden conversations from localStorage
+    this.loadHiddenConversations();
 
     // Use cached data if fetched within last 30 seconds
     const now = Date.now();
@@ -351,6 +356,13 @@ export default class InboxPage {
     const contactPhone = message.direction === 'inbound' ? message.sender_number : message.recipient_number;
     this.autoEnrichContact(contactPhone); // Fire and forget - don't await
 
+    // Unhide conversation if it was hidden (user swipe-deleted it)
+    const convKey = `sms_${contactPhone}`;
+    if (this.hiddenConversations.has(convKey)) {
+      console.log('Unhiding conversation due to new message:', convKey);
+      this.unhideConversation(convKey);
+    }
+
     // For outbound messages, update local data and re-render if viewing that thread
     if (message.direction === 'outbound') {
       // Update local data
@@ -429,6 +441,16 @@ export default class InboxPage {
     // Auto-enrich contact for new calls
     const contactPhone = call.direction === 'inbound' ? call.caller_number : call.callee_number;
     this.autoEnrichContact(contactPhone); // Fire and forget - don't await
+
+    // Unhide conversation if it was hidden (user swipe-deleted it)
+    // Note: For calls, we use the call ID as the key
+    if (call.id) {
+      const convKey = `call_${call.id}`;
+      if (this.hiddenConversations.has(convKey)) {
+        console.log('Unhiding call conversation due to new call:', convKey);
+        this.unhideConversation(convKey);
+      }
+    }
 
     // Reload conversations to update list
     await this.loadConversations(this.userId);
@@ -721,7 +743,13 @@ export default class InboxPage {
   }
 
   renderConversationList() {
-    if (this.conversations.length === 0) {
+    // Filter out hidden conversations
+    const visibleConversations = this.conversations.filter(conv => {
+      const convKey = conv.type === 'call' ? `call_${conv.callId}` : `sms_${conv.phone}`;
+      return !this.hiddenConversations.has(convKey);
+    });
+
+    if (visibleConversations.length === 0) {
       return `
         <div style="padding: 2rem; text-align: center; color: var(--text-secondary);">
           <p style="font-size: 1rem; margin-bottom: 0.5rem;">No messages yet</p>
@@ -730,7 +758,7 @@ export default class InboxPage {
       `;
     }
 
-    return this.conversations.map(conv => {
+    return visibleConversations.map(conv => {
       const isSelected = (conv.type === 'sms' && this.selectedContact === conv.phone && !this.selectedCallId) ||
                         (conv.type === 'call' && this.selectedCallId === conv.callId);
 
@@ -759,21 +787,30 @@ export default class InboxPage {
         const contactName = contact ? [contact.first_name, contact.last_name].filter(Boolean).join(' ') || contact.name : null;
 
         return `
-          <div class="conversation-item ${isSelected ? 'selected' : ''}" data-call-id="${conv.callId}" data-type="call" style="display: flex !important; flex-direction: row !important; gap: 0.75rem;">
-            <div class="conversation-avatar call-avatar" style="flex-shrink: 0;">
-              ${iconSvg}
+          <div class="swipe-container" data-conv-key="call_${conv.callId}">
+            <div class="swipe-delete-btn" data-conv-key="call_${conv.callId}">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+              <span>Delete</span>
             </div>
-            <div class="conversation-content" style="flex: 1 !important; min-width: 0;">
-              <div class="conversation-header" style="display: flex !important; justify-content: space-between !important; align-items: baseline; width: 100%;">
-                <span class="conversation-name">${contactName || this.formatPhoneNumber(primaryNumber)}</span>
-                <span class="conversation-time" style="white-space: nowrap; margin-left: 0.5rem;">${this.formatTimestamp(conv.lastActivity)}</span>
+            <div class="conversation-item swipe-content ${isSelected ? 'selected' : ''}" data-call-id="${conv.callId}" data-type="call" style="display: flex !important; flex-direction: row !important; gap: 0.75rem;">
+              <div class="conversation-avatar call-avatar" style="flex-shrink: 0;">
+                ${iconSvg}
               </div>
-              <div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 2px;">
-                ${contactName ? this.formatPhoneNumber(primaryNumber) + ' • ' : ''}${isOutbound ? 'From' : 'To'}: ${this.formatPhoneNumber(serviceNumber)}
-              </div>
-              <div class="conversation-preview">
-                <span class="call-status-indicator ${conv.statusInfo.class}" style="color: ${conv.statusInfo.color}; margin-right: 0.25rem;">${conv.statusInfo.icon}</span>
-                ${conv.lastMessage}
+              <div class="conversation-content" style="flex: 1 !important; min-width: 0;">
+                <div class="conversation-header" style="display: flex !important; justify-content: space-between !important; align-items: baseline; width: 100%;">
+                  <span class="conversation-name">${contactName || this.formatPhoneNumber(primaryNumber)}</span>
+                  <span class="conversation-time" style="white-space: nowrap; margin-left: 0.5rem;">${this.formatTimestamp(conv.lastActivity)}</span>
+                </div>
+                <div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 2px;">
+                  ${contactName ? this.formatPhoneNumber(primaryNumber) + ' • ' : ''}${isOutbound ? 'From' : 'To'}: ${this.formatPhoneNumber(serviceNumber)}
+                </div>
+                <div class="conversation-preview">
+                  <span class="call-status-indicator ${conv.statusInfo.class}" style="color: ${conv.statusInfo.color}; margin-right: 0.25rem;">${conv.statusInfo.icon}</span>
+                  ${conv.lastMessage}
+                </div>
               </div>
             </div>
           </div>
@@ -784,25 +821,34 @@ export default class InboxPage {
         const contactName = contact ? [contact.first_name, contact.last_name].filter(Boolean).join(' ') || contact.name : null;
 
         return `
-          <div class="conversation-item ${isSelected ? 'selected' : ''}" data-phone="${conv.phone}" data-type="sms" style="display: flex !important; flex-direction: row !important; gap: 0.75rem;">
-            <div class="conversation-avatar sms-avatar" style="flex-shrink: 0; ${contact?.avatar_url ? 'padding: 0; background: none;' : ''}">
-              ${contact?.avatar_url
-                ? `<img src="${contact.avatar_url}" alt="${contactName}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" />`
-                : `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                  </svg>`
-              }
+          <div class="swipe-container" data-conv-key="sms_${conv.phone}">
+            <div class="swipe-delete-btn" data-conv-key="sms_${conv.phone}">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+              <span>Delete</span>
             </div>
-            <div class="conversation-content" style="flex: 1 !important; min-width: 0;">
-              <div class="conversation-header" style="display: flex !important; justify-content: space-between !important; align-items: baseline; width: 100%;">
-                <span class="conversation-name">${contactName || this.formatPhoneNumber(conv.phone)}</span>
-                <div style="display: flex; align-items: center; gap: 0.5rem; margin-left: 0.5rem;">
-                  ${conv.unreadCount > 0 ? `<span class="conversation-unread-badge">${conv.unreadCount > 99 ? '99+' : conv.unreadCount}</span>` : ''}
-                  <span class="conversation-time" style="white-space: nowrap;">${this.formatTimestamp(conv.lastActivity)}</span>
-                </div>
+            <div class="conversation-item swipe-content ${isSelected ? 'selected' : ''}" data-phone="${conv.phone}" data-type="sms" style="display: flex !important; flex-direction: row !important; gap: 0.75rem;">
+              <div class="conversation-avatar sms-avatar" style="flex-shrink: 0; ${contact?.avatar_url ? 'padding: 0; background: none;' : ''}">
+                ${contact?.avatar_url
+                  ? `<img src="${contact.avatar_url}" alt="${contactName}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" />`
+                  : `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                    </svg>`
+                }
               </div>
-              ${contactName ? `<div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 2px;">${this.formatPhoneNumber(conv.phone)}</div>` : ''}
-              <div class="conversation-preview">${conv.lastMessage}</div>
+              <div class="conversation-content" style="flex: 1 !important; min-width: 0;">
+                <div class="conversation-header" style="display: flex !important; justify-content: space-between !important; align-items: baseline; width: 100%;">
+                  <span class="conversation-name">${contactName || this.formatPhoneNumber(conv.phone)}</span>
+                  <div style="display: flex; align-items: center; gap: 0.5rem; margin-left: 0.5rem;">
+                    ${conv.unreadCount > 0 ? `<span class="conversation-unread-badge">${conv.unreadCount > 99 ? '99+' : conv.unreadCount}</span>` : ''}
+                    <span class="conversation-time" style="white-space: nowrap;">${this.formatTimestamp(conv.lastActivity)}</span>
+                  </div>
+                </div>
+                ${contactName ? `<div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 2px;">${this.formatPhoneNumber(conv.phone)}</div>` : ''}
+                <div class="conversation-preview">${conv.lastMessage}</div>
+              </div>
             </div>
           </div>
         `;
@@ -3841,7 +3887,27 @@ Examples:
     // Mark as delegated to prevent duplicate listeners
     conversationsEl.dataset.delegated = 'true';
 
+    // Attach swipe handlers for mobile
+    this.attachSwipeHandlers(conversationsEl);
+
     conversationsEl.addEventListener('click', async (e) => {
+      // Handle delete button click
+      const deleteBtn = e.target.closest('.swipe-delete-btn');
+      if (deleteBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const convKey = deleteBtn.dataset.convKey;
+        this.showDeleteConfirmation(convKey);
+        return;
+      }
+
+      // Don't trigger conversation click if container is swiped
+      const swipeContainer = e.target.closest('.swipe-container');
+      if (swipeContainer && swipeContainer.classList.contains('swiped')) {
+        // Close the swipe instead
+        swipeContainer.classList.remove('swiped');
+        return;
+      }
       const item = e.target.closest('.conversation-item');
       if (!item) return;
 
@@ -3911,6 +3977,162 @@ Examples:
         }
       }
     });
+  }
+
+  attachSwipeHandlers(conversationsEl) {
+    const isMobile = window.innerWidth <= 768;
+    if (!isMobile) return; // Only enable swipe on mobile
+
+    let startX = 0;
+    let startY = 0;
+    let currentContainer = null;
+    let isSwiping = false;
+
+    conversationsEl.addEventListener('touchstart', (e) => {
+      const container = e.target.closest('.swipe-container');
+      if (!container) return;
+
+      // Close any other open swipe containers
+      document.querySelectorAll('.swipe-container.swiped').forEach(c => {
+        if (c !== container) c.classList.remove('swiped');
+      });
+
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      currentContainer = container;
+      isSwiping = false;
+    }, { passive: true });
+
+    conversationsEl.addEventListener('touchmove', (e) => {
+      if (!currentContainer) return;
+
+      const deltaX = e.touches[0].clientX - startX;
+      const deltaY = e.touches[0].clientY - startY;
+
+      // Only swipe if horizontal movement is greater than vertical
+      if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10) {
+        isSwiping = true;
+        const content = currentContainer.querySelector('.swipe-content');
+        const deleteBtn = currentContainer.querySelector('.swipe-delete-btn');
+
+        if (content && deleteBtn) {
+          // Only allow left swipe (negative deltaX)
+          const translateX = Math.max(-80, Math.min(0, deltaX));
+          content.style.transition = 'none';
+          content.style.transform = `translateX(${translateX}px)`;
+          deleteBtn.style.transition = 'none';
+          deleteBtn.style.transform = `translateX(${translateX + 80}px)`;
+        }
+      }
+    }, { passive: true });
+
+    conversationsEl.addEventListener('touchend', (e) => {
+      if (!currentContainer || !isSwiping) {
+        currentContainer = null;
+        return;
+      }
+
+      const content = currentContainer.querySelector('.swipe-content');
+      const deleteBtn = currentContainer.querySelector('.swipe-delete-btn');
+      const deltaX = e.changedTouches[0].clientX - startX;
+
+      if (content && deleteBtn) {
+        // Reset transitions
+        content.style.transition = '';
+        content.style.transform = '';
+        deleteBtn.style.transition = '';
+        deleteBtn.style.transform = '';
+
+        // If swiped more than 40px left, reveal delete button
+        if (deltaX < -40) {
+          currentContainer.classList.add('swiped');
+        } else {
+          currentContainer.classList.remove('swiped');
+        }
+      }
+
+      currentContainer = null;
+      isSwiping = false;
+    }, { passive: true });
+  }
+
+  showDeleteConfirmation(convKey) {
+    // Create confirmation modal
+    const overlay = document.createElement('div');
+    overlay.className = 'delete-confirm-overlay';
+    overlay.innerHTML = `
+      <div class="delete-confirm-modal">
+        <div class="delete-confirm-header">
+          <h3>Delete Conversation</h3>
+          <p>This conversation will be hidden. It will reappear if you receive a new message.</p>
+        </div>
+        <div class="delete-confirm-actions">
+          <button class="delete-confirm-btn danger" id="confirm-delete-btn">Delete</button>
+          <button class="delete-confirm-btn cancel" id="cancel-delete-btn">Cancel</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    // Handle delete confirmation
+    document.getElementById('confirm-delete-btn').addEventListener('click', () => {
+      this.hideConversation(convKey);
+      overlay.remove();
+    });
+
+    // Handle cancel
+    document.getElementById('cancel-delete-btn').addEventListener('click', () => {
+      // Close swipe on the conversation
+      document.querySelectorAll('.swipe-container.swiped').forEach(c => {
+        c.classList.remove('swiped');
+      });
+      overlay.remove();
+    });
+
+    // Close on overlay click
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) {
+        document.querySelectorAll('.swipe-container.swiped').forEach(c => {
+          c.classList.remove('swiped');
+        });
+        overlay.remove();
+      }
+    });
+  }
+
+  hideConversation(convKey) {
+    // Add to hidden conversations set
+    this.hiddenConversations.add(convKey);
+
+    // Save to localStorage for persistence
+    const hidden = JSON.parse(localStorage.getItem('hiddenConversations') || '[]');
+    if (!hidden.includes(convKey)) {
+      hidden.push(convKey);
+      localStorage.setItem('hiddenConversations', JSON.stringify(hidden));
+    }
+
+    // Re-render conversation list
+    const conversationsEl = document.getElementById('conversations');
+    if (conversationsEl) {
+      conversationsEl.innerHTML = this.renderConversationList();
+    }
+  }
+
+  loadHiddenConversations() {
+    // Load hidden conversations from localStorage
+    const hidden = JSON.parse(localStorage.getItem('hiddenConversations') || '[]');
+    this.hiddenConversations = new Set(hidden);
+  }
+
+  unhideConversation(convKey) {
+    // Remove from hidden set
+    this.hiddenConversations.delete(convKey);
+
+    // Update localStorage
+    const hidden = JSON.parse(localStorage.getItem('hiddenConversations') || '[]');
+    const updated = hidden.filter(k => k !== convKey);
+    localStorage.setItem('hiddenConversations', JSON.stringify(updated));
   }
 
   attachBackButtonListener(threadElement, conversationsEl, isMobile) {
