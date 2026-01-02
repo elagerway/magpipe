@@ -74,13 +74,9 @@ export default class PhonePage {
 
     this.attachEventListeners();
 
-    // Only initialize SIP once
-    if (!this.sipInitialized) {
-      this.requestMicrophoneAndInitializeSIP();
-    } else {
-      // Update status from existing SIP client state
-      this.updateSIPStatusFromClient();
-    }
+    // NOTE: SIP/microphone initialization removed - not needed anymore
+    // Agent calls: use SignalWire → LiveKit (no browser audio)
+    // Callback calls: SignalWire calls user's cell phone (no browser audio)
 
     // Check for dial parameter in URL (e.g., /phone?dial=+16045551234)
     const urlParams = new URLSearchParams(window.location.search);
@@ -99,37 +95,6 @@ export default class PhonePage {
     const isMobile = window.innerWidth <= 768;
 
     return `
-      <!-- Status indicators aligned with caller ID -->
-      <div style="
-        display: flex;
-        justify-content: flex-end;
-        align-items: center;
-        padding: 0 0.5rem;
-        margin-bottom: 0.5rem;
-        max-width: 300px;
-        margin-left: auto;
-        margin-right: auto;
-        width: 100%;
-      ">
-        <!-- SIP Status Indicator (always visible) -->
-        <div id="sip-status" style="
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          font-size: 0.75rem;
-          color: var(--text-secondary);
-        ">
-          <div id="sip-led" style="
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #ef4444;
-            flex-shrink: 0;
-          "></div>
-          <span id="sip-status-text">Disconnected</span>
-        </div>
-      </div>
-
       <!-- Caller ID selector -->
       <div style="
         padding: 0 0.5rem;
