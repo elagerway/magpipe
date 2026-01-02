@@ -85,6 +85,40 @@ serve(async (req) => {
       userId: user.id,
     });
 
+    // CRITICAL: Create call record FIRST so agent can find direction when it joins
+    // This avoids race condition where agent joins before call_record exists
+    const { data: callRecord, error: insertError } = await serviceRoleClient
+      .from("call_records")
+      .insert({
+        user_id: user.id,
+        caller_number: phone_number, // The person being called (contact)
+        contact_phone: phone_number,
+        service_number: caller_id,
+        direction: "outbound",
+        disposition: "outbound_completed", // Optimistic default - updated by status callback if call fails
+        status: "in-progress", // Must be in-progress for agent to find and update
+        started_at: new Date().toISOString(), // Required: NOT NULL constraint
+        duration_seconds: 0,
+        duration: 0, // Legacy column
+        voice_platform: "livekit", // Track which AI platform
+        telephony_vendor: "signalwire", // Track which vendor
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error("Error creating call record:", insertError);
+      return new Response(
+        JSON.stringify({ error: "Failed to create call record", details: insertError.message }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    console.log("Call record created FIRST:", callRecord.id);
+
     // Create call via SignalWire REST API
     // Step 1: Call LiveKit SIP URI first
     // Step 2: CXML will bridge to PSTN destination after LiveKit answers
@@ -155,33 +189,19 @@ serve(async (req) => {
     const callData = await callResponse.json();
     console.log("Call created successfully:", callData);
 
-    // Create call record in database
-    const { data: callRecord, error: insertError} = await serviceRoleClient
+    // Update call record with SignalWire call SID
+    const { error: updateError } = await serviceRoleClient
       .from("call_records")
-      .insert({
-        user_id: user.id,
+      .update({
         vendor_call_id: callData.sid,
         call_sid: callData.sid, // Legacy column
-        caller_number: phone_number, // The person being called (contact)
-        contact_phone: phone_number,
-        service_number: caller_id,
-        direction: "outbound",
-        disposition: "outbound_completed", // Optimistic default - updated by status callback if call fails
-        status: "in-progress", // Must be in-progress for agent to find and update
-        started_at: new Date().toISOString(), // Required: NOT NULL constraint
-        duration_seconds: 0,
-        duration: 0, // Legacy column
-        voice_platform: "livekit", // Track which AI platform
-        telephony_vendor: "signalwire", // Track which vendor
       })
-      .select()
-      .single();
+      .eq("id", callRecord.id);
 
-    if (insertError) {
-      console.error("Error creating call record:", insertError);
-      console.error("Insert error details:", JSON.stringify(insertError));
+    if (updateError) {
+      console.error("Error updating call record with SID:", updateError);
     } else {
-      console.log("Call record created successfully:", callRecord?.id);
+      console.log("Call record updated with SID:", callData.sid);
     }
 
     return new Response(
