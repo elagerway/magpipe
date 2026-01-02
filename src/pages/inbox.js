@@ -3825,12 +3825,17 @@ Examples:
         }
       }
 
-      // Update conversation list to update selection (no need to re-attach listeners with delegation)
-      conversationsEl.innerHTML = this.renderConversationList();
+      // Update conversation list - use fresh references to avoid stale DOM issues
+      const freshConversationsEl = document.getElementById('conversations');
+      if (freshConversationsEl) {
+        freshConversationsEl.innerHTML = this.renderConversationList();
+      }
 
       // Update thread view
       const threadElement = document.getElementById('message-thread');
-      threadElement.innerHTML = this.renderMessageThread();
+      if (threadElement) {
+        threadElement.innerHTML = this.renderMessageThread();
+      }
 
       // Attach input listeners only for SMS threads
       if (type === 'sms') {
@@ -3838,12 +3843,12 @@ Examples:
       }
 
       // Show thread on mobile
-      if (isMobile) {
+      if (isMobile && threadElement) {
         threadElement.classList.add('show');
       }
 
-      // Attach back button listener
-      this.attachBackButtonListener(threadElement, conversationsEl, isMobile);
+      // Attach back button listener with fresh references
+      this.attachBackButtonListener(threadElement, freshConversationsEl, isMobile);
 
       // Attach redial button listener for calls
       if (type === 'call') {
