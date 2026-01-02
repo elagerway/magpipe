@@ -1281,3 +1281,134 @@ p {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* Swipe-to-delete styles (iOS style) */
+.swipe-container {
+  position: relative;
+  overflow: hidden;
+}
+
+.swipe-delete-btn {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 80px;
+  background: #ff3b30;
+  color: white;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  transform: translateX(100%);
+  transition: transform 0.3s ease;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.swipe-delete-btn svg {
+  stroke: white;
+  width: 20px;
+  height: 20px;
+}
+
+.swipe-content {
+  position: relative;
+  background: var(--bg-primary);
+  transform: translateX(0);
+  transition: transform 0.3s ease;
+  z-index: 2;
+}
+
+.swipe-container.swiped .swipe-content {
+  transform: translateX(-80px);
+}
+
+.swipe-container.swiped .swipe-delete-btn {
+  transform: translateX(0);
+}
+
+/* Delete confirmation modal */
+.delete-confirm-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  animation: fadeIn 0.2s ease;
+}
+
+.delete-confirm-modal {
+  background: var(--bg-primary);
+  border-radius: 14px;
+  width: calc(100% - 40px);
+  max-width: 300px;
+  overflow: hidden;
+  animation: slideUp 0.3s ease;
+}
+
+.delete-confirm-header {
+  padding: 1.25rem 1rem 0.75rem;
+  text-align: center;
+}
+
+.delete-confirm-header h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.delete-confirm-header p {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.delete-confirm-actions {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border-color);
+}
+
+.delete-confirm-btn {
+  padding: 1rem;
+  border: none;
+  background: none;
+  font-size: 1rem;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.delete-confirm-btn:last-child {
+  border-bottom: none;
+}
+
+.delete-confirm-btn.danger {
+  color: #ff3b30;
+  font-weight: 600;
+}
+
+.delete-confirm-btn.cancel {
+  color: var(--primary-color);
+  font-weight: 400;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Hide swipe on desktop */
+@media (min-width: 769px) {
+  .swipe-delete-btn {
+    display: none;
+  }
+}
