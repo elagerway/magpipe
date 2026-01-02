@@ -1060,14 +1060,31 @@ export default class InboxPage {
             ${contactName ? `<div style="font-size: 0.75rem; color: var(--text-secondary);">${this.formatPhoneNumber(call.contact_phone)}</div>` : ''}
           </div>
         </div>
-        <div style="font-size: 0.875rem; color: var(--text-secondary); display: flex; gap: 0.5rem; align-items: center; white-space: nowrap;">
-          <span>${call.direction === 'inbound' ? 'Incoming' : 'Outgoing'} Call</span>
-          <span>•</span>
-          <span>${durationText}</span>
-          ${call.user_sentiment ? `
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+          <button id="redial-btn" data-phone="${call.contact_phone}" style="
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            font-size: 1.1rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+            transition: transform 0.2s, box-shadow 0.2s;
+          " title="Redial ${this.formatPhoneNumber(call.contact_phone)}">📞</button>
+          <div style="font-size: 0.875rem; color: var(--text-secondary); display: flex; gap: 0.5rem; align-items: center; white-space: nowrap;">
+            <span>${call.direction === 'inbound' ? 'Incoming' : 'Outgoing'} Call</span>
             <span>•</span>
-            <span>User Sentiment: <span class="sentiment-${call.user_sentiment.toLowerCase()}">${call.user_sentiment}</span></span>
-          ` : ''}
+            <span>${durationText}</span>
+            ${call.user_sentiment ? `
+              <span>•</span>
+              <span>User Sentiment: <span class="sentiment-${call.user_sentiment.toLowerCase()}">${call.user_sentiment}</span></span>
+            ` : ''}
+          </div>
         </div>
       </div>
 
@@ -3812,6 +3829,11 @@ Examples:
       // Attach back button listener
       this.attachBackButtonListener(threadElement, conversationsEl, isMobile);
 
+      // Attach redial button listener for calls
+      if (type === 'call') {
+        this.attachRedialButtonListener();
+      }
+
       // Scroll to bottom of messages for SMS
       if (type === 'sms') {
         const threadMessages = document.getElementById('thread-messages');
@@ -3846,6 +3868,35 @@ Examples:
         // Update conversation list
         conversationsEl.innerHTML = this.renderConversationList();
       }
+    });
+  }
+
+  attachRedialButtonListener() {
+    const redialBtn = document.getElementById('redial-btn');
+    if (!redialBtn) return;
+
+    // Use a single listener approach - remove old and add new
+    const newRedialBtn = redialBtn.cloneNode(true);
+    redialBtn.parentNode.replaceChild(newRedialBtn, redialBtn);
+
+    newRedialBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const phoneNumber = newRedialBtn.dataset.phone;
+      if (phoneNumber) {
+        // Navigate to phone page with the number pre-filled
+        window.navigateTo(`/phone?dial=${encodeURIComponent(phoneNumber)}`);
+      }
+    });
+
+    // Add hover effects
+    newRedialBtn.addEventListener('mouseenter', () => {
+      newRedialBtn.style.transform = 'scale(1.1)';
+      newRedialBtn.style.boxShadow = '0 4px 12px rgba(16, 185, 129, 0.4)';
+    });
+    newRedialBtn.addEventListener('mouseleave', () => {
+      newRedialBtn.style.transform = 'scale(1)';
+      newRedialBtn.style.boxShadow = '0 2px 8px rgba(16, 185, 129, 0.3)';
     });
   }
 
