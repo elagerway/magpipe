@@ -1350,6 +1350,9 @@ export default class PhonePage {
     if (this.callStatusSubscription) {
       this.callStatusSubscription.unsubscribe();
     }
+    if (this.callStatusPolling) {
+      clearInterval(this.callStatusPolling);
+    }
 
     console.log('📡 Subscribing to call status updates for:', callRecordId);
 
@@ -1366,26 +1369,54 @@ export default class PhonePage {
         },
         (payload) => {
           console.log('📡 Call status update:', payload.new.status);
-
-          // Check if call ended
-          if (payload.new.status === 'completed' || payload.new.status === 'failed' || payload.new.status === 'no-answer') {
-            console.log('📞 Call ended (detected via realtime):', payload.new.status);
-
-            // Clean up
-            this.callStatusSubscription?.unsubscribe();
-            this.callStatusSubscription = null;
-            this.currentBridgedCallSid = null;
-            this.currentCallRecordId = null;
-
-            // Reset UI
-            this.transformToCallButton();
-            this.updateCallState('idle');
-          }
+          this.handleCallEnded(payload.new.status, 'realtime');
         }
       )
       .subscribe((status) => {
         console.log('📡 Subscription status:', status);
       });
+
+    // Polling fallback - check every 2 seconds in case realtime fails
+    this.callStatusPolling = setInterval(async () => {
+      try {
+        const { data } = await supabase
+          .from('call_records')
+          .select('status')
+          .eq('id', callRecordId)
+          .single();
+
+        if (data) {
+          this.handleCallEnded(data.status, 'polling');
+        }
+      } catch (err) {
+        console.error('Polling error:', err);
+      }
+    }, 2000);
+  }
+
+  handleCallEnded(status, source) {
+    // Check if call ended
+    const terminalStates = ['completed', 'failed', 'no_answer', 'no-answer', 'busy', 'canceled'];
+    if (terminalStates.includes(status)) {
+      console.log(`📞 Call ended (detected via ${source}):`, status);
+
+      // Clean up subscriptions and polling
+      if (this.callStatusSubscription) {
+        this.callStatusSubscription.unsubscribe();
+        this.callStatusSubscription = null;
+      }
+      if (this.callStatusPolling) {
+        clearInterval(this.callStatusPolling);
+        this.callStatusPolling = null;
+      }
+
+      this.currentBridgedCallSid = null;
+      this.currentCallRecordId = null;
+
+      // Reset UI
+      this.transformToCallButton();
+      this.updateCallState('idle');
+    }
   }
 
   transformToHangupButton() {
