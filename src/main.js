@@ -50,19 +50,25 @@ class App {
       console.error('Error restoring session:', sessionError);
     }
 
-    // If we have a session, try to refresh it to ensure it's still valid
-    if (session) {
-      const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession();
-      if (refreshError) {
-        console.warn('Session refresh failed:', refreshError.message);
-        // Session might be expired, user will need to re-login
-      } else if (refreshedSession) {
-        this.currentUser = refreshedSession.user;
-        return;
-      }
+    // If we have a session from storage, use it immediately
+    // This prevents redirect to login on cold start when network is slow
+    if (session?.user) {
+      console.log('Session restored from storage');
+      this.currentUser = session.user;
+
+      // Try to refresh in background (don't block on this)
+      supabase.auth.refreshSession().then(({ data: { session: refreshedSession } }) => {
+        if (refreshedSession?.user) {
+          this.currentUser = refreshedSession.user;
+        }
+      }).catch(() => {
+        // Ignore refresh errors on cold start - we'll retry later
+      });
+
+      return;
     }
 
-    // Fall back to getUser if session restoration didn't work
+    // No session in storage, check if we can get user directly
     const { user, error } = await getCurrentUser();
 
     if (error) {
