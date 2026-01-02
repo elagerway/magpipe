@@ -137,6 +137,7 @@ supabase.auth.onAuthStateChange((event) => {
 
 /**
  * Get the current authenticated user (with caching)
+ * First tries local session (no network), then falls back to API
  * @param {boolean} forceRefresh - Force refresh from API
  * @returns {Promise<{user: Object|null, error: Error|null}>}
  */
@@ -148,6 +149,16 @@ export async function getCurrentUser(forceRefresh = false) {
     return { user: cachedUser, error: null };
   }
 
+  // First try to get user from local session (no network required)
+  // This is critical for cold start when network might not be ready
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session?.user) {
+    cachedUser = session.user;
+    userCacheTime = now;
+    return { user: session.user, error: null };
+  }
+
+  // Fall back to API call if no local session
   const {
     data: { user },
     error,
