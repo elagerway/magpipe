@@ -261,6 +261,18 @@ export default class InboxPage {
     const threadElement = document.getElementById('message-thread');
     if (threadElement) {
       threadElement.innerHTML = this.renderMessageThread();
+
+      // Show thread on mobile
+      const isMobile = window.innerWidth <= 768;
+      if (isMobile) {
+        threadElement.classList.add('show');
+      }
+
+      // Attach back button listener
+      this.attachBackButtonListener(threadElement, conversationsEl, isMobile);
+
+      // Attach message input listeners for SMS
+      this.attachMessageInputListeners();
     }
     this.attachEventListeners();
 
