@@ -1061,21 +1061,25 @@ export default class InboxPage {
           </div>
         </div>
         <div style="display: flex; align-items: center; gap: 0.75rem;">
-          <button id="redial-btn" data-phone="${call.contact_phone}" style="
-            background: linear-gradient(135deg, #10b981, #059669);
-            color: white;
-            border: none;
-            border-radius: 50%;
-            width: 36px;
-            height: 36px;
-            font-size: 1.1rem;
-            cursor: pointer;
+          <div style="
             display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
-            transition: transform 0.2s, box-shadow 0.2s;
-          " title="Redial ${this.formatPhoneNumber(call.contact_phone)}">📞</button>
+            border: 1px solid var(--border-color, #e5e7eb);
+            border-radius: 6px;
+            overflow: hidden;
+            font-size: 0.8rem;
+          ">
+            <a href="#" id="call-action-btn" data-phone="${call.contact_phone}" style="
+              padding: 0.35rem 0.75rem;
+              color: var(--primary-color, #6366f1);
+              text-decoration: none;
+              border-right: 1px solid var(--border-color, #e5e7eb);
+            ">Call</a>
+            <a href="#" id="message-action-btn" data-phone="${call.contact_phone}" style="
+              padding: 0.35rem 0.75rem;
+              color: var(--primary-color, #6366f1);
+              text-decoration: none;
+            ">Message</a>
+          </div>
           <div style="font-size: 0.875rem; color: var(--text-secondary); display: flex; gap: 0.5rem; align-items: center; white-space: nowrap;">
             <span>${call.direction === 'inbound' ? 'Incoming' : 'Outgoing'} Call</span>
             <span>•</span>
@@ -3872,32 +3876,31 @@ Examples:
   }
 
   attachRedialButtonListener() {
-    const redialBtn = document.getElementById('redial-btn');
-    if (!redialBtn) return;
+    // Call action button
+    const callBtn = document.getElementById('call-action-btn');
+    if (callBtn) {
+      callBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const phoneNumber = callBtn.dataset.phone;
+        if (phoneNumber) {
+          window.navigateTo(`/phone?dial=${encodeURIComponent(phoneNumber)}`);
+        }
+      });
+    }
 
-    // Use a single listener approach - remove old and add new
-    const newRedialBtn = redialBtn.cloneNode(true);
-    redialBtn.parentNode.replaceChild(newRedialBtn, redialBtn);
-
-    newRedialBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const phoneNumber = newRedialBtn.dataset.phone;
-      if (phoneNumber) {
-        // Navigate to phone page with the number pre-filled
-        window.navigateTo(`/phone?dial=${encodeURIComponent(phoneNumber)}`);
-      }
-    });
-
-    // Add hover effects
-    newRedialBtn.addEventListener('mouseenter', () => {
-      newRedialBtn.style.transform = 'scale(1.1)';
-      newRedialBtn.style.boxShadow = '0 4px 12px rgba(16, 185, 129, 0.4)';
-    });
-    newRedialBtn.addEventListener('mouseleave', () => {
-      newRedialBtn.style.transform = 'scale(1)';
-      newRedialBtn.style.boxShadow = '0 2px 8px rgba(16, 185, 129, 0.3)';
-    });
+    // Message action button
+    const messageBtn = document.getElementById('message-action-btn');
+    if (messageBtn) {
+      messageBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const phoneNumber = messageBtn.dataset.phone;
+        if (phoneNumber) {
+          window.navigateTo(`/inbox?contact=${encodeURIComponent(phoneNumber)}`);
+        }
+      });
+    }
   }
 
   attachMessageInputListeners() {
