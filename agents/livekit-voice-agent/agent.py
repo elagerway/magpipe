@@ -745,23 +745,21 @@ async def entrypoint(ctx: JobContext):
         # OUTBOUND: Agent is calling someone on behalf of the owner
         greeting = ""  # Don't greet - wait for destination to answer
 
-        OUTBOUND_CONTEXT_SUFFIX = """
+        OUTBOUND_CONTEXT_PREFIX = """CRITICAL: THIS IS AN OUTBOUND CALL - YOU ARE CALLING THEM.
 
-CRITICAL OVERRIDE - OUTBOUND CALL:
-**IGNORE any inbound greeting instructions above.** This is an OUTBOUND call.
+IGNORE any instructions below about:
+- Greeting callers or asking "how can I help you"
+- Understanding their "reason for contacting" (they didn't contact you)
+- Vetting or qualifying them (you called them, not the other way around)
+- Routing inquiries (there is no inquiry - you initiated this)
 
-Key differences from inbound:
-- YOU initiated this call, not them. They did not contact you.
-- They will answer with "Hello?" and expect YOU to explain who you are and why you're calling.
-- Asking "how can I help you?" makes no sense - they didn't reach out for help.
+YOUR ROLE: You are making a call on behalf of your owner. The person will answer and say "Hello?" - then YOU explain who you are and why you're calling. You have a purpose for this call. Be conversational, professional, and respectful of their time.
 
-Behavior:
-- Wait for them to answer before speaking
-- Introduce yourself and state the purpose of your call naturally
-- Be respectful of their time - they weren't expecting this call
-- If they're busy or uninterested, be gracious and end the call politely"""
+---
+BASE CONTEXT (adapt for outbound - you are the caller, not them):
+"""
 
-        system_prompt = f"{base_prompt}{OUTBOUND_CONTEXT_SUFFIX}"
+        system_prompt = f"{OUTBOUND_CONTEXT_PREFIX}{base_prompt}"
         logger.info("🔄 Outbound call - Agent calling destination on behalf of owner")
     else:
         # INBOUND: Agent handles the call for the user (traditional behavior)
