@@ -621,6 +621,14 @@ async def entrypoint(ctx: JobContext):
     direction = room_metadata.get("direction")
     contact_phone = room_metadata.get("contact_phone")
 
+    # Log direction detection start
+    log_call_state(ctx.room.name, "direction_detection_start", "agent", {
+        "metadata_direction": direction,
+        "metadata_contact_phone": contact_phone,
+        "user_id": user_id,
+        "service_number": service_number,
+    })
+
     # If direction not in metadata, check database (for bridged outbound calls)
     if not direction and user_id:
         try:
@@ -642,6 +650,15 @@ async def entrypoint(ctx: JobContext):
                     .limit(1) \
                     .execute()
 
+                # Log the lookup result
+                log_call_state(ctx.room.name, "direction_lookup_with_service_number", "agent", {
+                    "service_number": service_number,
+                    "user_id": user_id,
+                    "since": one_minute_ago,
+                    "found_records": len(call_lookup.data) if call_lookup and call_lookup.data else 0,
+                    "result": call_lookup.data[0] if call_lookup and call_lookup.data else None,
+                })
+
             # If no match, try without service_number (for bridged outbound where LiveKit trunk number != caller_id)
             if not call_lookup or not call_lookup.data or len(call_lookup.data) == 0:
                 logger.info(f"📊 No match with service_number, trying without (for bridged outbound)")
@@ -653,6 +670,14 @@ async def entrypoint(ctx: JobContext):
                     .limit(1) \
                     .execute()
 
+                # Log fallback lookup result
+                log_call_state(ctx.room.name, "direction_lookup_without_service_number", "agent", {
+                    "user_id": user_id,
+                    "since": one_minute_ago,
+                    "found_records": len(call_lookup.data) if call_lookup and call_lookup.data else 0,
+                    "result": call_lookup.data[0] if call_lookup and call_lookup.data else None,
+                })
+
             if call_lookup.data and len(call_lookup.data) > 0:
                 direction = call_lookup.data[0].get("direction", "inbound")
                 if not contact_phone:
@@ -663,10 +688,19 @@ async def entrypoint(ctx: JobContext):
                 logger.warning(f"📊 No recent call found for user_id={user_id}")
         except Exception as e:
             logger.warning(f"Could not look up call direction: {e}")
+            log_call_state(ctx.room.name, "direction_lookup_error", "agent", {
+                "error": str(e),
+            })
             direction = "inbound"  # Default to inbound if lookup fails
 
     if not direction:
         direction = "inbound"  # Final fallback
+
+    # Log final direction
+    log_call_state(ctx.room.name, "direction_detected", "agent", {
+        "direction": direction,
+        "contact_phone": contact_phone,
+    })
 
     logger.info(f"📞 Call direction: {direction}")
     logger.info(f"📞 Contact phone: {contact_phone}")
