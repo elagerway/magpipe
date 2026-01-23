@@ -149,24 +149,17 @@ export class AgentConfig {
   /**
    * Get user's first name from profile
    * @param {string} userId - User's UUID
-   * @returns {Promise<string>} First name or 'your boss'
+   * @returns {Promise<string>} First name
    */
   static async getUserFirstName(userId) {
-    try {
-      const { data } = await supabase
-        .from('users')
-        .select('name')
-        .eq('id', userId)
-        .single();
+    const { data } = await supabase
+      .from('users')
+      .select('name')
+      .eq('id', userId)
+      .single();
 
-      if (data?.name) {
-        // Extract first name from full name
-        return data.name.split(' ')[0];
-      }
-    } catch (e) {
-      // Ignore errors, use fallback
-    }
-    return 'your boss';
+    // Extract first name from full name (name is required on signup)
+    return data?.name?.split(' ')[0] || data?.name;
   }
 
   /**
