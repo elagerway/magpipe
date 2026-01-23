@@ -120,15 +120,27 @@ style.textContent = `
     height: 100%;
   }
 
-  /* Ensure chat area properly constrains its height */
+  /* Match inbox message-thread pattern exactly */
   #chat-container .chat-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
     min-height: 0;
-    max-height: 100%;
+    overflow: hidden;
   }
 
-  /* Ensure input container doesn't get hidden */
+  /* Match inbox thread-messages pattern - critical for flex scrolling */
+  #chat-container .chat-messages {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Match inbox message-input-container pattern */
   #chat-container .chat-input-container {
     flex-shrink: 0;
+    padding-bottom: 1rem;
   }
 
   /* Desktop - no bottom nav consideration needed since it's absolute */
