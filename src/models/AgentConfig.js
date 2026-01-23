@@ -147,13 +147,83 @@ export class AgentConfig {
   }
 
   /**
+   * Get user's first name from profile
+   * @param {string} userId - User's UUID
+   * @returns {Promise<string>} First name or 'your boss'
+   */
+  static async getUserFirstName(userId) {
+    try {
+      const { data } = await supabase
+        .from('users')
+        .select('name')
+        .eq('id', userId)
+        .single();
+
+      if (data?.name) {
+        // Extract first name from full name
+        return data.name.split(' ')[0];
+      }
+    } catch (e) {
+      // Ignore errors, use fallback
+    }
+    return 'your boss';
+  }
+
+  /**
+   * Generate default inbound system prompt
+   * @param {string} firstName - User's first name
+   * @returns {string} Default inbound prompt
+   */
+  static getDefaultInboundPrompt(firstName) {
+    return `You are Pat, ${firstName}'s personal AI assistant. Your job is to professionally handle incoming calls and messages.
+
+When someone reaches out:
+1. Greet them warmly and introduce yourself as ${firstName}'s assistant
+2. Ask for their name and the purpose of their call/message
+3. Determine if this is someone ${firstName} would want to speak with
+
+Only transfer calls or take messages for legitimate contacts. Politely decline spam, sales calls, or suspicious inquiries. Be helpful but protective of ${firstName}'s time.
+
+If the caller is a known contact or has a legitimate reason, offer to:
+- Transfer them directly to ${firstName}
+- Take a detailed message
+- Schedule a callback
+
+Always be professional, friendly, and efficient.`;
+  }
+
+  /**
+   * Generate default outbound system prompt
+   * @param {string} firstName - User's first name
+   * @returns {string} Default outbound prompt
+   */
+  static getDefaultOutboundPrompt(firstName) {
+    return `You are Pat, ${firstName}'s personal AI assistant, making a call on their behalf.
+
+When calling someone:
+1. Introduce yourself: "Hi, this is Pat calling on behalf of ${firstName}"
+2. Clearly state the purpose of the call
+3. Be professional and respectful of the recipient's time
+
+If you reach voicemail, leave a clear message with:
+- Who you are (Pat, ${firstName}'s assistant)
+- The reason for the call
+- How they can reach ${firstName} back
+
+Stay focused on the call objective and represent ${firstName} professionally.`;
+  }
+
+  /**
    * Reset to default configuration
    * @param {string} userId - User's UUID
    * @returns {Promise<{config: Object|null, error: Error|null}>}
    */
   static async resetToDefaults(userId) {
+    const firstName = await this.getUserFirstName(userId);
+
     const defaultConfig = {
-      system_prompt: 'You are Pat, a helpful AI assistant.',
+      system_prompt: this.getDefaultInboundPrompt(firstName),
+      outbound_system_prompt: this.getDefaultOutboundPrompt(firstName),
       voice_id: 'kate',
       transfer_unknown_callers: false,
       vetting_strategy: 'name-and-purpose',
@@ -179,11 +249,14 @@ export class AgentConfig {
       return { config, error: null };
     }
 
-    // If not found, create with defaults
+    // If not found, create with personalized defaults
     if (error && error.code === 'PGRST116') {
+      const firstName = await this.getUserFirstName(userId);
+
       return await this.create({
         user_id: userId,
-        system_prompt: 'You are Pat, a helpful AI assistant.',
+        system_prompt: this.getDefaultInboundPrompt(firstName),
+        outbound_system_prompt: this.getDefaultOutboundPrompt(firstName),
         voice_id: 'kate',
       });
     }
