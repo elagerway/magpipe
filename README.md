@@ -11,10 +11,10 @@ Pat is a Progressive Web App (PWA) that acts as your personal AI assistant for m
 - **Call Recording**: Automatic recording with transcripts
 
 ### Outbound Calling
-- **Browser-Based SIP Calling**: Make calls directly from the browser via WebRTC
 - **AI-Assisted Outbound**: Agent makes calls on your behalf with configurable prompts
+- **Callback Mode**: Server calls your phone first, then bridges to destination
 - **Call Templates**: Reusable templates with purpose and goal for consistent outbound calls
-- **Bridged Conference**: Both legs recorded via SignalWire conference bridge
+- **Call Recording**: All calls recorded via SignalWire conference bridge
 
 ### SMS Management
 - **Automated Responses**: AI-powered contextual SMS replies
@@ -36,9 +36,8 @@ Pat is a Progressive Web App (PWA) that acts as your personal AI assistant for m
 
 - **Frontend**: Vanilla JavaScript (ES6+), HTML5, CSS3
 - **Backend**: Supabase (PostgreSQL, Auth, Realtime, Edge Functions)
-- **Telephony**: SignalWire (SIP, PSTN calls, SMS)
+- **Telephony**: SignalWire (PSTN calls, SMS, conference bridging)
 - **Voice AI**: LiveKit (real-time audio), OpenAI (LLM), Deepgram (STT), ElevenLabs (TTS)
-- **Browser Calling**: JsSIP (WebRTC SIP client)
 - **Vector DB**: pgvector (conversation context embeddings)
 
 ## Project Structure
@@ -61,8 +60,7 @@ pat/
 │   │   ├── BottomNav.js
 │   │   └── OutboundTemplateModal.js
 │   ├── lib/                    # Utilities
-│   │   ├── supabase.js         # Supabase client
-│   │   └── sipClient.js        # JsSIP WebRTC client
+│   │   └── supabase.js         # Supabase client
 │   ├── models/                 # Data models
 │   │   ├── User.js
 │   │   ├── Contact.js
@@ -182,10 +180,10 @@ pat/
 1. User initiates call from Phone page or Agent chat
 2. Template modal captures purpose/goal (or uses saved template)
 3. Edge Function creates call record with context
-4. SignalWire bridges browser SIP to PSTN destination
-5. LiveKit agent joins for AI-assisted calls
-6. Agent uses purpose/goal in conversation
-7. Call recorded via conference bridge
+4. **With Agent**: SignalWire creates bridged conference, LiveKit agent joins
+5. **Without Agent**: SignalWire calls user's phone, then bridges to destination
+6. Agent uses purpose/goal from template in conversation
+7. Call recorded via SignalWire conference
 
 ### Agent Chat Flow
 
