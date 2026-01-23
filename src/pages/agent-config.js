@@ -365,14 +365,34 @@ export default class AgentConfigPage {
               <h3 style="margin: 0 0 1rem 0; font-size: 1rem;">Advanced Settings</h3>
 
               <div class="form-group">
-                <label class="form-label" for="adv-system-prompt">Custom System Prompt</label>
+                <label class="form-label" for="prompt-type-select">Prompt Type</label>
+                <select id="prompt-type-select" class="form-input" style="margin-bottom: 0.5rem;">
+                  <option value="inbound">Inbound Calls</option>
+                  <option value="outbound">Outbound Calls</option>
+                </select>
+                <p class="form-help">Select which prompt to view/edit</p>
+              </div>
+
+              <div class="form-group" id="inbound-prompt-group">
+                <label class="form-label" for="adv-system-prompt">Inbound System Prompt</label>
                 <textarea
                   id="adv-system-prompt"
                   class="form-textarea"
                   rows="4"
-                  placeholder="Override the default system prompt with your own..."
+                  placeholder="Instructions for handling inbound calls (when someone calls you)..."
                 >${config?.system_prompt || ''}</textarea>
-                <p class="form-help">Full control over Pat's behavior instructions</p>
+                <p class="form-help">How Pat should handle incoming calls from customers</p>
+              </div>
+
+              <div class="form-group" id="outbound-prompt-group" style="display: none;">
+                <label class="form-label" for="adv-outbound-prompt">Outbound System Prompt</label>
+                <textarea
+                  id="adv-outbound-prompt"
+                  class="form-textarea"
+                  rows="4"
+                  placeholder="Instructions for making outbound calls (when Pat calls someone on your behalf)..."
+                >${config?.outbound_system_prompt || ''}</textarea>
+                <p class="form-help">How Pat should behave when calling people on your behalf</p>
               </div>
 
               <div class="form-group">
@@ -1131,6 +1151,7 @@ export default class AgentConfigPage {
     try {
       const configData = {
         system_prompt: document.getElementById('adv-system-prompt').value,
+        outbound_system_prompt: document.getElementById('adv-outbound-prompt').value,
         voice_id: document.getElementById('voice-id').value,
         response_style: document.getElementById('response-style').value,
         vetting_strategy: document.getElementById('vetting-strategy').value,
@@ -1147,7 +1168,7 @@ export default class AgentConfigPage {
       // Get current config to check for changes
       const { data: currentConfig } = await supabase
         .from('agent_configs')
-        .select('system_prompt, retell_llm_id, retell_agent_id, temperature, max_tokens, agent_volume, ambient_sound, ambient_sound_volume, noise_suppression')
+        .select('system_prompt, outbound_system_prompt, retell_llm_id, retell_agent_id, temperature, max_tokens, agent_volume, ambient_sound, ambient_sound_volume, noise_suppression')
         .eq('user_id', user.id)
         .single();
 
@@ -1530,6 +1551,23 @@ Always sound approachable, keep things simple, and update the user with a quick 
       });
     }
 
+    // Prompt type selector functionality
+    const promptTypeSelect = document.getElementById('prompt-type-select');
+    const inboundPromptGroup = document.getElementById('inbound-prompt-group');
+    const outboundPromptGroup = document.getElementById('outbound-prompt-group');
+
+    if (promptTypeSelect && inboundPromptGroup && outboundPromptGroup) {
+      promptTypeSelect.addEventListener('change', () => {
+        if (promptTypeSelect.value === 'inbound') {
+          inboundPromptGroup.style.display = 'block';
+          outboundPromptGroup.style.display = 'none';
+        } else {
+          inboundPromptGroup.style.display = 'none';
+          outboundPromptGroup.style.display = 'block';
+        }
+      });
+    }
+
     // Voice selection modal functionality
     const voiceSelectorDisplay = document.getElementById('voice-selector-display');
     const voiceModal = document.getElementById('voice-selection-modal');
@@ -1799,6 +1837,7 @@ Always sound approachable, keep things simple, and update the user with a quick 
 
       const configData = {
         system_prompt: document.getElementById('adv-system-prompt').value,
+        outbound_system_prompt: document.getElementById('adv-outbound-prompt').value,
         voice_id: document.getElementById('voice-id').value,
         response_style: document.getElementById('response-style').value,
         vetting_strategy: document.getElementById('vetting-strategy').value,
