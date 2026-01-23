@@ -60,8 +60,8 @@ export class User {
     if (redirectTo) {
       options.redirectTo = redirectTo;
     } else {
-      // Default redirect to dashboard
-      options.redirectTo = `${window.location.origin}/dashboard`;
+      // Default redirect to agent
+      options.redirectTo = `${window.location.origin}/agent`;
     }
 
     // Add query parameters for session management

@@ -3,6 +3,7 @@
  */
 
 import { AgentConfig } from '../models/AgentConfig.js';
+import { OutboundTemplate } from '../models/OutboundTemplate.js';
 import { getCurrentUser, supabase } from '../lib/supabase.js';
 import { renderBottomNav } from '../components/BottomNav.js';
 
@@ -55,6 +56,8 @@ export default class AgentConfigPage {
     this.transferNumbers = [];
     this.transferSaveTimeout = null;
     this.currentPreviewAudio = null;
+    this.outboundTemplates = [];
+    this.templateSaveTimeout = null;
   }
 
   getVoiceDisplayName(voiceId, clonedVoices = []) {
@@ -513,6 +516,24 @@ export default class AgentConfigPage {
                 <p class="form-help">Add phone numbers where calls can be transferred. Label them for easy identification (e.g., "Mobile", "Office", "Rick"). Optionally add a passcode for each number - when a caller says that passcode, they'll be transferred immediately without screening.</p>
               </div>
 
+              <div class="form-group">
+                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                  <label class="form-label" style="margin: 0; flex: 1;">Outbound Call Templates</label>
+                  <button
+                    type="button"
+                    id="add-template-btn"
+                    class="btn btn-icon"
+                    style="width: 38px; height: 38px; padding: 0; display: flex; align-items: center; justify-content: center;"
+                  >
+                    <span style="font-size: 20px; line-height: 1;">+</span>
+                  </button>
+                </div>
+                <div id="outbound-templates-list">
+                  <!-- Outbound templates will be added here dynamically -->
+                </div>
+                <p class="form-help">Create reusable templates for outbound calls with predefined purpose and goal. Set one as default to auto-select when making calls.</p>
+              </div>
+
             </div>
 
             ${this.isInitialSetup
@@ -780,6 +801,8 @@ export default class AgentConfigPage {
 
     await this.loadTransferNumbers();
     this.renderTransferNumbers();
+    await this.loadOutboundTemplates();
+    this.renderOutboundTemplates();
     this.attachEventListeners();
   }
 
@@ -1124,6 +1147,266 @@ export default class AgentConfigPage {
 
     if (!response.ok) {
       console.error('Failed to update transfer tools:', result);
+    }
+  }
+
+  // =============================================
+  // Outbound Call Templates Management
+  // =============================================
+
+  async loadOutboundTemplates() {
+    const { user } = await getCurrentUser();
+    const { templates, error } = await OutboundTemplate.list(user.id);
+
+    if (!error && templates) {
+      this.outboundTemplates = templates;
+    }
+  }
+
+  renderOutboundTemplates() {
+    const container = document.getElementById('outbound-templates-list');
+    if (!container) return;
+
+    if (this.outboundTemplates.length === 0) {
+      container.innerHTML = `
+        <div style="text-align: center; padding: 1rem; color: var(--text-secondary); font-size: 0.875rem;">
+          No templates yet. Click + to create one.
+        </div>
+      `;
+    } else {
+      container.innerHTML = this.outboundTemplates.map((template, index) => `
+        <div class="template-row" data-index="${index}" style="margin-bottom: 1rem; padding: 1rem; border: 1px solid var(--border-color); border-radius: 8px; ${template.is_default ? 'border-color: var(--primary-color); background: rgba(79, 70, 229, 0.05);' : ''}">
+          <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center;">
+            <input
+              type="text"
+              class="form-input template-name"
+              placeholder="Template name"
+              value="${this.escapeHtml(template.name || '')}"
+              style="flex: 1; font-weight: 500;"
+              data-index="${index}"
+            />
+            <button
+              type="button"
+              class="btn btn-icon set-default-template-btn ${template.is_default ? 'active' : ''}"
+              data-index="${index}"
+              title="${template.is_default ? 'Default template' : 'Set as default'}"
+              style="width: 38px; height: 38px; padding: 0; display: flex; align-items: center; justify-content: center; ${template.is_default ? 'background: var(--primary-color); border-color: var(--primary-color); color: white;' : ''}"
+            >
+              <span style="font-size: 16px; line-height: 1;">★</span>
+            </button>
+            <button
+              type="button"
+              class="btn btn-icon remove-template-btn"
+              data-index="${index}"
+              style="width: 38px; height: 38px; padding: 0; display: flex; align-items: center; justify-content: center; background-color: #ef4444; border-color: #ef4444;"
+            >
+              <span style="font-size: 20px; line-height: 1; color: white;">×</span>
+            </button>
+          </div>
+          <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+            <input
+              type="text"
+              class="form-input template-purpose"
+              placeholder="Purpose (e.g., Follow up on inquiry)"
+              value="${this.escapeHtml(template.purpose || '')}"
+              style="flex: 1;"
+              data-index="${index}"
+            />
+          </div>
+          <div style="display: flex; gap: 0.5rem;">
+            <input
+              type="text"
+              class="form-input template-goal"
+              placeholder="Goal (e.g., Schedule appointment)"
+              value="${this.escapeHtml(template.goal || '')}"
+              style="flex: 1;"
+              data-index="${index}"
+            />
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Attach event listener for header add button
+    const headerAddBtn = document.getElementById('add-template-btn');
+    if (headerAddBtn) {
+      headerAddBtn.replaceWith(headerAddBtn.cloneNode(true));
+      const newHeaderAddBtn = document.getElementById('add-template-btn');
+      newHeaderAddBtn.addEventListener('click', () => this.addOutboundTemplate());
+    }
+
+    // Attach remove button listeners
+    const removeBtns = container.querySelectorAll('.remove-template-btn');
+    removeBtns.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const index = parseInt(e.currentTarget.dataset.index);
+        this.removeOutboundTemplate(index);
+      });
+    });
+
+    // Attach set-default button listeners
+    const defaultBtns = container.querySelectorAll('.set-default-template-btn');
+    defaultBtns.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const index = parseInt(e.currentTarget.dataset.index);
+        this.setDefaultTemplate(index);
+      });
+    });
+
+    // Attach input change listeners
+    const nameInputs = container.querySelectorAll('.template-name');
+    const purposeInputs = container.querySelectorAll('.template-purpose');
+    const goalInputs = container.querySelectorAll('.template-goal');
+
+    nameInputs.forEach(input => {
+      input.addEventListener('input', (e) => {
+        const index = parseInt(e.target.dataset.index);
+        this.outboundTemplates[index].name = e.target.value;
+        this.debounceSaveTemplate(index);
+      });
+    });
+
+    purposeInputs.forEach(input => {
+      input.addEventListener('input', (e) => {
+        const index = parseInt(e.target.dataset.index);
+        this.outboundTemplates[index].purpose = e.target.value;
+        this.debounceSaveTemplate(index);
+      });
+    });
+
+    goalInputs.forEach(input => {
+      input.addEventListener('input', (e) => {
+        const index = parseInt(e.target.dataset.index);
+        this.outboundTemplates[index].goal = e.target.value;
+        this.debounceSaveTemplate(index);
+      });
+    });
+  }
+
+  escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  debounceSaveTemplate(index) {
+    clearTimeout(this.templateSaveTimeout);
+    this.templateSaveTimeout = setTimeout(() => {
+      this.saveOutboundTemplate(index);
+    }, 1000);
+  }
+
+  async addOutboundTemplate() {
+    const { user } = await getCurrentUser();
+    const { template, error } = await OutboundTemplate.create(user.id, {
+      name: '',
+      purpose: '',
+      goal: '',
+      is_default: this.outboundTemplates.length === 0 // First template is default
+    });
+
+    if (!error && template) {
+      this.outboundTemplates.push(template);
+      this.renderOutboundTemplates();
+
+      // Focus the name input of the new template
+      setTimeout(() => {
+        const nameInputs = document.querySelectorAll('.template-name');
+        if (nameInputs.length > 0) {
+          nameInputs[nameInputs.length - 1].focus();
+        }
+      }, 100);
+    }
+  }
+
+  async removeOutboundTemplate(index) {
+    const template = this.outboundTemplates[index];
+
+    if (template.id) {
+      const { error } = await OutboundTemplate.delete(template.id);
+      if (error) {
+        console.error('Failed to delete template:', error);
+        return;
+      }
+    }
+
+    this.outboundTemplates.splice(index, 1);
+    this.renderOutboundTemplates();
+
+    // Show deleted message
+    const successMessage = document.getElementById('success-message');
+    if (successMessage) {
+      successMessage.className = 'alert';
+      successMessage.classList.remove('hidden');
+      successMessage.style.backgroundColor = '#fee2e2';
+      successMessage.style.color = '#991b1b';
+      successMessage.textContent = 'Template deleted';
+      setTimeout(() => {
+        successMessage.classList.add('hidden');
+        successMessage.style.backgroundColor = '';
+        successMessage.style.color = '';
+      }, 2000);
+    }
+  }
+
+  async setDefaultTemplate(index) {
+    const template = this.outboundTemplates[index];
+    if (!template.id) return;
+
+    const { user } = await getCurrentUser();
+
+    // If already default, clear it
+    if (template.is_default) {
+      const { error } = await OutboundTemplate.clearDefault(user.id);
+      if (!error) {
+        this.outboundTemplates.forEach(t => t.is_default = false);
+        this.renderOutboundTemplates();
+      }
+    } else {
+      // Set as default
+      const { error } = await OutboundTemplate.setDefault(user.id, template.id);
+      if (!error) {
+        this.outboundTemplates.forEach(t => t.is_default = false);
+        this.outboundTemplates[index].is_default = true;
+        this.renderOutboundTemplates();
+      }
+    }
+  }
+
+  async saveOutboundTemplate(index) {
+    const template = this.outboundTemplates[index];
+
+    // Validate required fields
+    if (!template.name || !template.purpose || !template.goal) {
+      return; // Don't save incomplete templates
+    }
+
+    const { user } = await getCurrentUser();
+
+    if (template.id) {
+      // Update existing
+      const { error } = await OutboundTemplate.update(template.id, {
+        name: template.name,
+        purpose: template.purpose,
+        goal: template.goal
+      });
+
+      if (error) {
+        console.error('Failed to update template:', error);
+      }
+    } else {
+      // Create new
+      const { template: newTemplate, error } = await OutboundTemplate.create(user.id, {
+        name: template.name,
+        purpose: template.purpose,
+        goal: template.goal,
+        is_default: template.is_default
+      });
+
+      if (!error && newTemplate) {
+        this.outboundTemplates[index].id = newTemplate.id;
+      }
     }
   }
 

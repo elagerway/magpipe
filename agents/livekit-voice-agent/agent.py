@@ -475,6 +475,9 @@ async def entrypoint(ctx: JobContext):
     user_id = room_metadata.get("user_id")
     direction = room_metadata.get("direction")
     contact_phone = room_metadata.get("contact_phone")
+    # Template context for outbound calls
+    call_purpose = None
+    call_goal = None
 
     # FAST PATH for outbound calls with complete metadata
     if user_id and direction == "outbound":
@@ -642,7 +645,7 @@ async def entrypoint(ctx: JobContext):
             if service_number:
                 logger.info(f"📊 Trying lookup with service_number={service_number}")
                 call_lookup = supabase.table("call_records") \
-                    .select("direction, contact_phone") \
+                    .select("direction, contact_phone, call_purpose, call_goal") \
                     .eq("service_number", service_number) \
                     .eq("user_id", user_id) \
                     .gte("created_at", one_minute_ago) \
@@ -663,7 +666,7 @@ async def entrypoint(ctx: JobContext):
             if not call_lookup or not call_lookup.data or len(call_lookup.data) == 0:
                 logger.info(f"📊 No match with service_number, trying without (for bridged outbound)")
                 call_lookup = supabase.table("call_records") \
-                    .select("direction, contact_phone, service_number") \
+                    .select("direction, contact_phone, service_number, call_purpose, call_goal") \
                     .eq("user_id", user_id) \
                     .gte("created_at", one_minute_ago) \
                     .order("created_at", desc=True) \
@@ -683,7 +686,12 @@ async def entrypoint(ctx: JobContext):
                 if not contact_phone:
                     contact_phone = call_lookup.data[0].get("contact_phone")
                 found_service_number = call_lookup.data[0].get("service_number")
+                # Get call purpose and goal for outbound calls
+                call_purpose = call_lookup.data[0].get("call_purpose")
+                call_goal = call_lookup.data[0].get("call_goal")
                 logger.info(f"📊 Found call direction from database: {direction}, contact_phone: {contact_phone}, service_number: {found_service_number}")
+                if call_purpose or call_goal:
+                    logger.info(f"📋 Call template context: purpose='{call_purpose}', goal='{call_goal}'")
             else:
                 logger.warning(f"📊 No recent call found for user_id={user_id}")
         except Exception as e:
@@ -763,6 +771,17 @@ THIS IS AN OUTBOUND CALL:
 - Be conversational, professional, and respectful of their time
 - If they're busy or not interested, be gracious and end the call politely"""
             logger.info("🔄 Outbound call - Using default outbound prompt")
+
+        # Append call purpose and goal context if provided (from outbound template)
+        if call_purpose or call_goal:
+            template_context = "\n\nCALL CONTEXT:"
+            if call_purpose:
+                template_context += f"\n- Purpose: {call_purpose}"
+            if call_goal:
+                template_context += f"\n- Goal: {call_goal}"
+            template_context += "\n\nFocus on achieving the stated goal while being natural and conversational."
+            system_prompt = system_prompt + template_context
+            logger.info(f"📋 Added template context to outbound prompt: purpose='{call_purpose}', goal='{call_goal}'")
     else:
         # INBOUND: Agent handles the call for the user (traditional behavior)
         greeting = user_config.get("greeting_template", "Hello! This is Pat. How can I help you today?")

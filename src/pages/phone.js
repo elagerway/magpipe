@@ -4,6 +4,7 @@
 
 import { getCurrentUser, supabase } from '../lib/supabase.js';
 import { renderBottomNav, setPhoneNavActive } from '../components/BottomNav.js';
+import { showOutboundTemplateModal } from '../components/OutboundTemplateModal.js';
 
 // Lazy load SIP client to reduce initial bundle size (281KB)
 let sipClient = null;
@@ -1104,7 +1105,44 @@ export default class PhonePage {
       // If agent is enabled, use bridged call approach (includes recording)
       if (agentEnabled) {
         console.log('🤖 Agent enabled - using bridged call approach');
-        await this.initiateBridgedCall(phoneNumber, fromNumber);
+
+        // Check if there's a pending call from agent chat with purpose/goal
+        let templateData = null;
+        const pendingCallStr = sessionStorage.getItem('pending_call');
+        if (pendingCallStr) {
+          try {
+            const pendingCall = JSON.parse(pendingCallStr);
+            // Only use if timestamp is recent (within 5 minutes) and has purpose/goal
+            if (Date.now() - pendingCall.timestamp < 5 * 60 * 1000) {
+              if (pendingCall.purpose || pendingCall.goal) {
+                console.log('📋 Using pending call context from agent chat:', pendingCall);
+                templateData = {
+                  purpose: pendingCall.purpose,
+                  goal: pendingCall.goal,
+                  templateId: null
+                };
+              }
+            }
+            // Clear the pending call regardless
+            sessionStorage.removeItem('pending_call');
+          } catch (e) {
+            console.warn('Failed to parse pending_call:', e);
+          }
+        }
+
+        // If no template data from agent chat, show modal to get purpose/goal
+        if (!templateData) {
+          templateData = await showOutboundTemplateModal(phoneNumber);
+          if (!templateData) {
+            console.log('🚫 User cancelled template selection');
+            this.updateCallState('idle');
+            this.transformToCallButton();
+            return;
+          }
+        }
+
+        console.log('📋 Template data:', templateData);
+        await this.initiateBridgedCall(phoneNumber, fromNumber, templateData);
         return;
       }
 
@@ -1176,10 +1214,14 @@ export default class PhonePage {
     }
   }
 
-  async initiateBridgedCall(phoneNumber, callerIdNumber) {
+  async initiateBridgedCall(phoneNumber, callerIdNumber, templateData = null) {
     console.log('📞 Initiating bridged call with agent + recording');
     console.log('   To:', phoneNumber);
     console.log('   From:', callerIdNumber);
+    if (templateData) {
+      console.log('   Purpose:', templateData.purpose);
+      console.log('   Goal:', templateData.goal);
+    }
 
     try {
       // Update UI
@@ -1204,7 +1246,10 @@ export default class PhonePage {
       const { data, error } = await supabase.functions.invoke('initiate-bridged-call', {
         body: {
           phone_number: normalizedPhoneNumber,
-          caller_id: callerIdNumber
+          caller_id: callerIdNumber,
+          purpose: templateData?.purpose || null,
+          goal: templateData?.goal || null,
+          template_id: templateData?.templateId || null
         }
       });
 

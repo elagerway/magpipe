@@ -144,7 +144,7 @@ export default class LoginPage {
       }
 
       // OAuth will redirect to provider's auth page
-      // After successful auth, user will be redirected back to /dashboard
+      // After successful auth, user will be redirected back to /agent
     } catch (error) {
       console.error('OAuth error:', error);
       errorMessage.className = 'alert alert-error';
@@ -197,7 +197,7 @@ export default class LoginPage {
         } else if (!profile.phone_verified) {
           navigateTo('/verify-phone');
         } else {
-          navigateTo('/dashboard');
+          navigateTo('/agent');
         }
       } catch (error) {
         console.error('Login error:', error);
