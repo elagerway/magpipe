@@ -165,10 +165,6 @@ style.textContent = `
       flex-direction: column !important;
     }
 
-    #chat-container .chat-sidebar {
-      display: none !important;
-    }
-
     #chat-container .chat-area {
       flex: 1 !important;
       height: 100% !important;
