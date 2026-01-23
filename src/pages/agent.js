@@ -91,35 +91,42 @@ style.textContent = `
     display: flex;
     flex-direction: column;
     height: 100vh;
+    height: 100dvh;
     background: #f9fafb;
+    padding-bottom: 70px;
   }
 
   .agent-content {
     flex: 1;
     display: flex;
     overflow: hidden;
+    min-height: 0;
   }
 
   #chat-container {
     flex: 1;
     display: flex;
-    padding: 20px;
+    padding: 0;
+    min-height: 0;
   }
 
   #chat-container .admin-chat-interface {
     width: 100%;
-    max-width: 1200px;
-    margin: 0 auto;
+    max-width: none;
+    margin: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
   }
 
   /* Mobile responsive */
   @media (max-width: 768px) {
-    #chat-container {
-      padding: 12px;
+    .agent-page {
+      padding-bottom: calc(70px + env(safe-area-inset-bottom, 0px));
     }
 
-    #chat-container .admin-chat-interface {
-      max-width: none;
+    #chat-container {
+      padding: 0;
     }
   }
 `;
