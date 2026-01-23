@@ -102,18 +102,18 @@ export function createAdminChatInterface(container) {
 
   chatContainer.appendChild(sidebar);
 
-  // Chat area wrapper
+  // Chat area wrapper - add message-thread class to inherit inbox CSS
   const chatArea = document.createElement('div');
-  chatArea.className = 'chat-area';
+  chatArea.className = 'chat-area message-thread';
 
-  // Message history
+  // Message history - add thread-messages class to inherit inbox CSS
   const messageHistory = document.createElement('div');
-  messageHistory.className = 'chat-messages';
+  messageHistory.className = 'chat-messages thread-messages';
   chatArea.appendChild(messageHistory);
 
-  // Input container
+  // Input container - add message-input-container class to inherit inbox CSS
   const inputContainer = document.createElement('div');
-  inputContainer.className = 'chat-input-container';
+  inputContainer.className = 'chat-input-container message-input-container';
 
   // Text input
   const textInput = document.createElement('input');
@@ -868,25 +868,151 @@ export function createAdminChatInterface(container) {
       realtimeService.onFunctionCall = async (functionName, args) => {
         console.log('[AdminChat] Function called:', functionName, args);
 
-        // Handle function call same as before
-        // This will create pending actions that need confirmation
+        // Get current user
+        const { data: { user } } = await supabase.auth.getUser();
+
+        // Handle function call based on type
         if (functionName === 'update_system_prompt') {
-          // Get current user
-          const { data: { user } } = await supabase.auth.getUser();
-
-          const { data: agentConfig } = await supabase.from('agent_configs')
-            .select('system_prompt')
-            .eq('user_id', user?.id)
-            .single();
-
           pendingAction = {
             type: 'update_system_prompt',
             preview: `Proposed new prompt:\n\n${args.new_prompt}`,
             parameters: args,
           };
-
-          // Show confirmation in chat
           showConfirmationPrompt(pendingAction);
+
+        } else if (functionName === 'call_contact') {
+          // Look up contact
+          const { data: contacts } = await supabase
+            .from('contacts')
+            .select('id, name, phone_number')
+            .eq('user_id', user?.id);
+
+          const searchTerm = args.contact_identifier?.toLowerCase() || '';
+          const matches = (contacts || []).filter(c =>
+            c.name?.toLowerCase().includes(searchTerm) ||
+            c.phone_number?.includes(args.contact_identifier?.replace(/\D/g, '') || '')
+          );
+
+          if (matches.length === 1) {
+            pendingAction = {
+              type: 'call_contact',
+              preview: `Call ${matches[0].name} at ${matches[0].phone_number}?`,
+              parameters: {
+                contact_id: matches[0].id,
+                phone_number: matches[0].phone_number,
+                name: matches[0].name,
+                caller_id: args.caller_id
+              },
+            };
+            showConfirmationPrompt(pendingAction);
+          } else if (matches.length > 1) {
+            addMessage('assistant', `Found multiple contacts: ${matches.map(c => c.name).join(', ')}. Please be more specific.`);
+          } else {
+            // Check if direct phone number
+            const phoneDigits = args.contact_identifier?.replace(/\D/g, '') || '';
+            if (phoneDigits.length >= 10) {
+              pendingAction = {
+                type: 'call_contact',
+                preview: `Call ${args.contact_identifier}?`,
+                parameters: {
+                  phone_number: phoneDigits.length === 10 ? `+1${phoneDigits}` : `+${phoneDigits}`,
+                  name: args.contact_identifier,
+                  caller_id: args.caller_id
+                },
+              };
+              showConfirmationPrompt(pendingAction);
+            } else {
+              addMessage('assistant', `Couldn't find contact "${args.contact_identifier}".`);
+            }
+          }
+
+        } else if (functionName === 'send_sms') {
+          // Look up recipient
+          const { data: contacts } = await supabase
+            .from('contacts')
+            .select('id, name, phone_number')
+            .eq('user_id', user?.id);
+
+          const searchTerm = args.recipient?.toLowerCase() || '';
+          const matches = (contacts || []).filter(c =>
+            c.name?.toLowerCase().includes(searchTerm) ||
+            c.phone_number?.includes(args.recipient?.replace(/\D/g, '') || '')
+          );
+
+          if (matches.length === 1) {
+            pendingAction = {
+              type: 'send_sms',
+              preview: `Send to ${matches[0].name} (${matches[0].phone_number}): "${args.message}"`,
+              parameters: {
+                contact_id: matches[0].id,
+                phone_number: matches[0].phone_number,
+                name: matches[0].name,
+                message: args.message,
+                sender_number: args.sender_number
+              },
+            };
+            showConfirmationPrompt(pendingAction);
+          } else if (matches.length > 1) {
+            addMessage('assistant', `Found multiple contacts: ${matches.map(c => c.name).join(', ')}. Please be more specific.`);
+          } else {
+            const phoneDigits = args.recipient?.replace(/\D/g, '') || '';
+            if (phoneDigits.length >= 10) {
+              pendingAction = {
+                type: 'send_sms',
+                preview: `Send to ${args.recipient}: "${args.message}"`,
+                parameters: {
+                  phone_number: phoneDigits.length === 10 ? `+1${phoneDigits}` : `+${phoneDigits}`,
+                  name: args.recipient,
+                  message: args.message,
+                  sender_number: args.sender_number
+                },
+              };
+              showConfirmationPrompt(pendingAction);
+            } else {
+              addMessage('assistant', `Couldn't find recipient "${args.recipient}".`);
+            }
+          }
+
+        } else if (functionName === 'add_contact') {
+          const phoneDigits = args.phone_number?.replace(/\D/g, '') || '';
+          const normalizedPhone = phoneDigits.length === 10 ? `+1${phoneDigits}` : `+${phoneDigits}`;
+
+          pendingAction = {
+            type: 'add_contact',
+            preview: `Add contact: ${args.name} (${normalizedPhone})${args.notes ? ` - ${args.notes}` : ''}`,
+            parameters: {
+              name: args.name,
+              phone_number: normalizedPhone,
+              notes: args.notes
+            },
+          };
+          showConfirmationPrompt(pendingAction);
+
+        } else if (functionName === 'list_contacts') {
+          // This doesn't need confirmation, just list the contacts
+          const { data: contacts } = await supabase
+            .from('contacts')
+            .select('name, phone_number')
+            .eq('user_id', user?.id)
+            .order('name');
+
+          let filtered = contacts || [];
+          if (args.search_term) {
+            const term = args.search_term.toLowerCase();
+            filtered = filtered.filter(c =>
+              c.name?.toLowerCase().includes(term) ||
+              c.phone_number?.includes(args.search_term)
+            );
+          }
+
+          if (filtered.length === 0) {
+            addMessage('assistant', args.search_term
+              ? `No contacts found matching "${args.search_term}".`
+              : "You don't have any contacts yet.");
+          } else {
+            const list = filtered.slice(0, 10).map(c => `• ${c.name}: ${c.phone_number}`).join('\n');
+            addMessage('assistant', `Here are your contacts:\n${list}`);
+          }
         }
       };
 

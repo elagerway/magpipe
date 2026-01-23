@@ -83,9 +83,10 @@ export default class AgentPage {
   }
 }
 
-// Add page-specific styles
+// Add page-specific styles - uses inbox CSS classes via AdminChatInterface
 const style = document.createElement('style');
 style.textContent = `
+  /* Match inbox-container pattern exactly */
   .agent-page {
     position: fixed;
     top: 0;
@@ -122,29 +123,7 @@ style.textContent = `
     flex-direction: row;
   }
 
-  /* Chat area fills remaining space after sidebar */
-  #chat-container .chat-area {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    overflow: hidden;
-  }
-
-  /* Messages scroll area */
-  #chat-container .chat-messages {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  /* Input stays at bottom */
-  #chat-container .chat-input-container {
-    flex-shrink: 0;
-  }
-
-  /* Desktop - no bottom nav consideration needed since it's absolute */
+  /* Desktop */
   @media (min-width: 769px) {
     .agent-page {
       bottom: 60px;
