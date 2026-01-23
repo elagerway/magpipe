@@ -36,7 +36,7 @@ serve(async (req) => {
       throw new Error("Unauthorized");
     }
 
-    const { phone_number, caller_id } = await req.json();
+    const { phone_number, caller_id, purpose, goal, template_id } = await req.json();
 
     if (!phone_number || !caller_id) {
       return new Response(
@@ -71,6 +71,9 @@ serve(async (req) => {
       to: phone_number,
       from: caller_id,
       user_id: user.id,
+      purpose: purpose || null,
+      goal: goal || null,
+      template_id: template_id || null,
     });
 
     // Create service role client for database operations
@@ -102,6 +105,10 @@ serve(async (req) => {
         duration: 0, // Legacy column
         voice_platform: "livekit", // Track which AI platform
         telephony_vendor: "signalwire", // Track which vendor
+        // Outbound call context from template
+        call_purpose: purpose || null,
+        call_goal: goal || null,
+        template_id: template_id || null,
       })
       .select()
       .single();
@@ -123,7 +130,14 @@ serve(async (req) => {
     // Step 1: Call LiveKit SIP URI first
     // Step 2: CXML will bridge to PSTN destination after LiveKit answers
     // CRITICAL: Pass direction=outbound and user_id so agent can identify the call correctly
-    const cxmlUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/outbound-call-swml?destination=${encodeURIComponent(phone_number)}&from=${encodeURIComponent(caller_id)}&direction=outbound&user_id=${encodeURIComponent(user.id)}`;
+    // Also pass purpose/goal for agent context
+    let cxmlUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/outbound-call-swml?destination=${encodeURIComponent(phone_number)}&from=${encodeURIComponent(caller_id)}&direction=outbound&user_id=${encodeURIComponent(user.id)}`;
+    if (purpose) {
+      cxmlUrl += `&purpose=${encodeURIComponent(purpose)}`;
+    }
+    if (goal) {
+      cxmlUrl += `&goal=${encodeURIComponent(goal)}`;
+    }
 
     // LiveKit SIP URI (agent will auto-join)
     // Use the allowed number in LiveKit trunk: +16282954811

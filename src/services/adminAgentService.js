@@ -140,6 +140,128 @@ export async function confirmAction(conversationId, actionParameters) {
         };
         break;
 
+      case 'call_contact':
+        // Navigate to phone page with phone number to initiate call
+        // The actual call will be handled by the phone page
+        const phoneNumber = actionParameters.parameters.phone_number;
+        const contactName = actionParameters.parameters.name;
+        const callPurpose = actionParameters.parameters.purpose;
+        const callGoal = actionParameters.parameters.goal;
+
+        // Store call intent in sessionStorage for phone page to pick up
+        // Include purpose/goal so phone page can skip the template modal
+        sessionStorage.setItem('pending_call', JSON.stringify({
+          phoneNumber,
+          contactName,
+          purpose: callPurpose || null,
+          goal: callGoal || null,
+          timestamp: Date.now()
+        }));
+
+        // Navigate to phone page
+        if (window.router) {
+          window.router.navigate(`/phone?dial=${encodeURIComponent(phoneNumber)}`);
+        } else {
+          window.location.href = `/phone?dial=${encodeURIComponent(phoneNumber)}`;
+        }
+
+        return {
+          success: true,
+          message: `Navigating to call ${contactName || phoneNumber}...`,
+        };
+
+      case 'send_sms':
+        // Call send-user-sms Edge Function
+        functionName = 'send-user-sms';
+
+        // Get user's service number for sending
+        const { data: serviceNumbers } = await supabase
+          .from('service_numbers')
+          .select('phone_number')
+          .eq('user_id', session.user.id)
+          .limit(1)
+          .single();
+
+        requestBody = {
+          to: actionParameters.parameters.phone_number,
+          body: actionParameters.parameters.message,
+          from: actionParameters.parameters.sender_number || serviceNumbers?.phone_number,
+        };
+        break;
+
+      case 'add_contact':
+        // Insert contact directly into database
+        const { data: newContact, error: contactError } = await supabase
+          .from('contacts')
+          .insert({
+            user_id: session.user.id,
+            name: actionParameters.parameters.name,
+            phone_number: actionParameters.parameters.phone_number,
+            notes: actionParameters.parameters.notes || null,
+          })
+          .select()
+          .single();
+
+        if (contactError) {
+          throw new Error('Failed to add contact: ' + contactError.message);
+        }
+
+        return {
+          success: true,
+          message: `Added ${actionParameters.parameters.name} to your contacts.`,
+          data: newContact,
+        };
+
+      case 'schedule_sms':
+        // Get user's service number for sending
+        const { data: senderNumbers } = await supabase
+          .from('service_numbers')
+          .select('phone_number')
+          .eq('user_id', session.user.id)
+          .limit(1)
+          .single();
+
+        // Insert scheduled action into database
+        const { data: scheduledAction, error: scheduleError } = await supabase
+          .from('scheduled_actions')
+          .insert({
+            user_id: session.user.id,
+            action_type: 'send_sms',
+            scheduled_at: actionParameters.parameters.send_at,
+            status: 'pending',
+            parameters: {
+              recipient_phone: actionParameters.parameters.phone_number,
+              recipient_name: actionParameters.parameters.name,
+              message: actionParameters.parameters.message,
+              sender_number: senderNumbers?.phone_number,
+            },
+            conversation_id: conversationId,
+            created_via: 'agent',
+          })
+          .select()
+          .single();
+
+        if (scheduleError) {
+          throw new Error('Failed to schedule SMS: ' + scheduleError.message);
+        }
+
+        // Format the scheduled time for display
+        const scheduledDate = new Date(actionParameters.parameters.send_at);
+        const formattedTime = scheduledDate.toLocaleString('en-US', {
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true
+        });
+
+        return {
+          success: true,
+          message: `Scheduled SMS to ${actionParameters.parameters.name} for ${formattedTime}.`,
+          data: scheduledAction,
+        };
+
       default:
         throw new Error('Unknown action type');
     }

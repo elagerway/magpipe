@@ -118,11 +118,11 @@ export default class ResetPasswordPage {
 
         // Show success message
         successMessage.className = 'alert alert-success';
-        successMessage.textContent = 'Password updated successfully! Redirecting to dashboard...';
+        successMessage.textContent = 'Password updated successfully! Redirecting...';
 
-        // Redirect to dashboard after 2 seconds
+        // Redirect to agent after 2 seconds
         setTimeout(() => {
-          navigateTo('/dashboard');
+          navigateTo('/agent');
         }, 2000);
       } catch (error) {
         console.error('Password update error:', error);

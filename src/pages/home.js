@@ -20,10 +20,10 @@ window.addEventListener('beforeinstallprompt', (e) => {
 
 export default class HomePage {
   async render() {
-    // If user is already logged in, redirect to dashboard
+    // If user is already logged in, redirect to agent
     const { user } = await getCurrentUser();
     if (user) {
-      window.router?.navigate('/dashboard', true);
+      window.router?.navigate('/agent', true);
       return;
     }
 
