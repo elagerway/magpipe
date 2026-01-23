@@ -86,13 +86,13 @@ export default class AgentPage {
 // Add page-specific styles - copy inbox CSS properties directly
 const style = document.createElement('style');
 style.textContent = `
-  /* Match inbox-container pattern exactly */
+  /* Match inbox-container pattern - 70px for bottom nav height */
   .agent-page {
     position: fixed;
     top: 0;
     left: 0;
     right: 0;
-    bottom: calc(60px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(70px + env(safe-area-inset-bottom, 0px));
     display: flex;
     flex-direction: column;
     background: #f9fafb;
@@ -155,7 +155,7 @@ style.textContent = `
   /* Desktop */
   @media (min-width: 769px) {
     .agent-page {
-      bottom: 60px;
+      bottom: 70px;
     }
   }
 `;
