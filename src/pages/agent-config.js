@@ -1102,22 +1102,7 @@ export default class AgentConfigPage {
     // Show success message
     const successMessage = document.getElementById('success-message');
     if (successMessage) {
-      // Clear any pending timeout
-      clearTimeout(this.successMessageTimeout);
-
-      successMessage.className = 'alert alert-success';
-      successMessage.classList.remove('hidden');
-      successMessage.style.backgroundColor = '#d1fae5';
-      successMessage.style.color = '#065f46';
-      successMessage.style.borderColor = '#6ee7b7';
-      successMessage.textContent = 'Saved';
-
-      this.successMessageTimeout = setTimeout(() => {
-        successMessage.classList.add('hidden');
-        successMessage.style.backgroundColor = '';
-        successMessage.style.color = '';
-        successMessage.style.borderColor = '';
-      }, 2000);
+      // Success message removed - saving is implied
     }
   }
 
@@ -1372,21 +1357,7 @@ export default class AgentConfigPage {
         }
       }
 
-      // Don't show "Saved" message for transfer-only changes (transfers have their own validation)
-      if (!transferChanged || voiceChanged) {
-        successMessage.className = 'alert alert-success';
-        successMessage.classList.remove('hidden');
-        successMessage.style.backgroundColor = '#d1fae5';
-        successMessage.style.color = '#065f46';
-        successMessage.style.borderColor = '#6ee7b7';
-        successMessage.textContent = 'Saved';
-        setTimeout(() => {
-          successMessage.classList.add('hidden');
-          successMessage.style.backgroundColor = '';
-          successMessage.style.color = '';
-          successMessage.style.borderColor = '';
-        }, 2000);
-      }
+      // Success message removed - saving is implied
     } catch (error) {
       console.error('Auto-save error:', error);
       errorMessage.className = 'alert alert-error';
