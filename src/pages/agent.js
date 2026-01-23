@@ -123,29 +123,33 @@ style.textContent = `
     flex-direction: row;
   }
 
-  /* Chat area - copy from inbox .message-thread */
+  /* Chat area - must use !important to override component styles */
   #chat-container .chat-area {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
+    flex: 1 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    height: 100% !important;
   }
 
-  /* Messages - copy from inbox .thread-messages */
+  /* Messages - must constrain height for input to show */
   #chat-container .chat-messages {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
+    flex: 1 1 0 !important;
+    min-height: 0 !important;
+    max-height: calc(100% - 80px) !important;
+    overflow-y: auto !important;
     -webkit-overflow-scrolling: touch;
   }
 
-  /* Input - copy from inbox .message-input-container */
+  /* Input - must stay at bottom */
   #chat-container .chat-input-container {
-    flex-shrink: 0;
-    padding: 0.75rem 1rem;
-    padding-bottom: 1.5rem;
-    margin-bottom: 0;
+    flex: 0 0 auto !important;
+    flex-shrink: 0 !important;
+    padding: 0.75rem 1rem !important;
+    padding-bottom: 1rem !important;
+    margin-bottom: 0 !important;
     background: var(--bg-primary, #fff);
+    border-top: 1px solid #e5e7eb;
   }
 
   /* Desktop */
