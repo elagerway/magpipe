@@ -100,27 +100,29 @@ style.textContent = `
 
   .agent-content {
     flex: 1;
-    display: flex;
+    position: relative;
     overflow: hidden;
-    min-height: 0;
   }
 
   #chat-container {
-    flex: 1;
-    display: flex;
-    padding: 0;
-    min-height: 0;
-    width: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
   }
 
   #chat-container .admin-chat-interface {
-    width: 100%;
-    max-width: none;
-    margin: 0;
-    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: row;
   }
 
-  /* Match inbox message-thread pattern exactly */
+  /* Chat area fills remaining space after sidebar */
   #chat-container .chat-area {
     flex: 1;
     display: flex;
@@ -129,7 +131,7 @@ style.textContent = `
     overflow: hidden;
   }
 
-  /* Match inbox thread-messages pattern - critical for flex scrolling */
+  /* Messages scroll area */
   #chat-container .chat-messages {
     flex: 1;
     min-height: 0;
@@ -137,10 +139,9 @@ style.textContent = `
     -webkit-overflow-scrolling: touch;
   }
 
-  /* Match inbox message-input-container pattern */
+  /* Input stays at bottom */
   #chat-container .chat-input-container {
     flex-shrink: 0;
-    padding-bottom: 1rem;
   }
 
   /* Desktop - no bottom nav consideration needed since it's absolute */
