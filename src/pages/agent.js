@@ -36,9 +36,8 @@ export default class AgentPage {
         <div class="agent-content">
           <div id="chat-container"></div>
         </div>
-
-        ${renderBottomNav('/agent')}
       </div>
+      ${renderBottomNav('/agent')}
     `;
 
     this.attachEventListeners();
@@ -88,12 +87,15 @@ export default class AgentPage {
 const style = document.createElement('style');
 style.textContent = `
   .agent-page {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: calc(60px + env(safe-area-inset-bottom, 0px));
     display: flex;
     flex-direction: column;
-    height: 100vh;
-    height: 100dvh;
     background: #f9fafb;
-    padding-bottom: 70px;
+    overflow: hidden;
   }
 
   .agent-content {
@@ -108,6 +110,7 @@ style.textContent = `
     display: flex;
     padding: 0;
     min-height: 0;
+    width: 100%;
   }
 
   #chat-container .admin-chat-interface {
@@ -115,18 +118,23 @@ style.textContent = `
     max-width: none;
     margin: 0;
     height: 100%;
-    display: flex;
-    flex-direction: column;
   }
 
-  /* Mobile responsive */
-  @media (max-width: 768px) {
-    .agent-page {
-      padding-bottom: calc(70px + env(safe-area-inset-bottom, 0px));
-    }
+  /* Ensure chat area properly constrains its height */
+  #chat-container .chat-area {
+    min-height: 0;
+    max-height: 100%;
+  }
 
-    #chat-container {
-      padding: 0;
+  /* Ensure input container doesn't get hidden */
+  #chat-container .chat-input-container {
+    flex-shrink: 0;
+  }
+
+  /* Desktop - no bottom nav consideration needed since it's absolute */
+  @media (min-width: 769px) {
+    .agent-page {
+      bottom: 60px;
     }
   }
 `;

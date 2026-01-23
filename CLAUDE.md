@@ -32,14 +32,32 @@ JavaScript ES6+, HTML5, CSS3 (vanilla, minimal framework usage per user requirem
 - **NEVER ask user to check logs - check them yourself**: Use direct API calls, CLI commands, or database queries to fetch logs instead of asking the user to copy/paste them. The user should not be a data retrieval service.
 - **NEVER commit or push to GitHub without EXPRESS USER PERMISSION**: NEVER run `git commit` or `git push` without the user's explicit approval. ALWAYS test changes locally FIRST, then present results to the user and WAIT for permission before committing. This is NON-NEGOTIABLE.
 
-## Test Credentials - USE THESE, NOT USER'S CREDENTIALS
-- **CRITICAL: NEVER use erik@snapsonic.com or any user's real credentials for testing**
-- **Always use the dedicated test account**:
-  - Email: `claude-test@snapsonic.test`
+## Render Deployment - CRITICAL (LiveKit Agent)
+- **NEVER modify Render service settings**: Do not change any Render dashboard settings including auto-deploy, environment variables, build commands, or service configuration without explicit user permission
+- **Auto-deploy must remain ENABLED**: The livekit-voice-agent service on Render must have auto-deploy enabled watching the `Pat-AI` branch. If auto-deploy is found disabled, alert the user immediately - this is abnormal.
+- **Verify deployment after pushing to Pat-AI**: After pushing changes to the Pat-AI branch, verify Render has started a new deployment by checking deploy timestamps
+- **Incident (2026-01-22)**: Auto-deploy was found disabled unexpectedly, causing agent updates to not deploy for weeks. Root cause unknown. Always verify Render is deploying after code changes.
+
+## Vercel Deployment - CRITICAL (Frontend)
+- **Production URL**: https://solomobile.ai
+- **User tests on production**: The user typically tests on solomobile.ai (production), NOT local dev server. Always deploy frontend changes to see them.
+- **Vercel watches the `master` branch**: Frontend auto-deploys when changes are pushed to `master`
+- **Workflow**: Develop on `Pat-AI` branch → merge to `master` → Vercel auto-deploys
+- **To deploy frontend changes**: `git checkout master && git merge Pat-AI && git push origin master`
+- **Config file**: `vercel.json` in repo root (Vite framework, outputs to `dist/`)
+
+## Browser Testing - Chrome Extension
+- **Claude Chrome extension is installed**: Use it for testing UI/feature changes directly in the browser
+- **Prefer browser extension over Playwright**: For quick visual verification of UI changes, use the Chrome extension instead of writing Playwright tests
+- **Production URL**: https://solomobile.ai
+
+## Test Credentials - ALWAYS USE THESE FOR PLAYWRIGHT TESTS
+- **Working test credentials for Playwright browser tests**:
+  - Email: `erik@snapsonic.com`
   - Password: `TestPass123!`
-- **Why this matters**: Using real user credentials in tests is wasteful (burns tokens with unnecessary auth flows) and risky (could affect production data)
-- **For Playwright/browser tests**: Always use the test account above
-- **For API tests**: Use `TEST_USER_TOKEN` from `.env` when available
+- **CRITICAL**: When running Playwright tests, ALWAYS use these credentials - they are already documented here, don't waste time trying other passwords
+- **For API tests**: Use `SUPABASE_SERVICE_ROLE_KEY` from `.env`
+- **Test phone number**: `+16044182180` (Erik's cell for outbound call tests)
 
 ## Git Commit Message Guidelines
 - **Do NOT include "Co-Authored-By: Claude" footer**: User prefers clean commit messages without AI attribution
@@ -81,6 +99,23 @@ JavaScript ES6+, HTML5, CSS3 (vanilla, minimal framework usage per user requirem
   - Add console.log statements and check browser console
   - Query database to verify data was updated
   - Use curl to test Edge Functions directly
+
+## Edge Function Webhook Authentication
+- **Problem**: External services (SignalWire, Stripe, etc.) call Edge Function webhooks WITHOUT auth headers
+- **Symptom**: Edge Function returns `{"code":401,"message":"Missing authorization header"}` when called by external webhook
+- **Root Cause**: Using `import { serve } from "https://deno.land/std@0.168.0/http/server.ts"` requires JWT auth by default
+- **Solution**: Use `Deno.serve()` instead of imported `serve()` - this bypasses JWT verification
+- **Before (requires auth)**:
+  ```typescript
+  import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+  serve(async (req) => { ... });
+  ```
+- **After (no auth required for webhooks)**:
+  ```typescript
+  Deno.serve(async (req) => { ... });
+  ```
+- **Also deploy with**: `npx supabase functions deploy <function-name> --no-verify-jwt`
+- **When to use**: Any Edge Function that receives webhooks from external services (SignalWire callbacks, Stripe webhooks, etc.)
 
 ## Database Management
 
@@ -690,3 +725,32 @@ npx playwright test --debug
 - Add this to memory, next time you need to get the details about a number (purchase date, etc) , look it up on Signalwire
 - PLACE TEST CALLS YOURSELF, STOP ASKING ME TO PLACE CALLS BEFORE YOU HAVE DONE SO YOURSELF
 - do not assume that numbers in the db are not provisioned in signalwire, do a lookup in signalwire if there is any confusion if the number is provisioned or not
+
+## Playwright Authentication - ALWAYS USE MAGIC LINK + OTP
+- **NEVER waste time with password login in Playwright tests** - passwords may not work
+- **ALWAYS use Supabase admin API to generate magic link, then use the OTP code**:
+  ```bash
+  source .env && curl -s -X POST "https://mtxbiyilvgwhbdptysex.supabase.co/auth/v1/admin/generate_link" \
+    -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+    -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+    -H "Content-Type: application/json" \
+    -d '{"type":"magiclink","email":"erik@snapsonic.com"}' | jq '{email_otp, hashed_token}'
+  ```
+- **In Playwright, use verifyOtp with the email_otp code** (NOT the hashed_token URL):
+  ```javascript
+  const sessionResult = await page.evaluate(async ({ email, otp }) => {
+    const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+    const supabase = createClient(SUPABASE_URL, ANON_KEY,
+      { auth: { storageKey: 'solo-mobile-auth-token' } }  // IMPORTANT: Use app's storage key!
+    );
+    const { data, error } = await supabase.auth.verifyOtp({ email, token: otp, type: 'email' });
+    // Store session in correct localStorage key for the app
+    if (data?.session) {
+      localStorage.setItem('solo-mobile-auth-token', JSON.stringify(data.session));
+    }
+    return { success: !!data?.session, error: error?.message };
+  }, { email: 'erik@snapsonic.com', otp: otpCode });
+  ```
+- **Storage key**: The app uses `solo-mobile-auth-token`, NOT the default Supabase key
+- **Grant permissions**: Use `await context.grantPermissions(['microphone'])` for phone tests
+- See `tests/outbound-agent-call.spec.js` for working example
