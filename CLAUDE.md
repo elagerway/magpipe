@@ -114,6 +114,13 @@ source .env && curl -s -u "$SIGNALWIRE_PROJECT_ID:$SIGNALWIRE_API_TOKEN" \
 - **Call Handler**: Must be `laml_webhooks`
 - **Current Endpoint**: `0ed5ed8b-fd6a-4964-8c36-6547609260f4` (pat_778736359f5a4eee)
 
+## Outbound Call Architecture
+- **NO browser WebRTC/SIP for outbound calls**: All outbound calls are server-initiated via SignalWire
+- **With Agent enabled**: `initiateBridgedCall` → Edge Function creates SignalWire bridged conference, LiveKit agent joins
+- **Without Agent**: `initiateCallbackCall` → SignalWire calls user's cell phone first, then bridges to destination
+- **JsSIP/sipClient.js**: Legacy code, not used for outbound calls anymore
+- **Recording**: All calls recorded via SignalWire conference bridge
+
 ## Supabase Edge Functions
 
 ### Webhook Authentication
