@@ -83,7 +83,7 @@ export default class AgentPage {
   }
 }
 
-// Add page-specific styles - uses inbox CSS classes via AdminChatInterface
+// Add page-specific styles - copy inbox CSS properties directly
 const style = document.createElement('style');
 style.textContent = `
   /* Match inbox-container pattern exactly */
@@ -121,6 +121,31 @@ style.textContent = `
     bottom: 0;
     display: flex;
     flex-direction: row;
+  }
+
+  /* Chat area - copy from inbox .message-thread */
+  #chat-container .chat-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* Messages - copy from inbox .thread-messages */
+  #chat-container .chat-messages {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Input - copy from inbox .message-input-container */
+  #chat-container .chat-input-container {
+    flex-shrink: 0;
+    padding: 0.75rem 1rem;
+    padding-bottom: 1.5rem;
+    margin-bottom: 0;
+    background: var(--bg-primary, #fff);
   }
 
   /* Desktop */
