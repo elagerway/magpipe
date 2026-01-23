@@ -31,6 +31,7 @@ JavaScript ES6+, HTML5, CSS3 (vanilla, minimal framework usage per user requirem
 - **If uncertain, ask or investigate**: It's better to say "let me check" than to assert something incorrect
 - **NEVER ask user to check logs - check them yourself**: Use direct API calls, CLI commands, or database queries to fetch logs instead of asking the user to copy/paste them. The user should not be a data retrieval service.
 - **NEVER commit or push to GitHub without EXPRESS USER PERMISSION**: NEVER run `git commit` or `git push` without the user's explicit approval. ALWAYS test changes locally FIRST, then present results to the user and WAIT for permission before committing. This is NON-NEGOTIABLE.
+- **ALWAYS verify changes work AND don't break other elements**: Before pushing any change, use Playwright tests or manual verification to confirm: (1) the intended change works as designed, (2) related/nearby functionality still works. CSS changes especially can have unintended side effects - test the specific feature AND other elements that share styles or layout.
 
 ## Render Deployment - CRITICAL (LiveKit Agent)
 - **NEVER modify Render service settings**: Do not change any Render dashboard settings including auto-deploy, environment variables, build commands, or service configuration without explicit user permission
