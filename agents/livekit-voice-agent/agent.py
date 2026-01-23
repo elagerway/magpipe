@@ -745,22 +745,24 @@ async def entrypoint(ctx: JobContext):
         # OUTBOUND: Agent is calling someone on behalf of the owner
         greeting = ""  # Don't greet - wait for destination to answer
 
-        OUTBOUND_CONTEXT_PREFIX = """CRITICAL: THIS IS AN OUTBOUND CALL - YOU ARE CALLING THEM.
+        # Use outbound_system_prompt if configured, otherwise use a default
+        outbound_prompt = user_config.get("outbound_system_prompt")
 
-IGNORE any instructions below about:
-- Greeting callers or asking "how can I help you"
-- Understanding their "reason for contacting" (they didn't contact you)
-- Vetting or qualifying them (you called them, not the other way around)
-- Routing inquiries (there is no inquiry - you initiated this)
+        if outbound_prompt:
+            system_prompt = outbound_prompt
+            logger.info("🔄 Outbound call - Using user's configured outbound prompt")
+        else:
+            # Default outbound prompt when user hasn't configured one
+            agent_name = user_config.get("agent_name", "Pat")
+            system_prompt = f"""You are {agent_name}, an AI assistant making an outbound phone call on behalf of your owner.
 
-YOUR ROLE: You are making a call on behalf of your owner. The person will answer and say "Hello?" - then YOU explain who you are and why you're calling. You have a purpose for this call. Be conversational, professional, and respectful of their time.
-
----
-BASE CONTEXT (adapt for outbound - you are the caller, not them):
-"""
-
-        system_prompt = f"{OUTBOUND_CONTEXT_PREFIX}{base_prompt}"
-        logger.info("🔄 Outbound call - Agent calling destination on behalf of owner")
+THIS IS AN OUTBOUND CALL:
+- You called them, they did not call you
+- They will answer with "Hello?" - then you introduce yourself and explain why you're calling
+- Do NOT ask "how can I help you" - you called them, not the other way around
+- Be conversational, professional, and respectful of their time
+- If they're busy or not interested, be gracious and end the call politely"""
+            logger.info("🔄 Outbound call - Using default outbound prompt")
     else:
         # INBOUND: Agent handles the call for the user (traditional behavior)
         greeting = user_config.get("greeting_template", "Hello! This is Pat. How can I help you today?")
