@@ -102,18 +102,18 @@ export function createAdminChatInterface(container) {
 
   chatContainer.appendChild(sidebar);
 
-  // Chat area wrapper - add message-thread class to inherit inbox CSS
+  // Chat area wrapper
   const chatArea = document.createElement('div');
-  chatArea.className = 'chat-area message-thread';
+  chatArea.className = 'chat-area';
 
-  // Message history - add thread-messages class to inherit inbox CSS
+  // Message history
   const messageHistory = document.createElement('div');
-  messageHistory.className = 'chat-messages thread-messages';
+  messageHistory.className = 'chat-messages';
   chatArea.appendChild(messageHistory);
 
-  // Input container - add message-input-container class to inherit inbox CSS
+  // Input container
   const inputContainer = document.createElement('div');
-  inputContainer.className = 'chat-input-container message-input-container';
+  inputContainer.className = 'chat-input-container';
 
   // Text input
   const textInput = document.createElement('input');
