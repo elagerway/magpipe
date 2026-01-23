@@ -158,6 +158,35 @@ style.textContent = `
       bottom: 70px;
     }
   }
+
+  /* Mobile - override AdminChatInterface mobile styles */
+  @media (max-width: 768px) {
+    #chat-container .admin-chat-interface {
+      flex-direction: column !important;
+    }
+
+    #chat-container .chat-sidebar {
+      display: none !important;
+    }
+
+    #chat-container .chat-area {
+      flex: 1 !important;
+      height: 100% !important;
+      min-height: 0 !important;
+    }
+
+    #chat-container .chat-messages {
+      flex: 1 !important;
+      min-height: 0 !important;
+      max-height: none !important;
+      overflow-y: auto !important;
+    }
+
+    #chat-container .chat-input-container {
+      flex-shrink: 0 !important;
+      position: relative !important;
+    }
+  }
 `;
 
 document.head.appendChild(style);
