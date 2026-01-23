@@ -1383,7 +1383,12 @@ export function addAdminChatStyles() {
     }
 
     .conversation-item.active {
-      background: #dbeafe;
+      background: #EEF2FF;
+      border-left: 3px solid var(--primary-color, #4F46E5);
+    }
+
+    .conversation-item.active:hover {
+      background: #E0E7FF;
     }
 
     .conversation-title {
