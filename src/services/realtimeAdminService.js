@@ -105,14 +105,40 @@ export class RealtimeAdminService {
       session: {
         type: 'realtime',
         output_modalities: ['audio'],
-        instructions: `You are an admin assistant for Pat AI. You help users configure their call/SMS handling agent.
+        instructions: `You are an admin assistant for Pat AI. You help users configure their call/SMS handling agent and take actions on their behalf.
+
+You can:
+- Update system prompts (use update_system_prompt function)
+- Add knowledge sources from URLs (use add_knowledge_source function)
+- Call contacts by name or phone number (use call_contact function)
+- Send SMS messages to contacts (use send_sms function)
+- List or search contacts (use list_contacts function)
+- Add new contacts (use add_contact function)
+- Search for businesses online and add them to contacts (use search_business function)
 
 CRITICAL INSTRUCTIONS:
 1. When you call a function, ALWAYS provide a natural conversational response explaining what you've prepared
-2. After calling a function, ALWAYS ask "Is there anything else I can help you configure?"
-3. Explain that changes are prepared but will need confirmation before becoming active
+2. After calling a function, ALWAYS ask "Is there anything else I can help you with?"
+3. For actions like calls and SMS, explain that the action is prepared and will need confirmation before executing
 4. Keep the conversation flowing - don't abruptly end it
 5. Only when the user explicitly says they're done should you say goodbye
+
+CRITICAL - NEVER REFUSE TO CALL OR TEXT:
+- You CAN make calls and send texts to ANY number - contacts OR businesses
+- If someone asks to call "Pizza Hut" or any business, use search_business to find their number, then offer to call
+- NEVER say "I can't make calls to external numbers" - you absolutely CAN via the search_business function
+- For ANY business name the user wants to call/text, use search_business first to look up their phone number
+
+LOCATION FOR BUSINESS SEARCH:
+- When searching for a business, if the search returns asking for location, ask the user "What city are you in?"
+- Once the user tells you their city (e.g., "Toronto", "New York"), call search_business again with the location parameter set to their city
+- Example flow: User says "Call Pizza Hut" → search fails without location → ask "What city are you in?" → user says "Toronto" → call search_business with query="Pizza Hut" and location="Toronto"
+
+VOICE CONFIRMATIONS:
+- After presenting an action (call, text, add contact, etc.), wait for the user to confirm
+- When user says "yes", "confirm", "do it", "go ahead", "sure", "okay" → call confirm_pending_action
+- When user says "no", "cancel", "nevermind", "stop" → call cancel_pending_action
+- Always confirm actions before executing them - never execute without user confirmation
 
 Be warm, conversational, and helpful. Never expose vendor names like "OpenAI" or "Retell" - use "Pat AI assistant" instead.`,
         audio: {
@@ -136,7 +162,7 @@ Be warm, conversational, and helpful. Never expose vendor names like "OpenAI" or
               type: 'audio/pcm',
               rate: 24000,
             },
-            voice: 'alloy',
+            voice: 'shimmer', // More natural, warm voice
           },
         },
         tools: [
@@ -173,6 +199,123 @@ Be warm, conversational, and helpful. Never expose vendor names like "OpenAI" or
                 },
               },
               required: ['url'],
+            },
+          },
+          {
+            type: 'function',
+            name: 'call_contact',
+            description: 'Initiate a phone call to a contact. Searches contacts by name or phone number.',
+            parameters: {
+              type: 'object',
+              properties: {
+                contact_identifier: {
+                  type: 'string',
+                  description: 'Contact name or phone number to call',
+                },
+              },
+              required: ['contact_identifier'],
+            },
+          },
+          {
+            type: 'function',
+            name: 'send_sms',
+            description: 'Send an SMS text message to a contact',
+            parameters: {
+              type: 'object',
+              properties: {
+                recipient: {
+                  type: 'string',
+                  description: 'Contact name or phone number',
+                },
+                message: {
+                  type: 'string',
+                  description: 'The message content to send',
+                },
+              },
+              required: ['recipient', 'message'],
+            },
+          },
+          {
+            type: 'function',
+            name: 'list_contacts',
+            description: 'Search or list user\'s contacts',
+            parameters: {
+              type: 'object',
+              properties: {
+                search_term: {
+                  type: 'string',
+                  description: 'Optional: filter contacts by name or phone',
+                },
+              },
+            },
+          },
+          {
+            type: 'function',
+            name: 'add_contact',
+            description: 'Add a new contact to the user\'s contact list',
+            parameters: {
+              type: 'object',
+              properties: {
+                name: {
+                  type: 'string',
+                  description: 'Contact name',
+                },
+                phone_number: {
+                  type: 'string',
+                  description: 'Phone number in any format',
+                },
+                notes: {
+                  type: 'string',
+                  description: 'Optional notes about the contact',
+                },
+              },
+              required: ['name', 'phone_number'],
+            },
+          },
+          {
+            type: 'function',
+            name: 'search_business',
+            description: 'Search for a business online using Google Places API. Use this when the user wants to call or text a business that is not in their contacts. Returns business name, address, and phone number.',
+            parameters: {
+              type: 'object',
+              properties: {
+                query: {
+                  type: 'string',
+                  description: 'Business name to search for (e.g., "Pizza Hut", "Dr. Smith dentist")',
+                },
+                location: {
+                  type: 'string',
+                  description: 'Optional location hint (e.g., "Vancouver", "near me")',
+                },
+                intent: {
+                  type: 'string',
+                  enum: ['call', 'text'],
+                  description: 'What the user wants to do - call or text the business',
+                },
+                message: {
+                  type: 'string',
+                  description: 'If intent is "text", the message to send to the business',
+                },
+              },
+              required: ['query', 'intent'],
+            },
+          },
+          {
+            type: 'function',
+            name: 'confirm_pending_action',
+            description: 'Execute the pending action that was prepared. Call this when user says "yes", "confirm", "do it", "go ahead", or similar confirmation.',
+            parameters: {
+              type: 'object',
+              properties: {},
+            },
+          },
+          {
+            type: 'function',
+            name: 'cancel_pending_action',
+            description: 'Cancel the pending action. Call this when user says "no", "cancel", "nevermind", or similar.',
+            parameters: {
+              type: 'object',
+              properties: {},
             },
           },
         ],
@@ -326,9 +469,10 @@ Be warm, conversational, and helpful. Never expose vendor names like "OpenAI" or
         break;
 
       case 'response.function_call_arguments.done':
-        console.log('[RealtimeAdmin] Function call:', message.name, message.arguments);
+        console.log('[RealtimeAdmin] Function call:', message.name, message.arguments, 'call_id:', message.call_id);
         if (this.onFunctionCall) {
-          this.onFunctionCall(message.name, JSON.parse(message.arguments));
+          // Pass call_id so we can send results back
+          this.onFunctionCall(message.name, JSON.parse(message.arguments), message.call_id);
         }
         break;
 
@@ -476,6 +620,28 @@ Be warm, conversational, and helpful. Never expose vendor names like "OpenAI" or
       },
     });
 
+    this._send({
+      type: 'response.create',
+    });
+  }
+
+  /**
+   * Send function call result back to the API so it can respond with voice
+   * @param {string} callId - The function call ID
+   * @param {string} result - The result to send back (will be spoken)
+   */
+  sendFunctionResult(callId, result) {
+    // Send the function output
+    this._send({
+      type: 'conversation.item.create',
+      item: {
+        type: 'function_call_output',
+        call_id: callId,
+        output: result,
+      },
+    });
+
+    // Trigger the AI to respond (speak the result)
     this._send({
       type: 'response.create',
     });

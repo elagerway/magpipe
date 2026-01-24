@@ -262,6 +262,78 @@ export async function confirmAction(conversationId, actionParameters) {
           data: scheduledAction,
         };
 
+      case 'add_and_call_business':
+      case 'add_and_text_business': {
+        const isCallAction = actionType === 'add_and_call_business';
+
+        // First add the business as a contact
+        const { data: newBusinessContact, error: businessError } = await supabase
+          .from('contacts')
+          .insert({
+            user_id: session.user.id,
+            name: actionParameters.parameters.name,
+            phone_number: actionParameters.parameters.phone_number,
+            address: actionParameters.parameters.address || null,
+            website: actionParameters.parameters.website || null,
+            notes: `Added via Google Places search`,
+            contact_type: 'business',
+          })
+          .select()
+          .single();
+
+        if (businessError) {
+          throw new Error('Failed to add business: ' + businessError.message);
+        }
+
+        if (isCallAction) {
+          // Store call intent and navigate to phone
+          sessionStorage.setItem('pending_call', JSON.stringify({
+            phoneNumber: actionParameters.parameters.phone_number,
+            contactName: actionParameters.parameters.name,
+            timestamp: Date.now()
+          }));
+
+          // Navigate to phone page
+          if (window.router) {
+            window.router.navigate(`/phone?dial=${encodeURIComponent(actionParameters.parameters.phone_number)}`);
+          } else {
+            window.location.href = `/phone?dial=${encodeURIComponent(actionParameters.parameters.phone_number)}`;
+          }
+
+          return {
+            success: true,
+            message: `Added ${actionParameters.parameters.name} to contacts. Navigating to call...`,
+            data: newBusinessContact,
+          };
+        } else {
+          // Send SMS to the business
+          const { data: businessServiceNumbers } = await supabase
+            .from('service_numbers')
+            .select('phone_number')
+            .eq('user_id', session.user.id)
+            .limit(1)
+            .single();
+
+          const { data: smsData, error: smsError } = await supabase.functions.invoke('send-user-sms', {
+            body: {
+              to: actionParameters.parameters.phone_number,
+              body: actionParameters.parameters.message,
+              from: businessServiceNumbers?.phone_number,
+            },
+          });
+
+          if (smsError) {
+            throw new Error('Failed to send SMS: ' + smsError.message);
+          }
+
+          return {
+            success: true,
+            message: `Added ${actionParameters.parameters.name} to contacts and sent message.`,
+            data: { contact: newBusinessContact, sms: smsData },
+          };
+        }
+      }
+
       default:
         throw new Error('Unknown action type');
     }

@@ -13,7 +13,7 @@ interface ChatRequest {
 }
 
 interface PendingAction {
-  type: 'update_system_prompt' | 'add_knowledge_source' | 'remove_knowledge_source' | 'call_contact' | 'send_sms' | 'add_contact' | 'schedule_sms';
+  type: 'update_system_prompt' | 'add_knowledge_source' | 'remove_knowledge_source' | 'call_contact' | 'send_sms' | 'add_contact' | 'schedule_sms' | 'add_and_call_business' | 'add_and_text_business';
   preview: string;
   parameters: Record<string, any>;
 }
@@ -188,6 +188,33 @@ const functions = [
       required: ['recipient', 'message', 'send_at'],
     },
   },
+  {
+    name: 'search_business',
+    description: 'Search for a business online using Google Places API. Use this when the user wants to call or text a business that is not in their contacts. Returns business name, address, and phone number.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Business name to search for (e.g., "Pizza Hut", "Dr. Smith dentist")',
+        },
+        location: {
+          type: 'string',
+          description: 'Optional location hint (e.g., "Vancouver", "near me"). If not provided, will use general search.',
+        },
+        intent: {
+          type: 'string',
+          enum: ['call', 'text'],
+          description: 'What the user wants to do - call or text the business',
+        },
+        message: {
+          type: 'string',
+          description: 'If intent is "text", the message to send to the business',
+        },
+      },
+      required: ['query', 'intent'],
+    },
+  },
 ];
 
 serve(async (req) => {
@@ -293,6 +320,7 @@ You can:
 - Schedule SMS messages for future delivery like appointment reminders (use schedule_sms function)
 - List or search contacts (use list_contacts function)
 - Add new contacts (use add_contact function)
+- Search for businesses online and add them to contacts (use search_business function)
 
 CRITICAL INSTRUCTIONS:
 1. When you call a function, ALWAYS provide a natural conversational response explaining what you've prepared
@@ -316,6 +344,23 @@ You: [call list_contacts function] AND respond with the list of contacts
 
 User: "Send John an appointment reminder tomorrow at 9am"
 You: [call schedule_sms function with recipient: "John", message: "This is a reminder about your appointment", send_at: ISO 8601 timestamp for tomorrow 9am] AND say "I've scheduled an appointment reminder for John tomorrow at 9am. It will be sent automatically. Anything else?"
+
+User: "Call Pizza Hut"
+You: [First check if "Pizza Hut" is in contacts - if NOT found, call search_business function with query: "Pizza Hut", intent: "call"] AND say "I found Pizza Hut - here's the info. Would you like me to add them to your contacts and call?"
+
+User: "Text the nearest Starbucks that I'm running late"
+You: [call search_business function with query: "Starbucks", intent: "text", message: "I'm running late"] AND say "I found a Starbucks location. Would you like me to add them and send your message?"
+
+IMPORTANT for business search:
+- When a user asks to call/text someone NOT in their contacts and it sounds like a business name (Pizza Hut, Starbucks, Dr. Smith, etc.), use search_business
+- Always confirm the found business with the user before adding to contacts
+- If search returns no results or no phone number, offer to search with a different query or location
+
+CRITICAL - NEVER REFUSE TO CALL OR TEXT:
+- You CAN make calls and send texts to ANY number - contacts OR businesses
+- If someone asks to call "Pizza Hut" or any business, use search_business to find their number, then offer to call
+- NEVER say "I can't make calls to external numbers" - you absolutely CAN via the search_business function
+- For ANY business name the user wants to call/text, use search_business first to look up their phone number
 
 Be warm, conversational, and helpful. Never expose vendor names like "OpenAI" or "Retell" - use "Pat AI assistant" instead.`,
     });
@@ -649,6 +694,68 @@ Be warm, conversational, and helpful. Never expose vendor names like "OpenAI" or
           } else {
             const contactList = matches.map(c => `• ${c.name}: ${c.phone_number}`).join('\n');
             response.response = `I found multiple contacts matching "${recipient}":\n${contactList}\n\nPlease be more specific about who you'd like to schedule the message for.`;
+            response.requires_confirmation = false;
+          }
+        }
+      } else if (functionName === 'search_business') {
+        const { query, location, intent, message: smsMessage } = functionArgs;
+
+        // Call Google Places API
+        const GOOGLE_API_KEY = Deno.env.get('GOOGLE_PLACES_API_KEY');
+
+        if (!GOOGLE_API_KEY) {
+          response.response = `Business search is not configured. Please contact support.`;
+          response.requires_confirmation = false;
+        } else {
+          // Use Text Search API
+          const searchUrl = new URL('https://maps.googleapis.com/maps/api/place/textsearch/json');
+          searchUrl.searchParams.set('query', location ? `${query} ${location}` : query);
+          searchUrl.searchParams.set('key', GOOGLE_API_KEY);
+
+          const placesResponse = await fetch(searchUrl.toString());
+          const placesData = await placesResponse.json();
+
+          if (placesData.status === 'OK' && placesData.results && placesData.results.length > 0) {
+            const place = placesData.results[0];
+
+            // Get place details to get phone number
+            const detailsUrl = new URL('https://maps.googleapis.com/maps/api/place/details/json');
+            detailsUrl.searchParams.set('place_id', place.place_id);
+            detailsUrl.searchParams.set('fields', 'formatted_phone_number,international_phone_number,name,formatted_address,website,opening_hours');
+            detailsUrl.searchParams.set('key', GOOGLE_API_KEY);
+
+            const detailsResponse = await fetch(detailsUrl.toString());
+            const detailsData = await detailsResponse.json();
+            const details = detailsData.result;
+
+            if (details && (details.international_phone_number || details.formatted_phone_number)) {
+              // Normalize phone number to E.164 format
+              const rawPhone = details.international_phone_number || details.formatted_phone_number;
+              const phoneDigits = rawPhone.replace(/\D/g, '');
+              const normalizedPhone = phoneDigits.length === 10 ? `+1${phoneDigits}` : `+${phoneDigits}`;
+
+              const actionType = intent === 'text' ? 'add_and_text_business' : 'add_and_call_business';
+              const actionVerb = intent === 'text' ? 'text' : 'call';
+
+              response.pending_action = {
+                type: actionType,
+                preview: `Found: ${details.name}\nAddress: ${details.formatted_address}\nPhone: ${details.formatted_phone_number || details.international_phone_number}\n\nWould you like me to add this to your contacts and ${actionVerb} them?`,
+                parameters: {
+                  name: details.name,
+                  phone_number: normalizedPhone,
+                  address: details.formatted_address || null,
+                  website: details.website || null,
+                  source: 'google_places',
+                  intent,
+                  message: smsMessage || null,
+                },
+              };
+            } else {
+              response.response = `I found ${details?.name || place.name} at ${details?.formatted_address || place.formatted_address}, but they don't have a phone number listed. Would you like me to search for another location?`;
+              response.requires_confirmation = false;
+            }
+          } else {
+            response.response = `I couldn't find any businesses matching "${query}"${location ? ` near ${location}` : ''}. Try being more specific or adding a location.`;
             response.requires_confirmation = false;
           }
         }
