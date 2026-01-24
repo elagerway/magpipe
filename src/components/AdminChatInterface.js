@@ -226,8 +226,12 @@ export function createAdminChatInterface(container) {
       // Note: Voice mode uses Realtime API, which handles speech automatically
       // No need to call TTS here
 
-      // Handle pending action
-      if (response.requiresConfirmation && response.pendingAction) {
+      // Handle business info card (clickable phone/address)
+      if (response.businessInfo) {
+        showBusinessInfoCard(response.businessInfo);
+      }
+      // Handle pending action (for non-business confirmations)
+      else if (response.requiresConfirmation && response.pendingAction) {
         pendingAction = response.pendingAction;
         showConfirmationPrompt(response.pendingAction);
       }
@@ -367,6 +371,39 @@ export function createAdminChatInterface(container) {
     confirmEl.remove();
     pendingAction = null;
     addMessage('assistant', 'Okay, I won\'t make those changes.');
+  }
+
+  /**
+   * Show business info card with clickable phone and address
+   */
+  function showBusinessInfoCard(business) {
+    const cardEl = document.createElement('div');
+    cardEl.className = 'business-info-card';
+
+    // Create Google Maps URL for directions
+    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(business.address)}`;
+
+    cardEl.innerHTML = `
+      <div class="business-name">${business.name}</div>
+      <div class="business-details">
+        <a href="tel:${business.phone_number}" class="business-phone">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+          </svg>
+          ${business.phone}
+        </a>
+        <a href="${mapsUrl}" target="_blank" rel="noopener" class="business-address">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+            <circle cx="12" cy="10" r="3"/>
+          </svg>
+          ${business.address}
+        </a>
+      </div>
+    `;
+
+    messageHistory.appendChild(cardEl);
+    scrollToBottom();
   }
 
   /**
@@ -1233,27 +1270,13 @@ export function createAdminChatInterface(container) {
                 realtimeService.sendFunctionResult(callId, result.error);
               }
             } else if (result.business) {
-              const actionType = args.intent === 'text' ? 'add_and_text_business' : 'add_and_call_business';
-              const actionVerb = args.intent === 'text' ? 'text' : 'call';
-
-              pendingAction = {
-                type: actionType,
-                preview: `Found: ${result.business.name}\nAddress: ${result.business.address}\nPhone: ${result.business.phone}\n\nWould you like me to add this to your contacts and ${actionVerb} them?`,
-                parameters: {
-                  name: result.business.name,
-                  phone_number: result.business.phone_number,
-                  address: result.business.address,
-                  website: result.business.website,
-                  source: 'google_places',
-                  intent: args.intent,
-                  message: args.message,
-                },
-              };
-              showConfirmationPrompt(pendingAction);
+              // Show business info card with clickable phone and address
+              addMessage('assistant', `I found ${result.business.name}:`);
+              showBusinessInfoCard(result.business);
 
               // Send result back to voice so it speaks the finding
               if (callId && realtimeService) {
-                const voiceResult = `I found ${result.business.name} at ${result.business.address}. Their phone number is ${result.business.phone}. Would you like me to add them to your contacts and ${actionVerb} them?`;
+                const voiceResult = `I found ${result.business.name} at ${result.business.address}. Their phone number is ${result.business.phone}. You can tap the phone number to call them anytime.`;
                 realtimeService.sendFunctionResult(callId, voiceResult);
               }
             }
@@ -1820,6 +1843,59 @@ export function addAdminChatStyles() {
     .confirmation-buttons button:disabled {
       opacity: 0.5;
       cursor: not-allowed;
+    }
+
+    /* Business info card */
+    .business-info-card {
+      background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+      border: 1px solid #0ea5e9;
+      border-radius: 12px;
+      padding: 16px;
+      margin: 8px 0;
+      animation: slide-in 0.3s ease;
+    }
+
+    .business-name {
+      font-weight: 600;
+      font-size: 16px;
+      color: #0c4a6e;
+      margin-bottom: 12px;
+    }
+
+    .business-details {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .business-phone,
+    .business-address {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #0369a1;
+      text-decoration: none;
+      padding: 10px 12px;
+      background: white;
+      border-radius: 8px;
+      transition: all 0.2s;
+      font-size: 14px;
+    }
+
+    .business-phone:hover,
+    .business-address:hover {
+      background: #0ea5e9;
+      color: white;
+    }
+
+    .business-phone svg,
+    .business-address svg {
+      flex-shrink: 0;
+    }
+
+    .business-phone:hover svg,
+    .business-address:hover svg {
+      stroke: white;
     }
 
     .chat-error {
