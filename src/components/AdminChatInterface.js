@@ -1910,13 +1910,13 @@ export function addAdminChatStyles() {
     .voice-mode-icon-toggle:hover .bar-4 { animation-delay: 0.3s; }
     .voice-mode-icon-toggle:hover .bar-5 { animation-delay: 0.4s; }
 
-    /* Voice overlay - partial screen */
+    /* Voice overlay - full screen */
     .voice-overlay {
       position: fixed;
       top: 0;
       left: 0;
       right: 0;
-      height: 55%;
+      bottom: 0;
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       z-index: 10000;
       display: flex;
@@ -1924,9 +1924,6 @@ export function addAdminChatStyles() {
       justify-content: center;
       opacity: 0;
       transition: opacity 0.3s ease;
-      border-bottom-left-radius: 24px;
-      border-bottom-right-radius: 24px;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
     }
 
     .voice-overlay.active {
@@ -1947,12 +1944,12 @@ export function addAdminChatStyles() {
 
     .voice-overlay-close {
       position: absolute;
-      top: 10px;
-      right: 10px;
-      width: 44px;
-      height: 44px;
+      top: 16px;
+      right: 16px;
+      width: 52px;
+      height: 52px;
       border-radius: 50%;
-      background: rgba(255, 255, 255, 0.2);
+      background: rgba(255, 255, 255, 0.35);
       color: white;
       cursor: pointer;
       display: flex;
@@ -1962,21 +1959,25 @@ export function addAdminChatStyles() {
       -webkit-tap-highlight-color: transparent;
       z-index: 10001;
       user-select: none;
+      border: 2px solid rgba(255, 255, 255, 0.5);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
     }
 
     .voice-overlay-close svg {
       pointer-events: none;
-      width: 20px;
-      height: 20px;
+      width: 28px;
+      height: 28px;
+      stroke-width: 2.5;
     }
 
     .voice-overlay-close:hover {
-      background: rgba(255, 255, 255, 0.4);
-      transform: scale(1.05);
+      background: rgba(255, 255, 255, 0.5);
+      transform: scale(1.08);
+      border-color: rgba(255, 255, 255, 0.7);
     }
 
     .voice-overlay-close:active {
-      background: rgba(255, 255, 255, 0.5);
+      background: rgba(255, 255, 255, 0.6);
       transform: scale(0.95);
     }
 
@@ -2001,8 +2002,9 @@ export function addAdminChatStyles() {
       overflow-y: auto;
       background: rgba(255, 255, 255, 0.1);
       border-radius: 12px;
-      padding: 12px;
-      max-height: calc(100% - 180px);
+      padding: 16px;
+      max-height: calc(100% - 200px);
+      margin-bottom: env(safe-area-inset-bottom, 16px);
     }
 
     .voice-transcript-content {
