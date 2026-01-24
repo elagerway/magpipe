@@ -38,6 +38,9 @@ export function createAdminChatInterface(container) {
   let currentUserTimestamp = null;
   let currentAssistantTimestamp = null;
 
+  // User's stored city for business searches (persisted in localStorage)
+  let storedUserCity = localStorage.getItem('pat_user_city') || null;
+
   // Create elements
   const chatContainer = document.createElement('div');
   chatContainer.className = 'admin-chat-interface';
@@ -1156,6 +1159,13 @@ export function createAdminChatInterface(container) {
           try {
             const { data: { session } } = await supabase.auth.getSession();
 
+            // If user provided a location, store it for future searches
+            if (args.location) {
+              storedUserCity = args.location;
+              localStorage.setItem('pat_user_city', args.location);
+              console.log('[AdminChat] Stored user city:', args.location);
+            }
+
             // Try to get user's location for better search results
             let userLat = null;
             let userLng = null;
@@ -1170,13 +1180,13 @@ export function createAdminChatInterface(container) {
               userLat = position.coords.latitude;
               userLng = position.coords.longitude;
               console.log('[AdminChat] Got user location:', userLat, userLng, 'accuracy:', position.coords.accuracy, 'meters');
-              // Show location in a subtle way for debugging
               console.log(`[AdminChat] Google Maps link: https://maps.google.com/?q=${userLat},${userLng}`);
             } catch (geoErr) {
-              console.warn('[AdminChat] Could not get location:', geoErr.message, '- searching without location bias');
-              // Alert user that location would help
-              addMessage('assistant', '(Tip: Allow location access for better local search results)');
+              console.warn('[AdminChat] Could not get location:', geoErr.message, '- will use stored city if available');
             }
+
+            // Use stored city as location fallback when GPS fails
+            const locationToUse = args.location || ((!userLat && !userLng && storedUserCity) ? storedUserCity : null);
 
             const response = await fetch(
               `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/search-business`,
@@ -1189,7 +1199,7 @@ export function createAdminChatInterface(container) {
                 },
                 body: JSON.stringify({
                   query: args.query,
-                  location: args.location || null,
+                  location: locationToUse,
                   lat: userLat,
                   lng: userLng,
                   intent: args.intent || 'call',
@@ -1201,11 +1211,20 @@ export function createAdminChatInterface(container) {
             const result = await response.json();
 
             if (result.needs_location) {
-              // Agent needs to ask user for their city
-              const msg = result.error || `What city are you in? I need your location to find businesses near you.`;
-              addMessage('assistant', msg);
-              if (callId && realtimeService) {
-                realtimeService.sendFunctionResult(callId, msg);
+              // Agent needs to ask user for their city - but check if we have stored city first
+              if (storedUserCity) {
+                // We have a stored city - ask if they want to use it
+                const msg = `Would you like me to search near ${storedUserCity}? Or tell me a different city.`;
+                addMessage('assistant', msg);
+                if (callId && realtimeService) {
+                  realtimeService.sendFunctionResult(callId, msg);
+                }
+              } else {
+                const msg = result.error || `What city are you in? I need your location to find businesses near you.`;
+                addMessage('assistant', msg);
+                if (callId && realtimeService) {
+                  realtimeService.sendFunctionResult(callId, msg);
+                }
               }
             } else if (result.error) {
               addMessage('assistant', result.error);
