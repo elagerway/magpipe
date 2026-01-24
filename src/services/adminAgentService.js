@@ -80,6 +80,7 @@ export async function sendMessage(message, conversationId = null) {
       response: data.response || '',
       requiresConfirmation: data.requires_confirmation || false,
       pendingAction: data.pending_action || null,
+      businessInfo: data.business_info || null,
     };
 
   } catch (error) {

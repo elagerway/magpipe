@@ -737,21 +737,15 @@ Be warm, conversational, and helpful. Never expose vendor names like "OpenAI" or
               const phoneDigits = rawPhone.replace(/\D/g, '');
               const normalizedPhone = phoneDigits.length === 10 ? `+1${phoneDigits}` : `+${phoneDigits}`;
 
-              const actionType = intent === 'text' ? 'add_and_text_business' : 'add_and_call_business';
-              const actionVerb = intent === 'text' ? 'text' : 'call';
-
-              response.pending_action = {
-                type: actionType,
-                preview: `Found: ${details.name}\nAddress: ${details.formatted_address}\nPhone: ${details.formatted_phone_number || details.international_phone_number}\n\nWould you like me to add this to your contacts and ${actionVerb} them?`,
-                parameters: {
-                  name: details.name,
-                  phone_number: normalizedPhone,
-                  address: details.formatted_address || null,
-                  website: details.website || null,
-                  source: 'google_places',
-                  intent,
-                  message: smsMessage || null,
-                },
+              // Return business info for display (no confirmation needed - user can tap to call)
+              response.response = `I found ${details.name}:`;
+              response.requires_confirmation = false;
+              (response as any).business_info = {
+                name: details.name,
+                phone: details.formatted_phone_number || details.international_phone_number,
+                phone_number: normalizedPhone,
+                address: details.formatted_address || null,
+                website: details.website || null,
               };
             } else {
               response.response = `I found ${details?.name || place.name} at ${details?.formatted_address || place.formatted_address}, but they don't have a phone number listed. Would you like me to search for another location?`;
