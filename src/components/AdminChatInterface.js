@@ -271,8 +271,13 @@ export function createAdminChatInterface(container) {
    * Show confirmation prompt for pending action
    */
   function showConfirmationPrompt(action) {
+    // Remove any existing confirmation first
+    const existingConfirm = document.querySelector('.chat-confirmation');
+    if (existingConfirm) existingConfirm.remove();
+
     const confirmEl = document.createElement('div');
     confirmEl.className = 'chat-confirmation';
+    confirmEl.id = 'pending-confirmation';
 
     const previewEl = document.createElement('div');
     previewEl.className = 'confirmation-preview';
@@ -291,14 +296,32 @@ export function createAdminChatInterface(container) {
     cancelBtn.textContent = 'Cancel';
     cancelBtn.addEventListener('click', () => handleCancel(confirmEl));
 
+    // Voice mode hint
+    const voiceHint = document.createElement('div');
+    voiceHint.className = 'confirmation-voice-hint';
+    voiceHint.textContent = 'Or say "yes" / "no" in voice mode';
+
     buttonsEl.appendChild(confirmBtn);
     buttonsEl.appendChild(cancelBtn);
 
     confirmEl.appendChild(previewEl);
     confirmEl.appendChild(buttonsEl);
+    confirmEl.appendChild(voiceHint);
 
     messageHistory.appendChild(confirmEl);
     scrollToBottom();
+
+    // Also show in voice overlay if active
+    const transcriptArea = document.getElementById('voice-transcript-content');
+    if (transcriptArea) {
+      const confirmMsgEl = document.createElement('div');
+      confirmMsgEl.className = 'voice-transcript-msg assistant voice-confirm-preview';
+      confirmMsgEl.innerHTML = `<strong>Ready:</strong> ${action.preview.split('\n')[0]}<br><em>Say "yes" to confirm or "no" to cancel</em>`;
+      transcriptArea.appendChild(confirmMsgEl);
+
+      const scrollArea = document.getElementById('voice-transcript-area');
+      if (scrollArea) scrollArea.scrollTop = scrollArea.scrollHeight;
+    }
   }
 
   /**
@@ -550,11 +573,14 @@ export function createAdminChatInterface(container) {
 
       <div class="voice-overlay-content">
         <div class="voice-waveform-container">
-          <canvas id="voice-waveform-canvas" width="400" height="400"></canvas>
+          <canvas id="voice-waveform-canvas" width="200" height="200"></canvas>
           <div class="voice-connecting" id="voice-connecting">
             <div class="connecting-spinner"></div>
             <div class="connecting-text">Connecting...</div>
           </div>
+        </div>
+        <div class="voice-transcript-area" id="voice-transcript-area">
+          <div class="voice-transcript-content" id="voice-transcript-content"></div>
         </div>
       </div>
     `;
@@ -786,6 +812,37 @@ export function createAdminChatInterface(container) {
       realtimeService.onTranscriptUpdate = (transcript, role, timestamp) => {
         console.log('[AdminChat] Transcript received - role:', role, 'timestamp:', timestamp, 'content:', transcript);
 
+        // Update voice overlay transcript area
+        const transcriptArea = document.getElementById('voice-transcript-content');
+        if (transcriptArea) {
+          // Find existing message for this role or create new one
+          let msgEl = transcriptArea.querySelector(`.voice-transcript-msg.${role}:last-child`);
+          if (!msgEl || (role === 'user' && msgEl.dataset.finalized === 'true')) {
+            msgEl = document.createElement('div');
+            msgEl.className = `voice-transcript-msg ${role}`;
+            transcriptArea.appendChild(msgEl);
+          }
+
+          if (role === 'user') {
+            // For user, accumulate until finalized
+            const currentText = msgEl.textContent || '';
+            if (currentText && !transcript.startsWith(currentText)) {
+              msgEl.textContent = currentText + ' ' + transcript;
+            } else {
+              msgEl.textContent = transcript;
+            }
+          } else {
+            // For assistant, append delta
+            msgEl.textContent += transcript;
+          }
+
+          // Auto-scroll transcript area
+          const scrollArea = document.getElementById('voice-transcript-area');
+          if (scrollArea) {
+            scrollArea.scrollTop = scrollArea.scrollHeight;
+          }
+        }
+
         if (role === 'user') {
           // Store timestamp from when user stopped speaking (or use current time as fallback)
           if (!currentUserTimestamp) {
@@ -830,6 +887,16 @@ export function createAdminChatInterface(container) {
               console.log('[AdminChat]   Content:', `"${currentUserMessage.trim().substring(0, 100)}..."`);
               voiceTranscripts.push({ role: 'user', content: currentUserMessage.trim() });
               console.log('[AdminChat]   voiceTranscripts now has', voiceTranscripts.length, 'messages');
+
+              // Mark user message as finalized in overlay
+              const transcriptArea = document.getElementById('voice-transcript-content');
+              if (transcriptArea) {
+                const lastUserMsg = transcriptArea.querySelector('.voice-transcript-msg.user:last-child');
+                if (lastUserMsg) {
+                  lastUserMsg.dataset.finalized = 'true';
+                }
+              }
+
               currentUserMessage = '';
               currentUserTimestamp = null;
             }
@@ -865,8 +932,31 @@ export function createAdminChatInterface(container) {
         }
       };
 
-      realtimeService.onFunctionCall = async (functionName, args) => {
-        console.log('[AdminChat] Function called:', functionName, args);
+      realtimeService.onFunctionCall = async (functionName, args, callId) => {
+        console.log('[AdminChat] Function called:', functionName, args, 'callId:', callId);
+
+        // Play a subtle "working" tone while processing
+        const playWorkingSound = () => {
+          try {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            oscillator.frequency.value = 440; // A4 note
+            oscillator.type = 'sine';
+            gainNode.gain.value = 0.1; // Quiet
+
+            oscillator.start();
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+            oscillator.stop(audioCtx.currentTime + 0.5);
+          } catch (e) {
+            console.log('[AdminChat] Could not play working sound');
+          }
+        };
+        playWorkingSound();
 
         // Get current user
         const { data: { user } } = await supabase.auth.getUser();
@@ -879,6 +969,9 @@ export function createAdminChatInterface(container) {
             parameters: args,
           };
           showConfirmationPrompt(pendingAction);
+          if (callId && realtimeService) {
+            realtimeService.sendFunctionResult(callId, `I've prepared the system prompt update. You can review it on screen. Would you like me to apply these changes?`);
+          }
 
         } else if (functionName === 'call_contact') {
           // Look up contact
@@ -905,8 +998,16 @@ export function createAdminChatInterface(container) {
               },
             };
             showConfirmationPrompt(pendingAction);
+            // Send to voice
+            if (callId && realtimeService) {
+              realtimeService.sendFunctionResult(callId, `I found ${matches[0].name}. Ready to call them at ${matches[0].phone_number}. Would you like me to place the call?`);
+            }
           } else if (matches.length > 1) {
-            addMessage('assistant', `Found multiple contacts: ${matches.map(c => c.name).join(', ')}. Please be more specific.`);
+            const msg = `Found multiple contacts: ${matches.map(c => c.name).join(', ')}. Please be more specific.`;
+            addMessage('assistant', msg);
+            if (callId && realtimeService) {
+              realtimeService.sendFunctionResult(callId, msg);
+            }
           } else {
             // Check if direct phone number
             const phoneDigits = args.contact_identifier?.replace(/\D/g, '') || '';
@@ -921,8 +1022,15 @@ export function createAdminChatInterface(container) {
                 },
               };
               showConfirmationPrompt(pendingAction);
+              if (callId && realtimeService) {
+                realtimeService.sendFunctionResult(callId, `Ready to call ${args.contact_identifier}. Would you like me to place the call?`);
+              }
             } else {
-              addMessage('assistant', `Couldn't find contact "${args.contact_identifier}".`);
+              const msg = `Couldn't find contact "${args.contact_identifier}". Would you like me to search for this business online?`;
+              addMessage('assistant', msg);
+              if (callId && realtimeService) {
+                realtimeService.sendFunctionResult(callId, msg);
+              }
             }
           }
 
@@ -952,8 +1060,15 @@ export function createAdminChatInterface(container) {
               },
             };
             showConfirmationPrompt(pendingAction);
+            if (callId && realtimeService) {
+              realtimeService.sendFunctionResult(callId, `I've prepared a message to ${matches[0].name}: "${args.message}". Would you like me to send it?`);
+            }
           } else if (matches.length > 1) {
-            addMessage('assistant', `Found multiple contacts: ${matches.map(c => c.name).join(', ')}. Please be more specific.`);
+            const msg = `Found multiple contacts: ${matches.map(c => c.name).join(', ')}. Please be more specific.`;
+            addMessage('assistant', msg);
+            if (callId && realtimeService) {
+              realtimeService.sendFunctionResult(callId, msg);
+            }
           } else {
             const phoneDigits = args.recipient?.replace(/\D/g, '') || '';
             if (phoneDigits.length >= 10) {
@@ -968,8 +1083,15 @@ export function createAdminChatInterface(container) {
                 },
               };
               showConfirmationPrompt(pendingAction);
+              if (callId && realtimeService) {
+                realtimeService.sendFunctionResult(callId, `I've prepared your message to ${args.recipient}. Would you like me to send it?`);
+              }
             } else {
-              addMessage('assistant', `Couldn't find recipient "${args.recipient}".`);
+              const msg = `Couldn't find recipient "${args.recipient}".`;
+              addMessage('assistant', msg);
+              if (callId && realtimeService) {
+                realtimeService.sendFunctionResult(callId, msg);
+              }
             }
           }
 
@@ -987,6 +1109,9 @@ export function createAdminChatInterface(container) {
             },
           };
           showConfirmationPrompt(pendingAction);
+          if (callId && realtimeService) {
+            realtimeService.sendFunctionResult(callId, `I'll add ${args.name} with phone number ${normalizedPhone} to your contacts. Would you like me to proceed?`);
+          }
 
         } else if (functionName === 'list_contacts') {
           // This doesn't need confirmation, just list the contacts
@@ -1006,12 +1131,163 @@ export function createAdminChatInterface(container) {
           }
 
           if (filtered.length === 0) {
-            addMessage('assistant', args.search_term
+            const msg = args.search_term
               ? `No contacts found matching "${args.search_term}".`
-              : "You don't have any contacts yet.");
+              : "You don't have any contacts yet.";
+            addMessage('assistant', msg);
+            if (callId && realtimeService) {
+              realtimeService.sendFunctionResult(callId, msg);
+            }
           } else {
             const list = filtered.slice(0, 10).map(c => `• ${c.name}: ${c.phone_number}`).join('\n');
             addMessage('assistant', `Here are your contacts:\n${list}`);
+            // For voice, just read the names
+            if (callId && realtimeService) {
+              const voiceList = filtered.slice(0, 5).map(c => c.name).join(', ');
+              const voiceMsg = filtered.length > 5
+                ? `You have ${filtered.length} contacts. Here are the first few: ${voiceList}, and more.`
+                : `Here are your contacts: ${voiceList}.`;
+              realtimeService.sendFunctionResult(callId, voiceMsg);
+            }
+          }
+
+        } else if (functionName === 'search_business') {
+          // Search for business via Edge Function
+          try {
+            const { data: { session } } = await supabase.auth.getSession();
+
+            // Try to get user's location for better search results
+            let userLat = null;
+            let userLng = null;
+            try {
+              const position = await new Promise((resolve, reject) => {
+                navigator.geolocation.getCurrentPosition(resolve, reject, {
+                  timeout: 10000,
+                  enableHighAccuracy: true,
+                  maximumAge: 300000 // 5 min cache
+                });
+              });
+              userLat = position.coords.latitude;
+              userLng = position.coords.longitude;
+              console.log('[AdminChat] Got user location:', userLat, userLng, 'accuracy:', position.coords.accuracy, 'meters');
+              // Show location in a subtle way for debugging
+              console.log(`[AdminChat] Google Maps link: https://maps.google.com/?q=${userLat},${userLng}`);
+            } catch (geoErr) {
+              console.warn('[AdminChat] Could not get location:', geoErr.message, '- searching without location bias');
+              // Alert user that location would help
+              addMessage('assistant', '(Tip: Allow location access for better local search results)');
+            }
+
+            const response = await fetch(
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/search-business`,
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${session?.access_token}`,
+                  'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+                },
+                body: JSON.stringify({
+                  query: args.query,
+                  location: args.location || null,
+                  lat: userLat,
+                  lng: userLng,
+                  intent: args.intent || 'call',
+                  message: args.message || null,
+                }),
+              }
+            );
+
+            const result = await response.json();
+
+            if (result.needs_location) {
+              // Agent needs to ask user for their city
+              const msg = result.error || `What city are you in? I need your location to find businesses near you.`;
+              addMessage('assistant', msg);
+              if (callId && realtimeService) {
+                realtimeService.sendFunctionResult(callId, msg);
+              }
+            } else if (result.error) {
+              addMessage('assistant', result.error);
+              // Send error back to voice so it speaks it
+              if (callId && realtimeService) {
+                realtimeService.sendFunctionResult(callId, result.error);
+              }
+            } else if (result.business) {
+              const actionType = args.intent === 'text' ? 'add_and_text_business' : 'add_and_call_business';
+              const actionVerb = args.intent === 'text' ? 'text' : 'call';
+
+              pendingAction = {
+                type: actionType,
+                preview: `Found: ${result.business.name}\nAddress: ${result.business.address}\nPhone: ${result.business.phone}\n\nWould you like me to add this to your contacts and ${actionVerb} them?`,
+                parameters: {
+                  name: result.business.name,
+                  phone_number: result.business.phone_number,
+                  address: result.business.address,
+                  website: result.business.website,
+                  source: 'google_places',
+                  intent: args.intent,
+                  message: args.message,
+                },
+              };
+              showConfirmationPrompt(pendingAction);
+
+              // Send result back to voice so it speaks the finding
+              if (callId && realtimeService) {
+                const voiceResult = `I found ${result.business.name} at ${result.business.address}. Their phone number is ${result.business.phone}. Would you like me to add them to your contacts and ${actionVerb} them?`;
+                realtimeService.sendFunctionResult(callId, voiceResult);
+              }
+            }
+          } catch (err) {
+            console.error('[AdminChat] Business search error:', err);
+            addMessage('assistant', `Sorry, I couldn't search for that business. Please try again.`);
+            // Send error back to voice
+            if (callId && realtimeService) {
+              realtimeService.sendFunctionResult(callId, `Sorry, I couldn't search for that business. Please try again.`);
+            }
+          }
+
+        } else if (functionName === 'confirm_pending_action') {
+          // User said "yes" - execute the pending action
+          if (pendingAction) {
+            try {
+              const result = await confirmAction(conversationId, pendingAction);
+
+              // Remove any confirmation UI
+              const confirmEl = document.querySelector('.chat-confirmation');
+              if (confirmEl) confirmEl.remove();
+
+              addMessage('assistant', result.message || 'Done!');
+              if (callId && realtimeService) {
+                realtimeService.sendFunctionResult(callId, result.message || 'Done! Is there anything else I can help you with?');
+              }
+              pendingAction = null;
+            } catch (err) {
+              console.error('[AdminChat] Confirm action error:', err);
+              const errorMsg = `Sorry, I couldn't complete that action: ${err.message}`;
+              addMessage('assistant', errorMsg);
+              if (callId && realtimeService) {
+                realtimeService.sendFunctionResult(callId, errorMsg);
+              }
+            }
+          } else {
+            const msg = "There's no pending action to confirm.";
+            addMessage('assistant', msg);
+            if (callId && realtimeService) {
+              realtimeService.sendFunctionResult(callId, msg);
+            }
+          }
+
+        } else if (functionName === 'cancel_pending_action') {
+          // User said "no" - cancel the pending action
+          const confirmEl = document.querySelector('.chat-confirmation');
+          if (confirmEl) confirmEl.remove();
+          pendingAction = null;
+
+          const msg = "Okay, I've cancelled that. Is there anything else I can help you with?";
+          addMessage('assistant', msg);
+          if (callId && realtimeService) {
+            realtimeService.sendFunctionResult(callId, msg);
           }
         }
       };
@@ -1509,6 +1785,19 @@ export function addAdminChatStyles() {
       background: #d1d5db;
     }
 
+    .confirmation-voice-hint {
+      font-size: 12px;
+      color: #888;
+      text-align: center;
+      margin-top: 8px;
+      font-style: italic;
+    }
+
+    .voice-confirm-preview {
+      background: rgba(255, 200, 100, 0.3) !important;
+      border-left: 3px solid #f0a000;
+    }
+
     .confirmation-buttons button:disabled {
       opacity: 0.5;
       cursor: not-allowed;
@@ -1621,20 +1910,23 @@ export function addAdminChatStyles() {
     .voice-mode-icon-toggle:hover .bar-4 { animation-delay: 0.3s; }
     .voice-mode-icon-toggle:hover .bar-5 { animation-delay: 0.4s; }
 
-    /* Voice overlay */
+    /* Voice overlay - partial screen */
     .voice-overlay {
       position: fixed;
       top: 0;
       left: 0;
       right: 0;
-      bottom: 0;
+      height: 55%;
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       z-index: 10000;
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       justify-content: center;
       opacity: 0;
       transition: opacity 0.3s ease;
+      border-bottom-left-radius: 24px;
+      border-bottom-right-radius: 24px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
     }
 
     .voice-overlay.active {
@@ -1645,21 +1937,22 @@ export function addAdminChatStyles() {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 40px;
+      gap: 16px;
       position: relative;
       width: 100%;
       max-width: 600px;
-      padding: 40px;
+      padding: 20px;
+      height: 100%;
     }
 
     .voice-overlay-close {
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      width: 80px;
-      height: 80px;
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: 44px;
+      height: 44px;
       border-radius: 50%;
-      background: transparent;
+      background: rgba(255, 255, 255, 0.2);
       color: white;
       cursor: pointer;
       display: flex;
@@ -1673,17 +1966,17 @@ export function addAdminChatStyles() {
 
     .voice-overlay-close svg {
       pointer-events: none;
-      width: 28px;
-      height: 28px;
+      width: 20px;
+      height: 20px;
     }
 
     .voice-overlay-close:hover {
-      background: rgba(255, 255, 255, 0.3);
+      background: rgba(255, 255, 255, 0.4);
       transform: scale(1.05);
     }
 
     .voice-overlay-close:active {
-      background: rgba(255, 255, 255, 0.4);
+      background: rgba(255, 255, 255, 0.5);
       transform: scale(0.95);
     }
 
@@ -1692,13 +1985,53 @@ export function addAdminChatStyles() {
       display: flex;
       justify-content: center;
       align-items: center;
-      min-height: 400px;
+      min-height: 150px;
       position: relative;
+      flex-shrink: 0;
     }
 
     #voice-waveform-canvas {
-      max-width: 100%;
-      height: auto;
+      max-width: 200px;
+      height: 150px;
+    }
+
+    .voice-transcript-area {
+      flex: 1;
+      width: 100%;
+      overflow-y: auto;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 12px;
+      max-height: calc(100% - 180px);
+    }
+
+    .voice-transcript-content {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .voice-transcript-msg {
+      padding: 8px 12px;
+      border-radius: 12px;
+      font-size: 14px;
+      line-height: 1.4;
+      max-width: 85%;
+      word-wrap: break-word;
+    }
+
+    .voice-transcript-msg.user {
+      background: rgba(255, 255, 255, 0.9);
+      color: #333;
+      align-self: flex-end;
+      border-bottom-right-radius: 4px;
+    }
+
+    .voice-transcript-msg.assistant {
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+      align-self: flex-start;
+      border-bottom-left-radius: 4px;
     }
 
     .voice-connecting {
