@@ -94,7 +94,11 @@ const sessionResult = await page.evaluate(async ({ email, otp }) => {
 ### Environment Variables
 - **SUPABASE_SERVICE_ROLE_KEY** must be in `.env` for API calls
 - **NEVER reset database** without explicit user request (`npx supabase db reset` is destructive)
-- **For schema changes**: `npx supabase db push`
+
+### Migrations
+- **Run migrations via direct SQL**, not `npx supabase db push` (migration tracking conflicts with old numbered migrations)
+- Execute SQL directly via Supabase Dashboard SQL Editor or programmatically via service role client
+- Migration files still go in `supabase/migrations/` for version control
 
 ## SignalWire API
 
