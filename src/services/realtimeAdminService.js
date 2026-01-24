@@ -414,6 +414,19 @@ Be warm, conversational, and helpful. Never expose vendor names like "OpenAI" or
       case 'session.created':
         console.log('[RealtimeAdmin] Session created', message.session);
         console.log('[RealtimeAdmin] Default output modalities:', message.session?.output_modalities);
+        // Trigger agent to speak first with a greeting
+        this._send({
+          type: 'conversation.item.create',
+          item: {
+            type: 'message',
+            role: 'user',
+            content: [{
+              type: 'input_text',
+              text: '[System: Voice mode just connected. Greet the user briefly and ask how you can help them today. Keep it short and friendly, like "Hey! How can I help you?"]',
+            }],
+          },
+        });
+        this._send({ type: 'response.create' });
         break;
 
       case 'session.updated':
