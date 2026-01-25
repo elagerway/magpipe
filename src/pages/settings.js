@@ -7,6 +7,7 @@ import { getCurrentUser, signOut, supabase } from '../lib/supabase.js';
 import { renderBottomNav } from '../components/BottomNav.js';
 import { createAccessCodeSettings, addAccessCodeSettingsStyles } from '../components/AccessCodeSettings.js';
 import { createKnowledgeSourceManager, addKnowledgeSourceManagerStyles } from '../components/KnowledgeSourceManager.js';
+import { createIntegrationSettings, addIntegrationSettingsStyles } from '../components/IntegrationSettings.js';
 
 // ElevenLabs Voices - subset for display purposes
 const ELEVENLABS_VOICES = [
@@ -49,6 +50,7 @@ export default class SettingsPage {
   constructor() {
     this.accessCodeSettings = null;
     this.knowledgeManager = null;
+    this.integrationSettings = null;
     this.cachedData = null;
     this.lastFetchTime = 0;
   }
@@ -64,6 +66,7 @@ export default class SettingsPage {
     // Add component styles
     addAccessCodeSettingsStyles();
     addKnowledgeSourceManagerStyles();
+    addIntegrationSettingsStyles();
 
     // Use cached data if fetched within last 30 seconds
     const now = Date.now();
@@ -73,12 +76,13 @@ export default class SettingsPage {
       ({ profile, billingInfo, config, notifPrefs, serviceNumbers } = this.cachedData);
     } else {
       // Fetch all data in parallel for speed
-      const [profileResult, billingResult, configResult, notifResult, numbersResult] = await Promise.all([
+      const [profileResult, billingResult, configResult, notifResult, numbersResult, calComResult] = await Promise.all([
         User.getProfile(user.id),
         supabase.from('users').select('plan, stripe_customer_id, stripe_subscription_id, stripe_subscription_status, stripe_current_period_end').eq('id', user.id).single(),
         AgentConfig.getByUserId(user.id),
         supabase.from('notification_preferences').select('*').eq('user_id', user.id).single(),
-        supabase.from('service_numbers').select('phone_number, is_active').eq('user_id', user.id).order('is_active', { ascending: false })
+        supabase.from('service_numbers').select('phone_number, is_active').eq('user_id', user.id).order('is_active', { ascending: false }),
+        supabase.from('users').select('cal_com_access_token, cal_com_user_id').eq('id', user.id).single()
       ]);
 
       profile = profileResult.profile;
@@ -86,6 +90,12 @@ export default class SettingsPage {
       config = configResult.config;
       notifPrefs = notifResult.data;
       serviceNumbers = numbersResult.data;
+
+      // Add Cal.com status to profile
+      if (calComResult.data) {
+        profile.cal_com_connected = !!calComResult.data.cal_com_access_token;
+        profile.cal_com_user_id = calComResult.data.cal_com_user_id;
+      }
 
       // Cache the data
       this.cachedData = { profile, billingInfo, config, notifPrefs, serviceNumbers };
@@ -105,9 +115,11 @@ export default class SettingsPage {
     const activeNumbers = serviceNumbers?.filter(n => n.is_active) || [];
     const inactiveNumbers = serviceNumbers?.filter(n => !n.is_active) || [];
 
-    // Check for billing success/canceled in URL
+    // Check for billing and Cal.com success/error in URL
     const urlParams = new URLSearchParams(window.location.search);
     const billingStatus = urlParams.get('billing');
+    const calConnected = urlParams.get('cal_connected');
+    const calError = urlParams.get('cal_error');
 
     const appElement = document.getElementById('app');
 
@@ -126,6 +138,16 @@ export default class SettingsPage {
         ${billingStatus === 'canceled' ? `
           <div class="alert alert-warning" style="margin-bottom: 1rem;">
             Checkout was canceled. You can upgrade anytime from the Billing section below.
+          </div>
+        ` : ''}
+        ${calConnected === 'true' ? `
+          <div class="alert alert-success" style="margin-bottom: 1rem;">
+            Cal.com connected successfully! You can now book appointments via voice commands.
+          </div>
+        ` : ''}
+        ${calError ? `
+          <div class="alert alert-error" style="margin-bottom: 1rem;">
+            Failed to connect Cal.com: ${calError.replace(/_/g, ' ')}. Please try again.
           </div>
         ` : ''}
 
@@ -314,6 +336,9 @@ export default class SettingsPage {
             <p class="text-muted">No service numbers configured</p>
           ` : ''}
         </div>
+
+        <!-- Connected Apps / Integrations -->
+        <div id="integration-settings-container" style="margin-bottom: 1rem;"></div>
 
         <!-- Quick Links -->
         <div class="card">
@@ -575,6 +600,84 @@ export default class SettingsPage {
     const knowledgeContainer = document.getElementById('knowledge-source-container');
     if (knowledgeContainer) {
       this.knowledgeManager = createKnowledgeSourceManager(knowledgeContainer);
+    }
+
+    // Initialize integration settings component (Connected Apps)
+    const integrationContainer = document.getElementById('integration-settings-container');
+    if (integrationContainer) {
+      createIntegrationSettings('integration-settings-container');
+    }
+
+    // Legacy Cal.com integration buttons (for backward compatibility - can be removed later)
+    const connectCalComBtn = document.getElementById('connect-calcom-btn');
+    const disconnectCalComBtn = document.getElementById('disconnect-calcom-btn');
+
+    if (connectCalComBtn) {
+      connectCalComBtn.addEventListener('click', async () => {
+        connectCalComBtn.disabled = true;
+        connectCalComBtn.textContent = 'Connecting...';
+
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session) throw new Error('Not authenticated');
+
+          const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cal-com-oauth-start`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || 'Failed to start OAuth');
+
+          // Redirect to Cal.com OAuth
+          window.location.href = data.url;
+        } catch (error) {
+          console.error('Cal.com connect error:', error);
+          alert('Failed to connect Cal.com. Please try again.');
+          connectCalComBtn.disabled = false;
+          connectCalComBtn.textContent = 'Connect Cal.com';
+        }
+      });
+    }
+
+    if (disconnectCalComBtn) {
+      disconnectCalComBtn.addEventListener('click', async () => {
+        if (!confirm('Are you sure you want to disconnect Cal.com? You won\'t be able to book appointments via voice until you reconnect.')) {
+          return;
+        }
+
+        disconnectCalComBtn.disabled = true;
+        disconnectCalComBtn.textContent = 'Disconnecting...';
+
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session) throw new Error('Not authenticated');
+
+          const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cal-com-disconnect`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+
+          if (!response.ok) {
+            const data = await response.json();
+            throw new Error(data.error || 'Failed to disconnect');
+          }
+
+          // Reload to show updated status
+          window.location.reload();
+        } catch (error) {
+          console.error('Cal.com disconnect error:', error);
+          alert('Failed to disconnect Cal.com. Please try again.');
+          disconnectCalComBtn.disabled = false;
+          disconnectCalComBtn.textContent = 'Disconnect';
+        }
+      });
     }
 
     const signoutBtn = document.getElementById('signout-btn');
