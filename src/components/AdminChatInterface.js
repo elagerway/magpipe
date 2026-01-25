@@ -173,6 +173,15 @@ export function createAdminChatInterface(container) {
   // Append to container
   container.appendChild(chatContainer);
 
+  // Event delegation for phone number links in messages
+  messageHistory.addEventListener('click', (e) => {
+    if (e.target.classList.contains('message-phone-link')) {
+      e.preventDefault();
+      const phoneNumber = e.target.dataset.phone;
+      window.navigateTo(`/phone?dial=${encodeURIComponent(phoneNumber)}`);
+    }
+  });
+
   // Load conversation history
   loadConversations().catch(err => {
     console.error('Failed to load conversations on mount:', err);
@@ -265,13 +274,51 @@ export function createAdminChatInterface(container) {
 
     const bubbleEl = document.createElement('div');
     bubbleEl.className = 'chat-bubble';
-    bubbleEl.textContent = content;
+
+    // Linkify phone numbers in message content
+    bubbleEl.innerHTML = linkifyPhoneNumbers(content);
 
     messageEl.appendChild(bubbleEl);
     messageHistory.appendChild(messageEl);
 
     // Auto-scroll to bottom
     scrollToBottom();
+  }
+
+  /**
+   * Convert phone numbers and addresses in text to clickable links
+   */
+  function linkifyPhoneNumbers(text) {
+    // Escape HTML to prevent XSS
+    let escaped = text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+
+    // First, linkify addresses (before phone numbers to avoid conflicts)
+    // Match addresses with street number, street name, and optional city/state/zip
+    // Examples: "123 Main St", "456 Oak Avenue, Seattle, WA 98101"
+    const addressRegex = /\b\d+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*(?:\s+(?:St|Street|Ave|Avenue|Rd|Road|Blvd|Boulevard|Dr|Drive|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway|Cir|Circle))(?:[\s,]+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)?(?:,?\s+[A-Z]{2})?\s*\d{5}(?:-\d{4})?\b/g;
+
+    escaped = escaped.replace(addressRegex, (match) => {
+      const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(match)}`;
+      return `<a href="${mapsUrl}" target="_blank" rel="noopener" class="message-address-link" style="color: inherit; text-decoration: underline; cursor: pointer;">${match}</a>`;
+    });
+
+    // Then linkify phone numbers
+    // Match phone numbers in various formats:
+    // (555) 123-4567, 555-123-4567, 5551234567, +1 555 123 4567, etc.
+    const phoneRegex = /(\+?\d{1}[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/g;
+
+    escaped = escaped.replace(phoneRegex, (match) => {
+      // Clean phone number for URL (remove spaces, dashes, parens)
+      const cleanNumber = match.replace(/[\s.\-()]/g, '');
+      return `<a href="#" class="message-phone-link" data-phone="${cleanNumber}" style="color: inherit; text-decoration: underline; cursor: pointer;">${match}</a>`;
+    });
+
+    return escaped;
   }
 
   /**
@@ -386,7 +433,7 @@ export function createAdminChatInterface(container) {
     cardEl.innerHTML = `
       <div class="business-name">${business.name}</div>
       <div class="business-details">
-        <a href="tel:${business.phone_number}" class="business-phone">
+        <a href="#" class="business-phone" data-phone="${business.phone_number}">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
           </svg>
@@ -401,6 +448,16 @@ export function createAdminChatInterface(container) {
         </a>
       </div>
     `;
+
+    // Add click handler for phone number to navigate to phone page
+    const phoneLink = cardEl.querySelector('.business-phone');
+    if (phoneLink) {
+      phoneLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        const phoneNumber = phoneLink.dataset.phone;
+        window.navigateTo(`/phone?dial=${encodeURIComponent(phoneNumber)}`);
+      });
+    }
 
     messageHistory.appendChild(cardEl);
     scrollToBottom();
@@ -635,6 +692,22 @@ export function createAdminChatInterface(container) {
       closeVoiceOverlay();
     }, true);
 
+    // Event delegation for phone number links in voice transcript
+    const transcriptArea = document.getElementById('voice-transcript-area');
+    if (transcriptArea) {
+      transcriptArea.addEventListener('click', (e) => {
+        if (e.target.classList.contains('message-phone-link')) {
+          e.preventDefault();
+          const phoneNumber = e.target.dataset.phone;
+          // Close voice overlay first, then navigate
+          closeVoiceOverlay();
+          setTimeout(() => {
+            window.navigateTo(`/phone?dial=${encodeURIComponent(phoneNumber)}`);
+          }, 300);
+        }
+      });
+    }
+
     // Animate in
     requestAnimationFrame(() => {
       overlay.classList.add('active');
@@ -838,10 +911,10 @@ export function createAdminChatInterface(container) {
             // Create element if it doesn't exist
             msg.element = document.createElement('div');
             msg.element.className = `chat-message chat-message-${msg.role}`;
-            msg.element.innerHTML = `<div class="chat-bubble">${msg.content}</div>`;
+            msg.element.innerHTML = `<div class="chat-bubble">${linkifyPhoneNumbers(msg.content)}</div>`;
           } else {
             // Update content
-            msg.element.querySelector('.chat-bubble').textContent = msg.content;
+            msg.element.querySelector('.chat-bubble').innerHTML = linkifyPhoneNumbers(msg.content);
           }
           messageHistory.appendChild(msg.element);
         });
@@ -866,14 +939,14 @@ export function createAdminChatInterface(container) {
           if (role === 'user') {
             // For user, accumulate until finalized
             const currentText = msgEl.textContent || '';
-            if (currentText && !transcript.startsWith(currentText)) {
-              msgEl.textContent = currentText + ' ' + transcript;
-            } else {
-              msgEl.textContent = transcript;
-            }
+            const newText = currentText && !transcript.startsWith(currentText)
+              ? currentText + ' ' + transcript
+              : transcript;
+            msgEl.innerHTML = linkifyPhoneNumbers(newText);
           } else {
             // For assistant, append delta
-            msgEl.textContent += transcript;
+            const newText = (msgEl.textContent || '') + transcript;
+            msgEl.innerHTML = linkifyPhoneNumbers(newText);
           }
 
           // Auto-scroll transcript area
