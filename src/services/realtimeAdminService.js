@@ -4,6 +4,7 @@
  */
 
 import { supabase } from '../lib/supabase.js';
+import * as mcpClient from './mcpClient.js';
 
 export class RealtimeAdminService {
   constructor() {
@@ -99,6 +100,17 @@ export class RealtimeAdminService {
     console.log('[RealtimeAdmin] Connected to OpenAI Realtime API');
     this.isConnected = true;
 
+    // Fetch tools from MCP server
+    let tools = [];
+    try {
+      const { tools: mcpTools, integrations } = await mcpClient.getTools();
+      tools = mcpClient.toRealtimeFormat(mcpTools);
+      console.log('[RealtimeAdmin] Loaded', tools.length, 'tools from MCP server');
+      console.log('[RealtimeAdmin] Connected integrations:', integrations.connected);
+    } catch (error) {
+      console.error('[RealtimeAdmin] Failed to fetch MCP tools, using empty tools array:', error);
+    }
+
     // Configure session (GA API format)
     this._send({
       type: 'session.update',
@@ -115,6 +127,8 @@ You can:
 - List or search contacts (use list_contacts function)
 - Add new contacts (use add_contact function)
 - Search for businesses online and add them to contacts (use search_business function)
+- Check calendar availability (use check_calendar_availability function)
+- Book calendar appointments (use book_calendar_appointment function)
 
 CRITICAL INSTRUCTIONS:
 1. When you call a function, ALWAYS provide a natural conversational response explaining what you've prepared
@@ -138,10 +152,18 @@ LOCATION FOR BUSINESS SEARCH:
 - Example with remembered city: System asks "Would you like me to search near Toronto?" → user says "yes" → call search_business with query="Pizza Hut" and location="Toronto"
 
 VOICE CONFIRMATIONS:
-- After presenting an action (call, text, add contact, etc.), wait for the user to confirm
+- After presenting an action (call, text, add contact, booking, etc.), wait for the user to confirm
 - When user says "yes", "confirm", "do it", "go ahead", "sure", "okay" → call confirm_pending_action
 - When user says "no", "cancel", "nevermind", "stop" → call cancel_pending_action
 - Always confirm actions before executing them - never execute without user confirmation
+
+CALENDAR BOOKING:
+- When user wants to schedule/book something, first check availability using check_calendar_availability
+- Present available times and let user choose
+- When user confirms a time, use book_calendar_appointment to prepare the booking
+- Include relevant details: who the meeting is with, purpose, and any contact info
+- Example: "Book a call with Pizza Hut tomorrow at 2pm" → check availability → confirm time → book with title "Call with Pizza Hut"
+- If the user's calendar is not connected, inform them they need to connect Cal.com in Settings first
 
 Be warm, conversational, and helpful. Never expose vendor names like "OpenAI" or "Retell" - use "Pat AI assistant" instead.`,
         audio: {
@@ -168,160 +190,7 @@ Be warm, conversational, and helpful. Never expose vendor names like "OpenAI" or
             voice: 'shimmer', // More natural, warm voice
           },
         },
-        tools: [
-          {
-            type: 'function',
-            name: 'update_system_prompt',
-            description: 'Update the system prompt for the call/SMS handling agent',
-            parameters: {
-              type: 'object',
-              properties: {
-                new_prompt: {
-                  type: 'string',
-                  description: 'The updated system prompt text',
-                },
-                modification_type: {
-                  type: 'string',
-                  enum: ['append', 'replace', 'modify'],
-                  description: 'How to apply the change',
-                },
-              },
-              required: ['new_prompt', 'modification_type'],
-            },
-          },
-          {
-            type: 'function',
-            name: 'add_knowledge_source',
-            description: 'Add a URL to the knowledge base',
-            parameters: {
-              type: 'object',
-              properties: {
-                url: {
-                  type: 'string',
-                  description: 'The URL to add as a knowledge source',
-                },
-              },
-              required: ['url'],
-            },
-          },
-          {
-            type: 'function',
-            name: 'call_contact',
-            description: 'Initiate a phone call to a contact. Searches contacts by name or phone number.',
-            parameters: {
-              type: 'object',
-              properties: {
-                contact_identifier: {
-                  type: 'string',
-                  description: 'Contact name or phone number to call',
-                },
-              },
-              required: ['contact_identifier'],
-            },
-          },
-          {
-            type: 'function',
-            name: 'send_sms',
-            description: 'Send an SMS text message to a contact',
-            parameters: {
-              type: 'object',
-              properties: {
-                recipient: {
-                  type: 'string',
-                  description: 'Contact name or phone number',
-                },
-                message: {
-                  type: 'string',
-                  description: 'The message content to send',
-                },
-              },
-              required: ['recipient', 'message'],
-            },
-          },
-          {
-            type: 'function',
-            name: 'list_contacts',
-            description: 'Search or list user\'s contacts',
-            parameters: {
-              type: 'object',
-              properties: {
-                search_term: {
-                  type: 'string',
-                  description: 'Optional: filter contacts by name or phone',
-                },
-              },
-            },
-          },
-          {
-            type: 'function',
-            name: 'add_contact',
-            description: 'Add a new contact to the user\'s contact list',
-            parameters: {
-              type: 'object',
-              properties: {
-                name: {
-                  type: 'string',
-                  description: 'Contact name',
-                },
-                phone_number: {
-                  type: 'string',
-                  description: 'Phone number in any format',
-                },
-                notes: {
-                  type: 'string',
-                  description: 'Optional notes about the contact',
-                },
-              },
-              required: ['name', 'phone_number'],
-            },
-          },
-          {
-            type: 'function',
-            name: 'search_business',
-            description: 'Search for a business online using Google Places API. Use this when the user wants to call or text a business that is not in their contacts. Returns business name, address, and phone number.',
-            parameters: {
-              type: 'object',
-              properties: {
-                query: {
-                  type: 'string',
-                  description: 'Business name to search for (e.g., "Pizza Hut", "Dr. Smith dentist")',
-                },
-                location: {
-                  type: 'string',
-                  description: 'Optional location hint (e.g., "Vancouver", "near me")',
-                },
-                intent: {
-                  type: 'string',
-                  enum: ['call', 'text'],
-                  description: 'What the user wants to do - call or text the business',
-                },
-                message: {
-                  type: 'string',
-                  description: 'If intent is "text", the message to send to the business',
-                },
-              },
-              required: ['query', 'intent'],
-            },
-          },
-          {
-            type: 'function',
-            name: 'confirm_pending_action',
-            description: 'Execute the pending action that was prepared. Call this when user says "yes", "confirm", "do it", "go ahead", or similar confirmation.',
-            parameters: {
-              type: 'object',
-              properties: {},
-            },
-          },
-          {
-            type: 'function',
-            name: 'cancel_pending_action',
-            description: 'Cancel the pending action. Call this when user says "no", "cancel", "nevermind", or similar.',
-            parameters: {
-              type: 'object',
-              properties: {},
-            },
-          },
-        ],
+        tools,
       },
     });
 

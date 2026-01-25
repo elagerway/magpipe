@@ -1405,6 +1405,207 @@ export function createAdminChatInterface(container) {
           if (callId && realtimeService) {
             realtimeService.sendFunctionResult(callId, msg);
           }
+
+        } else if (functionName === 'check_calendar_availability') {
+          // Check calendar availability via Edge Function
+          try {
+            const { data: { session } } = await supabase.auth.getSession();
+
+            // Parse the date - handle natural language
+            let startDate = new Date();
+            let endDate = new Date();
+            const dateStr = args.date?.toLowerCase() || '';
+
+            if (dateStr.includes('tomorrow')) {
+              startDate.setDate(startDate.getDate() + 1);
+              startDate.setHours(8, 0, 0, 0);
+              endDate.setDate(endDate.getDate() + 1);
+              endDate.setHours(20, 0, 0, 0);
+            } else if (dateStr.includes('next week')) {
+              startDate.setDate(startDate.getDate() + 7);
+              startDate.setHours(8, 0, 0, 0);
+              endDate.setDate(endDate.getDate() + 14);
+              endDate.setHours(20, 0, 0, 0);
+            } else if (dateStr.includes('monday') || dateStr.includes('tuesday') || dateStr.includes('wednesday') || dateStr.includes('thursday') || dateStr.includes('friday') || dateStr.includes('saturday') || dateStr.includes('sunday')) {
+              const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+              const targetDay = days.findIndex(d => dateStr.includes(d));
+              const currentDay = startDate.getDay();
+              let daysUntil = targetDay - currentDay;
+              if (daysUntil <= 0) daysUntil += 7;
+              startDate.setDate(startDate.getDate() + daysUntil);
+              startDate.setHours(8, 0, 0, 0);
+              endDate.setDate(startDate.getDate());
+              endDate.setHours(20, 0, 0, 0);
+            } else {
+              // Try to parse as a date
+              const parsed = new Date(dateStr);
+              if (!isNaN(parsed.getTime())) {
+                startDate = parsed;
+                startDate.setHours(8, 0, 0, 0);
+                endDate = new Date(parsed);
+                endDate.setHours(20, 0, 0, 0);
+              } else {
+                // Default to today
+                startDate.setHours(startDate.getHours() + 1, 0, 0, 0);
+                endDate.setHours(20, 0, 0, 0);
+              }
+            }
+
+            const response = await fetch(
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cal-com-get-slots`,
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${session?.access_token}`,
+                  'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+                },
+                body: JSON.stringify({
+                  start: startDate.toISOString(),
+                  end: endDate.toISOString(),
+                  duration: args.duration || 30,
+                }),
+              }
+            );
+
+            const result = await response.json();
+
+            if (result.code === 'NOT_CONNECTED') {
+              const msg = "Your calendar isn't connected yet. To book appointments, please connect Cal.com in the Settings page.";
+              addMessage('assistant', msg);
+              if (callId && realtimeService) {
+                realtimeService.sendFunctionResult(callId, msg);
+              }
+            } else if (result.error) {
+              addMessage('assistant', `Sorry, I couldn't check your calendar: ${result.error}`);
+              if (callId && realtimeService) {
+                realtimeService.sendFunctionResult(callId, `Sorry, I couldn't check your calendar: ${result.error}`);
+              }
+            } else if (result.slots && result.slots.length > 0) {
+              // Format available slots for display
+              const formattedSlots = result.slots.slice(0, 5).map((slot) => {
+                const time = new Date(slot.start);
+                return time.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+              });
+
+              const dateFormatted = startDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+              const slotList = formattedSlots.join(', ');
+              const msg = `On ${dateFormatted}, you have availability at: ${slotList}${result.slots.length > 5 ? `, and ${result.slots.length - 5} more times` : ''}.`;
+
+              addMessage('assistant', msg);
+              if (callId && realtimeService) {
+                realtimeService.sendFunctionResult(callId, msg + ' Which time works for you?');
+              }
+            } else {
+              const dateFormatted = startDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+              const msg = `You don't have any available slots on ${dateFormatted}. Would you like me to check a different day?`;
+              addMessage('assistant', msg);
+              if (callId && realtimeService) {
+                realtimeService.sendFunctionResult(callId, msg);
+              }
+            }
+          } catch (err) {
+            console.error('[AdminChat] Calendar availability error:', err);
+            const msg = `Sorry, I couldn't check your calendar. Please try again.`;
+            addMessage('assistant', msg);
+            if (callId && realtimeService) {
+              realtimeService.sendFunctionResult(callId, msg);
+            }
+          }
+
+        } else if (functionName === 'book_calendar_appointment') {
+          // Prepare calendar booking - requires confirmation
+          try {
+            const { data: { session } } = await supabase.auth.getSession();
+
+            // Check if Cal.com is connected first
+            const { data: userData } = await supabase
+              .from('users')
+              .select('cal_com_access_token')
+              .eq('id', user?.id)
+              .single();
+
+            if (!userData?.cal_com_access_token) {
+              const msg = "Your calendar isn't connected yet. To book appointments, please connect Cal.com in the Settings page.";
+              addMessage('assistant', msg);
+              if (callId && realtimeService) {
+                realtimeService.sendFunctionResult(callId, msg);
+              }
+              return;
+            }
+
+            // Parse start time - handle natural language
+            let startTime = new Date();
+            const timeStr = args.start_time?.toLowerCase() || '';
+
+            // Extract time from string like "tomorrow at 2pm" or "2:30pm"
+            const timeMatch = timeStr.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+            let hour = timeMatch ? parseInt(timeMatch[1]) : 14; // Default 2pm
+            const minute = timeMatch && timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+            const isPM = timeMatch && timeMatch[3]?.toLowerCase() === 'pm';
+            const isAM = timeMatch && timeMatch[3]?.toLowerCase() === 'am';
+
+            if (isPM && hour < 12) hour += 12;
+            if (isAM && hour === 12) hour = 0;
+
+            if (timeStr.includes('tomorrow')) {
+              startTime.setDate(startTime.getDate() + 1);
+            } else if (timeStr.includes('next week')) {
+              startTime.setDate(startTime.getDate() + 7);
+            } else if (timeStr.match(/monday|tuesday|wednesday|thursday|friday|saturday|sunday/i)) {
+              const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+              const targetDay = days.findIndex(d => timeStr.includes(d));
+              const currentDay = startTime.getDay();
+              let daysUntil = targetDay - currentDay;
+              if (daysUntil <= 0) daysUntil += 7;
+              startTime.setDate(startTime.getDate() + daysUntil);
+            }
+
+            startTime.setHours(hour, minute, 0, 0);
+
+            const duration = args.duration || 30;
+            const endTime = new Date(startTime.getTime() + duration * 60000);
+
+            // Format for display
+            const dateFormatted = startTime.toLocaleDateString('en-US', {
+              weekday: 'long',
+              month: 'long',
+              day: 'numeric'
+            });
+            const timeFormatted = startTime.toLocaleTimeString('en-US', {
+              hour: 'numeric',
+              minute: '2-digit'
+            });
+
+            pendingAction = {
+              type: 'book_calendar_appointment',
+              preview: `Book "${args.title}" on ${dateFormatted} at ${timeFormatted} (${duration} min)\nWith: ${args.attendee_name || 'TBD'}${args.location ? `\nLocation: ${args.location}` : ''}${args.purpose ? `\nPurpose: ${args.purpose}` : ''}`,
+              parameters: {
+                title: args.title,
+                start: startTime.toISOString(),
+                duration: duration,
+                attendee_name: args.attendee_name || args.title?.replace(/^(call|meeting|appointment)\s+(with\s+)?/i, '') || 'Attendee',
+                attendee_email: args.attendee_email,
+                attendee_phone: args.attendee_phone,
+                location: args.location,
+                notes: args.purpose,
+              },
+            };
+
+            showConfirmationPrompt(pendingAction);
+
+            const confirmMsg = `I'll book "${args.title}" on ${dateFormatted} at ${timeFormatted}. Does that work for you?`;
+            if (callId && realtimeService) {
+              realtimeService.sendFunctionResult(callId, confirmMsg);
+            }
+          } catch (err) {
+            console.error('[AdminChat] Calendar booking error:', err);
+            const msg = `Sorry, I couldn't prepare the booking. Please try again.`;
+            addMessage('assistant', msg);
+            if (callId && realtimeService) {
+              realtimeService.sendFunctionResult(callId, msg);
+            }
+          }
         }
       };
 

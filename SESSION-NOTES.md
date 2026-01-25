@@ -1,11 +1,301 @@
 # Session Notes
 
-**Last Updated:** 2025-11-04
+**Last Updated:** 2026-01-25
 **Active Branch:** Pat-AI
 
 ---
 
-## Current Session (2025-11-05)
+## Current Session (2026-01-25)
+
+### ✅ COMPLETED: MCP Integration Architecture (Phases 1-4)
+
+**Goal:** Build an MCP-inspired tool server that centralizes all AI agent tools (built-in + third-party integrations) with a unified interface.
+
+**Architecture:**
+```
+┌─────────────────┐     ┌─────────────────┐
+│  AdminChat UI   │     │   Settings UI   │
+│ (Text + Voice)  │     │ (Integrations)  │
+└────────┬────────┘     └────────┬────────┘
+         │                       │
+         ▼                       ▼
+┌─────────────────────────────────────────┐
+│           MCP Server (Edge Fn)          │
+│  - mcp-tools (returns available tools)  │
+│  - mcp-execute (executes tools)         │
+│  - Tool Registry + Token Management     │
+└─────────────────────────────────────────┘
+         │                       │
+         ▼                       ▼
+┌─────────────────┐     ┌─────────────────┐
+│  Built-in Tools │     │ External APIs   │
+│  (14 tools)     │     │ (Slack, etc.)   │
+└─────────────────┘     └─────────────────┘
+```
+
+---
+
+### Phase 1: Foundation ✅
+
+**Database Schema Created:**
+- `integration_providers` - Catalog of available integrations
+- `user_integrations` - User's connected integrations with OAuth tokens
+- `integration_tool_logs` - Audit log of all tool executions
+
+**Migration:** `supabase/migrations/20260125000000_mcp_integration_schema.sql`
+
+**Edge Functions Created:**
+- `supabase/functions/mcp-tools/index.ts` - Returns available tools in OpenAI format
+- `supabase/functions/mcp-execute/index.ts` - Executes tools with preview/confirm flow
+
+**Frontend Service:**
+- `src/services/mcpClient.js` - Client for MCP server interaction
+
+**Modified:**
+- `src/services/realtimeAdminService.js` - Now fetches tools dynamically from MCP server
+
+**Built-in Tools (14):**
+1. update_system_prompt
+2. add_knowledge_source
+3. preview_changes
+4. call_contact
+5. send_sms
+6. list_contacts
+7. add_contact
+8. schedule_sms
+9. search_business
+10. confirm_pending_action
+11. cancel_pending_action
+12. list_available_integrations
+13. start_integration_connection
+14. check_integration_status
+
+---
+
+### Phase 2: Settings UI ✅
+
+**Components Created:**
+- `src/components/IntegrationCard.js` - Individual integration card with connect/disconnect
+- `src/components/IntegrationSettings.js` - "Connected Apps" section
+
+**Edge Functions Created:**
+- `supabase/functions/integration-oauth-start/index.ts` - Generic OAuth initiation
+- `supabase/functions/integration-oauth-callback/index.ts` - Generic OAuth callback
+
+**Modified:**
+- `src/pages/settings.js` - Added "Connected Apps" section
+
+---
+
+### Phase 3: Agent-Initiated Connections ✅
+
+**New Tools Added:**
+- `list_available_integrations` - Shows what can be connected
+- `start_integration_connection` - Returns OAuth URL for user to click
+- `check_integration_status` - Verifies connection status
+
+**Test Results:**
+```json
+// list_available_integrations
+{
+  "success": true,
+  "message": "You don't have any integrations connected yet.\n\nAvailable to connect: Cal.com, Slack.",
+  "result": { "connected": [], "available": ["cal_com", "slack"] }
+}
+
+// start_integration_connection (Cal.com)
+{
+  "success": true,
+  "message": "To connect Cal.com, please tap the link below...",
+  "result": { "oauth_url": "https://app.cal.com/auth/oauth2/authorize?..." }
+}
+```
+
+---
+
+### Phase 4: Slack Integration ✅
+
+**Slack Tools Implemented:**
+- `slack_send_message` - Posts messages to channels (resolves #channel-name to ID)
+- `slack_list_channels` - Lists public/private channels
+
+**Features:**
+- Channel name to ID resolution (e.g., #general → C123ABC)
+- Token refresh when within 5 minutes of expiry
+- Error handling for common Slack API errors (channel_not_found, not_in_channel)
+
+**Database Configuration:**
+```json
+// integration_providers.tools_schema for slack
+[
+  {"name": "slack_send_message", "parameters": {...}},
+  {"name": "slack_list_channels", "parameters": {...}}
+]
+```
+
+**Test Results (without Slack credentials configured):**
+```json
+// slack_send_message without connection
+{
+  "success": false,
+  "message": "slack is not connected. Would you like me to help you connect it? Just say \"connect slack\"."
+}
+
+// start_integration_connection for Slack (no credentials)
+{
+  "success": false,
+  "message": "Slack integration not configured"
+}
+```
+
+---
+
+### ⚠️ Pending: Slack OAuth Credentials
+
+**To complete Slack integration, configure:**
+```bash
+npx supabase secrets set \
+  SLACK_CLIENT_ID=your_client_id \
+  SLACK_CLIENT_SECRET=your_client_secret \
+  --project-ref mtxbiyilvgwhbdptysex
+```
+
+**Slack App Setup:**
+1. Create app at https://api.slack.com/apps
+2. OAuth scopes: `chat:write`, `channels:read`
+3. Redirect URL: `https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/integration-oauth-callback`
+
+---
+
+### Phase 5: Expand Integrations (Not Started)
+
+Future integrations to add:
+- Microsoft Teams
+- HubSpot CRM
+- Gmail/Outlook
+
+---
+
+### Files Created/Modified
+
+| File | Status |
+|------|--------|
+| `supabase/migrations/20260125000000_mcp_integration_schema.sql` | Created |
+| `supabase/functions/mcp-tools/index.ts` | Created |
+| `supabase/functions/mcp-execute/index.ts` | Created |
+| `supabase/functions/integration-oauth-start/index.ts` | Created |
+| `supabase/functions/integration-oauth-callback/index.ts` | Created |
+| `src/services/mcpClient.js` | Created |
+| `src/components/IntegrationCard.js` | Created |
+| `src/components/IntegrationSettings.js` | Created |
+| `src/services/realtimeAdminService.js` | Modified |
+| `src/pages/settings.js` | Modified |
+
+**Plan File:** `/Users/erik/.claude/plans/nifty-watching-church.md`
+
+---
+
+### ⚠️ Uncommitted Files (MCP Implementation)
+
+**New Files (untracked):**
+```
+src/components/IntegrationCard.js
+src/components/IntegrationSettings.js
+src/services/mcpClient.js
+supabase/functions/mcp-tools/index.ts
+supabase/functions/mcp-execute/index.ts
+supabase/functions/integration-oauth-start/index.ts
+supabase/functions/integration-oauth-callback/index.ts
+supabase/migrations/20260125000000_mcp_integration_schema.sql
+```
+
+**Modified Files:**
+```
+src/services/realtimeAdminService.js  (imports mcpClient, fetches tools dynamically)
+src/pages/settings.js                  (added IntegrationSettings component)
+```
+
+**Edge Functions Deployed:**
+- ✅ mcp-tools (deployed with JWT)
+- ✅ mcp-execute (deployed with JWT)
+- ✅ integration-oauth-start (deployed with JWT)
+- ✅ integration-oauth-callback (deployed without JWT - webhook)
+
+**Database Migration Applied:**
+- ✅ 20260125000000_mcp_integration_schema.sql (via Supabase Management API)
+
+---
+
+## Previous Session (2026-01-19)
+
+### ✅ COMPLETED: Outbound Call Recording via Bridged Conference
+
+**Problem:**
+- Outbound calls needed recording capability
+- Previous SIP Call Handler approach was too complex
+
+**Solution:**
+SignalWire bridged conference approach - SignalWire calls LiveKit SIP, agent joins, then bridges to PSTN destination with recording enabled.
+
+**Test Results (verified 2026-01-19):**
+- ✅ Call completed successfully (45 seconds duration)
+- ✅ Status callback updates working (`completed`)
+- ✅ Disposition tracking (`outbound_completed`)
+- ✅ Direction correctly set to `outbound`
+- ✅ Recording URL captured via LiveKit egress
+- ✅ Recording accessible (HTTP 200)
+- ✅ Vendor call ID tracked
+
+**Test Call:**
+- Call Record ID: `243a8b57-9e28-4c57-ab7c-b511172d38eb`
+- Call SID: `281a8ca5-ea3c-458b-9238-e173ccbe7e89`
+- Recording: `https://pat-livekit-recordings.s3.amazonaws.com/recordings/call-*16042566768_zzRnGpBGRmo3.mp4`
+
+**Edge Functions Deployed:**
+- `initiate-bridged-call` - Creates call record, initiates SignalWire call to LiveKit SIP
+- `outbound-call-swml` (no JWT) - Returns CXML that bridges to PSTN with recording
+- `outbound-call-status` (no JWT) - Updates call status from SignalWire callbacks
+
+**Architecture:**
+```
+UI Click → initiate-bridged-call → SignalWire REST API
+                                       ↓
+                              [Dial LiveKit SIP URI]
+                                       ↓
+                              Agent joins room
+                                       ↓
+                              outbound-call-swml returns CXML
+                                       ↓
+                              [Bridge to PSTN destination]
+                                       ↓
+                              Recording via LiveKit egress
+```
+
+**Status:** ✅ Feature complete and verified
+
+---
+
+### ⚠️ INCIDENT: Render Auto-Deploy Disabled (2026-01-22)
+
+**Discovery:**
+While testing outbound call direction detection, discovered Render auto-deploy was disabled. Last deployment was December 30, 2025 - nearly a month of code changes were not deployed.
+
+**Impact:**
+- Agent code changes (including direction detection logging) were not reaching production
+- Any fixes or improvements to agent.py since Dec 30 were not live
+
+**Root Cause:** Unknown. Auto-deploy had been enabled for months. No known action disabled it.
+
+**Resolution:** User re-enabled auto-deploy manually in Render dashboard.
+
+**Prevention:** Added to CLAUDE.md:
+- Never modify Render settings without permission
+- Verify deployment after pushing to Pat-AI branch
+- Alert user if auto-deploy is found disabled
+
+---
+
+## Previous Session (2025-11-05)
 
 ### ✅ COMPLETED: Fixed Critical Bug - Inbound Calls Not Answering
 
@@ -71,9 +361,9 @@ Inbound calls stopped working - LiveKit agent was crashing immediately on entryp
 
 ## Previous Session (2025-11-04)
 
-### 🔄 IN PROGRESS: Outbound Call Recording via Inbound Bridge
+### ✅ COMPLETED: Outbound Call Recording via Inbound Bridge
 
-**Active Work:** Implementing outbound call recording using CXML-based inbound call bridging approach
+**Active Work:** Implemented outbound call recording using CXML-based bridging approach
 
 **Problem:**
 - Previous approach (SIP Call Handlers with direct SIP) taking too long, overly complex
