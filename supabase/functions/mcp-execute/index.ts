@@ -993,6 +993,17 @@ async function handleSlackSendMessage(accessToken: string, args: any): Promise<M
   }
 
   try {
+    // First, try to join the channel (auto-join for public channels)
+    await fetch('https://slack.com/api/conversations.join', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: `channel=${encodeURIComponent(channelId)}`,
+    });
+    // Ignore join result - it's ok if already joined or if it's a DM
+
     const response = await fetch('https://slack.com/api/chat.postMessage', {
       method: 'POST',
       headers: {
@@ -1018,7 +1029,7 @@ async function handleSlackSendMessage(accessToken: string, args: any): Promise<M
       if (result.error === 'not_in_channel') {
         return {
           success: false,
-          message: `I'm not a member of that channel. Please add the Pat app to the channel first.`,
+          message: `I couldn't join that channel. It may be private - ask a channel admin to invite the Pat app.`,
         };
       }
 
