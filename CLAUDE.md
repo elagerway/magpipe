@@ -96,9 +96,17 @@ const sessionResult = await page.evaluate(async ({ email, otp }) => {
 - **NEVER reset database** without explicit user request (`npx supabase db reset` is destructive)
 
 ### Migrations
-- **Run migrations via direct SQL**, not `npx supabase db push` (migration tracking conflicts with old numbered migrations)
-- Execute SQL directly via Supabase Dashboard SQL Editor or programmatically via service role client
+- **Run migrations via Supabase Management API**:
+  ```bash
+  export SUPABASE_ACCESS_TOKEN=sbp_17bff30d68c60e941858872853988d63169b2649
+  curl -s -X POST "https://api.supabase.com/v1/projects/mtxbiyilvgwhbdptysex/database/query" \
+    -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"query": "YOUR SQL HERE"}'
+  ```
+- Do NOT use `npx supabase db push` (migration tracking conflicts with old numbered migrations)
 - Migration files still go in `supabase/migrations/` for version control
+- An `exec_sql(query)` function also exists for programmatic SQL execution via service role
 
 ## SignalWire API
 
