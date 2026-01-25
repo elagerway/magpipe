@@ -298,9 +298,10 @@ export function createAdminChatInterface(container) {
       .replace(/'/g, '&#039;');
 
     // First, linkify addresses (before phone numbers to avoid conflicts)
-    // Match addresses with street number, street name, and optional city/state/zip
-    // Examples: "123 Main St", "456 Oak Avenue, Seattle, WA 98101"
-    const addressRegex = /\b\d+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*(?:\s+(?:St|Street|Ave|Avenue|Rd|Road|Blvd|Boulevard|Dr|Drive|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway|Cir|Circle))(?:[\s,]+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)?(?:,?\s+[A-Z]{2})?\s*\d{5}(?:-\d{4})?\b/g;
+    // Match addresses with street number, street name, and street suffix
+    // Examples: "123 Main St", "456 Oak Avenue", "789 West Georgia Street"
+    // Made flexible - doesn't require zip code
+    const addressRegex = /\b\d+\s+(?:[NSEW]\.?\s+)?[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+(?:St\.?|Street|Ave\.?|Avenue|Rd\.?|Road|Blvd\.?|Boulevard|Dr\.?|Drive|Ln\.?|Lane|Way|Ct\.?|Court|Pl\.?|Place|Pkwy\.?|Parkway|Cir\.?|Circle|Hwy\.?|Highway)(?:[\s,]+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)?(?:,?\s+[A-Z]{2})?(?:\s+[A-Z]\d[A-Z]\s*\d[A-Z]\d|\s+\d{5}(?:-\d{4})?)?/g;
 
     escaped = escaped.replace(addressRegex, (match) => {
       const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(match)}`;
