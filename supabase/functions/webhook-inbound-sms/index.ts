@@ -135,6 +135,10 @@ serve(async (req) => {
         },
         body: JSON.stringify(notificationData)
       }).catch(err => console.error('Failed to send SMS notification:', err))
+
+      // Send Slack notification (fire and forget)
+      sendSlackNotification(serviceNumber.user_id, from, body, supabase)
+        .catch(err => console.error('Failed to send Slack notification:', err))
     }
 
     // Respond immediately to SignalWire to avoid timeout
@@ -210,6 +214,27 @@ async function processAndReplySMS(
       return
     }
 
+    // Get recent conversation history for context
+    const { data: recentMessages } = await supabase
+      .from('sms_messages')
+      .select('content, direction, sent_at')
+      .eq('user_id', userId)
+      .or(`sender_number.eq.${from},recipient_number.eq.${from}`)
+      .order('sent_at', { ascending: false })
+      .limit(6) // Get last 6 messages (including the one just received)
+
+    // Build conversation history (exclude the current message, reverse to chronological order)
+    const conversationHistory = recentMessages
+      ?.filter(m => m.content !== body) // Exclude current message
+      ?.reverse()
+      ?.map(m => ({
+        role: m.direction === 'outbound' ? 'assistant' : 'user',
+        content: m.content
+      })) || []
+
+    const hasExistingConversation = conversationHistory.length > 0
+    console.log('Conversation history found:', hasExistingConversation, 'messages:', conversationHistory.length)
+
     // For SMS, use OpenAI to generate intelligent responses
     // Use SMS-specific prompt or fall back to system_prompt adapted for SMS
 
@@ -224,7 +249,8 @@ IMPORTANT CONTEXT:
 - NEVER mention: "calling", "call back", "speak", "talk", "phone call", "voice"
 - ALWAYS use text-appropriate language: "text", "message", "reply", "send"
 - If they ask to talk/call, say: "I can help via text, or you can call ${to} to speak with someone"
-- This is asynchronous messaging - they may not respond immediately`
+- This is asynchronous messaging - they may not respond immediately
+${hasExistingConversation ? '- This is an ONGOING conversation - respond naturally to continue it, do NOT give a welcome/intro message' : ''}`
 
     const smsPrompt = agentConfig.system_prompt
       ? `${agentConfig.system_prompt}${SMS_CONTEXT_SUFFIX}`
@@ -232,9 +258,16 @@ IMPORTANT CONTEXT:
 
     const systemPrompt = smsPrompt
 
-    console.log('SMS system prompt applied with context suffix')
+    console.log('SMS system prompt applied with context suffix, hasExistingConversation:', hasExistingConversation)
 
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY')!
+
+    // Build messages array with conversation history
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      ...conversationHistory,
+      { role: 'user', content: body }
+    ]
 
     const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -245,16 +278,7 @@ IMPORTANT CONTEXT:
       body: JSON.stringify({
         model: 'gpt-4o-mini',
         max_tokens: 150,
-        messages: [
-          {
-            role: 'system',
-            content: systemPrompt,
-          },
-          {
-            role: 'user',
-            content: body,
-          },
-        ],
+        messages: messages,
       }),
     })
 
@@ -457,5 +481,138 @@ async function autoEnrichContact(
 
   } catch (error) {
     console.error('Error in autoEnrichContact:', error)
+  }
+}
+
+/**
+ * Send Slack notification for incoming SMS
+ */
+async function sendSlackNotification(
+  userId: string,
+  senderPhone: string,
+  messageContent: string,
+  supabase: any
+) {
+  try {
+    // Check if user has Slack connected
+    const { data: integration, error: integrationError } = await supabase
+      .from('user_integrations')
+      .select('access_token, config')
+      .eq('user_id', userId)
+      .eq('status', 'connected')
+      .eq('provider_id', (
+        await supabase
+          .from('integration_providers')
+          .select('id')
+          .eq('slug', 'slack')
+          .single()
+      ).data?.id)
+      .single()
+
+    if (integrationError || !integration?.access_token) {
+      // User doesn't have Slack connected - silently skip
+      return
+    }
+
+    // Get contact name if available
+    const { data: contact } = await supabase
+      .from('contacts')
+      .select('name')
+      .eq('user_id', userId)
+      .eq('phone_number', senderPhone)
+      .single()
+
+    const senderName = contact?.name || senderPhone
+
+    // Get notification channel from config, default to DM
+    const notificationChannel = integration.config?.notification_channel
+
+    let channelId = notificationChannel
+
+    // If no channel configured, send as DM to the user
+    if (!channelId) {
+      // Get the Slack user ID for the bot owner (open DM with self)
+      const authResponse = await fetch('https://slack.com/api/auth.test', {
+        headers: { 'Authorization': `Bearer ${integration.access_token}` }
+      })
+      const authResult = await authResponse.json()
+
+      if (!authResult.ok) {
+        console.error('Slack auth.test failed:', authResult.error)
+        return
+      }
+
+      // Open a DM - we'll use a special channel for notifications
+      // For now, post to #general or first available channel
+      const channelsResponse = await fetch(
+        'https://slack.com/api/conversations.list?types=public_channel&limit=10',
+        { headers: { 'Authorization': `Bearer ${integration.access_token}` } }
+      )
+      const channelsResult = await channelsResponse.json()
+
+      if (channelsResult.ok && channelsResult.channels?.length > 0) {
+        // Look for a pat-notifications channel, otherwise use general
+        const patChannel = channelsResult.channels.find((c: any) => c.name === 'pat-notifications')
+        const generalChannel = channelsResult.channels.find((c: any) => c.name === 'general')
+        channelId = patChannel?.id || generalChannel?.id || channelsResult.channels[0].id
+      }
+    }
+
+    if (!channelId) {
+      console.log('No Slack channel available for notification')
+      return
+    }
+
+    // Try to join the channel first (in case not a member)
+    await fetch('https://slack.com/api/conversations.join', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${integration.access_token}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: `channel=${encodeURIComponent(channelId)}`,
+    })
+
+    // Format the message nicely
+    const slackMessage = {
+      channel: channelId,
+      text: `📱 New SMS from ${senderName}`,
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `📱 *New SMS from ${senderName}*\n>${messageContent.replace(/\n/g, '\n>')}`
+          }
+        },
+        {
+          type: 'context',
+          elements: [
+            {
+              type: 'mrkdwn',
+              text: `From: ${senderPhone} • ${new Date().toLocaleString()}`
+            }
+          ]
+        }
+      ]
+    }
+
+    const response = await fetch('https://slack.com/api/chat.postMessage', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${integration.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(slackMessage),
+    })
+
+    const result = await response.json()
+    if (!result.ok) {
+      console.error('Slack notification failed:', result.error)
+    } else {
+      console.log('Slack notification sent for SMS from', senderPhone)
+    }
+  } catch (error) {
+    console.error('Error sending Slack notification:', error)
   }
 }

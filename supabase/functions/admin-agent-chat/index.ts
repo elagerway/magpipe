@@ -767,6 +767,12 @@ Be warm, conversational, and helpful. Never expose vendor names like "OpenAI" or
         .eq('id', conversationId);
     }
 
+    // Mirror conversation to Slack (fire and forget)
+    if (response.response) {
+      mirrorConversationToSlack(supabase, user.id, message, response.response)
+        .catch(err => console.error('Failed to mirror to Slack:', err));
+    }
+
     return new Response(
       JSON.stringify(response),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -786,3 +792,115 @@ Be warm, conversational, and helpful. Never expose vendor names like "OpenAI" or
     );
   }
 });
+
+/**
+ * Mirror agent conversation to Slack DM
+ */
+async function mirrorConversationToSlack(
+  supabase: any,
+  userId: string,
+  userMessage: string,
+  agentResponse: string
+) {
+  try {
+    // Get Slack provider ID
+    const { data: slackProvider } = await supabase
+      .from('integration_providers')
+      .select('id')
+      .eq('slug', 'slack')
+      .single();
+
+    if (!slackProvider) return;
+
+    // Check if user has Slack connected
+    const { data: integration } = await supabase
+      .from('user_integrations')
+      .select('access_token, config')
+      .eq('user_id', userId)
+      .eq('status', 'connected')
+      .eq('provider_id', slackProvider.id)
+      .single();
+
+    if (!integration?.access_token) return;
+
+    // Check if mirroring is enabled (default: enabled)
+    if (integration.config?.mirror_conversations === false) return;
+
+    // Get notification channel or use default
+    let channelId = integration.config?.notification_channel;
+
+    if (!channelId) {
+      // Find a suitable channel
+      const channelsResponse = await fetch(
+        'https://slack.com/api/conversations.list?types=public_channel&limit=10',
+        { headers: { 'Authorization': `Bearer ${integration.access_token}` } }
+      );
+      const channelsResult = await channelsResponse.json();
+
+      if (channelsResult.ok && channelsResult.channels?.length > 0) {
+        const patChannel = channelsResult.channels.find((c: any) => c.name === 'pat-notifications');
+        const generalChannel = channelsResult.channels.find((c: any) => c.name === 'general');
+        channelId = patChannel?.id || generalChannel?.id || channelsResult.channels[0].id;
+      }
+    }
+
+    if (!channelId) return;
+
+    // Auto-join channel
+    await fetch('https://slack.com/api/conversations.join', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${integration.access_token}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: `channel=${encodeURIComponent(channelId)}`,
+    });
+
+    // Format the conversation nicely
+    const slackMessage = {
+      channel: channelId,
+      text: `💬 Pat conversation`,
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*You:* ${userMessage}`
+          }
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Pat:* ${agentResponse}`
+          }
+        },
+        {
+          type: 'context',
+          elements: [
+            {
+              type: 'mrkdwn',
+              text: `💬 Agent conversation • ${new Date().toLocaleString()}`
+            }
+          ]
+        }
+      ]
+    };
+
+    const response = await fetch('https://slack.com/api/chat.postMessage', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${integration.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(slackMessage),
+    });
+
+    const result = await response.json();
+    if (!result.ok) {
+      console.error('Slack conversation mirror failed:', result.error);
+    }
+  } catch (error) {
+    console.error('Error mirroring to Slack:', error);
+  }
+}
