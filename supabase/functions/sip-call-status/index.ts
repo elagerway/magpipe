@@ -1,56 +1,257 @@
 /**
- * SIP Call Status Callback - Starts recording when call is answered
+ * SIP Call Status Handler - Updates call records when call status changes
+ * This is triggered by SignalWire statusCallback on the dialed number
  */
+
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
 
 Deno.serve(async (req) => {
   try {
+    // Parse URL to get call_record_id from query parameter
+    const url = new URL(req.url);
+    const callRecordId = url.searchParams.get('call_record_id');
+
+    // Parse form data from SignalWire
     const formData = await req.formData();
     const params = Object.fromEntries(formData.entries());
 
-    console.log('SIP Call Status:', params);
+    console.log('SIP Call Status Handler triggered:', {
+      callRecordId,
+      params
+    });
 
-    const { CallSid, CallStatus, Direction } = params;
+    const {
+      CallSid,
+      CallStatus,
+      CallDuration,
+      DialCallStatus,  // Status of the dialed leg
+      DialCallDuration,
+    } = params;
 
-    // Only record outbound calls when they're answered
-    if (Direction === 'outbound-api' && CallStatus === 'in-progress') {
-      console.log(`Call ${CallSid} answered, starting recording...`);
+    // Use DialCallStatus if available (from <Dial> action), otherwise use CallStatus
+    const status = (DialCallStatus || CallStatus) as string;
+    const duration = parseInt((DialCallDuration || CallDuration || '0') as string, 10);
 
-      const signalwireProjectId = Deno.env.get('SIGNALWIRE_PROJECT_ID');
-      const signalwireToken = Deno.env.get('SIGNALWIRE_API_TOKEN');
-      const signalwireSpaceUrl = Deno.env.get('SIGNALWIRE_SPACE_URL');
+    console.log(`Call status update: ${status}, duration: ${duration}s`);
 
-      if (!signalwireProjectId || !signalwireToken || !signalwireSpaceUrl) {
-        console.error('SignalWire credentials missing');
-        return new Response('OK', { status: 200 });
-      }
-
-      const signalwireAuth = btoa(`${signalwireProjectId}:${signalwireToken}`);
-
-      // Start recording via REST API
-      const recordingResponse = await fetch(
-        `https://${signalwireSpaceUrl}/api/laml/2010-04-01/Accounts/${signalwireProjectId}/Calls/${CallSid}/Recordings.json`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Basic ${signalwireAuth}`,
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: `RecordingStatusCallback=${encodeURIComponent('https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/sip-recording-callback')}&RecordingStatusCallbackMethod=POST`,
-        }
-      );
-
-      if (recordingResponse.ok) {
-        const recordingData = await recordingResponse.json();
-        console.log('Recording started:', recordingData.sid);
-      } else {
-        const errorText = await recordingResponse.text();
-        console.error('Failed to start recording:', errorText);
-      }
+    if (!callRecordId) {
+      console.log('No call record ID provided, returning OK');
+      return new Response('<?xml version="1.0" encoding="UTF-8"?><Response></Response>', {
+        headers: { 'Content-Type': 'text/xml' },
+      });
     }
 
-    return new Response('OK', { status: 200 });
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Map SignalWire statuses to our database statuses
+    const statusMap: Record<string, string> = {
+      'initiated': 'initiated',
+      'ringing': 'ringing',
+      'in-progress': 'in_progress',
+      'answered': 'in_progress',
+      'completed': 'completed',
+      'busy': 'busy',
+      'failed': 'failed',
+      'no-answer': 'no_answer',
+      'canceled': 'canceled',
+    };
+
+    const dbStatus = statusMap[status?.toLowerCase()] || status;
+
+    // Only update for terminal states
+    if (['completed', 'busy', 'failed', 'no-answer', 'canceled'].includes(status?.toLowerCase())) {
+      const updateData: Record<string, any> = {
+        status: dbStatus,
+        ended_at: new Date().toISOString(),
+      };
+
+      if (duration > 0) {
+        updateData.duration_seconds = duration;
+        updateData.duration = duration;
+      }
+
+      // Set disposition based on status
+      if (status?.toLowerCase() === 'completed' && duration > 0) {
+        updateData.disposition = 'outbound_completed';
+      } else if (status?.toLowerCase() === 'busy') {
+        updateData.disposition = 'outbound_busy';
+      } else if (status?.toLowerCase() === 'no-answer') {
+        updateData.disposition = 'outbound_no_answer';
+      } else {
+        updateData.disposition = 'outbound_failed';
+      }
+
+      // First get the call record to know user_id and call details
+      const { data: callRecord, error: fetchError } = await supabase
+        .from('call_records')
+        .select('user_id, phone_number, direction, started_at')
+        .eq('id', callRecordId)
+        .single();
+
+      const { error } = await supabase
+        .from('call_records')
+        .update(updateData)
+        .eq('id', callRecordId);
+
+      if (error) {
+        console.error('Error updating call record:', error);
+      } else {
+        console.log(`✅ Updated call record ${callRecordId} to status: ${dbStatus}, duration: ${duration}s`);
+
+        // Send Slack call summary notification (fire and forget)
+        if (callRecord) {
+          sendSlackCallNotification(
+            supabase,
+            callRecord.user_id,
+            callRecord.phone_number,
+            callRecord.direction || 'outbound',
+            dbStatus,
+            duration
+          ).catch(err => console.error('Failed to send Slack call notification:', err));
+        }
+      }
+    } else {
+      console.log(`Non-terminal status ${status}, skipping update`);
+    }
+
+    // Return empty response (or hangup after dial completes)
+    return new Response('<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>', {
+      headers: { 'Content-Type': 'text/xml' },
+    });
   } catch (error) {
-    console.error('Error in sip-call-status:', error);
-    return new Response('OK', { status: 200 });
+    console.error('Error in SIP call status handler:', error);
+
+    return new Response('<?xml version="1.0" encoding="UTF-8"?><Response></Response>', {
+      headers: { 'Content-Type': 'text/xml' },
+    });
   }
 });
+
+/**
+ * Send Slack notification for completed calls
+ */
+async function sendSlackCallNotification(
+  supabase: any,
+  userId: string,
+  phoneNumber: string,
+  direction: string,
+  status: string,
+  durationSeconds: number
+) {
+  try {
+    // Get Slack provider ID
+    const { data: slackProvider } = await supabase
+      .from('integration_providers')
+      .select('id')
+      .eq('slug', 'slack')
+      .single();
+
+    if (!slackProvider) return;
+
+    // Check if user has Slack connected
+    const { data: integration } = await supabase
+      .from('user_integrations')
+      .select('access_token, config')
+      .eq('user_id', userId)
+      .eq('status', 'connected')
+      .eq('provider_id', slackProvider.id)
+      .single();
+
+    if (!integration?.access_token) return;
+
+    // Get contact name if available
+    const { data: contact } = await supabase
+      .from('contacts')
+      .select('name')
+      .eq('user_id', userId)
+      .eq('phone_number', phoneNumber)
+      .single();
+
+    const contactName = contact?.name || phoneNumber;
+
+    // Format duration
+    const minutes = Math.floor(durationSeconds / 60);
+    const seconds = durationSeconds % 60;
+    const durationStr = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+
+    // Determine emoji and status text
+    const isInbound = direction === 'inbound';
+    const emoji = status === 'completed' ? (isInbound ? '📞' : '📱') : '❌';
+    const directionText = isInbound ? 'Inbound call from' : 'Outbound call to';
+    const statusText = status === 'completed' ? `Duration: ${durationStr}` : `Status: ${status}`;
+
+    // Get notification channel
+    const { data: channels } = await supabase.rpc('get_first_available_slack_channel', { token: integration.access_token });
+
+    // Fallback to finding a channel via API
+    const channelsResponse = await fetch(
+      'https://slack.com/api/conversations.list?types=public_channel&limit=10',
+      { headers: { 'Authorization': `Bearer ${integration.access_token}` } }
+    );
+    const channelsResult = await channelsResponse.json();
+
+    let channelId = integration.config?.notification_channel;
+    if (!channelId && channelsResult.ok && channelsResult.channels?.length > 0) {
+      const patChannel = channelsResult.channels.find((c: any) => c.name === 'pat-notifications');
+      const generalChannel = channelsResult.channels.find((c: any) => c.name === 'general');
+      channelId = patChannel?.id || generalChannel?.id || channelsResult.channels[0].id;
+    }
+
+    if (!channelId) return;
+
+    // Auto-join channel
+    await fetch('https://slack.com/api/conversations.join', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${integration.access_token}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: `channel=${encodeURIComponent(channelId)}`,
+    });
+
+    // Send the notification
+    const slackMessage = {
+      channel: channelId,
+      text: `${emoji} ${directionText} ${contactName}`,
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `${emoji} *${directionText} ${contactName}*\n${statusText}`
+          }
+        },
+        {
+          type: 'context',
+          elements: [
+            {
+              type: 'mrkdwn',
+              text: `${phoneNumber} • ${new Date().toLocaleString()}`
+            }
+          ]
+        }
+      ]
+    };
+
+    const response = await fetch('https://slack.com/api/chat.postMessage', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${integration.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(slackMessage),
+    });
+
+    const result = await response.json();
+    if (!result.ok) {
+      console.error('Slack call notification failed:', result.error);
+    } else {
+      console.log('Slack call notification sent for', phoneNumber);
+    }
+  } catch (error) {
+    console.error('Error sending Slack call notification:', error);
+  }
+}
