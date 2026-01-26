@@ -113,12 +113,12 @@ serve(async (req) => {
 
     console.log(`✅ Recording URL: ${recordingUrl}`)
 
-    // Update call_record with recording URL
+    // Update call_record with recording URL and get Slack info
     const { data: updateResult, error: updateError } = await supabase
       .from('call_records')
       .update({ recording_url: recordingUrl })
       .eq('egress_id', egressId)
-      .select()
+      .select('id, user_id, slack_message_ts, slack_channel_id, contact_phone, caller_number, direction, duration_seconds, transcript')
 
     if (updateError) {
       console.error('Error updating call_record:', updateError)
@@ -138,6 +138,22 @@ serve(async (req) => {
 
     console.log(`✅ Updated call_record ${updateResult[0].id} with recording URL`)
 
+    // Update Slack message with recording URL if we have a Slack message
+    const callRecord = updateResult[0]
+    if (callRecord.slack_message_ts && callRecord.slack_channel_id) {
+      updateSlackMessageWithRecording(
+        supabase,
+        callRecord.user_id,
+        callRecord.slack_channel_id,
+        callRecord.slack_message_ts,
+        callRecord.contact_phone || callRecord.caller_number,
+        callRecord.direction,
+        callRecord.duration_seconds,
+        recordingUrl,
+        callRecord.transcript
+      ).catch(err => console.error('Failed to update Slack message:', err))
+    }
+
     return new Response(JSON.stringify({ ok: true, updated: updateResult.length }), {
       headers: { 'Content-Type': 'application/json' },
       status: 200,
@@ -150,3 +166,131 @@ serve(async (req) => {
     })
   }
 })
+
+/**
+ * Update Slack message with recording URL and transcript
+ */
+async function updateSlackMessageWithRecording(
+  supabase: any,
+  userId: string,
+  channelId: string,
+  messageTs: string,
+  phoneNumber: string,
+  direction: string,
+  durationSeconds: number,
+  recordingUrl: string,
+  transcript: string | null
+) {
+  try {
+    // Get Slack provider ID
+    const { data: slackProvider } = await supabase
+      .from('integration_providers')
+      .select('id')
+      .eq('slug', 'slack')
+      .single()
+
+    if (!slackProvider) return
+
+    // Get user's Slack token
+    const { data: integration } = await supabase
+      .from('user_integrations')
+      .select('access_token')
+      .eq('user_id', userId)
+      .eq('status', 'connected')
+      .eq('provider_id', slackProvider.id)
+      .single()
+
+    if (!integration?.access_token) return
+
+    // Get contact name
+    const { data: contact } = await supabase
+      .from('contacts')
+      .select('name')
+      .eq('user_id', userId)
+      .eq('phone_number', phoneNumber)
+      .single()
+
+    const contactName = contact?.name || phoneNumber
+
+    // Format duration
+    const minutes = Math.floor((durationSeconds || 0) / 60)
+    const seconds = (durationSeconds || 0) % 60
+    const durationStr = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`
+
+    const isInbound = direction === 'inbound'
+    const emoji = isInbound ? '📞' : '📱'
+    const directionText = isInbound ? 'Inbound call from' : 'Outbound call to'
+
+    // Build updated message blocks
+    const blocks: any[] = [
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `${emoji} *${directionText} ${contactName}*\nDuration: ${durationStr}`
+        }
+      }
+    ]
+
+    // Add recording link
+    if (recordingUrl) {
+      blocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `🎙️ <${recordingUrl}|Listen to recording>`
+        }
+      })
+    }
+
+    // Add transcript if available
+    if (transcript) {
+      // Truncate long transcripts for Slack
+      const truncatedTranscript = transcript.length > 500
+        ? transcript.substring(0, 500) + '...'
+        : transcript
+      blocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `📝 *Transcript:*\n>${truncatedTranscript.replace(/\n/g, '\n>')}`
+        }
+      })
+    }
+
+    // Add context
+    blocks.push({
+      type: 'context',
+      elements: [
+        {
+          type: 'mrkdwn',
+          text: `${phoneNumber} • ${new Date().toLocaleString()}`
+        }
+      ]
+    })
+
+    // Update the message
+    const response = await fetch('https://slack.com/api/chat.update', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${integration.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        channel: channelId,
+        ts: messageTs,
+        text: `${emoji} ${directionText} ${contactName}`,
+        blocks,
+      }),
+    })
+
+    const result = await response.json()
+    if (!result.ok) {
+      console.error('Failed to update Slack message:', result.error)
+    } else {
+      console.log('✅ Updated Slack message with recording URL')
+    }
+  } catch (error) {
+    console.error('Error updating Slack message:', error)
+  }
+}
