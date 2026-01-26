@@ -263,6 +263,43 @@ export async function confirmAction(conversationId, actionParameters) {
           data: scheduledAction,
         };
 
+      case 'book_calendar_appointment': {
+        // Call cal-com-create-booking Edge Function
+        const bookingResponse = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cal-com-create-booking`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session.access_token}`,
+              'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            },
+            body: JSON.stringify(actionParameters.parameters),
+          }
+        );
+
+        const bookingResult = await bookingResponse.json();
+
+        if (bookingResult.error) {
+          throw new Error(bookingResult.error);
+        }
+
+        const booking = bookingResult.booking;
+        const bookingTime = new Date(booking.start).toLocaleString('en-US', {
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+        });
+
+        return {
+          success: true,
+          message: `Booked "${booking.title}" for ${bookingTime}. It's on your calendar!`,
+          data: booking,
+        };
+      }
+
       case 'add_and_call_business':
       case 'add_and_text_business': {
         const isCallAction = actionType === 'add_and_call_business';

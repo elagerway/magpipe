@@ -44,9 +44,46 @@ export default class InboxPage {
     this.subscription = null;
     this.userId = null;
     this.dropdownListenersAttached = false;
+    this.phoneLinkHandlerAttached = false;
     this.lastFetchTime = 0;
     this.hiddenConversations = new Set(); // Track hidden conversations locally
     this.swipeState = null; // Track active swipe
+  }
+
+  /**
+   * Convert phone numbers and addresses in text to clickable links
+   */
+  linkifyPhoneNumbers(text) {
+    // Escape HTML to prevent XSS
+    let escaped = text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+
+    // First, linkify addresses (before phone numbers to avoid conflicts)
+    // Match addresses with street number, street name, and optional city/state/zip
+    // Examples: "123 Main St", "456 Oak Avenue, Seattle, WA 98101"
+    const addressRegex = /\b\d+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*(?:\s+(?:St|Street|Ave|Avenue|Rd|Road|Blvd|Boulevard|Dr|Drive|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway|Cir|Circle))(?:[\s,]+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)?(?:,?\s+[A-Z]{2})?\s*\d{5}(?:-\d{4})?\b/g;
+
+    escaped = escaped.replace(addressRegex, (match) => {
+      const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(match)}`;
+      return `<a href="${mapsUrl}" target="_blank" rel="noopener" class="message-address-link" style="color: inherit; text-decoration: underline; cursor: pointer;">${match}</a>`;
+    });
+
+    // Then linkify phone numbers
+    // Match phone numbers in various formats:
+    // (555) 123-4567, 555-123-4567, 5551234567, +1 555 123 4567, etc.
+    const phoneRegex = /(\+?\d{1}[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/g;
+
+    escaped = escaped.replace(phoneRegex, (match) => {
+      // Clean phone number for URL (remove spaces, dashes, parens)
+      const cleanNumber = match.replace(/[\s.\-()]/g, '');
+      return `<a href="#" class="message-phone-link" data-phone="${cleanNumber}" style="color: inherit; text-decoration: underline; cursor: pointer;">${match}</a>`;
+    });
+
+    return escaped;
   }
 
   async render() {
@@ -1050,7 +1087,7 @@ export default class InboxPage {
             </svg>
           </div>
         ` : ''}
-        <div class="message-content">${msg.content}</div>
+        <div class="message-content">${this.linkifyPhoneNumbers(msg.content)}</div>
         <div class="message-time">
           ${this.formatTime(timestamp)}
           ${deliveryStatus}
@@ -1170,11 +1207,11 @@ export default class InboxPage {
 
         ${messages.length > 0 ? messages.map(msg => `
           <div class="message-bubble ${msg.speaker === 'agent' ? 'outbound' : 'inbound'}">
-            <div class="message-content">${msg.text}</div>
+            <div class="message-content">${this.linkifyPhoneNumbers(msg.text)}</div>
           </div>
         `).join('') : call.transcript ? `
           <div class="message-bubble inbound" style="max-width: 100%;">
-            <div class="message-content">${call.transcript}</div>
+            <div class="message-content">${this.linkifyPhoneNumbers(call.transcript)}</div>
           </div>
         ` : `
           <div style="padding: 3rem 1.5rem; text-align: center; color: var(--text-secondary);">
@@ -3842,6 +3879,27 @@ Examples:
       this.attachDropdownListeners();
       this.dropdownListenersAttached = true;
     }
+
+    // Attach phone link handler once (only if not already attached)
+    if (!this.phoneLinkHandlerAttached) {
+      this.attachPhoneLinkHandler();
+      this.phoneLinkHandlerAttached = true;
+    }
+  }
+
+  attachPhoneLinkHandler() {
+    // Event delegation for phone number links in messages
+    // Attach to message-thread parent (not replaced on re-render)
+    const threadElement = document.getElementById('message-thread');
+    if (threadElement) {
+      threadElement.addEventListener('click', (e) => {
+        if (e.target.classList.contains('message-phone-link')) {
+          e.preventDefault();
+          const phoneNumber = e.target.dataset.phone;
+          window.navigateTo(`/phone?dial=${encodeURIComponent(phoneNumber)}`);
+        }
+      });
+    }
   }
 
   attachDropdownListeners() {
@@ -4447,7 +4505,7 @@ Examples:
         const statusIcon = this.getDeliveryStatusIcon({ status: newMsgData?.status || 'pending', direction: 'outbound' });
         const newMessage = `
           <div class="message-bubble outbound" data-message-id="${msgId}">
-            <div class="message-content">${message}</div>
+            <div class="message-content">${this.linkifyPhoneNumbers(message)}</div>
             <div class="message-time">
               ${this.formatTime(new Date())}
               ${statusIcon}
@@ -4602,7 +4660,7 @@ Examples:
         const statusIcon = this.getDeliveryStatusIcon({ status: newMsgData?.status || 'pending', direction: 'outbound' });
         const newMessage = `
           <div class="message-bubble outbound ai-message" data-message-id="${msgId}">
-            <div class="message-content">${generatedMessage}</div>
+            <div class="message-content">${this.linkifyPhoneNumbers(generatedMessage)}</div>
             <div class="message-time">
               ${this.formatTime(new Date())}
               ${statusIcon}
