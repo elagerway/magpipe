@@ -40,3 +40,14 @@ yarn-error.log*
 .cache/
 .vercel
 .env*.local
+
+# Debug scripts
+check-*.cjs
+check-*.sh
+check-*.js
+place-test-call.sh
+test-bridged-call.sh
+
+# Screenshots
+*.png
+tests/screenshots/
