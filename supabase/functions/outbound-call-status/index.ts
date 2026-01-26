@@ -58,7 +58,7 @@ serve(async (req) => {
     const { error } = await supabaseClient
       .from("call_records")
       .update(updateData)
-      .eq("signalwire_call_id", callSid);
+      .eq("vendor_call_id", callSid);
 
     if (error) {
       console.error("Error updating call record:", error);

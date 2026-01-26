@@ -138,9 +138,12 @@ class SIPClient {
    * @param {string} phoneNumber - Phone number to call
    * @param {string} fromNumber - Caller ID number to use
    * @param {string} displayName - Display name for CNAM (caller name)
-   * @param {Object} callbacks - Event callbacks
+   * @param {Object} options - Options including event callbacks and callRecordId
    */
-  async makeCall(phoneNumber, fromNumber, displayName, callbacks = {}) {
+  async makeCall(phoneNumber, fromNumber, displayName, options = {}) {
+    // Support both old callback style and new options style
+    const callbacks = options.onProgress ? options : {};
+    const callRecordId = options.callRecordId || null;
     if (!this.isRegistered) {
       throw new Error('SIP client not registered');
     }
@@ -201,7 +204,9 @@ class SIPClient {
         extraHeaders: [
           `X-From-Number: ${fromNumber}`,
           `P-Asserted-Identity: <sip:${fromNumber}@${this.sipDomain}>`,
-          `Remote-Party-ID: "${displayName}" <sip:${fromNumber}@${this.sipDomain}>;party=calling;privacy=off;screen=no`
+          `Remote-Party-ID: "${displayName}" <sip:${fromNumber}@${this.sipDomain}>;party=calling;privacy=off;screen=no`,
+          // Pass call record ID for tracking
+          ...(callRecordId ? [`X-Call-Record-Id: ${callRecordId}`] : [])
         ],
       };
 

@@ -48,8 +48,10 @@ serve(async (req) => {
     // LiveKit is already connected (this CXML executes after LiveKit answers)
     // Now we dial the PSTN number and bridge the two legs together
     // IMPORTANT: callerId must be a valid E.164 phone number (not SIP URI)
+    // PAUSE: Give agent 3 seconds to fully connect before dialing PSTN
     const cxml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
+  <Pause length="3"/>
   <Dial record="record-from-answer" recordingStatusCallback="${Deno.env.get("SUPABASE_URL")}/functions/v1/sip-recording-callback" callerId="${from}">
     <Number>${destination}</Number>
   </Dial>
