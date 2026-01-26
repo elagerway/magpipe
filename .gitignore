@@ -38,3 +38,5 @@ yarn-error.log*
 # Temporary files
 *.tmp
 .cache/
+.vercel
+.env*.local

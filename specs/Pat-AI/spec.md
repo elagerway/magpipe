@@ -149,6 +149,62 @@ A user wants an AI assistant (Pat) to automatically answer phone calls and SMS m
 - **FR-078**: If only one transfer number exists with a passcode, that passcode transfers to that number
 - **FR-079**: If multiple transfer numbers exist with different passcodes, each passcode transfers to its respective number
 
+#### Outbound Calling
+
+The system supports three outbound calling modes:
+
+##### Outbound Single Call with Agent
+User initiates a single call with AI agent assistance and recording via the Phone page.
+
+- **FR-093**: Users MUST be able to initiate outbound calls from the Phone page by entering a destination number
+- **FR-094**: Users MUST be able to select which of their service numbers to use as caller ID
+- **FR-095**: Phone page MUST have an "Agent" toggle that controls call mode
+- **FR-096**: When Agent toggle is ON, calls route through SignalWire → LiveKit SIP → Agent for AI assistance and recording
+- **FR-097**: When user clicks hangup, system MUST terminate the SignalWire call via API
+- **FR-098**: UI MUST detect when call ends (via realtime subscription) and reset to idle state
+- **FR-099**: Call records MUST be created with direction="outbound" for proper tracking
+
+##### Outbound Call Direct
+User initiates a simple call without AI agent - browser SIP/WebRTC directly to PSTN.
+
+- **FR-100**: When Agent toggle is OFF, calls route directly from browser SIP to PSTN (no agent)
+- **FR-101**: Direct calls do NOT include recording or AI assistance
+- **FR-102**: Direct calls have lower latency since they bypass the agent architecture
+- **FR-103**: Call records MUST still be created for direct calls with direction="outbound"
+
+##### Outbound Call from Contacts with Agent
+Bulk outbound calling from a contact list, with AI agent on each call. Accessed via a separate view.
+
+- **FR-104**: System MUST provide a dedicated view for bulk outbound calling
+- **FR-105**: Users MUST be able to select multiple contacts from their contact list
+- **FR-106**: System MUST queue selected contacts for sequential outbound calls
+- **FR-107**: Each call in the queue MUST use the Agent architecture (AI assistance + recording)
+- **FR-108**: Users MUST be able to pause, resume, or cancel the calling queue
+- **FR-109**: System MUST display progress and status for each call in the queue
+
+##### Outbound Call Latency Optimization Settings (Agent Mode)
+The following configuration provides optimal response latency for outbound calls:
+
+**Voice Activity Detection (VAD):**
+- `min_silence_duration=0.0` - Respond immediately when speech stops (no wait)
+- `min_speech_duration=0.15` - Require 150ms of speech to trigger (filters short sounds)
+- `activation_threshold=0.6` - Higher threshold to filter background noise (default 0.5)
+
+**Language Model (LLM):**
+- Model: `gpt-4-turbo` - Fastest response time
+- Temperature: 0.7
+
+**Text-to-Speech (TTS):**
+- Model: `eleven_flash_v2_5` - Fastest ElevenLabs model
+- `chunk_length_schedule=[50, 80, 120, 150]` - Smaller initial chunks for faster first audio
+
+**Speech-to-Text (STT):**
+- Model: `nova-2-phonecall` - Deepgram model optimized for phone calls
+
+**Connection Warmups (on call start):**
+- LLM warmup: Pre-warms OpenAI connection with minimal request
+- TTS warmup: Pre-warms ElevenLabs WebSocket connection
+
 #### Inbound SMS Handling
 - **FR-031**: Pat MUST receive SMS messages sent to the user's service phone number
 - **FR-032**: Pat MUST respond to SMS from whitelisted contacts using conversation history
