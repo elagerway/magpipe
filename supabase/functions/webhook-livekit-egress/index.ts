@@ -168,7 +168,8 @@ serve(async (req) => {
 })
 
 /**
- * Update Slack message with recording URL and transcript
+ * Update Slack message with recording and transcript
+ * Downloads the recording and uploads it to Slack for inline playback
  */
 async function updateSlackMessageWithRecording(
   supabase: any,
@@ -232,20 +233,8 @@ async function updateSlackMessageWithRecording(
       }
     ]
 
-    // Add recording link
-    if (recordingUrl) {
-      blocks.push({
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `🎙️ <${recordingUrl}|Listen to recording>`
-        }
-      })
-    }
-
     // Add transcript if available
     if (transcript) {
-      // Truncate long transcripts for Slack
       const truncatedTranscript = transcript.length > 500
         ? transcript.substring(0, 500) + '...'
         : transcript
@@ -269,8 +258,8 @@ async function updateSlackMessageWithRecording(
       ]
     })
 
-    // Update the message
-    const response = await fetch('https://slack.com/api/chat.update', {
+    // Update the message first
+    await fetch('https://slack.com/api/chat.update', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${integration.access_token}`,
@@ -284,12 +273,112 @@ async function updateSlackMessageWithRecording(
       }),
     })
 
-    const result = await response.json()
-    if (!result.ok) {
-      console.error('Failed to update Slack message:', result.error)
-    } else {
-      console.log('✅ Updated Slack message with recording URL')
+    // Download the recording and upload to Slack for inline player
+    if (recordingUrl) {
+      try {
+        console.log('Downloading recording from:', recordingUrl)
+        const recordingResponse = await fetch(recordingUrl)
+
+        if (!recordingResponse.ok) {
+          console.error('Failed to download recording:', recordingResponse.status)
+          return
+        }
+
+        const recordingBlob = await recordingResponse.blob()
+        const arrayBuffer = await recordingBlob.arrayBuffer()
+        const uint8Array = new Uint8Array(arrayBuffer)
+
+        // Determine file extension from URL or content type
+        const contentType = recordingResponse.headers.get('content-type') || 'audio/ogg'
+        let extension = 'ogg'
+        if (contentType.includes('mp3') || recordingUrl.includes('.mp3')) extension = 'mp3'
+        else if (contentType.includes('wav') || recordingUrl.includes('.wav')) extension = 'wav'
+        else if (contentType.includes('m4a') || recordingUrl.includes('.m4a')) extension = 'm4a'
+
+        const filename = `call-recording-${contactName.replace(/[^a-zA-Z0-9]/g, '-')}-${new Date().toISOString().split('T')[0]}.${extension}`
+
+        console.log('Uploading recording to Slack:', filename, 'size:', uint8Array.length)
+
+        // Upload file to Slack using v2 API
+        const uploadResponse = await fetch('https://slack.com/api/files.getUploadURLExternal', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${integration.access_token}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({
+            filename,
+            length: uint8Array.length.toString(),
+          }),
+        })
+
+        const uploadResult = await uploadResponse.json()
+
+        if (!uploadResult.ok) {
+          console.error('Failed to get upload URL:', uploadResult.error)
+          return
+        }
+
+        // Upload the file content
+        const putResponse = await fetch(uploadResult.upload_url, {
+          method: 'POST',
+          body: uint8Array,
+        })
+
+        if (!putResponse.ok) {
+          console.error('Failed to upload file content:', putResponse.status)
+          return
+        }
+
+        // Complete the upload and share in channel
+        const completeResponse = await fetch('https://slack.com/api/files.completeUploadExternal', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${integration.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            files: [{ id: uploadResult.file_id, title: `🎙️ Call Recording - ${contactName}` }],
+            channel_id: channelId,
+            thread_ts: messageTs, // Post as reply to original message
+          }),
+        })
+
+        const completeResult = await completeResponse.json()
+
+        if (!completeResult.ok) {
+          console.error('Failed to complete upload:', completeResult.error)
+        } else {
+          console.log('✅ Uploaded recording to Slack with inline player')
+        }
+
+      } catch (uploadError) {
+        console.error('Error uploading recording to Slack:', uploadError)
+        // Fall back to just adding link in message
+        blocks.splice(1, 0, {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `🎙️ <${recordingUrl}|Listen to recording>`
+          }
+        })
+        await fetch('https://slack.com/api/chat.update', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${integration.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            channel: channelId,
+            ts: messageTs,
+            text: `${emoji} ${directionText} ${contactName}`,
+            blocks,
+          }),
+        })
+      }
     }
+
+    console.log('✅ Updated Slack message with recording')
   } catch (error) {
     console.error('Error updating Slack message:', error)
   }
