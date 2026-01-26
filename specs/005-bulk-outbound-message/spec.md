@@ -10,14 +10,14 @@ As a Pat user, I want to send bulk SMS messages to multiple contacts at once, so
 
 ## Feature Components
 
-### 1. New Message Menu (Phase 1 - Current)
+### 1. Message Menu
 
 When clicking the "+" button in the inbox header, show a dropdown menu with 4 options:
 
 | Option | Description | Status |
 |--------|-------------|--------|
-| **New Message** | Standard 1:1 SMS conversation (existing behavior) | Implement Now |
-| **New Agent Message** | AI-assisted message composition | Future |
+| **Message** | Standard 1:1 SMS conversation | ✅ Complete |
+| **Agent Message** | AI-assisted message composition | 🔨 Phase 2 (Current) |
 | **Bulk Message** | Send same message to multiple contacts | Future |
 | **Bulk Agent Message** | AI generates personalized messages for bulk send | Future |
 
@@ -30,13 +30,13 @@ When clicking the "+" button in the inbox header, show a dropdown menu with 4 op
 │  Inbox                  [+] │  ← Click triggers dropdown
 ├─────────────────────────────┤
 │  ┌───────────────────────┐  │
-│  │ 💬 New Message        │  │  ← Standard SMS
+│  │ 💬 Message            │  │  ← Standard SMS ✅
 │  ├───────────────────────┤  │
-│  │ 🤖 New Agent Message  │  │  ← AI-assisted (disabled)
+│  │ 🤖 Agent Message      │  │  ← AI-assisted (Phase 2)
 │  ├───────────────────────┤  │
-│  │ 📢 Bulk Message       │  │  ← Multi-recipient (disabled)
+│  │ 👥 Bulk Message       │  │  ← Multi-recipient (Future)
 │  ├───────────────────────┤  │
-│  │ 🤖📢 Bulk Agent Msg   │  │  ← AI + bulk (disabled)
+│  │ 👥 Bulk Agent Msg     │  │  ← AI + bulk (Future)
 │  └───────────────────────┘  │
 │                             │
 │  [Conversation List...]     │
@@ -85,12 +85,126 @@ When "New Message" is selected:
 3. Open conversation thread for that number
 4. Focus message input
 
-### 5. Future Features (Not in Phase 1)
+### 5. Agent Message (Phase 2 - Current)
 
-#### New Agent Message
-- AI composes message based on context
-- User can edit before sending
-- Suggested responses based on conversation history
+#### Overview
+The Agent Message feature allows users to compose SMS messages with AI assistance. Users provide a prompt describing the intent/tone of the message, select a recipient, and the AI generates a draft message that can be edited before sending.
+
+#### User Flow
+1. User clicks "+" → selects "Agent Message" from dropdown
+2. Agent Message interface appears with:
+   - **To:** field (contact search + direct number entry)
+   - **From:** field (service number selector)
+   - **Prompt:** textarea for describing the message intent
+   - **Generate** button
+3. User enters recipient and prompt (e.g., "Follow up on our meeting, friendly tone")
+4. User clicks "Generate" → AI creates draft message
+5. Draft appears in editable message area
+6. User can:
+   - Edit the draft
+   - Regenerate with same/different prompt
+   - Send the message
+   - Cancel
+
+#### UI Design
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  To:    [Search contacts or enter number          ]     │
+│  From:  [🇨🇦 +1 (604) 555-1234 ▾]                       │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│  Agent Prompt                                           │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │ Describe what you want to say...                │   │
+│  │                                                 │   │
+│  │ Examples:                                       │   │
+│  │ • "Follow up on yesterday's meeting"           │   │
+│  │ • "Remind about appointment tomorrow at 2pm"   │   │
+│  │ • "Thank them for their business, friendly"    │   │
+│  └─────────────────────────────────────────────────┘   │
+│                                                         │
+│                              [Generate Message]         │
+│                                                         │
+├─────────────────────────────────────────────────────────┤
+│  Generated Message                                      │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │ Hi! Just wanted to follow up on our meeting    │   │
+│  │ yesterday. Let me know if you have any         │   │
+│  │ questions or need anything else from me.       │   │
+│  └─────────────────────────────────────────────────┘   │
+│                                                         │
+│  [↻ Regenerate]                           [Send ➤]     │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+#### Prompt Field Features
+- Placeholder with example prompts
+- Support for context like:
+  - Tone: friendly, professional, casual, urgent
+  - Purpose: follow-up, reminder, thank you, inquiry
+  - Personalization hints: mention specific topics
+- Character limit guidance (SMS is 160 chars per segment)
+
+#### AI Generation
+- Use OpenAI API (GPT-4 or similar)
+- System prompt includes:
+  - User's agent configuration (if available)
+  - Contact context (name, company, previous conversation summary)
+  - SMS best practices (concise, clear, actionable)
+- Generate message appropriate for SMS length
+- Include option to see longer version if needed
+
+#### Generated Message Area
+- Editable textarea pre-filled with AI draft
+- Character count with SMS segment indicator
+- Edit freely before sending
+- Regenerate button to get new version
+
+#### Technical Implementation
+
+**New Method: `showAgentMessageInterface()`**
+```javascript
+async showAgentMessageInterface() {
+  // Similar to showMessageInterface() but with:
+  // - Prompt textarea instead of direct message input
+  // - Generate button that calls AI API
+  // - Generated message display area
+  // - Regenerate and Send buttons
+}
+```
+
+**Edge Function: `generate-agent-message`**
+```typescript
+// Input
+{
+  prompt: string,           // User's intent description
+  recipient_phone: string,  // For context lookup
+  recipient_name?: string,  // Contact name if known
+  conversation_history?: string[], // Recent messages for context
+  user_id: string
+}
+
+// Output
+{
+  message: string,          // Generated SMS text
+  character_count: number,
+  segment_count: number
+}
+```
+
+#### Success Criteria - Phase 2
+- [ ] Agent Message option enabled in dropdown
+- [ ] Agent Message interface with To/From/Prompt fields
+- [ ] Contact search works in To field
+- [ ] Generate button calls AI and displays draft
+- [ ] Draft is editable
+- [ ] Regenerate creates new draft
+- [ ] Send delivers message via existing SMS infrastructure
+- [ ] Character count and segment indicator shown
+
+### 6. Future Features
 
 #### Bulk Message
 - Select multiple recipients (contacts or phone numbers)
@@ -230,7 +344,7 @@ CREATE TABLE bulk_message_recipients (
 
 ## Timeline
 
-- **Phase 1**: Dropdown menu with New Message (Current sprint)
-- **Phase 2**: Bulk Message basic functionality
-- **Phase 3**: Agent Message integration
+- **Phase 1**: Dropdown menu with Message ✅ Complete
+- **Phase 2**: Agent Message (Current) 🔨
+- **Phase 3**: Bulk Message
 - **Phase 4**: Bulk Agent Message with personalization

@@ -37,7 +37,7 @@ test.describe('Inbox New Message Dropdown', () => {
 
     // Verify all 4 options are present
     await expect(dropdown.locator('[data-action="new-message"]')).toBeVisible();
-    await expect(dropdown.locator('[data-action="new-agent-message"]')).toBeVisible();
+    await expect(dropdown.locator('[data-action="agent-message"]')).toBeVisible();
     await expect(dropdown.locator('[data-action="bulk-message"]')).toBeVisible();
     await expect(dropdown.locator('[data-action="bulk-agent-message"]')).toBeVisible();
 
