@@ -44,9 +44,11 @@ serve(async (req) => {
     // Try to find the call record by phone numbers
     let callRecord = null
 
-    // For outbound calls from LiveKit, "to" is the destination phone
+    // For outbound calls, "to" is the destination phone
+    // For inbound calls, "from" is the caller phone
     if (to) {
-      const { data, error } = await supabase
+      // Try outbound first
+      const { data: outboundData, error: outboundError } = await supabase
         .from('call_records')
         .select('*')
         .eq('contact_phone', to)
@@ -55,9 +57,26 @@ serve(async (req) => {
         .limit(1)
         .single()
 
-      if (!error && data) {
-        callRecord = data
-        console.log(`✅ Found call record: ${callRecord.id}`)
+      if (!outboundError && outboundData) {
+        callRecord = outboundData
+        console.log(`✅ Found outbound call record: ${callRecord.id}`)
+      }
+    }
+
+    // If no outbound match, try inbound (caller is "from")
+    if (!callRecord && from) {
+      const { data: inboundData, error: inboundError } = await supabase
+        .from('call_records')
+        .select('*')
+        .eq('caller_number', from)
+        .eq('direction', 'inbound')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single()
+
+      if (!inboundError && inboundData) {
+        callRecord = inboundData
+        console.log(`✅ Found inbound call record: ${callRecord.id}`)
       }
     }
 
@@ -115,6 +134,18 @@ serve(async (req) => {
         console.error('❌ Error updating call record:', updateError)
       } else {
         console.log(`✅ Updated call record ${callRecord.id} to status: ${newStatus}`)
+
+        // Send Slack notification for completed/ended calls
+        if (call_state === 'completed' || call_state === 'ended') {
+          sendSlackCallNotification(
+            supabase,
+            callRecord.user_id,
+            callRecord.contact_phone || callRecord.caller_number,
+            callRecord.direction,
+            newStatus,
+            duration ? parseInt(duration) : 0
+          ).catch(err => console.error('Failed to send Slack call notification:', err))
+        }
       }
     } else {
       console.log('⚠️  No matching call record found')
@@ -156,3 +187,126 @@ serve(async (req) => {
     )
   }
 })
+
+/**
+ * Send Slack notification for completed calls
+ */
+async function sendSlackCallNotification(
+  supabase: any,
+  userId: string,
+  phoneNumber: string,
+  direction: string,
+  status: string,
+  durationSeconds: number
+) {
+  try {
+    // Get Slack provider ID
+    const { data: slackProvider } = await supabase
+      .from('integration_providers')
+      .select('id')
+      .eq('slug', 'slack')
+      .single()
+
+    if (!slackProvider) return
+
+    // Check if user has Slack connected
+    const { data: integration } = await supabase
+      .from('user_integrations')
+      .select('access_token, config')
+      .eq('user_id', userId)
+      .eq('status', 'connected')
+      .eq('provider_id', slackProvider.id)
+      .single()
+
+    if (!integration?.access_token) return
+
+    // Get contact name if available
+    const { data: contact } = await supabase
+      .from('contacts')
+      .select('name')
+      .eq('user_id', userId)
+      .eq('phone_number', phoneNumber)
+      .single()
+
+    const contactName = contact?.name || phoneNumber
+
+    // Format duration
+    const minutes = Math.floor(durationSeconds / 60)
+    const seconds = durationSeconds % 60
+    const durationStr = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`
+
+    // Determine emoji and status text
+    const isInbound = direction === 'inbound'
+    const emoji = status === 'completed' ? (isInbound ? '📞' : '📱') : '❌'
+    const directionText = isInbound ? 'Inbound call from' : 'Outbound call to'
+    const statusText = status === 'completed' ? `Duration: ${durationStr}` : `Status: ${status}`
+
+    // Find a channel
+    const channelsResponse = await fetch(
+      'https://slack.com/api/conversations.list?types=public_channel&limit=10',
+      { headers: { 'Authorization': `Bearer ${integration.access_token}` } }
+    )
+    const channelsResult = await channelsResponse.json()
+
+    let channelId = integration.config?.notification_channel
+    if (!channelId && channelsResult.ok && channelsResult.channels?.length > 0) {
+      const patChannel = channelsResult.channels.find((c: any) => c.name === 'pat-notifications')
+      const generalChannel = channelsResult.channels.find((c: any) => c.name === 'general')
+      channelId = patChannel?.id || generalChannel?.id || channelsResult.channels[0].id
+    }
+
+    if (!channelId) return
+
+    // Auto-join channel
+    await fetch('https://slack.com/api/conversations.join', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${integration.access_token}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: `channel=${encodeURIComponent(channelId)}`,
+    })
+
+    // Send the notification
+    const slackMessage = {
+      channel: channelId,
+      text: `${emoji} ${directionText} ${contactName}`,
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `${emoji} *${directionText} ${contactName}*\n${statusText}`
+          }
+        },
+        {
+          type: 'context',
+          elements: [
+            {
+              type: 'mrkdwn',
+              text: `${phoneNumber} • ${new Date().toLocaleString()}`
+            }
+          ]
+        }
+      ]
+    }
+
+    const response = await fetch('https://slack.com/api/chat.postMessage', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${integration.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(slackMessage),
+    })
+
+    const result = await response.json()
+    if (!result.ok) {
+      console.error('Slack call notification failed:', result.error)
+    } else {
+      console.log('Slack call notification sent for', phoneNumber)
+    }
+  } catch (error) {
+    console.error('Error sending Slack call notification:', error)
+  }
+}
