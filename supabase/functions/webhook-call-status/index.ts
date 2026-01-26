@@ -49,6 +49,7 @@ serve(async (req) => {
       const phoneNumber = callRecord.contact_phone || callRecord.caller_number
       sendSlackCallNotification(
         supabase,
+        callRecord.id,
         callRecord.user_id,
         phoneNumber,
         callRecord.direction || 'inbound',
@@ -66,9 +67,11 @@ serve(async (req) => {
 
 /**
  * Send Slack notification for completed calls
+ * Saves the message ID so it can be updated with transcript/recording later
  */
 async function sendSlackCallNotification(
   supabase: any,
+  callRecordId: string,
   userId: string,
   phoneNumber: string,
   direction: string,
@@ -180,7 +183,16 @@ async function sendSlackCallNotification(
     if (!result.ok) {
       console.error('Slack call notification failed:', result.error)
     } else {
-      console.log('Slack call notification sent for', phoneNumber)
+      console.log('Slack call notification sent for', phoneNumber, 'ts:', result.ts)
+
+      // Save the Slack message ID so we can update it with transcript/recording later
+      await supabase
+        .from('call_records')
+        .update({
+          slack_message_ts: result.ts,
+          slack_channel_id: channelId,
+        })
+        .eq('id', callRecordId)
     }
   } catch (error) {
     console.error('Error sending Slack call notification:', error)
