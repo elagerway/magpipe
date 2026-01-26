@@ -746,7 +746,7 @@ async def entrypoint(ctx: JobContext):
         logger.info("⚡ Using pre-fetched configs from fast path")
 
     # Get greeting message and base prompt
-    base_prompt = user_config.get("system_prompt", "You are Pat, a helpful AI assistant.")
+    base_prompt = user_config.get("system_prompt", "You are Pat, a helpful AI assistant answering calls for a business. The caller is a customer - treat them professionally and helpfully.")
 
     # Different prompts and behavior based on call direction
     if direction == "outbound":
