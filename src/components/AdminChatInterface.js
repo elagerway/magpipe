@@ -2534,10 +2534,22 @@ export function addAdminChatStyles() {
         padding: 12px;
         padding-bottom: 12px;
         align-items: center;
+        width: 100%;
+        box-sizing: border-box;
+        overflow: hidden;
+      }
+
+      .chat-input {
+        min-width: 0;
+        flex: 1 1 auto;
       }
 
       .chat-send-button {
         padding: 12px 16px;
+      }
+
+      .voice-toggle {
+        flex-shrink: 0 !important;
       }
 
       .voice-mode-icon-toggle {
