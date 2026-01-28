@@ -29,6 +29,7 @@ CREATE INDEX IF NOT EXISTS idx_oauth_states_user_provider ON oauth_states(user_i
 ALTER TABLE oauth_states ENABLE ROW LEVEL SECURITY;
 
 -- Policy: users can only see their own states (though typically accessed via service role)
+DROP POLICY IF EXISTS "Users can view own oauth states" ON oauth_states;
 CREATE POLICY "Users can view own oauth states" ON oauth_states
   FOR SELECT USING (auth.uid() = user_id);
 

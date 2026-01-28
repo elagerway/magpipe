@@ -25,31 +25,35 @@ CREATE TABLE IF NOT EXISTS scheduled_actions (
 );
 
 -- Index for finding due actions efficiently
-CREATE INDEX idx_scheduled_actions_due
+CREATE INDEX IF NOT EXISTS idx_scheduled_actions_due
   ON scheduled_actions (scheduled_at)
   WHERE status = 'pending';
 
 -- Index for user's scheduled actions
-CREATE INDEX idx_scheduled_actions_user
+CREATE INDEX IF NOT EXISTS idx_scheduled_actions_user
   ON scheduled_actions (user_id, status);
 
 -- Enable RLS
 ALTER TABLE scheduled_actions ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies
+DROP POLICY IF EXISTS "Users can view own scheduled actions" ON scheduled_actions;
 CREATE POLICY "Users can view own scheduled actions"
   ON scheduled_actions FOR SELECT
   USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert own scheduled actions" ON scheduled_actions;
 CREATE POLICY "Users can insert own scheduled actions"
   ON scheduled_actions FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can cancel own pending scheduled actions" ON scheduled_actions;
 CREATE POLICY "Users can cancel own pending scheduled actions"
   ON scheduled_actions FOR UPDATE
   USING (auth.uid() = user_id AND status = 'pending');
 
 -- Service role can do everything (for cron job execution)
+DROP POLICY IF EXISTS "Service role full access" ON scheduled_actions;
 CREATE POLICY "Service role full access"
   ON scheduled_actions FOR ALL
   USING (auth.role() = 'service_role');

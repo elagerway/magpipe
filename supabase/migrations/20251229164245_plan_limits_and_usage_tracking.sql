@@ -33,12 +33,14 @@ CREATE INDEX IF NOT EXISTS idx_usage_history_period ON public.usage_history(peri
 ALTER TABLE public.usage_history ENABLE ROW LEVEL SECURITY;
 
 -- Users can view their own usage history
+DROP POLICY IF EXISTS "Users can view own usage history" ON public.usage_history;
 CREATE POLICY "Users can view own usage history"
   ON public.usage_history
   FOR SELECT
   USING (auth.uid() = user_id);
 
 -- Admins can view all usage history
+DROP POLICY IF EXISTS "Admins can view all usage history" ON public.usage_history;
 CREATE POLICY "Admins can view all usage history"
   ON public.usage_history
   FOR SELECT
@@ -47,6 +49,7 @@ CREATE POLICY "Admins can view all usage history"
   );
 
 -- Service role can insert usage history
+DROP POLICY IF EXISTS "Service role can insert usage history" ON public.usage_history;
 CREATE POLICY "Service role can insert usage history"
   ON public.usage_history
   FOR INSERT
@@ -84,6 +87,7 @@ ON CONFLICT (plan) DO UPDATE SET
 -- Enable RLS on plan_limits (read-only for all authenticated users)
 ALTER TABLE public.plan_limits ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Anyone can read plan limits" ON public.plan_limits;
 CREATE POLICY "Anyone can read plan limits"
   ON public.plan_limits
   FOR SELECT

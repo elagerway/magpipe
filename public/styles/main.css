@@ -902,9 +902,16 @@ p {
 }
 
 .call-status-indicator {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   margin-right: 0.25rem;
   font-size: 0.875rem;
+  vertical-align: middle;
+}
+
+.call-status-indicator svg {
+  display: inline-block;
+  vertical-align: middle;
 }
 
 .call-detail-recording {
