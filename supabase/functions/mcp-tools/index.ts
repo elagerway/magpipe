@@ -266,12 +266,31 @@ interface ToolDefinition {
   parameters: Record<string, any>;
 }
 
+interface McpServerTool {
+  name: string;
+  description?: string;
+  inputSchema?: {
+    type: string;
+    properties?: Record<string, unknown>;
+    required?: string[];
+  };
+}
+
+interface McpServerInfo {
+  id: string;
+  name: string;
+  type: 'custom' | 'catalog';
+  slug?: string;  // For catalog servers
+  tools: ToolDefinition[];
+}
+
 interface McpToolsResponse {
   tools: ToolDefinition[];
   integrations: {
     connected: string[];
     available: string[];
   };
+  mcp_servers?: McpServerInfo[];
 }
 
 Deno.serve(async (req) => {
@@ -393,12 +412,89 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Fetch user's connected MCP servers
+    const mcpServers: McpServerInfo[] = [];
+
+    // Get custom MCP servers
+    const { data: customServers } = await supabase
+      .from('user_mcp_servers')
+      .select('id, name, server_url, tools_cache')
+      .eq('user_id', user.id)
+      .eq('status', 'active');
+
+    if (customServers) {
+      for (const server of customServers) {
+        const serverTools: ToolDefinition[] = [];
+        const cachedTools = (server.tools_cache || []) as McpServerTool[];
+
+        // Generate a slug from server name for prefixing tools
+        const serverSlug = server.name.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+
+        for (const tool of cachedTools) {
+          const prefixedTool: ToolDefinition = {
+            name: `${serverSlug}:${tool.name}`,
+            description: tool.description || `Tool from ${server.name}`,
+            parameters: tool.inputSchema || { type: 'object', properties: {} },
+          };
+          serverTools.push(prefixedTool);
+          tools.push(prefixedTool);
+        }
+
+        mcpServers.push({
+          id: server.id,
+          name: server.name,
+          type: 'custom',
+          tools: serverTools,
+        });
+      }
+    }
+
+    // Get catalog MCP connections
+    const { data: catalogConnections } = await supabase
+      .from('user_mcp_connections')
+      .select(`
+        id,
+        tools_cache,
+        catalog:mcp_server_catalog(name, slug)
+      `)
+      .eq('user_id', user.id)
+      .eq('status', 'connected');
+
+    if (catalogConnections) {
+      for (const conn of catalogConnections) {
+        if (!conn.catalog) continue;
+
+        const serverTools: ToolDefinition[] = [];
+        const cachedTools = (conn.tools_cache || []) as McpServerTool[];
+        const catalogSlug = conn.catalog.slug;
+
+        for (const tool of cachedTools) {
+          const prefixedTool: ToolDefinition = {
+            name: `${catalogSlug}:${tool.name}`,
+            description: tool.description || `Tool from ${conn.catalog.name}`,
+            parameters: tool.inputSchema || { type: 'object', properties: {} },
+          };
+          serverTools.push(prefixedTool);
+          tools.push(prefixedTool);
+        }
+
+        mcpServers.push({
+          id: conn.id,
+          name: conn.catalog.name,
+          type: 'catalog',
+          slug: catalogSlug,
+          tools: serverTools,
+        });
+      }
+    }
+
     const response: McpToolsResponse = {
       tools,
       integrations: {
         connected: connectedSlugs,
         available: allProviderSlugs.filter(s => !connectedSlugs.includes(s)),
       },
+      ...(mcpServers.length > 0 && { mcp_servers: mcpServers }),
     };
 
     return new Response(
