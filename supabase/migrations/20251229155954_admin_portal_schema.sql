@@ -36,6 +36,7 @@ CREATE INDEX IF NOT EXISTS idx_impersonation_tokens_expires ON public.admin_impe
 ALTER TABLE public.admin_impersonation_tokens ENABLE ROW LEVEL SECURITY;
 
 -- Only admins can create/view impersonation tokens
+DROP POLICY IF EXISTS "Admins can manage impersonation tokens" ON public.admin_impersonation_tokens;
 CREATE POLICY "Admins can manage impersonation tokens"
   ON public.admin_impersonation_tokens
   FOR ALL
@@ -63,6 +64,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_log_created ON public.admin_audit_log(creat
 ALTER TABLE public.admin_audit_log ENABLE ROW LEVEL SECURITY;
 
 -- Only admins can view audit log
+DROP POLICY IF EXISTS "Admins can view audit log" ON public.admin_audit_log;
 CREATE POLICY "Admins can view audit log"
   ON public.admin_audit_log
   FOR SELECT
@@ -71,6 +73,7 @@ CREATE POLICY "Admins can view audit log"
   );
 
 -- Only service role can insert audit log (via Edge Functions)
+DROP POLICY IF EXISTS "Service role can insert audit log" ON public.admin_audit_log;
 CREATE POLICY "Service role can insert audit log"
   ON public.admin_audit_log
   FOR INSERT
@@ -79,6 +82,7 @@ CREATE POLICY "Service role can insert audit log"
 -- Update the existing users RLS policy to allow admins to view all users
 -- First drop the existing policy
 DROP POLICY IF EXISTS "Users can view own record" ON public.users;
+DROP POLICY IF EXISTS "Users can view own record or admins can view all" ON public.users;
 
 -- Create new policy allowing admins to view all, users to view own
 CREATE POLICY "Users can view own record or admins can view all"
@@ -91,6 +95,7 @@ CREATE POLICY "Users can view own record or admins can view all"
 
 -- Allow admins to update any user record
 DROP POLICY IF EXISTS "Users can update own record" ON public.users;
+DROP POLICY IF EXISTS "Users can update own or admins can update all" ON public.users;
 
 CREATE POLICY "Users can update own or admins can update all"
   ON public.users

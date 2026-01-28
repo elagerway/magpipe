@@ -126,7 +126,8 @@ export class Router {
 
     // Load and render page (with caching for main tabs)
     try {
-      const cacheable = ['/agent', '/inbox', '/phone', '/contacts', '/settings'];
+      // Don't cache inbox - it has dynamic rendering that needs fresh instances
+      const cacheable = ['/agent', '/phone', '/contacts', '/settings'];
       let page;
 
       if (cacheable.includes(path) && this.pageCache.has(path)) {
@@ -159,7 +160,8 @@ export class Router {
 
   // Preload other main tabs in background
   preloadTabs(currentPath) {
-    const tabs = ['/agent', '/inbox', '/phone', '/contacts', '/settings'];
+    // Don't preload inbox - it needs fresh instances for dynamic rendering
+    const tabs = ['/agent', '/phone', '/contacts', '/settings'];
     const toPreload = tabs.filter(t => t !== currentPath && !this.pageCache.has(t));
 
     // Preload immediately but don't block - use requestIdleCallback if available

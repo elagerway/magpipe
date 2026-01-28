@@ -1223,87 +1223,97 @@ export default class InboxPage {
   }
 
   getCallStatusInfo(status) {
+    // SVG icons for consistent cross-platform rendering (no emoji backgrounds)
+    const checkIcon = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+    const xIcon = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
+    const circleXIcon = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>';
+    const spinIcon = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>';
+    const arrowIcon = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"></line><polyline points="7 7 17 7 17 17"></polyline></svg>';
+    const blockedIcon = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>';
+    const voicemailIcon = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5.5" cy="11.5" r="4.5"></circle><circle cx="18.5" cy="11.5" r="4.5"></circle><line x1="5.5" y1="16" x2="18.5" y2="16"></line></svg>';
+    const dotIcon = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="4"></circle></svg>';
+
     const statusMap = {
       'completed': {
-        icon: '✓',
+        icon: checkIcon,
         text: 'Completed',
         class: 'status-completed',
         color: '#10b981'
       },
       'in-progress': {
-        icon: '⟳',
+        icon: spinIcon,
         text: 'In Progress',
         class: 'status-progress',
         color: '#6366f1'
       },
       'no-answer': {
-        icon: '⊗',
+        icon: circleXIcon,
         text: 'No Answer',
         class: 'status-missed',
         color: '#ef4444'
       },
       'failed': {
-        icon: '✕',
+        icon: xIcon,
         text: 'Failed',
         class: 'status-failed',
         color: '#ef4444'
       },
       'busy': {
-        icon: '⊗',
+        icon: circleXIcon,
         text: 'Busy',
         class: 'status-busy',
         color: '#f59e0b'
       },
       'answered_by_pat': {
-        icon: '✓',
+        icon: checkIcon,
         text: 'Answered by Pat',
         class: 'status-completed',
         color: '#10b981'
       },
       'transferred_to_user': {
-        icon: '↗',
+        icon: arrowIcon,
         text: 'Transferred',
         class: 'status-transferred',
         color: '#6366f1'
       },
       'screened_out': {
-        icon: '🚫',
+        icon: blockedIcon,
         text: 'Screened Out',
         class: 'status-screened',
         color: '#9ca3af'
       },
       'voicemail': {
-        icon: '💬',
+        icon: voicemailIcon,
         text: 'Voicemail',
         class: 'status-voicemail',
         color: '#8b5cf6'
       },
       'Caller Hungup': {
-        icon: '⊗',
+        icon: circleXIcon,
         text: 'Hung Up',
         class: 'status-hungup',
         color: '#f59e0b'
       },
       'outbound_completed': {
-        icon: '✓',
+        icon: checkIcon,
         text: 'Completed',
         class: 'status-completed',
         color: '#10b981'
       },
       'outbound_no_answer': {
-        icon: '⊗',
+        icon: circleXIcon,
         text: 'No Answer',
         class: 'status-missed',
         color: '#ef4444'
       },
       'outbound_busy': {
-        icon: '⊗',
+        icon: circleXIcon,
         text: 'Busy',
         class: 'status-busy',
         color: '#f59e0b'
       },
       'outbound_failed': {
-        icon: '✕',
+        icon: xIcon,
         text: 'Failed',
         class: 'status-failed',
         color: '#ef4444'
@@ -1311,7 +1321,7 @@ export default class InboxPage {
     };
 
     return statusMap[status] || {
-      icon: '•',
+      icon: dotIcon,
       text: status || 'Unknown',
       class: 'status-unknown',
       color: '#9ca3af'

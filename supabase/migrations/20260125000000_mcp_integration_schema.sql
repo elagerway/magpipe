@@ -68,57 +68,67 @@ ALTER TABLE user_integrations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE integration_tool_logs ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies for integration_providers (read-only for authenticated users)
+DROP POLICY IF EXISTS "Users can view enabled integration providers" ON integration_providers;
 CREATE POLICY "Users can view enabled integration providers"
   ON integration_providers FOR SELECT
   TO authenticated
   USING (enabled = true);
 
 -- RLS Policies for user_integrations
+DROP POLICY IF EXISTS "Users can view their own integrations" ON user_integrations;
 CREATE POLICY "Users can view their own integrations"
   ON user_integrations FOR SELECT
   TO authenticated
   USING (user_id = auth.uid());
 
+DROP POLICY IF EXISTS "Users can insert their own integrations" ON user_integrations;
 CREATE POLICY "Users can insert their own integrations"
   ON user_integrations FOR INSERT
   TO authenticated
   WITH CHECK (user_id = auth.uid());
 
+DROP POLICY IF EXISTS "Users can update their own integrations" ON user_integrations;
 CREATE POLICY "Users can update their own integrations"
   ON user_integrations FOR UPDATE
   TO authenticated
   USING (user_id = auth.uid())
   WITH CHECK (user_id = auth.uid());
 
+DROP POLICY IF EXISTS "Users can delete their own integrations" ON user_integrations;
 CREATE POLICY "Users can delete their own integrations"
   ON user_integrations FOR DELETE
   TO authenticated
   USING (user_id = auth.uid());
 
 -- RLS Policies for integration_tool_logs
+DROP POLICY IF EXISTS "Users can view their own tool logs" ON integration_tool_logs;
 CREATE POLICY "Users can view their own tool logs"
   ON integration_tool_logs FOR SELECT
   TO authenticated
   USING (user_id = auth.uid());
 
+DROP POLICY IF EXISTS "Users can insert their own tool logs" ON integration_tool_logs;
 CREATE POLICY "Users can insert their own tool logs"
   ON integration_tool_logs FOR INSERT
   TO authenticated
   WITH CHECK (user_id = auth.uid());
 
 -- Service role needs full access for Edge Functions
+DROP POLICY IF EXISTS "Service role has full access to providers" ON integration_providers;
 CREATE POLICY "Service role has full access to providers"
   ON integration_providers FOR ALL
   TO service_role
   USING (true)
   WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Service role has full access to user_integrations" ON user_integrations;
 CREATE POLICY "Service role has full access to user_integrations"
   ON user_integrations FOR ALL
   TO service_role
   USING (true)
   WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Service role has full access to tool_logs" ON integration_tool_logs;
 CREATE POLICY "Service role has full access to tool_logs"
   ON integration_tool_logs FOR ALL
   TO service_role
