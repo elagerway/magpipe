@@ -2189,6 +2189,7 @@ export function addAdminChatStyles() {
 
     .chat-input-container {
       display: flex;
+      align-items: center;
       gap: 8px;
       padding: 16px;
       padding-bottom: 16px;
@@ -2252,6 +2253,13 @@ export function addAdminChatStyles() {
       justify-content: center;
       transition: all 0.2s;
       position: relative;
+      /* Reset iOS button defaults */
+      -webkit-appearance: none;
+      appearance: none;
+      padding: 0;
+      margin: 0;
+      line-height: 1;
+      box-sizing: border-box;
     }
 
     .voice-mode-icon-toggle:hover {
@@ -2525,10 +2533,26 @@ export function addAdminChatStyles() {
       .chat-input-container {
         padding: 12px;
         padding-bottom: 12px;
+        align-items: center;
       }
 
       .chat-send-button {
         padding: 12px 16px;
+      }
+
+      .voice-mode-icon-toggle {
+        width: 44px !important;
+        height: 44px !important;
+        min-width: 44px !important;
+        min-height: 44px !important;
+        max-width: 44px !important;
+        max-height: 44px !important;
+        aspect-ratio: 1 / 1 !important;
+        flex-shrink: 0 !important;
+        flex-grow: 0 !important;
+        align-self: center !important;
+        -webkit-appearance: none !important;
+        padding: 0 !important;
       }
     }
   `;

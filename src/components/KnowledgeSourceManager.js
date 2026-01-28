@@ -550,22 +550,22 @@ export function addKnowledgeSourceManagerStyles() {
       text-transform: capitalize;
     }
 
-    .status-pending {
+    .status-badge.status-pending {
       background: #fef3c7;
       color: #92400e;
     }
 
-    .status-syncing {
+    .status-badge.status-syncing {
       background: #dbeafe;
       color: #1e40af;
     }
 
-    .status-completed {
+    .status-badge.status-completed {
       background: #d1fae5;
       color: #065f46;
     }
 
-    .status-failed {
+    .status-badge.status-failed {
       background: #fee2e2;
       color: #991b1b;
     }
