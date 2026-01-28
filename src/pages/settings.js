@@ -8,6 +8,7 @@ import { renderBottomNav } from '../components/BottomNav.js';
 import { createAccessCodeSettings, addAccessCodeSettingsStyles } from '../components/AccessCodeSettings.js';
 import { createKnowledgeSourceManager, addKnowledgeSourceManagerStyles } from '../components/KnowledgeSourceManager.js';
 import { createIntegrationSettings, addIntegrationSettingsStyles } from '../components/IntegrationSettings.js';
+import { createMcpServerCatalog, addMcpCatalogStyles } from '../components/McpServerCatalog.js';
 
 // ElevenLabs Voices - subset for display purposes
 const ELEVENLABS_VOICES = [
@@ -67,6 +68,7 @@ export default class SettingsPage {
     addAccessCodeSettingsStyles();
     addKnowledgeSourceManagerStyles();
     addIntegrationSettingsStyles();
+    addMcpCatalogStyles();
 
     // Use cached data if fetched within last 30 seconds
     const now = Date.now();
@@ -340,6 +342,9 @@ export default class SettingsPage {
         <!-- Connected Apps / Integrations -->
         <div id="integration-settings-container" style="margin-bottom: 1rem;"></div>
 
+        <!-- MCP Servers -->
+        <div id="mcp-catalog-container" style="margin-bottom: 1rem;"></div>
+
         <!-- Quick Links -->
         <div class="card">
           <h2>Quick Links</h2>
@@ -606,6 +611,12 @@ export default class SettingsPage {
     const integrationContainer = document.getElementById('integration-settings-container');
     if (integrationContainer) {
       createIntegrationSettings('integration-settings-container');
+    }
+
+    // Initialize MCP Server Catalog component
+    const mcpCatalogContainer = document.getElementById('mcp-catalog-container');
+    if (mcpCatalogContainer) {
+      createMcpServerCatalog('mcp-catalog-container');
     }
 
     // Legacy Cal.com integration buttons (for backward compatibility - can be removed later)

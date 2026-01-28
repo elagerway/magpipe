@@ -141,6 +141,195 @@ export async function isIntegrationConnected(providerSlug) {
   return integrations.connected.includes(providerSlug);
 }
 
+// ============================================================================
+// MCP Server Management
+// ============================================================================
+
+/**
+ * Fetch the MCP server catalog
+ * @returns {Promise<Array>} - List of catalog servers
+ */
+export async function getMcpCatalog() {
+  const { data, error } = await supabase
+    .from('mcp_server_catalog')
+    .select('*')
+    .eq('enabled', true)
+    .order('featured', { ascending: false })
+    .order('name');
+
+  if (error) throw error;
+  return data || [];
+}
+
+/**
+ * Fetch user's connected MCP servers (both custom and catalog)
+ * @returns {Promise<{custom: Array, catalog: Array}>}
+ */
+export async function getUserMcpServers() {
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError || !session) throw new Error('Not authenticated');
+
+  const [customResult, connectionsResult] = await Promise.all([
+    supabase
+      .from('user_mcp_servers')
+      .select('*')
+      .eq('user_id', session.user.id)
+      .order('name'),
+    supabase
+      .from('user_mcp_connections')
+      .select(`
+        *,
+        catalog:mcp_server_catalog(id, name, slug, description, icon_url, category, auth_type, verified)
+      `)
+      .eq('user_id', session.user.id),
+  ]);
+
+  return {
+    custom: customResult.data || [],
+    catalog: connectionsResult.data || [],
+  };
+}
+
+/**
+ * Validate a custom MCP server URL
+ * @param {string} serverUrl - Server URL to validate
+ * @param {string} authType - Auth type ('none', 'bearer', 'api_key')
+ * @param {string} apiKey - API key if required
+ * @returns {Promise<{valid: boolean, tools_count?: number, tools?: Array, error?: string}>}
+ */
+export async function validateMcpServer(serverUrl, authType = 'none', apiKey = null) {
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError || !session) throw new Error('Not authenticated');
+
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/mcp-server-validate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session.access_token}`,
+      'apikey': SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify({
+      action: 'validate',
+      server_url: serverUrl,
+      auth_type: authType,
+      api_key: apiKey || undefined,
+    }),
+  });
+
+  return response.json();
+}
+
+/**
+ * Add a custom MCP server
+ * @param {object} options - Server options
+ * @param {string} options.server_url - Server URL
+ * @param {string} options.name - Display name
+ * @param {string} options.description - Description
+ * @param {string} options.auth_type - Auth type
+ * @param {string} options.api_key - API key
+ * @returns {Promise<{success: boolean, server?: object, error?: string}>}
+ */
+export async function addCustomMcpServer(options) {
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError || !session) throw new Error('Not authenticated');
+
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/mcp-server-validate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session.access_token}`,
+      'apikey': SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify({
+      action: 'add',
+      ...options,
+    }),
+  });
+
+  return response.json();
+}
+
+/**
+ * Connect to a catalog MCP server
+ * @param {string} catalogServerId - Catalog server ID
+ * @param {string} apiKey - API key if required
+ * @returns {Promise<{success: boolean, connection?: object, error?: string}>}
+ */
+export async function connectCatalogServer(catalogServerId, apiKey = null) {
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError || !session) throw new Error('Not authenticated');
+
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/mcp-server-validate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session.access_token}`,
+      'apikey': SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify({
+      action: 'connect_catalog',
+      catalog_server_id: catalogServerId,
+      api_key: apiKey || undefined,
+    }),
+  });
+
+  return response.json();
+}
+
+/**
+ * Disconnect from an MCP server
+ * @param {string} serverId - Server or connection ID
+ * @param {string} serverType - 'custom' or 'catalog'
+ * @returns {Promise<{success: boolean, error?: string}>}
+ */
+export async function disconnectMcpServer(serverId, serverType) {
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError || !session) throw new Error('Not authenticated');
+
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/mcp-server-validate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session.access_token}`,
+      'apikey': SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify({
+      action: 'disconnect',
+      server_id: serverId,
+      server_type: serverType,
+    }),
+  });
+
+  return response.json();
+}
+
+/**
+ * Refresh tools cache for an MCP server
+ * @param {string} serverId - Server or connection ID
+ * @param {string} serverType - 'custom' or 'catalog'
+ * @returns {Promise<{success: boolean, tools_count?: number, tools?: Array, error?: string}>}
+ */
+export async function refreshMcpServerTools(serverId, serverType) {
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError || !session) throw new Error('Not authenticated');
+
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/mcp-server-validate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session.access_token}`,
+      'apikey': SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify({
+      action: 'refresh_tools',
+      server_id: serverId,
+      server_type: serverType,
+    }),
+  });
+
+  return response.json();
+}
+
 // Export as default object for convenience
 export default {
   getTools,
@@ -151,4 +340,12 @@ export default {
   runTool,
   getIntegrations,
   isIntegrationConnected,
+  // MCP Server management
+  getMcpCatalog,
+  getUserMcpServers,
+  validateMcpServer,
+  addCustomMcpServer,
+  connectCatalogServer,
+  disconnectMcpServer,
+  refreshMcpServerTools,
 };
