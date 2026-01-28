@@ -275,6 +275,14 @@ export function addVoiceToggleStyles() {
       justify-content: center;
       transition: all 0.2s ease;
       -webkit-tap-highlight-color: transparent;
+      /* iOS Safari fixes */
+      -webkit-appearance: none;
+      appearance: none;
+      padding: 0;
+      margin: 0;
+      line-height: 1;
+      box-sizing: border-box;
+      flex-shrink: 0;
     }
 
     .voice-toggle:hover {
@@ -408,6 +416,20 @@ export function addVoiceToggleStyles() {
 
     /* Mobile responsive */
     @media (max-width: 768px) {
+      .voice-toggle {
+        width: 40px !important;
+        height: 40px !important;
+        min-width: 40px !important;
+        min-height: 40px !important;
+        max-width: 40px !important;
+        max-height: 40px !important;
+        aspect-ratio: 1 / 1 !important;
+        flex-shrink: 0 !important;
+        flex-grow: 0 !important;
+        -webkit-appearance: none !important;
+        padding: 0 !important;
+      }
+
       .toast-container {
         left: 20px;
         right: 20px;
