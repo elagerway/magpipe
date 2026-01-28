@@ -218,13 +218,8 @@ export default class SignupPage {
           throw error;
         }
 
-        // Create user profile
-        const { error: profileError } = await User.createProfile(user.id, email, name);
-
-        if (profileError) {
-          console.error('Error creating profile:', profileError);
-          // Continue anyway - profile might be created by trigger
-        }
+        // Profile is created automatically by database trigger (handle_new_user)
+        // No need to call User.createProfile() here
 
         // Redirect to email verification
         navigateTo('/verify-email');
