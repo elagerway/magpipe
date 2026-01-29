@@ -152,10 +152,16 @@ style.textContent = `
     border-top: 1px solid #e5e7eb;
   }
 
-  /* Desktop */
+  /* Desktop - account for sidebar navigation */
   @media (min-width: 769px) {
     .agent-page {
-      bottom: 70px;
+      left: 240px;
+      bottom: 0;
+    }
+
+    #chat-container .chat-messages {
+      max-height: none !important;
+      flex: 1 !important;
     }
   }
 

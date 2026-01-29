@@ -438,7 +438,73 @@ p {
   padding-bottom: 70px !important;
 }
 
-/* Ensure containers have proper spacing on mobile */
+/* Desktop: Left sidebar navigation */
+@media (min-width: 769px) {
+  .bottom-nav {
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: auto;
+    width: 240px;
+    flex-direction: column;
+    justify-content: flex-start;
+    padding: 1rem 0;
+    padding-top: max(1rem, env(safe-area-inset-top));
+    border-top: none;
+    border-right: 1px solid var(--border-color);
+    box-shadow: 2px 0 10px rgba(0, 0, 0, 0.05);
+  }
+
+  .bottom-nav-item {
+    width: calc(100% - 1.5rem);
+    margin: 0.125rem 0.75rem;
+    padding: 0.75rem 1rem;
+    min-width: auto;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 0.75rem;
+    border-radius: 0.5rem;
+    transition: background-color 0.2s, color 0.2s;
+  }
+
+  .bottom-nav-item:hover {
+    background-color: var(--bg-secondary);
+  }
+
+  .bottom-nav-item.active {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+  }
+
+  .bottom-nav-item svg {
+    width: 22px;
+    height: 22px;
+    margin-bottom: 0;
+  }
+
+  .bottom-nav-item span {
+    font-size: 0.875rem;
+  }
+
+  .with-bottom-nav {
+    padding-bottom: 0 !important;
+    margin-left: 240px !important;
+  }
+
+  /* Adjust container max-width to account for sidebar */
+  .container {
+    max-width: calc(1200px - 240px);
+  }
+
+
+  /* Agent page - account for sidebar (uses fixed positioning) */
+  .agent-page {
+    left: 240px;
+    bottom: 0;
+  }
+}
+
+/* Mobile: Bottom navigation (default) */
 @media (max-width: 768px) {
   .with-bottom-nav {
     padding-bottom: calc(70px + env(safe-area-inset-bottom, 0px)) !important;
@@ -1235,6 +1301,25 @@ p {
 
   .transcript-bubble {
     padding: 0.5rem 0.5625rem;
+  }
+
+  /* Inbox - fixed positioning on desktop to fill viewport */
+  .inbox-container {
+    position: fixed;
+    top: 0;
+    left: 240px;
+    right: 0;
+    bottom: 0;
+    height: 100vh;
+    height: 100dvh;
+    max-height: none;
+    margin-left: 0;
+    width: auto;
+  }
+
+  /* Remove bottom margin on message input */
+  .message-input-container {
+    margin-bottom: 0;
   }
 }
 
