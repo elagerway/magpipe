@@ -9,6 +9,7 @@ import { createAccessCodeSettings, addAccessCodeSettingsStyles } from '../compon
 import { createKnowledgeSourceManager, addKnowledgeSourceManagerStyles } from '../components/KnowledgeSourceManager.js';
 import { createIntegrationSettings, addIntegrationSettingsStyles } from '../components/IntegrationSettings.js';
 import { createMcpServerCatalog, addMcpCatalogStyles } from '../components/McpServerCatalog.js';
+import { createExternalTrunkSettings, addExternalTrunkSettingsStyles } from '../components/ExternalTrunkSettings.js';
 
 // ElevenLabs Voices - subset for display purposes
 const ELEVENLABS_VOICES = [
@@ -69,6 +70,7 @@ export default class SettingsPage {
     addKnowledgeSourceManagerStyles();
     addIntegrationSettingsStyles();
     addMcpCatalogStyles();
+    addExternalTrunkSettingsStyles();
 
     // Use cached data if fetched within last 30 seconds
     const now = Date.now();
@@ -338,6 +340,9 @@ export default class SettingsPage {
             <p class="text-muted">No service numbers configured</p>
           ` : ''}
         </div>
+
+        <!-- External SIP Trunks -->
+        <div id="external-trunk-settings-container" style="margin-bottom: 1rem;"></div>
 
         <!-- Connected Apps / Integrations -->
         <div id="integration-settings-container" style="margin-bottom: 1rem;"></div>
@@ -617,6 +622,12 @@ export default class SettingsPage {
     const mcpCatalogContainer = document.getElementById('mcp-catalog-container');
     if (mcpCatalogContainer) {
       createMcpServerCatalog('mcp-catalog-container');
+    }
+
+    // Initialize External SIP Trunk Settings component
+    const externalTrunkContainer = document.getElementById('external-trunk-settings-container');
+    if (externalTrunkContainer) {
+      createExternalTrunkSettings('external-trunk-settings-container');
     }
 
     // Legacy Cal.com integration buttons (for backward compatibility - can be removed later)
