@@ -584,7 +584,7 @@ async def entrypoint(ctx: JobContext):
                 logger.error("Timeout waiting for SIP participant")
 
         if service_number:
-            # Look up user from service_numbers table
+            # Look up user from service_numbers table (SignalWire numbers)
             response = supabase.table("service_numbers") \
                 .select("user_id") \
                 .eq("phone_number", service_number) \
@@ -595,7 +595,21 @@ async def entrypoint(ctx: JobContext):
             if response.data and len(response.data) > 0:
                 user_id = response.data[0]["user_id"]
                 room_metadata["user_id"] = user_id
-                logger.info(f"Looked up user_id from service number: {user_id}")
+                logger.info(f"Looked up user_id from service_numbers: {user_id}")
+            else:
+                # Not found in service_numbers - check external_sip_numbers (Twilio, etc.)
+                logger.info(f"Number not in service_numbers, checking external_sip_numbers: {service_number}")
+                ext_response = supabase.table("external_sip_numbers") \
+                    .select("user_id") \
+                    .eq("phone_number", service_number) \
+                    .eq("is_active", True) \
+                    .limit(1) \
+                    .execute()
+
+                if ext_response.data and len(ext_response.data) > 0:
+                    user_id = ext_response.data[0]["user_id"]
+                    room_metadata["user_id"] = user_id
+                    logger.info(f"Looked up user_id from external_sip_numbers: {user_id}")
 
                 # Update call_record with LiveKit's voice platform call ID
                 # This allows us to match the call later when saving transcript
