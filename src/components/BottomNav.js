@@ -1,5 +1,6 @@
 /**
  * Mobile Bottom Navigation Component
+ * Self-contained component that fetches its own user data
  */
 
 import { supabase, getCurrentUser } from '../lib/supabase.js';
@@ -7,6 +8,10 @@ import { supabase, getCurrentUser } from '../lib/supabase.js';
 // Global unread count
 let unreadCount = 0;
 let unreadSubscription = null;
+
+// Cached user data for nav (avoids refetching on every page)
+let cachedUserData = null;
+let userDataFetchPromise = null;
 
 // Initialize unread message tracking
 export async function initUnreadTracking() {
@@ -85,6 +90,89 @@ export function clearUnreadBadge() {
   updateBadge();
 }
 
+// Clear cached user data (call after profile updates)
+export function clearNavUserCache() {
+  cachedUserData = null;
+  userDataFetchPromise = null;
+}
+
+// Fetch user data for nav (with caching)
+async function fetchNavUserData() {
+  // Return cached data if available
+  if (cachedUserData) {
+    return cachedUserData;
+  }
+
+  // If already fetching, wait for that promise
+  if (userDataFetchPromise) {
+    return userDataFetchPromise;
+  }
+
+  // Start new fetch
+  userDataFetchPromise = (async () => {
+    try {
+      const { user } = await getCurrentUser();
+      if (!user) return null;
+
+      const { data: profile } = await supabase
+        .from('users')
+        .select('name, avatar_url')
+        .eq('id', user.id)
+        .single();
+
+      cachedUserData = {
+        name: profile?.name || null,
+        email: user.email,
+        avatar_url: profile?.avatar_url || null
+      };
+
+      return cachedUserData;
+    } catch (error) {
+      console.error('Error fetching nav user data:', error);
+      return null;
+    }
+  })();
+
+  return userDataFetchPromise;
+}
+
+// Get user initials for avatar
+function getInitials(name, email) {
+  if (name) {
+    const parts = name.split(' ');
+    return parts.length > 1
+      ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+      : name.substring(0, 2).toUpperCase();
+  }
+  return email ? email.substring(0, 2).toUpperCase() : 'U';
+}
+
+// Update the user section in the DOM after data is fetched
+function updateNavUserSection(userData) {
+  const userSection = document.getElementById('nav-user-section');
+  if (!userSection || !userData) return;
+
+  const userInitials = getInitials(userData.name, userData.email);
+  const userName = userData.name || 'User';
+  const userEmail = userData.email || '';
+
+  userSection.innerHTML = `
+    <button class="nav-user-button" id="nav-user-button" onclick="toggleUserModal(event)">
+      <div class="nav-user-avatar">${userData.avatar_url
+        ? `<img src="${userData.avatar_url}" alt="" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;" />`
+        : userInitials
+      }</div>
+      <div class="nav-user-info">
+        <span class="nav-user-name">${userName}</span>
+        <span class="nav-user-email">${userEmail}</span>
+      </div>
+      <svg class="nav-user-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="6 9 12 15 18 9"></polyline>
+      </svg>
+    </button>
+  `;
+}
+
 export function renderBottomNav(currentPath = '/agent') {
   const navItems = [
     {
@@ -110,6 +198,11 @@ export function renderBottomNav(currentPath = '/agent') {
       label: 'Contacts'
     },
     {
+      path: '/apps',
+      icon: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>`,
+      label: 'Apps'
+    },
+    {
       path: '/settings',
       icon: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>`,
       label: 'Settings'
@@ -119,23 +212,154 @@ export function renderBottomNav(currentPath = '/agent') {
   // Initialize unread tracking on first render
   setTimeout(() => initUnreadTracking(), 100);
 
+  // Fetch user data asynchronously and update the DOM
+  setTimeout(async () => {
+    const userData = await fetchNavUserData();
+    if (userData) {
+      updateNavUserSection(userData);
+    }
+  }, 0);
+
   return `
     <nav class="bottom-nav">
-      ${navItems.map(item => `
-        <button
-          id="${item.isPhone ? 'phone-nav-btn' : ''}"
-          class="bottom-nav-item ${currentPath === item.path ? 'active' : ''}"
-          onclick="navigateTo('${item.path}')"
-          style="position: relative;"
-        >
-          ${item.icon}
-          <span>${item.label}</span>
-          ${item.badge ? `<span id="inbox-badge" class="nav-badge" style="display: none;">0</span>` : ''}
+      <div class="nav-items-container">
+        ${navItems.map(item => `
+          <button
+            id="${item.isPhone ? 'phone-nav-btn' : ''}"
+            class="bottom-nav-item ${currentPath === item.path ? 'active' : ''}"
+            onclick="navigateTo('${item.path}')"
+            style="position: relative;"
+          >
+            ${item.icon}
+            <span>${item.label}</span>
+            ${item.badge ? `<span id="inbox-badge" class="nav-badge" style="display: none;">0</span>` : ''}
+          </button>
+        `).join('')}
+      </div>
+
+      <!-- User Profile Section (Desktop Only) - populated async -->
+      <div class="nav-user-section" id="nav-user-section">
+        <div class="nav-user-button" style="opacity: 0.5;">
+          <div class="nav-user-avatar" style="background: var(--bg-secondary);"></div>
+          <div class="nav-user-info">
+            <span class="nav-user-name" style="background: var(--bg-secondary); width: 80px; height: 14px; border-radius: 4px;"></span>
+            <span class="nav-user-email" style="background: var(--bg-secondary); width: 120px; height: 12px; border-radius: 4px; margin-top: 4px;"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- User Modal -->
+      <div class="nav-user-modal" id="nav-user-modal">
+        <div class="nav-modal-section">
+          <div class="nav-modal-section-title">Documentation</div>
+          <button class="nav-modal-item" onclick="navigateTo('/agent-config'); closeUserModal();">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M12 2v4m0 12v4m-7-9H2m20 0h-3m-1.5-6.5L15 9m-6 6l-2.5 2.5m9-9L18 6m-12 12l2.5-2.5"></path>
+            </svg>
+            <span>Create Assistant</span>
+          </button>
+          <button class="nav-modal-item" onclick="window.open('https://docs.solomobile.ai', '_blank'); closeUserModal();">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+            </svg>
+            <span>All Documentation</span>
+          </button>
+        </div>
+
+        <div class="nav-modal-section">
+          <div class="nav-modal-section-title">Help</div>
+          <button class="nav-modal-item" onclick="window.open('mailto:support@solomobile.ai', '_blank'); closeUserModal();">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+              <path d="M22 6l-10 7L2 6"></path>
+            </svg>
+            <span>Contact Us</span>
+          </button>
+          <button class="nav-modal-item" onclick="window.open('https://solomobile.ai/chat', '_blank'); closeUserModal();">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+            </svg>
+            <span>Chat with us</span>
+          </button>
+        </div>
+
+        <div class="nav-modal-divider"></div>
+
+        <button class="nav-modal-item" onclick="navigateTo('/settings'); closeUserModal();">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+            <circle cx="9" cy="7" r="4"></circle>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+          </svg>
+          <span>Team</span>
         </button>
-      `).join('')}
+        <button class="nav-modal-item" onclick="navigateTo('/settings'); closeUserModal();">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+          <span>Settings</span>
+        </button>
+        <button class="nav-modal-item nav-modal-logout" onclick="handleLogout()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+            <polyline points="16 17 21 12 16 7"></polyline>
+            <line x1="21" y1="12" x2="9" y2="12"></line>
+          </svg>
+          <span>Log out</span>
+        </button>
+      </div>
     </nav>
   `;
 }
+
+// Toggle user modal
+window.toggleUserModal = function(event) {
+  event.stopPropagation();
+  const modal = document.getElementById('nav-user-modal');
+  const button = document.getElementById('nav-user-button');
+  if (modal && button) {
+    const isOpen = modal.classList.contains('open');
+    if (isOpen) {
+      closeUserModal();
+    } else {
+      modal.classList.add('open');
+      button.classList.add('open');
+      // Close on click outside
+      setTimeout(() => {
+        document.addEventListener('click', closeUserModalOnClickOutside);
+      }, 0);
+    }
+  }
+};
+
+window.closeUserModal = function() {
+  const modal = document.getElementById('nav-user-modal');
+  const button = document.getElementById('nav-user-button');
+  if (modal) modal.classList.remove('open');
+  if (button) button.classList.remove('open');
+  document.removeEventListener('click', closeUserModalOnClickOutside);
+};
+
+function closeUserModalOnClickOutside(event) {
+  const modal = document.getElementById('nav-user-modal');
+  const button = document.getElementById('nav-user-button');
+  if (modal && button && !modal.contains(event.target) && !button.contains(event.target)) {
+    closeUserModal();
+  }
+}
+
+window.handleLogout = async function() {
+  closeUserModal();
+  const { signOut } = await import('../lib/supabase.js');
+  await signOut();
+  navigateTo('/login');
+};
 
 export function setPhoneNavActive(isActive) {
   const phoneBtn = document.getElementById('phone-nav-btn');

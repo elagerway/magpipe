@@ -5,6 +5,7 @@
 import { getCurrentUser, supabase } from '../lib/supabase.js';
 import { renderBottomNav, setPhoneNavActive } from '../components/BottomNav.js';
 import { showOutboundTemplateModal } from '../components/OutboundTemplateModal.js';
+import { User } from '../models/index.js';
 
 // Lazy load SIP client to reduce initial bundle size (281KB)
 let sipClient = null;
@@ -48,6 +49,9 @@ export default class PhonePage {
     }
 
     this.userId = user.id;
+
+    // Fetch user profile for bottom nav
+    const { profile } = await User.getProfile(user.id);
 
     // Fetch user's personal phone number for callback validation
     await this.loadUserPhoneNumber();

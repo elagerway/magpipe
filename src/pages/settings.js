@@ -4,11 +4,9 @@
 
 import { User, AgentConfig } from '../models/index.js';
 import { getCurrentUser, signOut, supabase } from '../lib/supabase.js';
-import { renderBottomNav } from '../components/BottomNav.js';
+import { renderBottomNav, clearNavUserCache } from '../components/BottomNav.js';
 import { createAccessCodeSettings, addAccessCodeSettingsStyles } from '../components/AccessCodeSettings.js';
 import { createKnowledgeSourceManager, addKnowledgeSourceManagerStyles } from '../components/KnowledgeSourceManager.js';
-import { createIntegrationSettings, addIntegrationSettingsStyles } from '../components/IntegrationSettings.js';
-import { createMcpServerCatalog, addMcpCatalogStyles } from '../components/McpServerCatalog.js';
 import { createExternalTrunkSettings, addExternalTrunkSettingsStyles } from '../components/ExternalTrunkSettings.js';
 
 // ElevenLabs Voices - subset for display purposes
@@ -55,6 +53,7 @@ export default class SettingsPage {
     this.integrationSettings = null;
     this.cachedData = null;
     this.lastFetchTime = 0;
+    this.avatarFile = null;
   }
 
   async render() {
@@ -68,8 +67,6 @@ export default class SettingsPage {
     // Add component styles
     addAccessCodeSettingsStyles();
     addKnowledgeSourceManagerStyles();
-    addIntegrationSettingsStyles();
-    addMcpCatalogStyles();
     addExternalTrunkSettingsStyles();
 
     // Use cached data if fetched within last 30 seconds
@@ -118,6 +115,9 @@ export default class SettingsPage {
 
     const activeNumbers = serviceNumbers?.filter(n => n.is_active) || [];
     const inactiveNumbers = serviceNumbers?.filter(n => !n.is_active) || [];
+
+    // Get user initials for avatar fallback
+    const userInitials = this.getInitials(profile?.name, user.email);
 
     // Check for billing and Cal.com success/error in URL
     const urlParams = new URLSearchParams(window.location.search);
@@ -175,6 +175,41 @@ export default class SettingsPage {
         <!-- Profile Section -->
         <div class="card" style="margin-bottom: 1rem;">
           <h2>Profile</h2>
+
+          <!-- Avatar -->
+          <div class="form-group" style="border-bottom: 1px solid var(--border-color); padding-bottom: 1rem; margin-bottom: 1rem;">
+            <label style="font-weight: 600; margin: 0 0 0.5rem 0;">Photo</label>
+            <div style="display: flex; align-items: center; gap: 1rem;">
+              <div id="avatar-preview" style="
+                width: 80px;
+                height: 80px;
+                border-radius: 50%;
+                background: var(--bg-secondary);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                overflow: hidden;
+                font-size: 1.5rem;
+                font-weight: 600;
+                color: var(--text-secondary);
+              ">
+                ${profile?.avatar_url
+                  ? `<img src="${profile.avatar_url}" style="width: 100%; height: 100%; object-fit: cover;" />`
+                  : userInitials
+                }
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                <button class="btn btn-sm btn-secondary" id="upload-avatar-btn">
+                  ${profile?.avatar_url ? 'Change Photo' : 'Upload Photo'}
+                </button>
+                <button class="btn btn-sm btn-secondary" id="remove-avatar-btn" style="display: ${profile?.avatar_url ? 'block' : 'none'};">
+                  Remove
+                </button>
+                <input type="file" id="avatar-input" accept="image/*" style="display: none;" />
+              </div>
+            </div>
+            <p class="text-muted" style="margin-top: 0.5rem; font-size: 0.75rem;">Max file size: 2MB</p>
+          </div>
 
           <!-- Name -->
           <div class="form-group" style="border-bottom: 1px solid var(--border-color); padding-bottom: 1rem; margin-bottom: 1rem;">
@@ -343,12 +378,6 @@ export default class SettingsPage {
 
         <!-- External SIP Trunks -->
         <div id="external-trunk-settings-container" style="margin-bottom: 1rem;"></div>
-
-        <!-- Connected Apps / Integrations -->
-        <div id="integration-settings-container" style="margin-bottom: 1rem;"></div>
-
-        <!-- MCP Servers -->
-        <div id="mcp-catalog-container" style="margin-bottom: 1rem;"></div>
 
         <!-- Quick Links -->
         <div class="card">
@@ -526,11 +555,152 @@ export default class SettingsPage {
     return voiceId || 'Not set';
   }
 
+  getInitials(name, email) {
+    if (name) {
+      const parts = name.split(' ');
+      return parts.length > 1
+        ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+        : name.substring(0, 2).toUpperCase();
+    }
+    return email ? email.substring(0, 2).toUpperCase() : 'U';
+  }
+
   attachEventListeners() {
     // Initialize access code settings component
     const accessCodeContainer = document.getElementById('access-code-container');
     if (accessCodeContainer) {
       this.accessCodeSettings = createAccessCodeSettings(accessCodeContainer);
+    }
+
+    // Avatar upload/remove
+    const uploadAvatarBtn = document.getElementById('upload-avatar-btn');
+    const removeAvatarBtn = document.getElementById('remove-avatar-btn');
+    const avatarInput = document.getElementById('avatar-input');
+    const errorMessage = document.getElementById('error-message');
+    const successMessage = document.getElementById('success-message');
+
+    if (uploadAvatarBtn && avatarInput) {
+      uploadAvatarBtn.addEventListener('click', () => {
+        avatarInput.click();
+      });
+
+      avatarInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        // Check file size (max 2MB)
+        if (file.size > 2 * 1024 * 1024) {
+          errorMessage.className = 'alert alert-error';
+          errorMessage.textContent = 'Image must be less than 2MB';
+          errorMessage.classList.remove('hidden');
+          avatarInput.value = '';
+          return;
+        }
+
+        uploadAvatarBtn.disabled = true;
+        uploadAvatarBtn.textContent = 'Uploading...';
+        errorMessage.classList.add('hidden');
+
+        try {
+          const { user } = await getCurrentUser();
+
+          // Upload to Supabase Storage
+          const fileExt = file.name.split('.').pop();
+          const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from('avatars')
+            .upload(fileName, file, {
+              cacheControl: '3600',
+              upsert: false
+            });
+
+          if (uploadError) throw uploadError;
+
+          // Get public URL
+          const { data: { publicUrl } } = supabase.storage
+            .from('avatars')
+            .getPublicUrl(fileName);
+
+          // Update user record
+          const { error: updateError } = await supabase
+            .from('users')
+            .update({ avatar_url: publicUrl, updated_at: new Date().toISOString() })
+            .eq('id', user.id);
+
+          if (updateError) throw updateError;
+
+          // Update preview
+          const preview = document.getElementById('avatar-preview');
+          preview.innerHTML = `<img src="${publicUrl}" style="width: 100%; height: 100%; object-fit: cover;" />`;
+          uploadAvatarBtn.textContent = 'Change Photo';
+          removeAvatarBtn.style.display = 'block';
+
+          // Clear caches to ensure nav updates
+          this.cachedData = null;
+          clearNavUserCache();
+
+          successMessage.className = 'alert alert-success';
+          successMessage.textContent = 'Photo updated successfully';
+          successMessage.classList.remove('hidden');
+          setTimeout(() => successMessage.classList.add('hidden'), 3000);
+        } catch (error) {
+          console.error('Avatar upload error:', error);
+          errorMessage.className = 'alert alert-error';
+          errorMessage.textContent = 'Failed to upload photo. Please try again.';
+          errorMessage.classList.remove('hidden');
+        } finally {
+          uploadAvatarBtn.disabled = false;
+          if (uploadAvatarBtn.textContent === 'Uploading...') {
+            uploadAvatarBtn.textContent = 'Upload Photo';
+          }
+          avatarInput.value = '';
+        }
+      });
+    }
+
+    if (removeAvatarBtn) {
+      removeAvatarBtn.addEventListener('click', async () => {
+        removeAvatarBtn.disabled = true;
+        removeAvatarBtn.textContent = 'Removing...';
+        errorMessage.classList.add('hidden');
+
+        try {
+          const { user } = await getCurrentUser();
+          const { profile } = await User.getProfile(user.id);
+
+          // Update user record to remove avatar_url
+          const { error: updateError } = await supabase
+            .from('users')
+            .update({ avatar_url: null, updated_at: new Date().toISOString() })
+            .eq('id', user.id);
+
+          if (updateError) throw updateError;
+
+          // Update preview with initials
+          const preview = document.getElementById('avatar-preview');
+          preview.innerHTML = this.getInitials(profile?.name, user.email);
+          uploadAvatarBtn.textContent = 'Upload Photo';
+          removeAvatarBtn.style.display = 'none';
+
+          // Clear caches to ensure nav updates
+          this.cachedData = null;
+          clearNavUserCache();
+
+          successMessage.className = 'alert alert-success';
+          successMessage.textContent = 'Photo removed successfully';
+          successMessage.classList.remove('hidden');
+          setTimeout(() => successMessage.classList.add('hidden'), 3000);
+        } catch (error) {
+          console.error('Avatar remove error:', error);
+          errorMessage.className = 'alert alert-error';
+          errorMessage.textContent = 'Failed to remove photo. Please try again.';
+          errorMessage.classList.remove('hidden');
+        } finally {
+          removeAvatarBtn.disabled = false;
+          removeAvatarBtn.textContent = 'Remove';
+        }
+      });
     }
 
     // Billing buttons
@@ -610,18 +780,6 @@ export default class SettingsPage {
     const knowledgeContainer = document.getElementById('knowledge-source-container');
     if (knowledgeContainer) {
       this.knowledgeManager = createKnowledgeSourceManager(knowledgeContainer);
-    }
-
-    // Initialize integration settings component (Connected Apps)
-    const integrationContainer = document.getElementById('integration-settings-container');
-    if (integrationContainer) {
-      createIntegrationSettings('integration-settings-container');
-    }
-
-    // Initialize MCP Server Catalog component
-    const mcpCatalogContainer = document.getElementById('mcp-catalog-container');
-    if (mcpCatalogContainer) {
-      createMcpServerCatalog('mcp-catalog-container');
     }
 
     // Initialize External SIP Trunk Settings component
@@ -706,8 +864,6 @@ export default class SettingsPage {
     const saveNotificationsBtn = document.getElementById('save-notifications-btn');
     const resetConfigBtn = document.getElementById('reset-config-btn');
     const deleteAccountBtn = document.getElementById('delete-account-btn');
-    const errorMessage = document.getElementById('error-message');
-    const successMessage = document.getElementById('success-message');
 
     // Name inline editing
     document.getElementById('name-display').addEventListener('click', () => {

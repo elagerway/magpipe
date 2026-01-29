@@ -5,6 +5,7 @@
 import { getCurrentUser } from '../lib/supabase.js';
 import { createAdminChatInterface, addAdminChatStyles } from '../components/AdminChatInterface.js';
 import { renderBottomNav, attachBottomNav } from '../components/BottomNav.js';
+import { User } from '../models/index.js';
 
 export default class DashboardPage {
   constructor() {
@@ -22,6 +23,9 @@ export default class DashboardPage {
     }
 
     console.log('User found, rendering dashboard');
+
+    // Fetch user profile for bottom nav
+    const { profile } = await User.getProfile(user.id);
 
     // Remove old agent page styles if they exist
     const oldAgentStyles = document.getElementById('agent-page-styles');

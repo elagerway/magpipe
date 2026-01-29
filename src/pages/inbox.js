@@ -4,6 +4,7 @@
 
 import { getCurrentUser, supabase } from '../lib/supabase.js';
 import { renderBottomNav, clearUnreadBadge, setPhoneNavActive } from '../components/BottomNav.js';
+import { User } from '../models/index.js';
 
 // Lazy load heavy libraries only when needed for calls
 let sipClient = null;
@@ -98,6 +99,9 @@ export default class InboxPage {
     loadVoiceRecognition(); // Don't await - load in background
 
     this.userId = user.id;
+
+    // Fetch user profile for bottom nav
+    const { profile } = await User.getProfile(user.id);
 
     // Clear selection on mobile (no item should be highlighted on first view)
     const isMobile = window.innerWidth <= 768;

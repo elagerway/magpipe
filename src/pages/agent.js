@@ -6,6 +6,7 @@
 import { getCurrentUser, supabase } from '../lib/supabase.js';
 import { createAdminChatInterface, addAdminChatStyles } from '../components/AdminChatInterface.js';
 import { renderBottomNav, attachBottomNav } from '../components/BottomNav.js';
+import { User } from '../models/index.js';
 
 // Preload Inbox module immediately for faster navigation
 const inboxModulePromise = import('../pages/inbox.js');
@@ -22,6 +23,9 @@ export default class AgentPage {
       navigateTo('/login');
       return;
     }
+
+    // Fetch user profile for bottom nav
+    const { profile } = await User.getProfile(user.id);
 
     // Add component styles
     addAdminChatStyles();

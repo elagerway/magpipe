@@ -6,6 +6,7 @@ import { AgentConfig } from '../models/AgentConfig.js';
 import { OutboundTemplate } from '../models/OutboundTemplate.js';
 import { getCurrentUser, supabase } from '../lib/supabase.js';
 import { renderBottomNav } from '../components/BottomNav.js';
+import { User } from '../models/index.js';
 
 // ElevenLabs Voices with metadata
 const ELEVENLABS_VOICES = [
@@ -89,6 +90,9 @@ export default class AgentConfigPage {
       navigateTo('/login');
       return;
     }
+
+    // Fetch user profile for bottom nav
+    const { profile } = await User.getProfile(user.id);
 
     // Check if this is initial setup or editing existing config
     const { config } = await AgentConfig.getByUserId(user.id);
