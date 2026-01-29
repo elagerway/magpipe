@@ -4,6 +4,7 @@
 
 import { getCurrentUser, supabase } from '../lib/supabase.js';
 import { renderBottomNav } from '../components/BottomNav.js';
+import { User } from '../models/index.js';
 
 export default class ManageNumbersPage {
   constructor() {
@@ -21,6 +22,9 @@ export default class ManageNumbersPage {
     }
 
     this.user = user;
+
+    // Fetch user profile for bottom nav
+    const { profile } = await User.getProfile(user.id);
 
     const appElement = document.getElementById('app');
 

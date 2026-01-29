@@ -5,6 +5,7 @@
 import { Contact } from '../models/Contact.js';
 import { getCurrentUser, supabase } from '../lib/supabase.js';
 import { renderBottomNav } from '../components/BottomNav.js';
+import { User } from '../models/index.js';
 
 export default class ContactsPage {
   constructor() {
@@ -25,6 +26,9 @@ export default class ContactsPage {
     }
 
     this.userId = user.id;
+
+    // Fetch user profile for bottom nav
+    const { profile } = await User.getProfile(user.id);
 
     // Use cached data if fetched within last 30 seconds
     const now = Date.now();
