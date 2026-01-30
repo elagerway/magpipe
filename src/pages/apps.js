@@ -34,6 +34,14 @@ export default class AppsPage {
 
     appElement.innerHTML = `
       <div class="container with-bottom-nav" style="max-width: 800px; padding: 2rem 1rem;">
+        <!-- Back button (mobile only) -->
+        <button class="back-btn mobile-only" onclick="navigateTo('/settings')" style="margin-bottom: 1rem;">
+          <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+          </svg>
+          Settings
+        </button>
+
         <h1 style="margin-bottom: 1.5rem;">Apps</h1>
 
         <!-- Connected Apps / Integrations -->
