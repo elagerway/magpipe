@@ -59,7 +59,7 @@ serve(async (req) => {
     // Get user profile
     const { data: profile, error: profileError } = await supabase
       .from('users')
-      .select('id, stripe_customer_id')
+      .select('id, email, name, stripe_customer_id')
       .eq('id', user.id)
       .single()
 
@@ -70,11 +70,27 @@ serve(async (req) => {
       })
     }
 
-    if (!profile.stripe_customer_id) {
-      return new Response(JSON.stringify({ error: 'No billing account found. Please subscribe first.' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    // Create Stripe customer if one doesn't exist
+    let customerId = profile.stripe_customer_id
+
+    if (!customerId) {
+      console.log('Creating new Stripe customer for user:', user.id)
+      const customer = await stripe.customers.create({
+        email: profile.email,
+        name: profile.name || undefined,
+        metadata: {
+          supabase_user_id: user.id
+        }
       })
+      customerId = customer.id
+
+      // Save customer ID to database
+      await supabase
+        .from('users')
+        .update({ stripe_customer_id: customerId })
+        .eq('id', user.id)
+
+      console.log('Created Stripe customer:', customerId)
     }
 
     // Parse request body for return URL
@@ -83,7 +99,7 @@ serve(async (req) => {
 
     // Create billing portal session
     const session = await stripe.billingPortal.sessions.create({
-      customer: profile.stripe_customer_id,
+      customer: customerId,
       return_url: returnUrl
     })
 
