@@ -5,6 +5,7 @@
 import { User } from '../models/User.js';
 import { getCurrentUser, supabase } from '../lib/supabase.js';
 import { canAddPhoneNumber } from '../services/planService.js';
+import { renderBottomNav } from '../components/BottomNav.js';
 
 export default class SelectNumberPage {
   constructor() {
@@ -28,8 +29,8 @@ export default class SelectNumberPage {
     // If user can't add more numbers, show upgrade prompt
     if (!phoneCheck.canAdd) {
       appElement.innerHTML = `
-        <div class="container" style="max-width: 600px; margin-top: 4rem;">
-          <button onclick="navigateTo('/manage-numbers')" style="
+        <div class="container with-bottom-nav" style="max-width: 600px; padding-top: 1.5rem;">
+          <button onclick="navigateTo(window.innerWidth > 768 ? '/phone' : '/manage-numbers')" style="
             background: none;
             border: none;
             color: var(--text-secondary);
@@ -73,13 +74,14 @@ export default class SelectNumberPage {
             </button>
           </div>
         </div>
+        ${renderBottomNav('/phone')}
       `;
       return;
     }
 
     appElement.innerHTML = `
-      <div class="container" style="max-width: 600px; margin-top: 4rem;">
-        <button onclick="navigateTo('/manage-numbers')" style="
+      <div class="container with-bottom-nav" style="max-width: 600px; padding-top: 1.5rem;">
+        <button onclick="navigateTo(window.innerWidth > 768 ? '/phone' : '/manage-numbers')" style="
           background: none;
           border: none;
           color: var(--text-secondary);
@@ -130,6 +132,7 @@ export default class SelectNumberPage {
           </div>
         </div>
       </div>
+      ${renderBottomNav('/phone')}
     `;
 
     this.attachEventListeners();
@@ -285,7 +288,9 @@ export default class SelectNumberPage {
           successMessage.textContent = 'Service number purchased successfully! Redirecting...';
 
           setTimeout(() => {
-            navigateTo('/manage-numbers');
+            // On desktop, go to phone page; on mobile, go to manage-numbers
+            const destination = window.innerWidth > 768 ? '/phone' : '/manage-numbers';
+            navigateTo(destination);
           }, 1500);
         } catch (error) {
           console.error('Provision error:', error);

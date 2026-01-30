@@ -3,7 +3,7 @@
  */
 
 import { getCurrentUser, supabase } from '../lib/supabase.js';
-import { renderBottomNav, clearUnreadBadge, setPhoneNavActive } from '../components/BottomNav.js';
+import { renderBottomNav, clearUnreadBadge, setPhoneNavActive, setUnreadBadgeCount } from '../components/BottomNav.js';
 import { User } from '../models/index.js';
 
 // Lazy load heavy libraries only when needed for calls
@@ -49,6 +49,10 @@ export default class InboxPage {
     this.lastFetchTime = 0;
     this.hiddenConversations = new Set(); // Track hidden conversations locally
     this.swipeState = null; // Track active swipe
+    // Filters can be combined: type (all/calls/texts) + direction (all/in/out)
+    this.typeFilter = 'all'; // all, calls, texts
+    this.directionFilter = 'all'; // all, inbound, outbound
+    this.missedFilter = false; // special filter for missed calls
   }
 
   /**
@@ -252,6 +256,17 @@ export default class InboxPage {
               </button>
             </div>
           </div>
+
+          <!-- Filter Tabs -->
+          <div class="inbox-filters" id="inbox-filters">
+            <button class="inbox-filter-btn ${this.typeFilter === 'all' && this.directionFilter === 'all' && !this.missedFilter ? 'active' : ''}" data-filter-type="all" data-filter-reset="true">All</button>
+            <button class="inbox-filter-btn ${this.typeFilter === 'calls' ? 'active' : ''}" data-filter-type="calls">Calls</button>
+            <button class="inbox-filter-btn ${this.typeFilter === 'texts' ? 'active' : ''}" data-filter-type="texts">Texts</button>
+            <button class="inbox-filter-btn ${this.directionFilter === 'inbound' ? 'active' : ''}" data-filter-direction="inbound">In</button>
+            <button class="inbox-filter-btn ${this.directionFilter === 'outbound' ? 'active' : ''}" data-filter-direction="outbound">Out</button>
+            <button class="inbox-filter-btn ${this.missedFilter ? 'active' : ''}" data-filter-missed="true">Missed</button>
+          </div>
+
           <div id="conversations">
             ${this.renderConversationList()}
           </div>
@@ -789,14 +804,47 @@ export default class InboxPage {
 
     // Sort all conversations by last activity
     this.conversations = conversationsList.sort((a, b) => b.lastActivity - a.lastActivity);
+
+    // Update the nav badge with total unread count
+    const totalUnread = this.conversations.reduce((sum, conv) => sum + (conv.unreadCount || 0), 0);
+    setUnreadBadgeCount(totalUnread);
   }
 
   renderConversationList() {
     // Filter out hidden conversations
-    const visibleConversations = this.conversations.filter(conv => {
+    let visibleConversations = this.conversations.filter(conv => {
       const convKey = conv.type === 'call' ? `call_${conv.callId}` : `sms_${conv.phone}`;
       return !this.hiddenConversations.has(convKey);
     });
+
+    // Apply type filter (calls/texts)
+    if (this.typeFilter !== 'all') {
+      visibleConversations = visibleConversations.filter(conv => {
+        if (this.typeFilter === 'calls') return conv.type === 'call';
+        if (this.typeFilter === 'texts') return conv.type === 'sms';
+        return true;
+      });
+    }
+
+    // Apply direction filter (in/out) - based on how the conversation started
+    if (this.directionFilter !== 'all') {
+      visibleConversations = visibleConversations.filter(conv => {
+        if (conv.type === 'call') {
+          return conv.call?.direction === this.directionFilter;
+        } else {
+          // For SMS, check direction of first message (how conversation started)
+          const firstMessage = conv.messages?.[0];
+          return firstMessage?.direction === this.directionFilter;
+        }
+      });
+    }
+
+    // Apply missed filter (only for calls)
+    if (this.missedFilter) {
+      visibleConversations = visibleConversations.filter(conv => {
+        return conv.type === 'call' && (conv.call?.status === 'missed' || conv.call?.status === 'no-answer');
+      });
+    }
 
     if (visibleConversations.length === 0) {
       return `
@@ -878,7 +926,7 @@ export default class InboxPage {
               </svg>
               <span>Delete</span>
             </div>
-            <div class="conversation-item swipe-content ${isSelected ? 'selected' : ''}" data-phone="${conv.phone}" data-type="sms" style="display: flex !important; flex-direction: row !important; gap: 0.75rem;">
+            <div class="conversation-item swipe-content ${isSelected ? 'selected' : ''} ${conv.unreadCount > 0 ? 'unread' : ''}" data-phone="${conv.phone}" data-type="sms" style="display: flex !important; flex-direction: row !important; gap: 0.75rem;">
               <div class="conversation-avatar sms-avatar" style="flex-shrink: 0; ${contact?.avatar_url ? 'padding: 0; background: none;' : ''}">
                 ${contact?.avatar_url
                   ? `<img src="${contact.avatar_url}" alt="${contactName}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" />`
@@ -3887,6 +3935,7 @@ Examples:
 
   attachEventListeners() {
     this.attachConversationListeners();
+    this.attachFilterListeners();
 
     // Only attach dropdown listeners once
     if (!this.dropdownListenersAttached) {
@@ -3898,6 +3947,79 @@ Examples:
     if (!this.phoneLinkHandlerAttached) {
       this.attachPhoneLinkHandler();
       this.phoneLinkHandlerAttached = true;
+    }
+  }
+
+  attachFilterListeners() {
+    const filtersContainer = document.getElementById('inbox-filters');
+    if (!filtersContainer) return;
+
+    filtersContainer.addEventListener('click', (e) => {
+      const btn = e.target.closest('.inbox-filter-btn');
+      if (!btn) return;
+
+      // Handle "All" reset button
+      if (btn.dataset.filterReset) {
+        this.typeFilter = 'all';
+        this.directionFilter = 'all';
+        this.missedFilter = false;
+      }
+      // Handle type filter (calls/texts)
+      else if (btn.dataset.filterType) {
+        const type = btn.dataset.filterType;
+        // Toggle: if already selected, go back to 'all'
+        this.typeFilter = this.typeFilter === type ? 'all' : type;
+        // Clear missed filter when changing type (unless selecting calls)
+        if (type === 'texts') this.missedFilter = false;
+      }
+      // Handle direction filter (in/out)
+      else if (btn.dataset.filterDirection) {
+        const direction = btn.dataset.filterDirection;
+        // Toggle: if already selected, go back to 'all'
+        this.directionFilter = this.directionFilter === direction ? 'all' : direction;
+      }
+      // Handle missed filter
+      else if (btn.dataset.filterMissed) {
+        this.missedFilter = !this.missedFilter;
+        // Missed only applies to calls
+        if (this.missedFilter && this.typeFilter === 'texts') {
+          this.typeFilter = 'calls';
+        }
+      }
+
+      // Update button states
+      this.updateFilterButtonStates();
+
+      // Re-render conversation list
+      const conversationsEl = document.getElementById('conversations');
+      if (conversationsEl) {
+        conversationsEl.innerHTML = this.renderConversationList();
+        this.attachConversationListeners();
+      }
+    });
+  }
+
+  updateFilterButtonStates() {
+    const allBtn = document.querySelector('[data-filter-reset]');
+    const callsBtn = document.querySelector('[data-filter-type="calls"]');
+    const textsBtn = document.querySelector('[data-filter-type="texts"]');
+    const inBtn = document.querySelector('[data-filter-direction="inbound"]');
+    const outBtn = document.querySelector('[data-filter-direction="outbound"]');
+    const missedBtn = document.querySelector('[data-filter-missed]');
+
+    // Reset all
+    [allBtn, callsBtn, textsBtn, inBtn, outBtn, missedBtn].forEach(b => b?.classList.remove('active'));
+
+    // Set active states
+    const isAllClear = this.typeFilter === 'all' && this.directionFilter === 'all' && !this.missedFilter;
+    if (isAllClear) {
+      allBtn?.classList.add('active');
+    } else {
+      if (this.typeFilter === 'calls') callsBtn?.classList.add('active');
+      if (this.typeFilter === 'texts') textsBtn?.classList.add('active');
+      if (this.directionFilter === 'inbound') inBtn?.classList.add('active');
+      if (this.directionFilter === 'outbound') outBtn?.classList.add('active');
+      if (this.missedFilter) missedBtn?.classList.add('active');
     }
   }
 
@@ -4003,9 +4125,6 @@ Examples:
         this.selectedContact = item.dataset.phone;
         this.selectedCallId = null;
 
-        // Clear unread badge when viewing a conversation
-        clearUnreadBadge();
-
         // Mark this conversation as viewed
         const lastViewedKey = `conversation_last_viewed_sms_${this.selectedContact}`;
         localStorage.setItem(lastViewedKey, new Date().toISOString());
@@ -4015,6 +4134,10 @@ Examples:
         if (conv) {
           conv.unreadCount = 0;
         }
+
+        // Update the nav badge with new total unread count
+        const totalUnread = this.conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
+        setUnreadBadgeCount(totalUnread);
       }
 
       // Update conversation list - use fresh references to avoid stale DOM issues

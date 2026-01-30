@@ -42,8 +42,8 @@ export default class ContactsPage {
     const appElement = document.getElementById('app');
 
     appElement.innerHTML = `
-      <div class="container with-bottom-nav" style="padding-top: 1rem;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+      <div class="container with-bottom-nav contacts-page-container" style="padding-top: 1rem;">
+        <div class="contacts-header">
           <h1 style="margin: 0; font-size: 1.5rem;">Contacts</h1>
           <div style="display: flex; gap: 0.5rem; flex-shrink: 0;">
             <button id="import-contacts-btn" class="btn btn-secondary" style="display: flex; align-items: center; gap: 0.25rem; padding: 0.5rem 0.75rem; font-size: 0.875rem;">
@@ -64,7 +64,7 @@ export default class ContactsPage {
           </div>
         </div>
 
-        <div style="margin-bottom: 0.5rem;">
+        <div class="contacts-search" style="margin-bottom: 0.5rem;">
           <input
             type="search"
             id="search-input"
@@ -77,7 +77,7 @@ export default class ContactsPage {
         <div id="error-message" class="hidden" style="display: none;"></div>
         <div id="success-message" class="hidden" style="display: none;"></div>
 
-        <div id="contacts-list">
+        <div id="contacts-list" class="contacts-list">
           ${this.renderContactsList()}
         </div>
 
@@ -338,28 +338,16 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
           const displayName = fullName || contact.name || 'Unnamed Contact';
 
           return `
-        <div class="contact-item" data-id="${contact.id}" style="
-          position: relative;
-          display: flex;
-          align-items: flex-start;
-          padding: 0.75rem 0;
-          border-bottom: 1px solid var(--border-color);
-        ">
+        <div class="contact-item" data-id="${contact.id}">
+          <!-- Edit Button (top right) -->
+          <button class="edit-contact-btn edit-btn-desktop" data-id="${contact.id}">
+            Edit
+          </button>
 
           <div style="display: flex; align-items: flex-start; gap: 1rem; flex: 1;">
-            <div style="
-              width: 50px;
-              height: 50px;
-              border-radius: 50%;
-              background: var(--border-color);
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              overflow: hidden;
-              flex-shrink: 0;
-            ">
+            <div class="contact-avatar">
               ${contact.avatar_url
-                ? `<img src="${contact.avatar_url}" alt="${displayName}" style="width: 100%; height: 100%; object-fit: cover;" />`
+                ? `<img src="${contact.avatar_url}" alt="${displayName}" />`
                 : `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
                     <circle cx="12" cy="7" r="4"></circle>
@@ -370,25 +358,9 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
               <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
                 <span style="font-weight: 600;">${displayName}</span>
                 ${contact.is_whitelisted
-                  ? '<span style="display: inline-block; padding: 0.125rem 0.5rem; background: var(--success-color); color: white; border-radius: 9999px; font-size: 0.75rem;">Whitelisted</span>'
+                  ? '<span class="whitelisted-badge">Whitelisted</span>'
                   : ''
                 }
-                <!-- Edit button (pencil icon) -->
-                <button class="edit-contact-btn" data-id="${contact.id}" style="
-                  background: none;
-                  border: none;
-                  cursor: pointer;
-                  color: var(--text-muted);
-                  padding: 0.25rem;
-                  line-height: 1;
-                  opacity: 0.6;
-                  transition: opacity 0.2s;
-                " title="Edit contact">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                  </svg>
-                </button>
               </div>
               <div class="text-sm text-muted">${this.formatPhoneNumber(contact.phone_number)}</div>
               ${contact.job_title || contact.company ? `

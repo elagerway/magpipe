@@ -55,12 +55,13 @@ export function createKnowledgeSourceManager(container) {
 
     try {
       sources = await listSources();
-      renderSources();
     } catch (error) {
       console.error('Load sources error:', error);
       showError(error.message || 'Failed to load knowledge sources');
+      sources = []; // Reset to empty on error
     } finally {
       setLoading(false);
+      renderSources(); // Always render after loading completes
     }
   }
 

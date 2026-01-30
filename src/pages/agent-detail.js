@@ -49,6 +49,13 @@ export default class AgentDetailPage {
     this.autoSaveTimeout = null;
     this.clonedVoices = [];
     this.serviceNumbers = [];
+    // Voice cloning state
+    this.mediaRecorder = null;
+    this.audioChunks = [];
+    this.audioBlob = null;
+    this.uploadedAudioFile = null;
+    this.recordingStartTime = null;
+    this.recordingTimer = null;
   }
 
   async render() {
@@ -233,6 +240,112 @@ export default class AgentDetailPage {
           <div class="voice-selector" id="voice-selector">
             <span class="voice-current">${this.getVoiceDisplayName(this.agent.voice_id)}</span>
             <button type="button" class="btn btn-sm btn-secondary" id="change-voice-btn">Change</button>
+          </div>
+        </div>
+
+        <!-- Voice Cloning Section -->
+        <div class="voice-clone-section">
+          <div id="voice-clone-toggle" class="voice-clone-toggle">
+            <div class="voice-clone-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                <line x1="12" y1="19" x2="12" y2="23"></line>
+                <line x1="8" y1="23" x2="16" y2="23"></line>
+              </svg>
+            </div>
+            <div class="voice-clone-info">
+              <span class="voice-clone-title">Clone Your Voice</span>
+              <span class="voice-clone-desc">Create a custom voice clone for phone calls</span>
+            </div>
+            <svg id="voice-clone-chevron" class="voice-clone-chevron" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="4 6 8 10 12 6"></polyline>
+            </svg>
+          </div>
+
+          <div id="voice-clone-panel" class="voice-clone-panel" style="display: none;">
+            <p class="form-help" style="margin-bottom: 1rem;">
+              Record 1-2 minutes of your voice speaking naturally. Speak clearly in a quiet environment for best results.
+            </p>
+
+            <div id="voice-clone-status" class="hidden"></div>
+
+            <!-- Progress Bar -->
+            <div id="clone-progress" style="display: none; margin-bottom: 1rem;">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                <span style="font-size: 0.875rem; font-weight: 500;">Cloning your voice...</span>
+                <span id="progress-percent" style="font-size: 0.875rem; color: var(--text-secondary);">0%</span>
+              </div>
+              <div style="width: 100%; height: 8px; background: var(--bg-secondary); border-radius: 4px; overflow: hidden;">
+                <div id="progress-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--primary-color), #8b5cf6); transition: width 0.3s ease;"></div>
+              </div>
+            </div>
+
+            <!-- Input Method Toggle -->
+            <div class="clone-method-tabs">
+              <button type="button" id="record-tab" class="clone-tab active">Record</button>
+              <button type="button" id="upload-tab" class="clone-tab">Upload File</button>
+            </div>
+
+            <!-- Recording Controls -->
+            <div id="recording-controls">
+              <div class="recording-buttons">
+                <button type="button" id="start-recording-btn" class="btn btn-record">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <circle cx="12" cy="12" r="3" fill="currentColor"></circle>
+                  </svg>
+                  Start Recording
+                </button>
+                <button type="button" id="stop-recording-btn" class="btn btn-secondary" style="display: none;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="6" y="6" width="12" height="12" fill="currentColor"></rect>
+                  </svg>
+                  Stop
+                </button>
+              </div>
+
+              <div id="recording-timer" class="recording-timer" style="display: none;">
+                <span id="timer-display">0:00</span> / 2:00
+              </div>
+            </div>
+
+            <!-- Upload Controls -->
+            <div id="upload-controls" style="display: none;">
+              <label for="voice-file-input" class="btn btn-upload">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="17 8 12 3 7 8"></polyline>
+                  <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+                Choose Audio File
+              </label>
+              <input type="file" id="voice-file-input" accept="audio/*" style="display: none;">
+              <div id="file-name" class="file-name" style="display: none;"></div>
+              <p class="form-help" style="text-align: center; margin: 0;">MP3, WAV, or M4A • 1-2 minutes recommended</p>
+            </div>
+
+            <!-- Audio Preview -->
+            <div id="audio-preview" class="audio-preview" style="display: none;">
+              <label class="form-label">Preview Recording</label>
+              <audio id="preview-player" controls style="width: 100%; margin-bottom: 0.75rem;"></audio>
+              <div class="preview-actions">
+                <button type="button" id="retry-recording-btn" class="btn btn-secondary">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="1 4 1 10 7 10"></polyline>
+                    <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+                  </svg>
+                  Re-record
+                </button>
+                <button type="button" id="submit-voice-btn" class="btn btn-primary">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                    <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                  </svg>
+                  Clone Voice
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -883,6 +996,86 @@ export default class AgentDetailPage {
     if (changeVoiceBtn) {
       changeVoiceBtn.addEventListener('click', () => this.showVoiceModal());
     }
+
+    // Voice cloning toggle
+    const voiceCloneToggle = document.getElementById('voice-clone-toggle');
+    const voiceClonePanel = document.getElementById('voice-clone-panel');
+    const voiceCloneChevron = document.getElementById('voice-clone-chevron');
+
+    if (voiceCloneToggle && voiceClonePanel) {
+      voiceCloneToggle.addEventListener('click', () => {
+        const isHidden = voiceClonePanel.style.display === 'none';
+        voiceClonePanel.style.display = isHidden ? 'block' : 'none';
+        if (voiceCloneChevron) {
+          voiceCloneChevron.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
+        }
+      });
+    }
+
+    // Voice cloning tab switching
+    const recordTab = document.getElementById('record-tab');
+    const uploadTab = document.getElementById('upload-tab');
+    const recordingControls = document.getElementById('recording-controls');
+    const uploadControls = document.getElementById('upload-controls');
+
+    if (recordTab && uploadTab) {
+      recordTab.addEventListener('click', () => {
+        recordTab.classList.add('active');
+        uploadTab.classList.remove('active');
+        if (recordingControls) recordingControls.style.display = 'block';
+        if (uploadControls) uploadControls.style.display = 'none';
+      });
+
+      uploadTab.addEventListener('click', () => {
+        uploadTab.classList.add('active');
+        recordTab.classList.remove('active');
+        if (recordingControls) recordingControls.style.display = 'none';
+        if (uploadControls) uploadControls.style.display = 'block';
+      });
+    }
+
+    // File upload handling
+    const voiceFileInput = document.getElementById('voice-file-input');
+    const fileNameDisplay = document.getElementById('file-name');
+
+    if (voiceFileInput) {
+      voiceFileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          this.uploadedAudioFile = file;
+          if (fileNameDisplay) {
+            fileNameDisplay.textContent = file.name;
+            fileNameDisplay.style.display = 'block';
+          }
+          // Show preview for uploaded file
+          const audioPreview = document.getElementById('audio-preview');
+          const previewPlayer = document.getElementById('preview-player');
+          if (audioPreview && previewPlayer) {
+            previewPlayer.src = URL.createObjectURL(file);
+            audioPreview.style.display = 'block';
+          }
+        }
+      });
+    }
+
+    // Voice cloning recording controls
+    const startRecordingBtn = document.getElementById('start-recording-btn');
+    const stopRecordingBtn = document.getElementById('stop-recording-btn');
+    const retryRecordingBtn = document.getElementById('retry-recording-btn');
+    const submitVoiceBtn = document.getElementById('submit-voice-btn');
+
+    if (startRecordingBtn) {
+      startRecordingBtn.addEventListener('click', () => this.startRecording());
+    }
+    if (stopRecordingBtn) {
+      stopRecordingBtn.addEventListener('click', () => this.stopRecording());
+    }
+    if (retryRecordingBtn) {
+      retryRecordingBtn.addEventListener('click', () => this.retryRecording());
+    }
+    if (submitVoiceBtn) {
+      submitVoiceBtn.addEventListener('click', () => this.submitVoiceClone());
+    }
   }
 
   attachPromptTabListeners() {
@@ -1250,16 +1443,23 @@ export default class AgentDetailPage {
       .agent-name-input {
         font-size: 1.25rem;
         font-weight: 600;
-        border: none;
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-sm);
         background: transparent;
-        padding: 0;
+        padding: 0.25rem 0.5rem;
         width: 100%;
         max-width: 300px;
+        transition: border-color 0.2s, background-color 0.2s;
+      }
+
+      .agent-name-input:hover {
+        background: var(--bg-secondary);
       }
 
       .agent-name-input:focus {
         outline: none;
-        border-bottom: 2px solid var(--primary-color);
+        border-color: var(--primary-color);
+        background: white;
       }
 
       .agent-detail-meta {
@@ -1395,6 +1595,165 @@ export default class AgentDetailPage {
 
       .voice-current {
         font-weight: 500;
+      }
+
+      /* Voice Cloning Styles */
+      .voice-clone-section {
+        margin-bottom: 1.25rem;
+      }
+
+      .voice-clone-toggle {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.75rem;
+        border: 2px solid transparent;
+        background: linear-gradient(white, white) padding-box,
+                    linear-gradient(135deg, #6366f1, #8b5cf6) border-box;
+        border-radius: var(--radius-md);
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      .voice-clone-toggle:hover {
+        background: linear-gradient(var(--bg-secondary), var(--bg-secondary)) padding-box,
+                    linear-gradient(135deg, #6366f1, #8b5cf6) border-box;
+      }
+
+      .voice-clone-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+
+      .voice-clone-info {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .voice-clone-title {
+        font-weight: 500;
+        font-size: 0.9rem;
+      }
+
+      .voice-clone-desc {
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+      }
+
+      .voice-clone-chevron {
+        color: var(--text-secondary);
+        transition: transform 0.2s;
+      }
+
+      .voice-clone-panel {
+        margin-top: 1rem;
+        padding: 1rem;
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-md);
+        background: var(--bg-secondary);
+      }
+
+      .clone-method-tabs {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+      }
+
+      .clone-tab {
+        flex: 1;
+        padding: 0.5rem 1rem;
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-md);
+        background: white;
+        color: var(--text-secondary);
+        font-size: 0.875rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      .clone-tab.active {
+        background: var(--primary-color);
+        border-color: var(--primary-color);
+        color: white;
+      }
+
+      .recording-buttons {
+        display: flex;
+        gap: 0.75rem;
+        margin-bottom: 1rem;
+      }
+
+      .btn-record {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        background: #eff6ff;
+        color: #3b82f6;
+        border: 2px solid #dbeafe;
+      }
+
+      .btn-record:hover {
+        background: #dbeafe;
+      }
+
+      .btn-upload {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        width: 100%;
+        padding: 0.75rem;
+        background: #eff6ff;
+        color: #3b82f6;
+        border: 2px solid #dbeafe;
+        border-radius: var(--radius-md);
+        cursor: pointer;
+        font-size: 0.875rem;
+        font-weight: 500;
+        margin-bottom: 0.5rem;
+      }
+
+      .btn-upload:hover {
+        background: #dbeafe;
+      }
+
+      .recording-timer {
+        text-align: center;
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--primary-color);
+        margin-bottom: 1rem;
+      }
+
+      .file-name {
+        text-align: center;
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+        margin-bottom: 1rem;
+      }
+
+      .audio-preview {
+        margin-top: 1rem;
+      }
+
+      .preview-actions {
+        display: flex;
+        gap: 0.75rem;
+      }
+
+      .preview-actions .btn {
+        flex: 1;
       }
 
       .range-labels {
@@ -1865,9 +2224,242 @@ export default class AgentDetailPage {
     document.head.appendChild(styles);
   }
 
+  // Voice cloning methods
+  async startRecording() {
+    const startBtn = document.getElementById('start-recording-btn');
+    const stopBtn = document.getElementById('stop-recording-btn');
+    const recordingTimer = document.getElementById('recording-timer');
+    const timerDisplay = document.getElementById('timer-display');
+    const statusDiv = document.getElementById('voice-clone-status');
+
+    try {
+      // Request microphone permission
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      // Create MediaRecorder
+      this.mediaRecorder = new MediaRecorder(stream);
+      this.audioChunks = [];
+
+      this.mediaRecorder.addEventListener('dataavailable', (event) => {
+        this.audioChunks.push(event.data);
+      });
+
+      this.mediaRecorder.addEventListener('stop', () => {
+        this.audioBlob = new Blob(this.audioChunks, { type: 'audio/wav' });
+        this.showAudioPreview();
+        // Stop all tracks
+        stream.getTracks().forEach(track => track.stop());
+      });
+
+      // Start recording
+      this.mediaRecorder.start();
+      this.recordingStartTime = Date.now();
+
+      // Update UI
+      if (startBtn) startBtn.style.display = 'none';
+      if (stopBtn) stopBtn.style.display = 'flex';
+      if (recordingTimer) recordingTimer.style.display = 'block';
+      if (statusDiv) statusDiv.classList.add('hidden');
+
+      // Start timer
+      this.recordingTimer = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - this.recordingStartTime) / 1000);
+        const minutes = Math.floor(elapsed / 60);
+        const seconds = elapsed % 60;
+        if (timerDisplay) {
+          timerDisplay.textContent = `${minutes}:${String(seconds).padStart(2, '0')}`;
+        }
+        // Auto-stop at 2 minutes
+        if (elapsed >= 120) {
+          this.stopRecording();
+        }
+      }, 1000);
+
+    } catch (error) {
+      console.error('Error starting recording:', error);
+      if (statusDiv) {
+        statusDiv.className = 'alert alert-error';
+        statusDiv.textContent = 'Failed to access microphone. Please allow microphone access and try again.';
+        statusDiv.classList.remove('hidden');
+      }
+    }
+  }
+
+  stopRecording() {
+    if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+      this.mediaRecorder.stop();
+      clearInterval(this.recordingTimer);
+
+      const startBtn = document.getElementById('start-recording-btn');
+      const stopBtn = document.getElementById('stop-recording-btn');
+      const recordingTimer = document.getElementById('recording-timer');
+
+      if (startBtn) startBtn.style.display = 'flex';
+      if (stopBtn) stopBtn.style.display = 'none';
+      if (recordingTimer) recordingTimer.style.display = 'none';
+    }
+  }
+
+  showAudioPreview() {
+    const audioPreview = document.getElementById('audio-preview');
+    const previewPlayer = document.getElementById('preview-player');
+    const recordingControls = document.getElementById('recording-controls');
+
+    if (this.audioBlob && previewPlayer) {
+      const audioUrl = URL.createObjectURL(this.audioBlob);
+      previewPlayer.src = audioUrl;
+    }
+
+    if (audioPreview) audioPreview.style.display = 'block';
+    if (recordingControls) recordingControls.style.display = 'none';
+  }
+
+  retryRecording() {
+    const audioPreview = document.getElementById('audio-preview');
+    const recordingControls = document.getElementById('recording-controls');
+    const timerDisplay = document.getElementById('timer-display');
+    const uploadControls = document.getElementById('upload-controls');
+    const fileNameDisplay = document.getElementById('file-name');
+
+    // Reset state
+    this.audioBlob = null;
+    this.audioChunks = [];
+    this.uploadedAudioFile = null;
+
+    if (timerDisplay) timerDisplay.textContent = '0:00';
+    if (fileNameDisplay) fileNameDisplay.style.display = 'none';
+
+    // Hide preview, show appropriate controls based on active tab
+    if (audioPreview) audioPreview.style.display = 'none';
+
+    const recordTab = document.getElementById('record-tab');
+    if (recordTab && recordTab.classList.contains('active')) {
+      if (recordingControls) recordingControls.style.display = 'block';
+    } else {
+      if (uploadControls) uploadControls.style.display = 'block';
+    }
+  }
+
+  async submitVoiceClone() {
+    const submitBtn = document.getElementById('submit-voice-btn');
+    const statusDiv = document.getElementById('voice-clone-status');
+    const progressContainer = document.getElementById('clone-progress');
+    const progressBar = document.getElementById('progress-bar');
+    const progressPercent = document.getElementById('progress-percent');
+
+    // Check if we have either a recording or uploaded file
+    if (!this.audioBlob && !this.uploadedAudioFile) {
+      if (statusDiv) {
+        statusDiv.className = 'alert alert-error';
+        statusDiv.textContent = 'No audio found. Please record or upload your voice first.';
+        statusDiv.classList.remove('hidden');
+      }
+      return;
+    }
+
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Cloning voice...';
+    }
+    if (statusDiv) statusDiv.classList.add('hidden');
+    if (progressContainer) progressContainer.style.display = 'block';
+
+    // Simulate progress
+    let progress = 0;
+    const progressInterval = setInterval(() => {
+      progress += Math.random() * 15;
+      if (progress > 90) progress = 90;
+      if (progressBar) progressBar.style.width = `${progress}%`;
+      if (progressPercent) progressPercent.textContent = `${Math.floor(progress)}%`;
+    }, 500);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const { user } = await getCurrentUser();
+
+      if (!session || !user) {
+        throw new Error('Please log in to clone your voice');
+      }
+
+      // Get user's name from users table
+      const { data: userData } = await supabase
+        .from('users')
+        .select('name')
+        .eq('id', user.id)
+        .single();
+
+      const userName = userData?.name || user.email;
+      const firstName = userName.split(' ')[0];
+
+      // Create FormData
+      const formData = new FormData();
+      if (this.uploadedAudioFile) {
+        formData.append('audio', this.uploadedAudioFile);
+      } else {
+        formData.append('audio', this.audioBlob, 'voice-recording.wav');
+      }
+      formData.append('name', `${firstName}'s Voice`);
+      formData.append('remove_background_noise', 'true');
+
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const response = await fetch(`${supabaseUrl}/functions/v1/clone-voice`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to clone voice');
+      }
+
+      const result = await response.json();
+      console.log('Voice cloned:', result);
+
+      // Complete progress
+      clearInterval(progressInterval);
+      if (progressBar) progressBar.style.width = '100%';
+      if (progressPercent) progressPercent.textContent = '100%';
+
+      setTimeout(() => {
+        if (statusDiv) {
+          statusDiv.className = 'alert alert-success';
+          statusDiv.textContent = 'Voice cloned successfully! Reloading...';
+          statusDiv.classList.remove('hidden');
+        }
+        if (progressContainer) progressContainer.style.display = 'none';
+
+        // Reload page to show new voice in dropdown
+        setTimeout(() => {
+          window.location.reload();
+        }, 1500);
+      }, 500);
+
+    } catch (error) {
+      clearInterval(progressInterval);
+      console.error('Error cloning voice:', error);
+
+      if (progressContainer) progressContainer.style.display = 'none';
+      if (statusDiv) {
+        statusDiv.className = 'alert alert-error';
+        statusDiv.textContent = error.message || 'Failed to clone voice. Please try again.';
+        statusDiv.classList.remove('hidden');
+      }
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Clone Voice';
+      }
+    }
+  }
+
   cleanup() {
     if (this.autoSaveTimeout) {
       clearTimeout(this.autoSaveTimeout);
+    }
+    if (this.recordingTimer) {
+      clearInterval(this.recordingTimer);
     }
   }
 }

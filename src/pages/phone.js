@@ -6,6 +6,7 @@ import { getCurrentUser, supabase } from '../lib/supabase.js';
 import { renderBottomNav, setPhoneNavActive } from '../components/BottomNav.js';
 import { showOutboundTemplateModal } from '../components/OutboundTemplateModal.js';
 import { User } from '../models/index.js';
+import { createExternalTrunkSettings, addExternalTrunkSettingsStyles } from '../components/ExternalTrunkSettings.js';
 
 // Lazy load SIP client to reduce initial bundle size (281KB)
 let sipClient = null;
@@ -22,6 +23,8 @@ export default class PhonePage {
     this.userId = null;
     this.sipInitialized = false;
     this.userPhoneNumber = null; // User's personal cell phone for callback calls
+    this.serviceNumbers = [];
+    this.numbersToDelete = [];
   }
 
   async loadUserPhoneNumber() {
@@ -56,23 +59,84 @@ export default class PhonePage {
     // Fetch user's personal phone number for callback validation
     await this.loadUserPhoneNumber();
 
+    // Add external trunk settings styles
+    addExternalTrunkSettingsStyles();
+
     const appElement = document.getElementById('app');
     const isMobile = window.innerWidth <= 768;
 
-    appElement.innerHTML = `
-      <div style="
-        display: flex;
-        flex-direction: column;
-        min-height: 100vh;
-        background: var(--bg-primary);
-        padding: 1rem 0.5rem ${isMobile ? '100px' : '0'};
-        overflow: auto;
-        position: relative;
-      ">
-        ${this.renderDialpadContent()}
-      </div>
-      ${renderBottomNav('/phone')}
-    `;
+    if (isMobile) {
+      // Mobile: Just the dialer
+      appElement.innerHTML = `
+        <div style="
+          display: flex;
+          flex-direction: column;
+          min-height: 100vh;
+          background: var(--bg-primary);
+          padding: 1rem 0.5rem 100px;
+          overflow: auto;
+          position: relative;
+        ">
+          ${this.renderDialpadContent()}
+        </div>
+        ${renderBottomNav('/phone')}
+      `;
+    } else {
+      // Desktop: Two-column layout (wrapped in container that accounts for sidebar)
+      appElement.innerHTML = `
+        <div class="container with-bottom-nav" style="max-width: 1200px; padding: 1.5rem;">
+          <div class="phone-page-desktop" style="
+            display: grid;
+            grid-template-columns: 1fr 380px;
+            gap: 2rem;
+          ">
+            <!-- Left Column: Numbers Management -->
+            <div class="phone-left-column" style="overflow-y: auto; max-height: calc(100vh - 6rem);">
+              <!-- Service Numbers Section -->
+              <div class="card" style="margin-bottom: 1.5rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                  <div>
+                    <h2 style="margin: 0;">My Service Numbers</h2>
+                    <p class="text-muted" style="margin: 0.25rem 0 0 0; font-size: 0.875rem;">Manage your phone numbers</p>
+                  </div>
+                  <button class="btn btn-primary" id="add-number-btn">
+                    + Add Number
+                  </button>
+                </div>
+                <div id="numbers-list-container">
+                  <div class="text-muted" style="text-align: center; padding: 2rem;">
+                    Loading numbers...
+                  </div>
+                </div>
+              </div>
+
+              <!-- External SIP Trunks Section -->
+              <div id="external-trunk-settings-container"></div>
+            </div>
+
+            <!-- Right Column: Dialer -->
+            <div class="phone-right-column" style="
+              background: var(--bg-primary);
+              border: 1px solid var(--border-color);
+              border-radius: var(--radius-lg);
+              padding: 1.5rem;
+              height: fit-content;
+              position: sticky;
+              top: 1.5rem;
+            ">
+              ${this.renderDialpadContent()}
+            </div>
+          </div>
+        </div>
+        ${renderBottomNav('/phone')}
+      `;
+
+      // Initialize External Trunk Settings component
+      createExternalTrunkSettings('external-trunk-settings-container');
+
+      // Load service numbers
+      await this.loadServiceNumbersList();
+    }
 
     // Set phone nav as active
     setPhoneNavActive(true);
@@ -598,6 +662,238 @@ export default class PhonePage {
         .join('');
     } else {
       select.innerHTML = '<option value="">No numbers available</option>';
+    }
+  }
+
+  async loadServiceNumbersList() {
+    const container = document.getElementById('numbers-list-container');
+    if (!container) return;
+
+    try {
+      // Load service numbers
+      const { data: numbers, error } = await supabase
+        .from('service_numbers')
+        .select('*')
+        .eq('user_id', this.userId)
+        .order('purchased_at', { ascending: false });
+
+      if (error) throw error;
+
+      this.serviceNumbers = numbers || [];
+
+      // Load numbers scheduled for deletion
+      const { data: toDelete, error: deleteError } = await supabase
+        .from('numbers_to_delete')
+        .select('*')
+        .eq('user_id', this.userId)
+        .eq('deletion_status', 'pending')
+        .order('scheduled_deletion_date', { ascending: true });
+
+      if (deleteError) console.error('Error loading deletion queue:', deleteError);
+      this.numbersToDelete = toDelete || [];
+
+      if (this.serviceNumbers.length === 0 && this.numbersToDelete.length === 0) {
+        container.innerHTML = `
+          <div class="text-muted" style="text-align: center; padding: 2rem;">
+            <p style="margin-bottom: 1rem;">You don't have any service numbers yet</p>
+            <button class="btn btn-primary" onclick="navigateTo('/select-number')">
+              Get Your First Number
+            </button>
+          </div>
+        `;
+      } else {
+        container.innerHTML = this.renderServiceNumbersList();
+        this.attachNumbersEventListeners();
+      }
+    } catch (error) {
+      console.error('Error loading numbers:', error);
+      container.innerHTML = `
+        <div class="text-muted" style="text-align: center; padding: 2rem; color: var(--error-color);">
+          Failed to load numbers: ${error.message}
+        </div>
+      `;
+    }
+  }
+
+  renderServiceNumbersList() {
+    // Filter out US Relay numbers
+    const isUSRelay = (n) => n.friendly_name?.includes('Auto US Relay');
+    const activeNumbers = this.serviceNumbers.filter(n => n.is_active && !isUSRelay(n));
+    const inactiveNumbers = this.serviceNumbers.filter(n => !n.is_active && !isUSRelay(n));
+
+    return `
+      ${activeNumbers.length > 0 ? `
+        <div style="margin-bottom: 1.5rem;">
+          <h3 style="margin-bottom: 0.75rem; font-size: 0.875rem; display: flex; align-items: center; gap: 0.5rem;">
+            <span style="width: 8px; height: 8px; background: #10b981; border-radius: 50%;"></span>
+            Active (${activeNumbers.length})
+          </h3>
+          <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+            ${activeNumbers.map(num => this.renderNumberItem(num)).join('')}
+          </div>
+        </div>
+      ` : ''}
+
+      ${inactiveNumbers.length > 0 ? `
+        <div style="margin-bottom: 1.5rem;">
+          <h3 style="margin-bottom: 0.75rem; font-size: 0.875rem; display: flex; align-items: center; gap: 0.5rem;">
+            <span style="width: 8px; height: 8px; background: #9ca3af; border-radius: 50%;"></span>
+            Inactive (${inactiveNumbers.length})
+          </h3>
+          <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+            ${inactiveNumbers.map(num => this.renderNumberItem(num)).join('')}
+          </div>
+        </div>
+      ` : ''}
+
+      ${this.numbersToDelete.length > 0 ? `
+        <div>
+          <h3 style="margin-bottom: 0.75rem; font-size: 0.875rem; display: flex; align-items: center; gap: 0.5rem;">
+            <span style="width: 8px; height: 8px; background: #ef4444; border-radius: 50%;"></span>
+            Scheduled for Deletion (${this.numbersToDelete.length})
+          </h3>
+          <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+            ${this.numbersToDelete.map(num => this.renderDeletionItem(num)).join('')}
+          </div>
+        </div>
+      ` : ''}
+    `;
+  }
+
+  renderNumberItem(number) {
+    const capabilities = number.capabilities || {};
+    const hasVoice = capabilities.voice !== false;
+    const hasSms = capabilities.sms !== false;
+
+    return `
+      <div class="number-item" style="
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.75rem;
+        background: var(--bg-secondary);
+        border-radius: var(--radius-md);
+        border: 1px solid ${number.is_active ? 'var(--primary-color)' : 'var(--border-color)'};
+      " data-number-id="${number.id}">
+        <div style="flex: 1; min-width: 0;">
+          <div style="font-weight: 600; font-size: 0.9375rem;">${this.formatPhoneNumber(number.phone_number)}</div>
+          <div style="display: flex; gap: 0.5rem; margin-top: 0.25rem;">
+            ${hasVoice ? '<span style="font-size: 0.7rem; padding: 0.125rem 0.375rem; background: rgba(34, 197, 94, 0.1); color: rgb(34, 197, 94); border-radius: 0.25rem;">Voice</span>' : ''}
+            ${hasSms ? '<span style="font-size: 0.7rem; padding: 0.125rem 0.375rem; background: rgba(59, 130, 246, 0.1); color: rgb(59, 130, 246); border-radius: 0.25rem;">SMS</span>' : ''}
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <label class="toggle-switch" style="margin: 0;">
+            <input type="checkbox" class="number-toggle" data-id="${number.id}" ${number.is_active ? 'checked' : ''} />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+    `;
+  }
+
+  renderDeletionItem(number) {
+    const scheduledDate = new Date(number.scheduled_deletion_date);
+    const now = new Date();
+    const daysRemaining = Math.ceil((scheduledDate - now) / (1000 * 60 * 60 * 24));
+
+    return `
+      <div class="number-item" style="
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.75rem;
+        background: rgba(239, 68, 68, 0.05);
+        border-radius: var(--radius-md);
+        border: 1px solid rgba(239, 68, 68, 0.3);
+      " data-deletion-id="${number.id}">
+        <div style="flex: 1; min-width: 0;">
+          <div style="font-weight: 600; font-size: 0.9375rem; color: rgba(239, 68, 68, 0.8);">${this.formatPhoneNumber(number.phone_number)}</div>
+          <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">
+            Deletes in ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''}
+          </div>
+        </div>
+        <button class="btn btn-sm btn-secondary cancel-deletion-btn" data-phone="${number.phone_number}">
+          Cancel
+        </button>
+      </div>
+    `;
+  }
+
+  attachNumbersEventListeners() {
+    // Add number button
+    const addNumberBtn = document.getElementById('add-number-btn');
+    addNumberBtn?.addEventListener('click', () => {
+      navigateTo('/select-number');
+    });
+
+    // Toggle switches
+    document.querySelectorAll('.number-toggle').forEach(toggle => {
+      toggle.addEventListener('change', async (e) => {
+        const numberId = e.target.dataset.id;
+        const newStatus = e.target.checked;
+        await this.toggleNumberStatus(numberId, newStatus);
+      });
+    });
+
+    // Cancel deletion buttons
+    document.querySelectorAll('.cancel-deletion-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const phoneNumber = e.target.dataset.phone;
+        await this.cancelDeletion(phoneNumber);
+      });
+    });
+  }
+
+  async toggleNumberStatus(numberId, newStatus) {
+    try {
+      const number = this.serviceNumbers.find(n => n.id === numberId);
+      if (!number) return;
+
+      // Update the number status
+      const { error } = await supabase
+        .from('service_numbers')
+        .update({ is_active: newStatus })
+        .eq('id', numberId);
+
+      if (error) throw error;
+
+      // Reload the list
+      await this.loadServiceNumbersList();
+
+      // Also reload the caller ID dropdown
+      await this.loadServiceNumbers();
+    } catch (error) {
+      console.error('Error toggling number:', error);
+      alert(`Failed to update number: ${error.message}`);
+      // Reload to revert UI
+      await this.loadServiceNumbersList();
+    }
+  }
+
+  async cancelDeletion(phoneNumber) {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cancel-number-deletion`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ phone_number: phoneNumber }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to cancel deletion');
+      }
+
+      // Reload the list
+      await this.loadServiceNumbersList();
+    } catch (error) {
+      console.error('Error cancelling deletion:', error);
+      alert(`Failed to cancel deletion: ${error.message}`);
     }
   }
 
