@@ -342,6 +342,10 @@ p {
   display: none !important;
 }
 
+.mobile-only {
+  display: none;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .container {
@@ -706,6 +710,14 @@ p {
 
   .bottom-nav-item span {
     font-size: 0.625rem !important;
+  }
+
+  .bottom-nav-item.desktop-only {
+    display: none !important;
+  }
+
+  .mobile-only {
+    display: block !important;
   }
 }
 

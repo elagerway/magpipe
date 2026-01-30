@@ -395,6 +395,18 @@ export default class SettingsPage {
           </div>
         </div>
 
+        <!-- Apps (Mobile Only) -->
+        <div class="card mobile-only">
+          <h2>Apps & Integrations</h2>
+          <p class="text-muted" style="margin-bottom: 1rem;">Connect third-party services to extend your agent's capabilities</p>
+          <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+            <button class="btn btn-secondary btn-full" onclick="navigateTo('/apps')" style="justify-content: flex-start;">
+              <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right: 0.5rem;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+              All Apps & Integrations
+            </button>
+          </div>
+        </div>
+
         <!-- Notifications -->
         <div class="card">
           <h2>Notifications</h2>
