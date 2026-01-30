@@ -49,10 +49,11 @@ export default class InboxPage {
     this.lastFetchTime = 0;
     this.hiddenConversations = new Set(); // Track hidden conversations locally
     this.swipeState = null; // Track active swipe
-    // Filters can be combined: type (all/calls/texts) + direction (all/in/out)
+    // Filters can be combined: type (all/calls/texts) + direction (all/in/out) + sentiment
     this.typeFilter = 'all'; // all, calls, texts
     this.directionFilter = 'all'; // all, inbound, outbound
     this.missedFilter = false; // special filter for missed calls
+    this.sentimentFilter = 'all'; // all, positive, neutral, negative
   }
 
   /**
@@ -258,13 +259,18 @@ export default class InboxPage {
           </div>
 
           <!-- Filter Tabs -->
-          <div class="inbox-filters" id="inbox-filters">
-            <button class="inbox-filter-btn ${this.typeFilter === 'all' && this.directionFilter === 'all' && !this.missedFilter ? 'active' : ''}" data-filter-type="all" data-filter-reset="true">All</button>
+          <div class="inbox-filters" id="inbox-filters" style="border-bottom: none; padding-bottom: 0;">
+            <button class="inbox-filter-btn ${this.typeFilter === 'all' && this.directionFilter === 'all' && !this.missedFilter && this.sentimentFilter === 'all' ? 'active' : ''}" data-filter-type="all" data-filter-reset="true">All</button>
             <button class="inbox-filter-btn ${this.typeFilter === 'calls' ? 'active' : ''}" data-filter-type="calls">Calls</button>
             <button class="inbox-filter-btn ${this.typeFilter === 'texts' ? 'active' : ''}" data-filter-type="texts">Texts</button>
             <button class="inbox-filter-btn ${this.directionFilter === 'inbound' ? 'active' : ''}" data-filter-direction="inbound">In</button>
             <button class="inbox-filter-btn ${this.directionFilter === 'outbound' ? 'active' : ''}" data-filter-direction="outbound">Out</button>
             <button class="inbox-filter-btn ${this.missedFilter ? 'active' : ''}" data-filter-missed="true">Missed</button>
+          </div>
+          <div class="inbox-filters" id="inbox-filters-sentiment" style="padding-top: 0.375rem; justify-content: center; gap: 0.5rem;">
+            <button class="inbox-filter-btn ${this.sentimentFilter === 'positive' ? 'active' : ''}" data-filter-sentiment="positive">Positive</button>
+            <button class="inbox-filter-btn ${this.sentimentFilter === 'neutral' ? 'active' : ''}" data-filter-sentiment="neutral">Neutral</button>
+            <button class="inbox-filter-btn ${this.sentimentFilter === 'negative' ? 'active' : ''}" data-filter-sentiment="negative">Negative</button>
           </div>
 
           <div id="conversations">
@@ -846,6 +852,14 @@ export default class InboxPage {
       });
     }
 
+    // Apply sentiment filter
+    if (this.sentimentFilter !== 'all') {
+      visibleConversations = visibleConversations.filter(conv => {
+        const sentiment = this.getConversationSentiment(conv);
+        return sentiment === this.sentimentFilter;
+      });
+    }
+
     if (visibleConversations.length === 0) {
       return `
         <div style="padding: 2rem; text-align: center; color: var(--text-secondary);">
@@ -904,9 +918,10 @@ export default class InboxPage {
                 <div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 2px;">
                   ${contactName ? this.formatPhoneNumber(primaryNumber) + ' • ' : ''}${isOutbound ? 'From' : 'To'}: ${this.formatPhoneNumber(serviceNumber)}
                 </div>
-                <div class="conversation-preview">
+                <div class="conversation-preview" style="display: flex; align-items: center;">
                   <span class="call-status-indicator ${conv.statusInfo.class}" style="color: ${conv.statusInfo.color}; margin-right: 0.25rem;">${conv.statusInfo.icon}</span>
-                  ${conv.lastMessage}
+                  <span style="flex: 1;">${conv.lastMessage}</span>
+                  ${this.formatSentimentLabel(this.getConversationSentiment(conv))}
                 </div>
               </div>
             </div>
@@ -944,7 +959,10 @@ export default class InboxPage {
                   </div>
                 </div>
                 ${contactName ? `<div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 2px;">${this.formatPhoneNumber(conv.phone)}</div>` : ''}
-                <div class="conversation-preview">${conv.lastMessage}</div>
+                <div class="conversation-preview" style="display: flex; align-items: center;">
+                  <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${conv.lastMessage}</span>
+                  ${this.formatSentimentLabel(this.getConversationSentiment(conv))}
+                </div>
               </div>
             </div>
           </div>
@@ -1244,7 +1262,7 @@ export default class InboxPage {
             <span>${durationText}</span>
             ${call.user_sentiment ? `
               <span>•</span>
-              <span>User Sentiment: <span class="sentiment-${call.user_sentiment.toLowerCase()}">${call.user_sentiment}</span></span>
+              <span class="sentiment-label sentiment-${call.user_sentiment.toLowerCase()}" style="padding: 0.125rem 0.5rem; border-radius: 0.25rem;">${call.user_sentiment.charAt(0).toUpperCase() + call.user_sentiment.slice(1)}</span>
             ` : ''}
           </div>
         </div>
@@ -1463,6 +1481,52 @@ export default class InboxPage {
       console.error('formatTime error:', err);
       return '';
     }
+  }
+
+  /**
+   * Format sentiment for display as an inline label
+   * @param {string|null} sentiment - 'positive', 'neutral', 'negative', or null
+   * @returns {string} HTML for sentiment label
+   */
+  formatSentimentLabel(sentiment) {
+    if (!sentiment) return '';
+
+    const config = {
+      positive: { label: 'Positive', color: '#22c55e', bg: '#dcfce7' },
+      neutral: { label: 'Neutral', color: '#6b7280', bg: '#f3f4f6' },
+      negative: { label: 'Negative', color: '#ef4444', bg: '#fee2e2' }
+    };
+
+    const cfg = config[sentiment];
+    if (!cfg) return '';
+
+    return `<span class="sentiment-label sentiment-${sentiment}" style="
+      font-size: 0.65rem;
+      padding: 0.125rem 0.375rem;
+      border-radius: 0.25rem;
+      background: ${cfg.bg};
+      color: ${cfg.color};
+      font-weight: 500;
+      margin-left: 0.5rem;
+    ">${cfg.label}</span>`;
+  }
+
+  /**
+   * Get sentiment for a conversation
+   * For calls: use user_sentiment from call record
+   * For SMS: use sentiment from most recent inbound message
+   */
+  getConversationSentiment(conv) {
+    if (conv.type === 'call') {
+      return conv.call?.user_sentiment || null;
+    } else if (conv.type === 'sms') {
+      // Find most recent inbound message with sentiment
+      const inboundWithSentiment = conv.messages
+        ?.filter(m => m.direction === 'inbound' && m.sentiment)
+        ?.sort((a, b) => new Date(b.sent_at) - new Date(a.sent_at));
+      return inboundWithSentiment?.[0]?.sentiment || null;
+    }
+    return null;
   }
 
   async showNewConversationModal() {
@@ -3952,9 +4016,10 @@ Examples:
 
   attachFilterListeners() {
     const filtersContainer = document.getElementById('inbox-filters');
+    const sentimentFiltersContainer = document.getElementById('inbox-filters-sentiment');
     if (!filtersContainer) return;
 
-    filtersContainer.addEventListener('click', (e) => {
+    const handleFilterClick = (e) => {
       const btn = e.target.closest('.inbox-filter-btn');
       if (!btn) return;
 
@@ -3963,6 +4028,7 @@ Examples:
         this.typeFilter = 'all';
         this.directionFilter = 'all';
         this.missedFilter = false;
+        this.sentimentFilter = 'all';
       }
       // Handle type filter (calls/texts)
       else if (btn.dataset.filterType) {
@@ -3986,6 +4052,12 @@ Examples:
           this.typeFilter = 'calls';
         }
       }
+      // Handle sentiment filter
+      else if (btn.dataset.filterSentiment) {
+        const sentiment = btn.dataset.filterSentiment;
+        // Toggle: if already selected, go back to 'all'
+        this.sentimentFilter = this.sentimentFilter === sentiment ? 'all' : sentiment;
+      }
 
       // Update button states
       this.updateFilterButtonStates();
@@ -3996,7 +4068,12 @@ Examples:
         conversationsEl.innerHTML = this.renderConversationList();
         this.attachConversationListeners();
       }
-    });
+    };
+
+    filtersContainer.addEventListener('click', handleFilterClick);
+    if (sentimentFiltersContainer) {
+      sentimentFiltersContainer.addEventListener('click', handleFilterClick);
+    }
   }
 
   updateFilterButtonStates() {
@@ -4006,12 +4083,15 @@ Examples:
     const inBtn = document.querySelector('[data-filter-direction="inbound"]');
     const outBtn = document.querySelector('[data-filter-direction="outbound"]');
     const missedBtn = document.querySelector('[data-filter-missed]');
+    const positiveBtn = document.querySelector('[data-filter-sentiment="positive"]');
+    const neutralBtn = document.querySelector('[data-filter-sentiment="neutral"]');
+    const negativeBtn = document.querySelector('[data-filter-sentiment="negative"]');
 
     // Reset all
-    [allBtn, callsBtn, textsBtn, inBtn, outBtn, missedBtn].forEach(b => b?.classList.remove('active'));
+    [allBtn, callsBtn, textsBtn, inBtn, outBtn, missedBtn, positiveBtn, neutralBtn, negativeBtn].forEach(b => b?.classList.remove('active'));
 
     // Set active states
-    const isAllClear = this.typeFilter === 'all' && this.directionFilter === 'all' && !this.missedFilter;
+    const isAllClear = this.typeFilter === 'all' && this.directionFilter === 'all' && !this.missedFilter && this.sentimentFilter === 'all';
     if (isAllClear) {
       allBtn?.classList.add('active');
     } else {
@@ -4020,6 +4100,9 @@ Examples:
       if (this.directionFilter === 'inbound') inBtn?.classList.add('active');
       if (this.directionFilter === 'outbound') outBtn?.classList.add('active');
       if (this.missedFilter) missedBtn?.classList.add('active');
+      if (this.sentimentFilter === 'positive') positiveBtn?.classList.add('active');
+      if (this.sentimentFilter === 'neutral') neutralBtn?.classList.add('active');
+      if (this.sentimentFilter === 'negative') negativeBtn?.classList.add('active');
     }
   }
 
@@ -4548,11 +4631,11 @@ Examples:
 
   formatSentiment(sentiment) {
     const sentimentMap = {
-      'positive': 'User Sentiment: Positive',
-      'neutral': 'User Sentiment: Neutral',
-      'negative': 'User Sentiment: Negative'
+      'positive': 'Positive',
+      'neutral': 'Neutral',
+      'negative': 'Negative'
     };
-    return sentimentMap[sentiment.toLowerCase()] || `User Sentiment: ${sentiment}`;
+    return sentimentMap[sentiment.toLowerCase()] || sentiment;
   }
 
   async sendMessage() {
