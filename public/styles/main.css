@@ -454,7 +454,8 @@ p {
   padding-bottom: 70px !important;
 }
 
-/* Hide user section on mobile by default */
+/* Hide desktop-only sections on mobile by default */
+.nav-plan-section,
 .nav-user-section,
 .nav-user-modal {
   display: none;
@@ -481,6 +482,7 @@ p {
     display: flex;
     flex-direction: column;
     width: 100%;
+    flex: 1;
   }
 
   .bottom-nav-item {
@@ -534,6 +536,84 @@ p {
   .agent-page {
     left: 240px;
     bottom: 0;
+  }
+
+  /* Plan Summary Section */
+  .nav-plan-section {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    padding: 0;
+    margin-bottom: 0.5rem;
+  }
+
+  .nav-plan-card {
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-secondary);
+    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    margin: 0 12px;
+    width: calc(100% - 24px);
+    box-sizing: border-box;
+  }
+
+  .nav-plan-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+  }
+
+  .nav-plan-usage {
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+
+  .nav-plan-type {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--primary-color);
+    background: rgba(99, 102, 241, 0.1);
+    padding: 0.125rem 0.375rem;
+    border-radius: 0.25rem;
+  }
+
+  .nav-plan-progress {
+    height: 4px;
+    background: var(--border-color);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 0.75rem;
+  }
+
+  .nav-plan-progress-bar {
+    height: 100%;
+    background: var(--primary-color);
+    border-radius: 2px;
+    transition: width 0.3s ease;
+  }
+
+  .nav-plan-upgrade-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    width: 100%;
+    padding: 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--primary-color);
+    background: rgba(99, 102, 241, 0.1);
+    border: none;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+
+  .nav-plan-upgrade-btn:hover {
+    background: rgba(99, 102, 241, 0.2);
   }
 
   /* User Profile Section */
@@ -691,7 +771,8 @@ p {
     padding-right: 1rem;
   }
 
-  /* Ensure user section and modal are always hidden on mobile */
+  /* Ensure desktop-only sections are always hidden on mobile */
+  .nav-plan-section,
   .nav-user-section,
   .nav-user-section.open,
   .nav-user-modal,
