@@ -504,11 +504,11 @@ export function addKnowledgeSourceManagerStyles() {
       border: 1px solid #e5e7eb;
       border-radius: 12px;
       overflow: hidden;
-      transition: box-shadow 0.2s;
+      transition: border-color 0.2s;
     }
 
     .source-card:hover {
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      border-color: #d1d5db;
     }
 
     .source-card-header {

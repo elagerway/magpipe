@@ -26,15 +26,30 @@ export class AgentConfig {
   }
 
   /**
-   * Get agent configuration for a user
+   * Get default agent configuration for a user (legacy single-agent support)
    * @param {string} userId - User's UUID
    * @returns {Promise<{config: Object|null, error: Error|null}>}
    */
   static async getByUserId(userId) {
+    // First try to get the default agent
+    const { data: defaultAgent, error: defaultError } = await supabase
+      .from('agent_configs')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('is_default', true)
+      .single();
+
+    if (defaultAgent) {
+      return { config: defaultAgent, error: null };
+    }
+
+    // If no default, get the first agent (for backwards compatibility)
     const { data, error } = await supabase
       .from('agent_configs')
       .select('*')
       .eq('user_id', userId)
+      .order('created_at', { ascending: true })
+      .limit(1)
       .single();
 
     if (error && error.code !== 'PGRST116') {
@@ -45,16 +60,90 @@ export class AgentConfig {
   }
 
   /**
-   * Update agent configuration
+   * Get all agent configurations for a user
+   * @param {string} userId - User's UUID
+   * @returns {Promise<{configs: Object[]|null, error: Error|null}>}
+   */
+  static async getAllByUserId(userId) {
+    const { data, error } = await supabase
+      .from('agent_configs')
+      .select('*')
+      .eq('user_id', userId)
+      .order('is_default', { ascending: false })
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      return { configs: null, error };
+    }
+
+    return { configs: data || [], error: null };
+  }
+
+  /**
+   * Get agent configuration by ID
+   * @param {string} agentId - Agent config's UUID (the id column)
+   * @returns {Promise<{config: Object|null, error: Error|null}>}
+   */
+  static async getById(agentId) {
+    const { data, error } = await supabase
+      .from('agent_configs')
+      .select('*')
+      .eq('id', agentId)
+      .single();
+
+    if (error) {
+      return { config: null, error };
+    }
+
+    return { config: data, error: null };
+  }
+
+  /**
+   * Get agent configuration by agent_id (the unique agent identifier)
+   * @param {string} agentId - Agent's unique UUID (agent_id column)
+   * @returns {Promise<{config: Object|null, error: Error|null}>}
+   */
+  static async getByAgentId(agentId) {
+    const { data, error } = await supabase
+      .from('agent_configs')
+      .select('*')
+      .eq('agent_id', agentId)
+      .single();
+
+    if (error) {
+      return { config: null, error };
+    }
+
+    return { config: data, error: null };
+  }
+
+  /**
+   * Update agent configuration by user ID (legacy, updates default agent)
    * @param {string} userId - User's UUID
    * @param {Object} updates - Fields to update
    * @returns {Promise<{config: Object|null, error: Error|null}>}
    */
   static async update(userId, updates) {
+    // First get the default agent for this user
+    const { config: defaultAgent } = await this.getByUserId(userId);
+    if (!defaultAgent) {
+      return { config: null, error: new Error('No agent found for user') };
+    }
+
+    return await this.updateById(defaultAgent.id, updates);
+  }
+
+  /**
+   * Update agent configuration by ID
+   * @param {string} agentId - Agent config's UUID
+   * @param {Object} updates - Fields to update
+   * @returns {Promise<{config: Object|null, error: Error|null}>}
+   */
+  static async updateById(agentId, updates) {
     const { data, error } = await supabase
       .from('agent_configs')
       .update(updates)
-      .eq('user_id', userId)
+      .eq('id', agentId)
       .select()
       .single();
 
@@ -63,6 +152,88 @@ export class AgentConfig {
     }
 
     return { config: data, error: null };
+  }
+
+  /**
+   * Create a new agent for a user
+   * @param {string} userId - User's UUID
+   * @param {Object} agentData - Agent data (name, voice_id, system_prompt, etc.)
+   * @returns {Promise<{config: Object|null, error: Error|null}>}
+   */
+  static async createAgent(userId, agentData) {
+    const firstName = await this.getUserFirstName(userId);
+
+    // Check if user has any existing agents
+    const { configs: existingAgents } = await this.getAllByUserId(userId);
+    const isFirstAgent = !existingAgents || existingAgents.length === 0;
+
+    const newAgentData = {
+      user_id: userId,
+      name: agentData.name || 'My Agent',
+      agent_type: agentData.agent_type || 'inbound',
+      is_default: isFirstAgent, // First agent is always default
+      voice_id: agentData.voice_id || '21m00Tcm4TlvDq8ikWAM',
+      system_prompt: agentData.system_prompt || this.getDefaultInboundPrompt(firstName),
+      outbound_system_prompt: agentData.outbound_system_prompt || this.getDefaultOutboundPrompt(firstName),
+      ...agentData,
+    };
+
+    return await this.create(newAgentData);
+  }
+
+  /**
+   * Delete an agent by ID
+   * @param {string} agentId - Agent config's UUID
+   * @returns {Promise<{error: Error|null}>}
+   */
+  static async deleteAgent(agentId) {
+    // Get the agent first to check if it's default
+    const { config: agent } = await this.getById(agentId);
+    if (!agent) {
+      return { error: new Error('Agent not found') };
+    }
+
+    const { error } = await supabase
+      .from('agent_configs')
+      .delete()
+      .eq('id', agentId);
+
+    if (error) {
+      return { error };
+    }
+
+    // If we deleted the default agent, set another one as default
+    if (agent.is_default) {
+      const { configs: remainingAgents } = await this.getAllByUserId(agent.user_id);
+      if (remainingAgents && remainingAgents.length > 0) {
+        await this.setDefault(remainingAgents[0].id);
+      }
+    }
+
+    return { error: null };
+  }
+
+  /**
+   * Set an agent as the default for a user
+   * @param {string} agentId - Agent config's UUID to set as default
+   * @returns {Promise<{config: Object|null, error: Error|null}>}
+   */
+  static async setDefault(agentId) {
+    // Get the agent to find the user_id
+    const { config: agent } = await this.getById(agentId);
+    if (!agent) {
+      return { config: null, error: new Error('Agent not found') };
+    }
+
+    // Unset default on all other agents for this user
+    await supabase
+      .from('agent_configs')
+      .update({ is_default: false })
+      .eq('user_id', agent.user_id)
+      .neq('id', agentId);
+
+    // Set this agent as default
+    return await this.updateById(agentId, { is_default: true });
   }
 
   /**

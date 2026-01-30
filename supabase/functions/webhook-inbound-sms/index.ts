@@ -46,11 +46,55 @@ serve(async (req) => {
 
     console.log('Number is active, processing SMS for user:', serviceNumber.users.email)
 
-    // Log the message to database
+    // Get agent config - prioritize number-specific agent, then default agent
+    let agentConfig = null
+
+    if (serviceNumber.agent_id) {
+      // Route to the agent assigned to this phone number
+      console.log('Routing SMS to agent assigned to number:', serviceNumber.agent_id)
+      const { data: assignedAgent } = await supabase
+        .from('agent_configs')
+        .select('*')
+        .eq('id', serviceNumber.agent_id)
+        .single()
+
+      agentConfig = assignedAgent
+    }
+
+    if (!agentConfig) {
+      // Fallback to user's default agent
+      const { data: defaultAgent } = await supabase
+        .from('agent_configs')
+        .select('*')
+        .eq('user_id', serviceNumber.user_id)
+        .eq('is_default', true)
+        .single()
+
+      agentConfig = defaultAgent
+    }
+
+    if (!agentConfig) {
+      // Last fallback: get any agent for this user
+      const { data: anyAgent } = await supabase
+        .from('agent_configs')
+        .select('*')
+        .eq('user_id', serviceNumber.user_id)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .single()
+
+      agentConfig = anyAgent
+    }
+
+    const agentId = agentConfig?.id || null
+    console.log('Using agent for SMS:', agentId, agentConfig?.name || 'None')
+
+    // Log the message to database with agent_id
     const { error: insertError } = await supabase
       .from('sms_messages')
       .insert({
         user_id: serviceNumber.user_id,
+        agent_id: agentId,
         sender_number: from,
         recipient_number: to,
         direction: 'inbound',
@@ -142,8 +186,8 @@ serve(async (req) => {
     }
 
     // Respond immediately to SignalWire to avoid timeout
-    // Process the SMS asynchronously
-    processAndReplySMS(serviceNumber.user_id, from, to, body, supabase)
+    // Process the SMS asynchronously with the agent config
+    processAndReplySMS(serviceNumber.user_id, from, to, body, supabase, agentConfig)
 
     // Return empty TwiML response (no auto-reply, we'll send async)
     const twiml = `<?xml version="1.0" encoding="UTF-8"?><Response></Response>`
@@ -166,7 +210,8 @@ async function processAndReplySMS(
   from: string,
   to: string,
   body: string,
-  supabase: any
+  supabase: any,
+  agentConfig: any
 ) {
   try {
     // Check if sender has opted out (USA SMS compliance)
@@ -202,14 +247,8 @@ async function processAndReplySMS(
       }
     }
 
-    // Get user's agent config
-    const { data: agentConfig } = await supabase
-      .from('agent_configs')
-      .select('*')
-      .eq('user_id', userId)
-      .single()
-
-    if (!agentConfig || !agentConfig.retell_agent_id) {
+    // Agent config is now passed in - no need to fetch again
+    if (!agentConfig) {
       console.log('No agent configured for user')
       return
     }

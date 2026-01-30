@@ -1912,8 +1912,8 @@ export function addAdminChatStyles() {
 
     .chat-sidebar {
       width: 260px;
-      background: #f9fafb;
-      border-right: 1px solid #e5e7eb;
+      background: var(--bg-secondary, #f9fafb);
+      border-right: 1px solid var(--border-color, #e5e7eb);
       display: flex;
       flex-direction: column;
       overflow: hidden;
@@ -1947,6 +1947,7 @@ export function addAdminChatStyles() {
       flex: 1;
       overflow-y: auto;
       padding: 0 12px 12px 12px;
+      border-right: none;
     }
 
     .conversation-list-empty {
