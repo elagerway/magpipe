@@ -40,6 +40,7 @@ npm run dev       # Local dev server
 - **Production**: https://solomobile.ai
 - **Branch**: `master` (auto-deploys on push)
 - **User tests on production**, not local dev server
+- **Mobile testing**: Erik tests on iPhone using production site - changes must be deployed to see them on mobile
 
 ### Render (LiveKit Agent)
 - **Branch**: `Pat-AI` (auto-deploy must remain ENABLED)

@@ -9,7 +9,9 @@ import { initImpersonationBanner } from './components/ImpersonationBanner.js';
 export class Router {
   constructor() {
     this.routes = new Map();
+    this.dynamicRoutes = []; // For routes with parameters like /agents/:id
     this.currentRoute = null;
+    this.currentParams = {}; // Route parameters (e.g., { id: '123' })
     this.pageCache = new Map(); // Cache page instances
     this.setupRoutes();
   }
@@ -36,15 +38,59 @@ export class Router {
     this.addRoute('/contacts', () => import('./pages/contacts.js'), true);
     this.addRoute('/calls', () => import('./pages/calls.js'), true);
     this.addRoute('/messages', () => import('./pages/messages.js'), true);
+    this.addRoute('/apps', () => import('./pages/apps.js'), true);
     this.addRoute('/settings', () => import('./pages/settings.js'), true);
     this.addRoute('/bulk-calling', () => import('./pages/bulk-calling.js'), true);
 
     // Admin routes (role-protected)
     this.addRoute('/admin', () => import('./pages/admin.js'), true, ['admin', 'support']);
+
+    // Agents routes (multi-agent support)
+    this.addRoute('/agents', () => import('./pages/agents.js'), true);
+    this.addDynamicRoute('/agents/:id', () => import('./pages/agent-detail.js'), true);
   }
 
   addRoute(path, loader, requiresAuth = false, requiredRoles = null) {
     this.routes.set(path, { loader, requiresAuth, requiredRoles });
+  }
+
+  /**
+   * Add a dynamic route with parameters (e.g., /agents/:id)
+   */
+  addDynamicRoute(pattern, loader, requiresAuth = false, requiredRoles = null) {
+    // Convert pattern like /agents/:id to regex
+    const paramNames = [];
+    const regexPattern = pattern.replace(/:([a-zA-Z_][a-zA-Z0-9_]*)/g, (_, paramName) => {
+      paramNames.push(paramName);
+      return '([^/]+)';
+    });
+    const regex = new RegExp(`^${regexPattern}$`);
+
+    this.dynamicRoutes.push({
+      pattern,
+      regex,
+      paramNames,
+      loader,
+      requiresAuth,
+      requiredRoles
+    });
+  }
+
+  /**
+   * Match a path against dynamic routes and extract parameters
+   */
+  matchDynamicRoute(path) {
+    for (const route of this.dynamicRoutes) {
+      const match = path.match(route.regex);
+      if (match) {
+        const params = {};
+        route.paramNames.forEach((name, index) => {
+          params[name] = match[index + 1];
+        });
+        return { route, params };
+      }
+    }
+    return null;
   }
 
   async init() {
@@ -90,13 +136,28 @@ export class Router {
   async loadRoute(fullPath) {
     // Strip query string for route lookup, but preserve it for the page
     const path = fullPath.split('?')[0];
-    const route = this.routes.get(path);
+
+    // Try static routes first
+    let route = this.routes.get(path);
+    let params = {};
+
+    // If not found, try dynamic routes
+    if (!route) {
+      const dynamicMatch = this.matchDynamicRoute(path);
+      if (dynamicMatch) {
+        route = dynamicMatch.route;
+        params = dynamicMatch.params;
+      }
+    }
 
     if (!route) {
       // Route not found, redirect to home
       this.navigate('/', true);
       return;
     }
+
+    // Store current params for page access
+    this.currentParams = params;
 
     // Check authentication (getCurrentUser uses caching)
     if (route.requiresAuth) {
@@ -126,21 +187,23 @@ export class Router {
 
     // Load and render page (with caching for main tabs)
     try {
-      // Don't cache inbox - it has dynamic rendering that needs fresh instances
-      const cacheable = ['/agent', '/phone', '/contacts', '/settings'];
+      // Don't cache inbox or dynamic routes - they need fresh instances
+      const cacheable = ['/agent', '/phone', '/contacts', '/apps', '/settings'];
+      const isDynamicRoute = Object.keys(params).length > 0;
       let page;
 
-      if (cacheable.includes(path) && this.pageCache.has(path)) {
+      if (!isDynamicRoute && cacheable.includes(path) && this.pageCache.has(path)) {
         // Use cached page instance
         page = this.pageCache.get(path);
       } else {
         // Create new page instance
         const pageModule = await route.loader();
         const Page = pageModule.default;
-        page = new Page();
+        // Pass params to dynamic route pages
+        page = new Page(isDynamicRoute ? params : undefined);
 
-        // Cache main tab pages
-        if (cacheable.includes(path)) {
+        // Cache main tab pages (not dynamic routes)
+        if (!isDynamicRoute && cacheable.includes(path)) {
           this.pageCache.set(path, page);
         }
       }
@@ -161,7 +224,7 @@ export class Router {
   // Preload other main tabs in background
   preloadTabs(currentPath) {
     // Don't preload inbox - it needs fresh instances for dynamic rendering
-    const tabs = ['/agent', '/phone', '/contacts', '/settings'];
+    const tabs = ['/agent', '/phone', '/contacts', '/apps', '/settings'];
     const toPreload = tabs.filter(t => t !== currentPath && !this.pageCache.has(t));
 
     // Preload immediately but don't block - use requestIdleCallback if available

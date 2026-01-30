@@ -53,12 +53,47 @@ serve(async (req) => {
 
     console.log('Number is active, processing call for user:', serviceNumber.users.email)
 
-    // Get user's agent config
-    const { data: agentConfig } = await supabase
-      .from('agent_configs')
-      .select('*')
-      .eq('user_id', serviceNumber.user_id)
-      .single()
+    // Get agent config - prioritize number-specific agent, then default agent
+    let agentConfig = null
+
+    if (serviceNumber.agent_id) {
+      // Route to the agent assigned to this phone number
+      console.log('Routing to agent assigned to number:', serviceNumber.agent_id)
+      const { data: assignedAgent } = await supabase
+        .from('agent_configs')
+        .select('*')
+        .eq('id', serviceNumber.agent_id)
+        .single()
+
+      agentConfig = assignedAgent
+    }
+
+    if (!agentConfig) {
+      // Fallback to user's default agent
+      console.log('No assigned agent, looking for default agent')
+      const { data: defaultAgent } = await supabase
+        .from('agent_configs')
+        .select('*')
+        .eq('user_id', serviceNumber.user_id)
+        .eq('is_default', true)
+        .single()
+
+      agentConfig = defaultAgent
+    }
+
+    if (!agentConfig) {
+      // Last fallback: get any agent for this user (for backwards compatibility)
+      console.log('No default agent, looking for any agent')
+      const { data: anyAgent } = await supabase
+        .from('agent_configs')
+        .select('*')
+        .eq('user_id', serviceNumber.user_id)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .single()
+
+      agentConfig = anyAgent
+    }
 
     if (!agentConfig) {
       console.log('No agent configured for user')
@@ -73,6 +108,8 @@ serve(async (req) => {
         status: 200,
       })
     }
+
+    console.log('Using agent:', agentConfig.id, agentConfig.name || 'Unnamed')
 
     // Route based on active Voice AI stack
     const activeStack = agentConfig.active_voice_stack || 'retell'
@@ -92,11 +129,12 @@ serve(async (req) => {
 
       console.log('Dialing SIP URI:', sipUri)
 
-      // Log the call to database
+      // Log the call to database with agent_id
       const { error: insertError } = await supabase
         .from('call_records')
         .insert({
           user_id: serviceNumber.user_id,
+          agent_id: agentConfig.id,             // Track which agent handled the call
           caller_number: from,
           contact_phone: from,
           service_number: to,
@@ -214,11 +252,12 @@ serve(async (req) => {
       </Dial>
     </Response>`
 
-    // Log the call to database
+    // Log the call to database with agent_id
     const { error: insertError } = await supabase
       .from('call_records')
       .insert({
         user_id: serviceNumber.user_id,
+        agent_id: agentConfig.id,             // Track which agent handled the call
         caller_number: from,
         contact_phone: from,
         service_number: to,

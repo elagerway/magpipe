@@ -252,12 +252,14 @@ export function renderBottomNav(currentPath = '/agent') {
       <div class="nav-user-modal" id="nav-user-modal">
         <div class="nav-modal-section">
           <div class="nav-modal-section-title">Documentation</div>
-          <button class="nav-modal-item" onclick="navigateTo('/agent-config'); closeUserModal();">
+          <button class="nav-modal-item" onclick="navigateTo('/agents'); closeUserModal();">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="3"></circle>
-              <path d="M12 2v4m0 12v4m-7-9H2m20 0h-3m-1.5-6.5L15 9m-6 6l-2.5 2.5m9-9L18 6m-12 12l2.5-2.5"></path>
+              <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"></path>
+              <circle cx="9" cy="7" r="4"></circle>
+              <path d="M23 21v-2a4 4 0 00-3-3.87"></path>
+              <path d="M16 3.13a4 4 0 010 7.75"></path>
             </svg>
-            <span>Create Assistant</span>
+            <span>Manage Agents</span>
           </button>
           <button class="nav-modal-item" onclick="window.open('https://docs.solomobile.ai', '_blank'); closeUserModal();">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

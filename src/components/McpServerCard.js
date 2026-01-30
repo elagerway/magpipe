@@ -136,7 +136,7 @@ export function addMcpServerCardStyles() {
       border: 1px solid var(--border-color);
       border-radius: var(--radius-md);
       margin-bottom: 0.75rem;
-      transition: border-color 0.2s, box-shadow 0.2s;
+      transition: border-color 0.2s;
     }
 
     .mcp-server-card:hover {
