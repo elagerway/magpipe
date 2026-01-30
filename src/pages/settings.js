@@ -2,49 +2,12 @@
  * Settings Page
  */
 
-import { User, AgentConfig } from '../models/index.js';
+import { User } from '../models/index.js';
 import { getCurrentUser, signOut, supabase } from '../lib/supabase.js';
 import { renderBottomNav, clearNavUserCache } from '../components/BottomNav.js';
 import { createAccessCodeSettings, addAccessCodeSettingsStyles } from '../components/AccessCodeSettings.js';
 import { createKnowledgeSourceManager, addKnowledgeSourceManagerStyles } from '../components/KnowledgeSourceManager.js';
 import { createExternalTrunkSettings, addExternalTrunkSettingsStyles } from '../components/ExternalTrunkSettings.js';
-
-// ElevenLabs Voices - subset for display purposes
-const ELEVENLABS_VOICES = [
-  { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel', label: 'Rachel (Default)' },
-  { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam', label: 'Adam' },
-  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah', label: 'Sarah' },
-  { id: 'AZnzlk1XvdvUeBnXmlld', name: 'Domi', label: 'Domi' },
-  { id: 'CYw3kZ02Hs0563khs1Fj', name: 'Dave', label: 'Dave' },
-  { id: 'D38z5RcWu1voky8WS1ja', name: 'Fin', label: 'Fin' },
-  { id: 'ErXwobaYiN019PkySvjV', name: 'Antoni', label: 'Antoni' },
-  { id: 'IKne3meq5aSn9XLyUdCD', name: 'Charlie', label: 'Charlie' },
-  { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George', label: 'George' },
-  { id: 'LcfcDJNUP1GQjkzn1xUU', name: 'Emily', label: 'Emily' },
-  { id: 'MF3mGyEYCl7XYWbV9V6O', name: 'Elli', label: 'Elli' },
-  { id: 'N2lVS1w4EtoT3dr4eOWO', name: 'Callum', label: 'Callum' },
-  { id: 'ODq5zmih8GrVes37Dizd', name: 'Patrick', label: 'Patrick' },
-  { id: 'SOYHLrjzK2X1ezoPC6cr', name: 'Harry', label: 'Harry' },
-  { id: 'TX3LPaxmHKxFdv7VOQHJ', name: 'Liam', label: 'Liam' },
-  { id: 'ThT5KcBeYPX3keUQqHPh', name: 'Dorothy', label: 'Dorothy' },
-  { id: 'TxGEqnHWrfWFTfGW9XjX', name: 'Josh', label: 'Josh' },
-  { id: 'VR6AewLTigWG4xSOukaG', name: 'Arnold', label: 'Arnold' },
-  { id: 'XB0fDUnXU5powFXDhCwa', name: 'Charlotte', label: 'Charlotte' },
-  { id: 'XrExE9yKIg1WjnnlVkGX', name: 'Alice', label: 'Alice' },
-  { id: 'Xb7hH8MSUJpSbSDYk0k2', name: 'Matilda', label: 'Matilda' },
-  { id: 'Yko7PKHZNXotIFUBG7I9', name: 'Matthew', label: 'Matthew' },
-  { id: 'ZQe5CZNOzWyzPSCn5a3c', name: 'James', label: 'James' },
-  { id: 'Zlb1dXrM653N07WRdFW3', name: 'Joseph', label: 'Joseph' },
-  { id: 'bVMeCyTHy58xNoL34h3p', name: 'Jeremy', label: 'Jeremy' },
-  { id: 'cjVigY5qzO86Huf0OWal', name: 'Michael', label: 'Michael' },
-  { id: 'flq6f7yk4E4fJM5XTYuZ', name: 'Ethan', label: 'Ethan' },
-  { id: 'g5CIjZEefAph4nQFvHAz', name: 'Chris', label: 'Chris' },
-  { id: 'iP95p4xoKVk53GoZ742B', name: 'Gigi', label: 'Gigi' },
-  { id: 'nPczCjzI2devNBz1zQrb', name: 'Brian', label: 'Brian' },
-  { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel', label: 'Daniel' },
-  { id: 'pqHfZKP75CvOlQylNhV4', name: 'Bill', label: 'Bill' },
-  { id: 't0jbNlBVZ17f02VDIeMI', name: 'Jessie', label: 'Jessie' },
-];
 
 export default class SettingsPage {
   constructor() {
@@ -71,16 +34,15 @@ export default class SettingsPage {
 
     // Use cached data if fetched within last 30 seconds
     const now = Date.now();
-    let profile, billingInfo, config, notifPrefs, serviceNumbers;
+    let profile, billingInfo, notifPrefs, serviceNumbers;
 
     if (this.cachedData && (now - this.lastFetchTime) < 30000) {
-      ({ profile, billingInfo, config, notifPrefs, serviceNumbers } = this.cachedData);
+      ({ profile, billingInfo, notifPrefs, serviceNumbers } = this.cachedData);
     } else {
       // Fetch all data in parallel for speed
-      const [profileResult, billingResult, configResult, notifResult, numbersResult, calComResult] = await Promise.all([
+      const [profileResult, billingResult, notifResult, numbersResult, calComResult] = await Promise.all([
         User.getProfile(user.id),
         supabase.from('users').select('plan, stripe_customer_id, stripe_subscription_id, stripe_subscription_status, stripe_current_period_end').eq('id', user.id).single(),
-        AgentConfig.getByUserId(user.id),
         supabase.from('notification_preferences').select('*').eq('user_id', user.id).single(),
         supabase.from('service_numbers').select('phone_number, is_active').eq('user_id', user.id).order('is_active', { ascending: false }),
         supabase.from('users').select('cal_com_access_token, cal_com_user_id').eq('id', user.id).single()
@@ -88,7 +50,6 @@ export default class SettingsPage {
 
       profile = profileResult.profile;
       billingInfo = billingResult.data;
-      config = configResult.config;
       notifPrefs = notifResult.data;
       serviceNumbers = numbersResult.data;
 
@@ -99,7 +60,7 @@ export default class SettingsPage {
       }
 
       // Cache the data
-      this.cachedData = { profile, billingInfo, config, notifPrefs, serviceNumbers };
+      this.cachedData = { profile, billingInfo, notifPrefs, serviceNumbers };
       this.lastFetchTime = now;
     }
 
@@ -301,47 +262,8 @@ export default class SettingsPage {
           </div>
         </div>
 
-        <!-- Agent Configuration -->
-        <div class="card" style="margin-bottom: 1rem;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-            <h2 style="margin: 0;">Agent Configuration</h2>
-            <button class="btn btn-secondary" onclick="navigateTo('/agent-config')">
-              Edit Configuration
-            </button>
-          </div>
-
-          ${config ? `
-            <div class="form-group">
-              <strong>Agent ID:</strong>
-              <code style="
-                background: var(--bg-secondary);
-                padding: 0.25rem 0.5rem;
-                border-radius: var(--radius-sm);
-                font-size: 0.875rem;
-                color: var(--text-primary);
-                user-select: all;
-              ">${config.agent_id || 'Not assigned'}</code>
-            </div>
-            <div class="form-group">
-              <strong>Voice:</strong> ${this.getVoiceName(config.voice_id, config.cloned_voice_name)}
-            </div>
-            <div class="form-group">
-              <strong>Response Style:</strong> ${config.response_style || 'N/A'}
-            </div>
-            <div class="form-group">
-              <strong>Vetting Strategy:</strong> ${config.vetting_strategy || 'N/A'}
-            </div>
-            <div class="form-group">
-              <strong>Transfer Unknown Callers:</strong> ${config.transfer_unknown_callers ? 'Yes' : 'No'}
-            </div>
-            <div class="form-group">
-              <strong>Creativity Level:</strong> ${config.temperature || 'N/A'}
-            </div>
-          ` : '<p class="text-muted">Agent not configured</p>'}
-        </div>
-
-        <!-- Phone Numbers -->
-        <div class="card" style="margin-bottom: 1rem;">
+        <!-- Phone Numbers (Mobile Only - on desktop, this is on the Phone page) -->
+        <div class="card mobile-only" style="margin-bottom: 1rem;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
             <h2 style="margin: 0;">Phone Numbers</h2>
             <button class="btn btn-secondary" onclick="navigateTo('/manage-numbers')">
@@ -376,8 +298,8 @@ export default class SettingsPage {
           ` : ''}
         </div>
 
-        <!-- External SIP Trunks -->
-        <div id="external-trunk-settings-container" style="margin-bottom: 1rem;"></div>
+        <!-- External SIP Trunks (Mobile Only - on desktop, this is on the Phone page) -->
+        <div id="external-trunk-settings-container" class="mobile-only" style="margin-bottom: 1rem;"></div>
 
         <!-- Quick Links -->
         <div class="card">
@@ -506,8 +428,8 @@ export default class SettingsPage {
           <div id="access-code-container"></div>
         </div>
 
-        <!-- Knowledge Base -->
-        <div class="card">
+        <!-- Knowledge Base (Mobile Only - on desktop, this has its own page) -->
+        <div class="card mobile-only">
           <h2>Knowledge Base</h2>
           <p class="text-muted">Add URLs to your assistant's knowledge base so it can reference your website content during conversations</p>
           <div id="knowledge-source-container"></div>
@@ -518,9 +440,6 @@ export default class SettingsPage {
           <h2 style="color: var(--error-color);">Danger Zone</h2>
           <p class="text-muted">These actions cannot be undone</p>
           <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-            <button class="btn btn-danger" id="reset-config-btn">
-              Reset Agent Configuration
-            </button>
             <button class="btn btn-danger" id="delete-account-btn">
               Delete Account
             </button>
@@ -549,22 +468,6 @@ export default class SettingsPage {
     }
 
     return phoneNumber;
-  }
-
-  getVoiceName(voiceId, clonedVoiceName) {
-    // If cloned voice, use that name
-    if (clonedVoiceName) {
-      return clonedVoiceName;
-    }
-
-    // Look up ElevenLabs voice by ID
-    const voice = ELEVENLABS_VOICES.find(v => v.id === voiceId);
-    if (voice) {
-      return voice.label || voice.name;
-    }
-
-    // Fallback to ID if not found
-    return voiceId || 'Not set';
   }
 
   getInitials(name, email) {
@@ -788,15 +691,15 @@ export default class SettingsPage {
       });
     }
 
-    // Initialize knowledge source manager component
+    // Initialize knowledge source manager component (mobile only - on desktop it has its own page)
     const knowledgeContainer = document.getElementById('knowledge-source-container');
-    if (knowledgeContainer) {
+    if (knowledgeContainer && window.innerWidth <= 768) {
       this.knowledgeManager = createKnowledgeSourceManager(knowledgeContainer);
     }
 
-    // Initialize External SIP Trunk Settings component
+    // Initialize External SIP Trunk Settings component (mobile only - on desktop it's on Phone page)
     const externalTrunkContainer = document.getElementById('external-trunk-settings-container');
-    if (externalTrunkContainer) {
+    if (externalTrunkContainer && window.innerWidth <= 768) {
       createExternalTrunkSettings('external-trunk-settings-container');
     }
 
@@ -874,7 +777,6 @@ export default class SettingsPage {
 
     const signoutBtn = document.getElementById('signout-btn');
     const saveNotificationsBtn = document.getElementById('save-notifications-btn');
-    const resetConfigBtn = document.getElementById('reset-config-btn');
     const deleteAccountBtn = document.getElementById('delete-account-btn');
 
     // Name inline editing
@@ -1110,39 +1012,6 @@ export default class SettingsPage {
       } finally {
         saveNotificationsBtn.disabled = false;
         saveNotificationsBtn.textContent = 'Save Notification Settings';
-      }
-    });
-
-    // Reset agent config
-    resetConfigBtn.addEventListener('click', async () => {
-      if (!confirm('Are you sure you want to reset your agent configuration to defaults? This cannot be undone.')) {
-        return;
-      }
-
-      resetConfigBtn.disabled = true;
-      resetConfigBtn.textContent = 'Resetting...';
-      errorMessage.classList.add('hidden');
-      successMessage.classList.add('hidden');
-
-      try {
-        const { user } = await getCurrentUser();
-        const { config, error } = await AgentConfig.resetToDefaults(user.id);
-
-        if (error) throw error;
-
-        successMessage.className = 'alert alert-success';
-        successMessage.textContent = 'Agent configuration reset successfully. Reloading...';
-
-        setTimeout(() => {
-          window.location.reload();
-        }, 1500);
-      } catch (error) {
-        console.error('Reset config error:', error);
-        errorMessage.className = 'alert alert-error';
-        errorMessage.textContent = 'Failed to reset configuration. Please try again.';
-
-        resetConfigBtn.disabled = false;
-        resetConfigBtn.textContent = 'Reset Agent Configuration';
       }
     });
 

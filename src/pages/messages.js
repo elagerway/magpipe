@@ -4,6 +4,7 @@
 
 import { SmsMessage } from '../models/SmsMessage.js';
 import { getCurrentUser } from '../lib/supabase.js';
+import { renderBottomNav } from '../components/BottomNav.js';
 
 export default class MessagesPage {
   constructor() {
@@ -29,7 +30,13 @@ export default class MessagesPage {
     const appElement = document.getElementById('app');
 
     appElement.innerHTML = `
-      <div class="container" style="padding-top: 2rem;">
+      <div class="container with-bottom-nav" style="padding-top: 1.5rem;">
+        <button onclick="navigateTo('/settings')" class="back-btn" style="margin-bottom: 1rem;">
+          <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+          </svg>
+          Back
+        </button>
         <h1>Messages</h1>
 
         <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 1rem; margin-top: 2rem;">
@@ -67,6 +74,7 @@ export default class MessagesPage {
           </div>
         </div>
       </div>
+      ${renderBottomNav('/settings')}
     `;
 
     this.attachEventListeners();

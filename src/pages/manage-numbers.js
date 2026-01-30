@@ -14,6 +14,12 @@ export default class ManageNumbersPage {
   }
 
   async render() {
+    // On desktop, redirect to phone page where numbers management now lives
+    if (window.innerWidth > 768) {
+      navigateTo('/phone');
+      return;
+    }
+
     const { user } = await getCurrentUser();
 
     if (!user) {

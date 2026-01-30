@@ -3,6 +3,7 @@
  */
 
 import { getCurrentUser, supabase } from '../lib/supabase.js';
+import { renderBottomNav } from '../components/BottomNav.js';
 
 export default class BulkCallingPage {
   constructor() {
@@ -25,13 +26,7 @@ export default class BulkCallingPage {
     const isMobile = window.innerWidth <= 768;
 
     appElement.innerHTML = `
-      <div style="
-        display: flex;
-        flex-direction: column;
-        min-height: 100vh;
-        background: var(--bg-primary);
-        padding: 1rem;
-      ">
+      <div class="container with-bottom-nav" style="padding-top: 1rem;">
         <!-- Header with back button -->
         <div style="
           display: flex;
@@ -183,6 +178,7 @@ export default class BulkCallingPage {
           </button>
         </div>
       </div>
+      ${renderBottomNav('/phone')}
     `;
 
     this.attachEventListeners();
