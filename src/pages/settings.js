@@ -218,6 +218,82 @@ export default class SettingsPage {
 
         </div>
 
+        <!-- Brand Section -->
+        <div class="card" style="margin-bottom: 1rem;">
+          <h2>Brand</h2>
+          <p class="text-muted" style="margin-bottom: 1rem; font-size: 0.875rem;">Customize your workspace with your own logo and favicon.</p>
+
+          <!-- Logo -->
+          <div class="form-group" style="border-bottom: 1px solid var(--border-color); padding-bottom: 1rem; margin-bottom: 1rem;">
+            <label style="font-weight: 600; margin: 0 0 0.5rem 0;">Logo</label>
+            <p class="text-muted" style="font-size: 0.75rem; margin-bottom: 0.75rem;">Displayed in the sidebar navigation. Recommended: 200x50px, PNG or SVG.</p>
+            <div style="display: flex; align-items: center; gap: 1rem;">
+              <div id="logo-preview" style="
+                width: 160px;
+                height: 40px;
+                border-radius: var(--radius-sm);
+                background: var(--bg-secondary);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                overflow: hidden;
+                font-size: 0.75rem;
+                color: var(--text-secondary);
+                border: 1px dashed var(--border-color);
+              ">
+                ${profile?.logo_url
+                  ? `<img src="${profile.logo_url}" style="max-width: 100%; max-height: 100%; object-fit: contain;" />`
+                  : 'No logo'
+                }
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                <button class="btn btn-sm btn-secondary" id="upload-logo-btn">
+                  ${profile?.logo_url ? 'Change Logo' : 'Upload Logo'}
+                </button>
+                <button class="btn btn-sm btn-secondary" id="remove-logo-btn" style="display: ${profile?.logo_url ? 'block' : 'none'};">
+                  Remove
+                </button>
+                <input type="file" id="logo-input" accept="image/png,image/svg+xml,image/jpeg" style="display: none;" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Favicon -->
+          <div class="form-group">
+            <label style="font-weight: 600; margin: 0 0 0.5rem 0;">Favicon</label>
+            <p class="text-muted" style="font-size: 0.75rem; margin-bottom: 0.75rem;">Browser tab icon. Recommended: 32x32px or 64x64px, PNG or ICO.</p>
+            <div style="display: flex; align-items: center; gap: 1rem;">
+              <div id="favicon-preview" style="
+                width: 48px;
+                height: 48px;
+                border-radius: var(--radius-sm);
+                background: var(--bg-secondary);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                overflow: hidden;
+                font-size: 0.625rem;
+                color: var(--text-secondary);
+                border: 1px dashed var(--border-color);
+              ">
+                ${profile?.favicon_url
+                  ? `<img src="${profile.favicon_url}" style="width: 32px; height: 32px; object-fit: contain;" />`
+                  : 'No icon'
+                }
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                <button class="btn btn-sm btn-secondary" id="upload-favicon-btn">
+                  ${profile?.favicon_url ? 'Change Favicon' : 'Upload Favicon'}
+                </button>
+                <button class="btn btn-sm btn-secondary" id="remove-favicon-btn" style="display: ${profile?.favicon_url ? 'block' : 'none'};">
+                  Remove
+                </button>
+                <input type="file" id="favicon-input" accept="image/png,image/x-icon,image/ico" style="display: none;" />
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Billing & Plan Section -->
         <div class="card" style="margin-bottom: 1rem;">
           <h2>Billing & Plan</h2>
@@ -464,6 +540,16 @@ export default class SettingsPage {
     return email ? email.substring(0, 2).toUpperCase() : 'U';
   }
 
+  updateFavicon(url) {
+    let link = document.querySelector("link[rel~='icon']");
+    if (!link) {
+      link = document.createElement('link');
+      link.rel = 'icon';
+      document.head.appendChild(link);
+    }
+    link.href = url || '/favicon.ico';
+  }
+
   attachEventListeners() {
     // Initialize access code settings component
     const accessCodeContainer = document.getElementById('access-code-container');
@@ -598,6 +684,240 @@ export default class SettingsPage {
         } finally {
           removeAvatarBtn.disabled = false;
           removeAvatarBtn.textContent = 'Remove';
+        }
+      });
+    }
+
+    // Logo upload/remove
+    const uploadLogoBtn = document.getElementById('upload-logo-btn');
+    const removeLogoBtn = document.getElementById('remove-logo-btn');
+    const logoInput = document.getElementById('logo-input');
+
+    if (uploadLogoBtn && logoInput) {
+      uploadLogoBtn.addEventListener('click', () => {
+        logoInput.click();
+      });
+
+      logoInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (file.size > 2 * 1024 * 1024) {
+          errorMessage.className = 'alert alert-error';
+          errorMessage.textContent = 'Logo must be less than 2MB';
+          errorMessage.classList.remove('hidden');
+          logoInput.value = '';
+          return;
+        }
+
+        uploadLogoBtn.disabled = true;
+        uploadLogoBtn.textContent = 'Uploading...';
+        errorMessage.classList.add('hidden');
+
+        try {
+          const { user } = await getCurrentUser();
+          const fileExt = file.name.split('.').pop();
+          const fileName = `${user.id}/logo-${Date.now()}.${fileExt}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from('brand-assets')
+            .upload(fileName, file, { cacheControl: '3600', upsert: false });
+
+          if (uploadError) throw uploadError;
+
+          const { data: { publicUrl } } = supabase.storage
+            .from('brand-assets')
+            .getPublicUrl(fileName);
+
+          const { error: updateError } = await supabase
+            .from('users')
+            .update({ logo_url: publicUrl, updated_at: new Date().toISOString() })
+            .eq('id', user.id);
+
+          if (updateError) throw updateError;
+
+          const preview = document.getElementById('logo-preview');
+          preview.innerHTML = `<img src="${publicUrl}" style="max-width: 100%; max-height: 100%; object-fit: contain;" />`;
+          uploadLogoBtn.textContent = 'Change Logo';
+          removeLogoBtn.style.display = 'block';
+
+          this.cachedData = null;
+          clearNavUserCache();
+
+          successMessage.className = 'alert alert-success';
+          successMessage.textContent = 'Logo updated successfully';
+          successMessage.classList.remove('hidden');
+          setTimeout(() => successMessage.classList.add('hidden'), 3000);
+        } catch (error) {
+          console.error('Logo upload error:', error);
+          errorMessage.className = 'alert alert-error';
+          errorMessage.textContent = 'Failed to upload logo. Please try again.';
+          errorMessage.classList.remove('hidden');
+        } finally {
+          uploadLogoBtn.disabled = false;
+          if (uploadLogoBtn.textContent === 'Uploading...') {
+            uploadLogoBtn.textContent = 'Upload Logo';
+          }
+          logoInput.value = '';
+        }
+      });
+    }
+
+    if (removeLogoBtn) {
+      removeLogoBtn.addEventListener('click', async () => {
+        removeLogoBtn.disabled = true;
+        removeLogoBtn.textContent = 'Removing...';
+        errorMessage.classList.add('hidden');
+
+        try {
+          const { user } = await getCurrentUser();
+
+          const { error: updateError } = await supabase
+            .from('users')
+            .update({ logo_url: null, updated_at: new Date().toISOString() })
+            .eq('id', user.id);
+
+          if (updateError) throw updateError;
+
+          const preview = document.getElementById('logo-preview');
+          preview.innerHTML = 'No logo';
+          uploadLogoBtn.textContent = 'Upload Logo';
+          removeLogoBtn.style.display = 'none';
+
+          this.cachedData = null;
+          clearNavUserCache();
+
+          successMessage.className = 'alert alert-success';
+          successMessage.textContent = 'Logo removed successfully';
+          successMessage.classList.remove('hidden');
+          setTimeout(() => successMessage.classList.add('hidden'), 3000);
+        } catch (error) {
+          console.error('Logo remove error:', error);
+          errorMessage.className = 'alert alert-error';
+          errorMessage.textContent = 'Failed to remove logo. Please try again.';
+          errorMessage.classList.remove('hidden');
+        } finally {
+          removeLogoBtn.disabled = false;
+          removeLogoBtn.textContent = 'Remove';
+        }
+      });
+    }
+
+    // Favicon upload/remove
+    const uploadFaviconBtn = document.getElementById('upload-favicon-btn');
+    const removeFaviconBtn = document.getElementById('remove-favicon-btn');
+    const faviconInput = document.getElementById('favicon-input');
+
+    if (uploadFaviconBtn && faviconInput) {
+      uploadFaviconBtn.addEventListener('click', () => {
+        faviconInput.click();
+      });
+
+      faviconInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (file.size > 500 * 1024) {
+          errorMessage.className = 'alert alert-error';
+          errorMessage.textContent = 'Favicon must be less than 500KB';
+          errorMessage.classList.remove('hidden');
+          faviconInput.value = '';
+          return;
+        }
+
+        uploadFaviconBtn.disabled = true;
+        uploadFaviconBtn.textContent = 'Uploading...';
+        errorMessage.classList.add('hidden');
+
+        try {
+          const { user } = await getCurrentUser();
+          const fileExt = file.name.split('.').pop();
+          const fileName = `${user.id}/favicon-${Date.now()}.${fileExt}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from('brand-assets')
+            .upload(fileName, file, { cacheControl: '3600', upsert: false });
+
+          if (uploadError) throw uploadError;
+
+          const { data: { publicUrl } } = supabase.storage
+            .from('brand-assets')
+            .getPublicUrl(fileName);
+
+          const { error: updateError } = await supabase
+            .from('users')
+            .update({ favicon_url: publicUrl, updated_at: new Date().toISOString() })
+            .eq('id', user.id);
+
+          if (updateError) throw updateError;
+
+          const preview = document.getElementById('favicon-preview');
+          preview.innerHTML = `<img src="${publicUrl}" style="width: 32px; height: 32px; object-fit: contain;" />`;
+          uploadFaviconBtn.textContent = 'Change Favicon';
+          removeFaviconBtn.style.display = 'block';
+
+          // Update the actual favicon
+          this.updateFavicon(publicUrl);
+
+          this.cachedData = null;
+
+          successMessage.className = 'alert alert-success';
+          successMessage.textContent = 'Favicon updated successfully';
+          successMessage.classList.remove('hidden');
+          setTimeout(() => successMessage.classList.add('hidden'), 3000);
+        } catch (error) {
+          console.error('Favicon upload error:', error);
+          errorMessage.className = 'alert alert-error';
+          errorMessage.textContent = 'Failed to upload favicon. Please try again.';
+          errorMessage.classList.remove('hidden');
+        } finally {
+          uploadFaviconBtn.disabled = false;
+          if (uploadFaviconBtn.textContent === 'Uploading...') {
+            uploadFaviconBtn.textContent = 'Upload Favicon';
+          }
+          faviconInput.value = '';
+        }
+      });
+    }
+
+    if (removeFaviconBtn) {
+      removeFaviconBtn.addEventListener('click', async () => {
+        removeFaviconBtn.disabled = true;
+        removeFaviconBtn.textContent = 'Removing...';
+        errorMessage.classList.add('hidden');
+
+        try {
+          const { user } = await getCurrentUser();
+
+          const { error: updateError } = await supabase
+            .from('users')
+            .update({ favicon_url: null, updated_at: new Date().toISOString() })
+            .eq('id', user.id);
+
+          if (updateError) throw updateError;
+
+          const preview = document.getElementById('favicon-preview');
+          preview.innerHTML = 'No icon';
+          uploadFaviconBtn.textContent = 'Upload Favicon';
+          removeFaviconBtn.style.display = 'none';
+
+          // Reset favicon to default
+          this.updateFavicon(null);
+
+          this.cachedData = null;
+
+          successMessage.className = 'alert alert-success';
+          successMessage.textContent = 'Favicon removed successfully';
+          successMessage.classList.remove('hidden');
+          setTimeout(() => successMessage.classList.add('hidden'), 3000);
+        } catch (error) {
+          console.error('Favicon remove error:', error);
+          errorMessage.className = 'alert alert-error';
+          errorMessage.textContent = 'Failed to remove favicon. Please try again.';
+          errorMessage.classList.remove('hidden');
+        } finally {
+          removeFaviconBtn.disabled = false;
+          removeFaviconBtn.textContent = 'Remove';
         }
       });
     }
