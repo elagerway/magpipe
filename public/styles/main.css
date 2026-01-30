@@ -504,6 +504,10 @@ p {
     background-color: var(--bg-secondary);
   }
 
+  .bottom-nav-item.desktop-only {
+    display: flex;
+  }
+
   .bottom-nav-item svg {
     width: 22px;
     height: 22px;
