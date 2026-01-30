@@ -455,6 +455,7 @@ p {
 }
 
 /* Hide desktop-only sections on mobile by default */
+.nav-logo-section,
 .nav-plan-section,
 .nav-user-section,
 .nav-user-modal {
@@ -536,6 +537,26 @@ p {
   .agent-page {
     left: 240px;
     bottom: 0;
+  }
+
+  /* Logo Section */
+  .nav-logo-section {
+    display: block;
+    padding: 0 10px;
+    margin-bottom: 0.5rem;
+  }
+
+  .nav-logo {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+  }
+
+  .nav-logo img {
+    width: 100%;
+    height: auto;
+    object-fit: contain;
   }
 
   /* Plan Summary Section */
@@ -772,6 +793,7 @@ p {
   }
 
   /* Ensure desktop-only sections are always hidden on mobile */
+  .nav-logo-section,
   .nav-plan-section,
   .nav-user-section,
   .nav-user-section.open,

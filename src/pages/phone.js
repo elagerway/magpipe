@@ -25,6 +25,7 @@ export default class PhonePage {
     this.userPhoneNumber = null; // User's personal cell phone for callback calls
     this.serviceNumbers = [];
     this.numbersToDelete = [];
+    this.currentSipSession = null; // For WebRTC SIP calls
   }
 
   async loadUserPhoneNumber() {
@@ -267,75 +268,165 @@ export default class PhonePage {
       <!-- Agent toggle and Bulk Calling link -->
       <div style="
         display: flex;
-        justify-content: space-between;
+        flex-direction: column;
         align-items: center;
         padding: 0 0.5rem;
         max-width: 300px;
         margin: 0 auto 0.5rem auto;
         width: 100%;
       ">
-        <!-- Agent toggle -->
-        <label style="
+        <div style="
           display: flex;
+          justify-content: space-between;
           align-items: center;
-          gap: 8px;
-          cursor: pointer;
-          user-select: none;
+          width: 100%;
         ">
-          <div style="position: relative; width: 44px; height: 24px;">
-            <input
-              type="checkbox"
-              id="agent-toggle"
-              checked
-              style="
-                opacity: 0;
-                width: 0;
-                height: 0;
+          <!-- Agent toggle with Direct/Agent labels -->
+          <label style="
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            user-select: none;
+          ">
+            <span id="direct-label" style="font-size: 14px; color: var(--text-secondary); font-weight: 400;">Direct</span>
+            <div style="position: relative; width: 44px; height: 24px;">
+              <input
+                type="checkbox"
+                id="agent-toggle"
+                checked
+                style="
+                  opacity: 0;
+                  width: 0;
+                  height: 0;
+                  position: absolute;
+                "
+              >
+              <div id="agent-toggle-track" style="
                 position: absolute;
-              "
-            >
-            <div id="agent-toggle-track" style="
-              position: absolute;
-              top: 0;
-              left: 0;
-              right: 0;
-              bottom: 0;
-              background: #10b981;
-              border-radius: 12px;
-              transition: background 0.2s ease;
-            "></div>
-            <div id="agent-toggle-thumb" style="
-              position: absolute;
-              top: 2px;
-              left: 22px;
-              width: 20px;
-              height: 20px;
-              background: white;
-              border-radius: 50%;
-              transition: left 0.2s ease;
-              box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-            "></div>
-          </div>
-          <span style="font-size: 14px; color: var(--text-primary);">Agent</span>
-        </label>
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: var(--primary-color);
+                border-radius: 12px;
+                transition: background 0.2s ease;
+              "></div>
+              <div id="agent-toggle-thumb" style="
+                position: absolute;
+                top: 2px;
+                left: 22px;
+                width: 20px;
+                height: 20px;
+                background: white;
+                border-radius: 50%;
+                transition: left 0.2s ease;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+              "></div>
+            </div>
+            <span id="agent-label" style="font-size: 14px; color: var(--text-primary); font-weight: 600;">Agent</span>
+          </label>
 
-        <!-- Bulk Calling link -->
-        <a href="#" id="bulk-calling-link" style="
-          font-size: 13px;
-          color: #6366f1;
-          text-decoration: none;
-          display: flex;
+          <!-- Bulk Calling link -->
+          <a href="#" id="bulk-calling-link" style="
+            font-size: 13px;
+            color: #6366f1;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+          ">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+              <circle cx="9" cy="7" r="4"></circle>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+            </svg>
+            Bulk Calling
+          </a>
+        </div>
+
+        <!-- Direct mode sub-toggle (Callback / WebRTC SIP) - hidden by default -->
+        <div id="direct-mode-options" style="
+          display: none;
+          margin-top: 0.5rem;
+          width: 100%;
+          justify-content: space-between;
           align-items: center;
-          gap: 4px;
         ">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-            <circle cx="9" cy="7" r="4"></circle>
-            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-          </svg>
-          Bulk Calling
-        </a>
+          <label style="
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            user-select: none;
+          ">
+            <span id="callback-label" style="font-size: 13px; color: var(--text-primary); font-weight: 600;">Callback</span>
+            <div style="position: relative; width: 40px; height: 22px;">
+              <input
+                type="checkbox"
+                id="sip-toggle"
+                style="
+                  opacity: 0;
+                  width: 0;
+                  height: 0;
+                  position: absolute;
+                "
+              >
+              <div id="sip-toggle-track" style="
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: var(--primary-color);
+                border-radius: 11px;
+                transition: background 0.2s ease;
+              "></div>
+              <div id="sip-toggle-thumb" style="
+                position: absolute;
+                top: 2px;
+                left: 2px;
+                width: 18px;
+                height: 18px;
+                background: white;
+                border-radius: 50%;
+                transition: left 0.2s ease;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+              "></div>
+            </div>
+            <span id="sip-label" style="font-size: 13px; color: var(--text-secondary); font-weight: 400;">WebRTC SIP</span>
+          </label>
+
+          <!-- Record button with LED (pulses only during call) -->
+          <button id="record-toggle-btn" style="
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--bg-secondary);
+            cursor: pointer;
+            font-size: 12px;
+            color: var(--text-secondary);
+            transition: all 0.2s ease;
+          ">
+            <span id="record-led" style="
+              width: 8px;
+              height: 8px;
+              border-radius: 50%;
+              background: #ef4444;
+            "></span>
+            <span id="record-label">Record</span>
+          </button>
+        </div>
+        <style>
+          @keyframes pulse-led {
+            0%, 100% { opacity: 1; box-shadow: 0 0 4px #ef4444; }
+            50% { opacity: 0.4; box-shadow: 0 0 2px #ef4444; }
+          }
+        </style>
       </div>
 
       <!-- DTMF Keypad -->
@@ -501,19 +592,117 @@ export default class PhonePage {
     // Load service numbers for caller ID
     this.loadServiceNumbers();
 
-    // Agent toggle animation
+    // Agent toggle animation and direct mode options
     const agentToggle = document.getElementById('agent-toggle');
     const agentToggleTrack = document.getElementById('agent-toggle-track');
     const agentToggleThumb = document.getElementById('agent-toggle-thumb');
+    const directModeOptions = document.getElementById('direct-mode-options');
+    const directLabel = document.getElementById('direct-label');
+    const agentLabel = document.getElementById('agent-label');
 
     if (agentToggle && agentToggleTrack && agentToggleThumb) {
       agentToggle.addEventListener('change', () => {
         if (agentToggle.checked) {
-          agentToggleTrack.style.background = '#10b981';
+          // Agent mode
+          agentToggleTrack.style.background = 'var(--primary-color)';
           agentToggleThumb.style.left = '22px';
+          if (directModeOptions) {
+            directModeOptions.style.display = 'none';
+          }
+          // Bold Agent label, unbold Direct
+          if (directLabel) {
+            directLabel.style.fontWeight = '400';
+            directLabel.style.color = 'var(--text-secondary)';
+          }
+          if (agentLabel) {
+            agentLabel.style.fontWeight = '600';
+            agentLabel.style.color = 'var(--text-primary)';
+          }
         } else {
-          agentToggleTrack.style.background = '#6b7280';
+          // Direct mode - show sub-toggle
+          agentToggleTrack.style.background = 'var(--primary-color)';
           agentToggleThumb.style.left = '2px';
+          if (directModeOptions) {
+            directModeOptions.style.display = 'flex';
+          }
+          // Bold Direct label, unbold Agent
+          if (directLabel) {
+            directLabel.style.fontWeight = '600';
+            directLabel.style.color = 'var(--text-primary)';
+          }
+          if (agentLabel) {
+            agentLabel.style.fontWeight = '400';
+            agentLabel.style.color = 'var(--text-secondary)';
+          }
+        }
+      });
+    }
+
+    // SIP toggle animation and label bolding
+    const sipToggle = document.getElementById('sip-toggle');
+    const sipToggleTrack = document.getElementById('sip-toggle-track');
+    const sipToggleThumb = document.getElementById('sip-toggle-thumb');
+    const callbackLabel = document.getElementById('callback-label');
+    const sipLabel = document.getElementById('sip-label');
+
+    if (sipToggle && sipToggleTrack && sipToggleThumb) {
+      sipToggle.addEventListener('change', () => {
+        if (sipToggle.checked) {
+          // WebRTC SIP mode
+          sipToggleTrack.style.background = 'var(--primary-color)';
+          sipToggleThumb.style.left = '20px';
+          // Bold SIP label, unbold Callback
+          if (callbackLabel) {
+            callbackLabel.style.fontWeight = '400';
+            callbackLabel.style.color = 'var(--text-secondary)';
+          }
+          if (sipLabel) {
+            sipLabel.style.fontWeight = '600';
+            sipLabel.style.color = 'var(--text-primary)';
+          }
+        } else {
+          // Callback mode
+          sipToggleTrack.style.background = 'var(--primary-color)';
+          sipToggleThumb.style.left = '2px';
+          // Bold Callback label, unbold SIP
+          if (callbackLabel) {
+            callbackLabel.style.fontWeight = '600';
+            callbackLabel.style.color = 'var(--text-primary)';
+          }
+          if (sipLabel) {
+            sipLabel.style.fontWeight = '400';
+            sipLabel.style.color = 'var(--text-secondary)';
+          }
+        }
+      });
+    }
+
+    // Record toggle button
+    const recordToggleBtn = document.getElementById('record-toggle-btn');
+    if (recordToggleBtn) {
+      // Default to recording on (solid red LED, no pulse until call starts)
+      recordToggleBtn.dataset.recording = 'on';
+
+      recordToggleBtn.addEventListener('click', () => {
+        const isRecording = recordToggleBtn.dataset.recording === 'on';
+        const recordLed = document.getElementById('record-led');
+
+        if (isRecording) {
+          // Turn off recording
+          recordToggleBtn.dataset.recording = 'off';
+          if (recordLed) {
+            recordLed.style.background = '#6b7280';
+            recordLed.style.animation = 'none';
+            recordLed.style.boxShadow = 'none';
+          }
+        } else {
+          // Turn on recording (solid red, pulse will start when call connects)
+          recordToggleBtn.dataset.recording = 'on';
+          if (recordLed) {
+            recordLed.style.background = '#ef4444';
+            recordLed.style.animation = 'none';
+            recordLed.style.boxShadow = 'none';
+          }
         }
       });
     }
@@ -568,8 +757,17 @@ export default class PhonePage {
             }
             this.currentBridgedCallSid = null;
             this.currentCallRecordId = null;
+          } else if (this.currentSipSession) {
+            // Hangup WebRTC SIP call
+            console.log('🔴 Terminating WebRTC SIP call');
+            try {
+              this.currentSipSession.terminate();
+            } catch (error) {
+              console.error('Failed to terminate SIP session:', error);
+            }
+            this.currentSipSession = null;
           } else if (sipClient) {
-            // Hangup SIP call
+            // Hangup legacy SIP call
             sipClient.hangup();
           }
 
@@ -1446,11 +1644,21 @@ export default class PhonePage {
         return;
       }
 
-      // Use callback approach for direct calls
-      // This calls the user's cell phone first, then bridges to destination
-      console.log('📞 Using callback approach for direct call');
-      await this.initiateCallbackCall(phoneNumber, fromNumber);
-      console.log('📞 Callback call initiated');
+      // Direct mode - check if WebRTC SIP or Callback
+      const sipToggle = document.getElementById('sip-toggle');
+      const useSip = sipToggle ? sipToggle.checked : false;
+
+      if (useSip) {
+        // WebRTC SIP mode - use browser SIP to SignalWire
+        console.log('📞 Using WebRTC SIP for direct call');
+        await this.initiateSipCall(phoneNumber, fromNumber, displayName, sipCredentials);
+        console.log('📞 SIP call initiated');
+      } else {
+        // Callback mode - calls user's cell phone first, then bridges to destination
+        console.log('📞 Using callback approach for direct call');
+        await this.initiateCallbackCall(phoneNumber, fromNumber);
+        console.log('📞 Callback call initiated');
+      }
 
     } catch (error) {
       console.error('Failed to initiate call:', error);
@@ -1655,6 +1863,87 @@ export default class PhonePage {
     }
   }
 
+  /**
+   * Initiate a direct call via WebRTC SIP to SignalWire
+   * Uses browser audio for the call
+   */
+  async initiateSipCall(phoneNumber, callerIdNumber, displayName, sipCredentials) {
+    console.log('📞 Initiating WebRTC SIP call');
+    console.log('   To:', phoneNumber);
+    console.log('   From:', callerIdNumber);
+    console.log('   Display Name:', displayName);
+
+    try {
+      // Normalize phone number to E.164 format
+      let normalizedPhoneNumber = phoneNumber;
+      if (!normalizedPhoneNumber.startsWith('+')) {
+        const digitsOnly = normalizedPhoneNumber.replace(/\D/g, '');
+        if (digitsOnly.startsWith('1') && digitsOnly.length === 11) {
+          normalizedPhoneNumber = '+' + digitsOnly;
+        } else {
+          normalizedPhoneNumber = '+1' + digitsOnly;
+        }
+      }
+
+      // Check if user is trying to call their own phone number
+      if (this.userPhoneNumber && this.normalizePhoneForComparison(normalizedPhoneNumber) === this.normalizePhoneForComparison(this.userPhoneNumber)) {
+        this.showOwnNumberModal();
+        return;
+      }
+
+      // Update UI
+      this.updateCallState('connecting', 'Initializing SIP...');
+
+      // Load and initialize SIP client
+      const client = await loadSipClient();
+
+      if (!client.isRegistered) {
+        this.updateCallState('connecting', 'Registering SIP...');
+        await client.initialize({
+          sipUri: `sip:${sipCredentials.sip_username}@${sipCredentials.sip_domain}`,
+          sipPassword: sipCredentials.sip_password,
+          wsServer: sipCredentials.sip_ws_server,
+          displayName: displayName
+        });
+      }
+
+      this.updateCallState('connecting', 'Calling...');
+      this.transformToHangupButton();
+
+      // Make the call
+      const session = await client.makeCall(normalizedPhoneNumber, callerIdNumber, displayName, {
+        onProgress: () => {
+          console.log('📞 Call ringing...');
+          this.updateCallState('ringing', 'Ringing...');
+        },
+        onAccepted: () => {
+          console.log('✅ Call answered');
+          this.updateCallState('connected', 'Connected');
+        },
+        onEnded: () => {
+          console.log('📞 Call ended');
+          this.updateCallState('idle');
+          this.transformToCallButton();
+          this.currentSipSession = null;
+        },
+        onFailed: (cause) => {
+          console.error('❌ Call failed:', cause);
+          this.updateCallState('idle');
+          this.transformToCallButton();
+          this.currentSipSession = null;
+        }
+      });
+
+      this.currentSipSession = session;
+
+    } catch (error) {
+      console.error('Failed to initiate SIP call:', error);
+      alert(`Failed to initiate call: ${error.message}`);
+      this.updateCallState('idle');
+      this.transformToCallButton();
+    }
+  }
+
   subscribeToCallStatus(callRecordId) {
     // Unsubscribe from any previous subscription
     if (this.callStatusSubscription) {
@@ -1829,6 +2118,8 @@ export default class PhonePage {
   updateCallState(state, message = null) {
     const sipStatusText = document.getElementById('sip-status-text');
     const callBtn = document.getElementById('call-btn');
+    const recordLed = document.getElementById('record-led');
+    const recordToggleBtn = document.getElementById('record-toggle-btn');
 
     console.log('📞 Updating call state to:', state, 'Message:', message);
 
@@ -1836,6 +2127,29 @@ export default class PhonePage {
       console.warn('⚠️ SIP status text not found');
       return;
     }
+
+    // Helper to start/stop LED pulse based on recording state
+    const updateRecordLed = (isCallActive) => {
+      if (!recordLed || !recordToggleBtn) return;
+      const isRecording = recordToggleBtn.dataset.recording === 'on';
+
+      if (isCallActive && isRecording) {
+        // Call active and recording on - pulse the LED
+        recordLed.style.background = '#ef4444';
+        recordLed.style.animation = 'pulse-led 1.5s ease-in-out infinite';
+        recordLed.style.boxShadow = '0 0 4px #ef4444';
+      } else if (isRecording) {
+        // Recording on but no call - solid red, no pulse
+        recordLed.style.background = '#ef4444';
+        recordLed.style.animation = 'none';
+        recordLed.style.boxShadow = 'none';
+      } else {
+        // Recording off - gray
+        recordLed.style.background = '#6b7280';
+        recordLed.style.animation = 'none';
+        recordLed.style.boxShadow = 'none';
+      }
+    };
 
     switch (state) {
       case 'connecting':
@@ -1853,11 +2167,14 @@ export default class PhonePage {
         this.transformToHangupButton();
         break;
 
+      case 'connected':
       case 'established':
         sipStatusText.textContent = 'Connected';
         sipStatusText.style.color = '#10b981'; // Green color
         // Keep hangup button active when call is established
         this.transformToHangupButton();
+        // Start LED pulse if recording is on
+        updateRecordLed(true);
         break;
 
       case 'hungup':
@@ -1865,6 +2182,8 @@ export default class PhonePage {
         sipStatusText.style.color = '#ef4444'; // Red color
         // Transform back to call button when hung up
         this.transformToCallButton();
+        // Stop LED pulse
+        updateRecordLed(false);
         break;
 
       case 'idle':
@@ -1873,6 +2192,8 @@ export default class PhonePage {
         sipStatusText.style.color = '#10b981';
         // Transform back to call button
         this.transformToCallButton();
+        // Stop LED pulse
+        updateRecordLed(false);
         break;
     }
   }

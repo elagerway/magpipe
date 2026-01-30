@@ -122,7 +122,7 @@ async function fetchNavUserData() {
 
       const { data: profile } = await supabase
         .from('users')
-        .select('name, avatar_url, plan, stripe_current_period_end')
+        .select('name, avatar_url, logo_url, plan, stripe_current_period_end')
         .eq('id', user.id)
         .single();
 
@@ -154,6 +154,7 @@ async function fetchNavUserData() {
         name: profile?.name || null,
         email: user.email,
         avatar_url: profile?.avatar_url || null,
+        logo_url: profile?.logo_url || null,
         plan: profile?.plan || 'free',
         minutesUsed: minutesUsed,
         minutesLimit: planLimits[profile?.plan] || 2000
@@ -178,6 +179,23 @@ function getInitials(name, email) {
       : name.substring(0, 2).toUpperCase();
   }
   return email ? email.substring(0, 2).toUpperCase() : 'U';
+}
+
+// Update the logo section in the DOM
+function updateNavLogoSection(userData) {
+  const logoSection = document.getElementById('nav-logo-section');
+  if (!logoSection) return;
+
+  if (userData?.logo_url) {
+    logoSection.innerHTML = `
+      <div class="nav-logo">
+        <img src="${userData.logo_url}" alt="Logo" />
+      </div>
+    `;
+    logoSection.style.display = 'block';
+  } else {
+    logoSection.style.display = 'none';
+  }
 }
 
 // Update the plan summary section in the DOM
@@ -291,6 +309,7 @@ export function renderBottomNav(currentPath = '/agent') {
   setTimeout(async () => {
     const userData = await fetchNavUserData();
     if (userData) {
+      updateNavLogoSection(userData);
       updateNavPlanSection(userData);
       updateNavUserSection(userData);
     }
@@ -298,6 +317,9 @@ export function renderBottomNav(currentPath = '/agent') {
 
   return `
     <nav class="bottom-nav">
+      <!-- Logo Section (Desktop Only) - populated async -->
+      <div class="nav-logo-section desktop-only" id="nav-logo-section" style="display: none;"></div>
+
       <div class="nav-items-container">
         ${navItems.map(item => `
           <button
