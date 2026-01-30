@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { analyzeSentiment, extractCallerMessages } from '../_shared/sentiment-analysis.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -113,10 +114,33 @@ serve(async (req) => {
 
     console.log(`✅ Recording URL: ${recordingUrl}`)
 
-    // Update call_record with recording URL and get Slack info
+    // First, get the call record to access the transcript for sentiment analysis
+    const { data: existingRecord } = await supabase
+      .from('call_records')
+      .select('transcript')
+      .eq('egress_id', egressId)
+      .single()
+
+    // Analyze sentiment from caller's messages in the transcript
+    let sentiment = null
+    if (existingRecord?.transcript) {
+      console.log('Analyzing sentiment from transcript...')
+      const callerMessages = extractCallerMessages(existingRecord.transcript)
+      if (callerMessages) {
+        sentiment = await analyzeSentiment(callerMessages)
+        console.log(`✅ Sentiment analysis result: ${sentiment}`)
+      }
+    }
+
+    // Update call_record with recording URL, sentiment, and get Slack info
+    const updateData: Record<string, any> = { recording_url: recordingUrl }
+    if (sentiment) {
+      updateData.user_sentiment = sentiment
+    }
+
     const { data: updateResult, error: updateError } = await supabase
       .from('call_records')
-      .update({ recording_url: recordingUrl })
+      .update(updateData)
       .eq('egress_id', egressId)
       .select('id, user_id, slack_message_ts, slack_channel_id, contact_phone, caller_number, direction, duration_seconds, transcript')
 

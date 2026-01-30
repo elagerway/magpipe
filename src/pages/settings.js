@@ -89,7 +89,7 @@ export default class SettingsPage {
     const appElement = document.getElementById('app');
 
     appElement.innerHTML = `
-      <div class="container with-bottom-nav" style="max-width: 800px; padding: 2rem 1rem;">
+      <div class="container with-bottom-nav" style="max-width: 900px; padding: 2rem 1rem;">
         <h1 style="margin-bottom: 1.5rem;">Settings</h1>
 
         <div id="error-message" class="hidden"></div>
@@ -300,22 +300,6 @@ export default class SettingsPage {
 
         <!-- External SIP Trunks (Mobile Only - on desktop, this is on the Phone page) -->
         <div id="external-trunk-settings-container" class="mobile-only" style="margin-bottom: 1rem;"></div>
-
-        <!-- Quick Links -->
-        <div class="card">
-          <h2>Quick Links</h2>
-          <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-            <button class="btn btn-secondary btn-full" onclick="navigateTo('/contacts')" style="justify-content: flex-start;">
-              📇 Manage Contacts
-            </button>
-            <button class="btn btn-secondary btn-full" onclick="navigateTo('/calls')" style="justify-content: flex-start;">
-              📞 Call History
-            </button>
-            <button class="btn btn-secondary btn-full" onclick="navigateTo('/messages')" style="justify-content: flex-start;">
-              💬 Messages
-            </button>
-          </div>
-        </div>
 
         <!-- Apps (Mobile Only) -->
         <div class="card mobile-only">
