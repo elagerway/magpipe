@@ -124,6 +124,9 @@ export class Router {
   }
 
   async navigate(path, replace = false) {
+    // Scroll to top on navigation
+    window.scrollTo(0, 0);
+
     if (replace) {
       window.history.replaceState({}, '', path);
     } else {
