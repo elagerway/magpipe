@@ -539,22 +539,19 @@ p {
     bottom: 0;
   }
 
-  /* Logo Section */
+  /* Logo Section - matches nav-item alignment */
   .nav-logo-section {
     display: block;
-    padding: 0 10px;
-    margin-bottom: 0.5rem;
+    margin: 0 12px 8px 12px;
+    padding-left: 16px;
   }
 
   .nav-logo {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
+    display: block;
   }
 
   .nav-logo img {
-    width: 100%;
+    max-width: 140px;
     height: auto;
     object-fit: contain;
   }
