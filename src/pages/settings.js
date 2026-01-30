@@ -715,13 +715,41 @@ export default class SettingsPage {
         errorMessage.classList.add('hidden');
 
         try {
+          // Resize image to max 140px width while maintaining aspect ratio
+          const resizedBlob = await new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+              const maxWidth = 140;
+              let width = img.width;
+              let height = img.height;
+
+              if (width > maxWidth) {
+                height = Math.round((height * maxWidth) / width);
+                width = maxWidth;
+              }
+
+              const canvas = document.createElement('canvas');
+              canvas.width = width;
+              canvas.height = height;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(img, 0, 0, width, height);
+
+              canvas.toBlob((blob) => {
+                if (blob) resolve(blob);
+                else reject(new Error('Failed to resize image'));
+              }, file.type || 'image/png', 0.9);
+            };
+            img.onerror = () => reject(new Error('Failed to load image'));
+            img.src = URL.createObjectURL(file);
+          });
+
           const { user } = await getCurrentUser();
           const fileExt = file.name.split('.').pop();
           const fileName = `${user.id}/logo-${Date.now()}.${fileExt}`;
 
           const { error: uploadError } = await supabase.storage
             .from('brand-assets')
-            .upload(fileName, file, { cacheControl: '3600', upsert: false });
+            .upload(fileName, resizedBlob, { cacheControl: '3600', upsert: false });
 
           if (uploadError) throw uploadError;
 
