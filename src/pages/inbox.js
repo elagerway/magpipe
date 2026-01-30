@@ -54,6 +54,9 @@ export default class InboxPage {
     this.directionFilter = 'all'; // all, inbound, outbound
     this.missedFilter = false; // special filter for missed calls
     this.sentimentFilter = 'all'; // all, positive, neutral, negative
+    this.searchQuery = ''; // search filter
+    this.dateFilter = 'all'; // all, today, yesterday, week, month
+    this.searchExpanded = false; // whether search is expanded
   }
 
   /**
@@ -133,6 +136,47 @@ export default class InboxPage {
         <div class="conversation-list" id="conversation-list">
           <div class="inbox-header" style="position: relative;">
             <h1 style="margin: 0; font-size: 1rem; font-weight: 600;">Inbox</h1>
+            <div id="inbox-search-container" style="display: flex; align-items: center; margin-left: auto; margin-right: 0.5rem;">
+              <button id="inbox-search-toggle" style="
+                background: none;
+                border: none;
+                padding: 0.375rem;
+                cursor: pointer;
+                display: ${this.searchQuery || this.searchExpanded ? 'none' : 'flex'};
+                align-items: center;
+                color: var(--text-secondary);
+              ">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <path d="M21 21l-4.35-4.35"></path>
+                </svg>
+              </button>
+              <div id="inbox-search-expanded" style="display: ${this.searchQuery || this.searchExpanded ? 'flex' : 'none'}; align-items: center; gap: 0.5rem;">
+                <input type="text" id="inbox-search" placeholder="Search..." value="${this.searchQuery || ''}" style="
+                  width: 120px;
+                  padding: 0.375rem 0.75rem;
+                  border: 1px solid var(--border-color);
+                  border-radius: 9999px;
+                  font-size: 0.8rem;
+                  outline: none;
+                " />
+                <select id="inbox-date-filter" style="
+                  padding: 0.375rem 0.5rem;
+                  border: 1px solid var(--border-color);
+                  border-radius: 9999px;
+                  font-size: 0.7rem;
+                  outline: none;
+                  background: var(--bg-primary);
+                  cursor: pointer;
+                ">
+                  <option value="all" ${this.dateFilter === 'all' ? 'selected' : ''}>All Time</option>
+                  <option value="today" ${this.dateFilter === 'today' ? 'selected' : ''}>Today</option>
+                  <option value="yesterday" ${this.dateFilter === 'yesterday' ? 'selected' : ''}>Yesterday</option>
+                  <option value="week" ${this.dateFilter === 'week' ? 'selected' : ''}>Last 7 Days</option>
+                  <option value="month" ${this.dateFilter === 'month' ? 'selected' : ''}>Last 30 Days</option>
+                </select>
+              </div>
+            </div>
             <button id="new-conversation-btn" style="
               background: white;
               color: var(--primary-color);
@@ -146,7 +190,7 @@ export default class InboxPage {
               font-size: 1rem;
               font-weight: 300;
               cursor: pointer;
-              display: flex;
+              display: ${this.searchExpanded ? 'none' : 'flex'};
               align-items: center;
               justify-content: center;
               line-height: 1;
@@ -858,6 +902,59 @@ export default class InboxPage {
         const sentiment = this.getConversationSentiment(conv);
         return sentiment === this.sentimentFilter;
       });
+    }
+
+    // Apply search filter
+    if (this.searchQuery && this.searchQuery.trim()) {
+      const query = this.searchQuery.toLowerCase().trim();
+      visibleConversations = visibleConversations.filter(conv => {
+        // Search by phone number
+        if (conv.phone?.toLowerCase().includes(query)) return true;
+
+        // Search by contact name
+        const contact = this.contactsMap?.[conv.phone];
+        const contactName = contact ? [contact.first_name, contact.last_name, contact.name].filter(Boolean).join(' ').toLowerCase() : '';
+        if (contactName.includes(query)) return true;
+
+        // Search by message content (SMS)
+        if (conv.type === 'sms' && conv.messages?.some(m => m.content?.toLowerCase().includes(query))) return true;
+
+        // Search by transcript (calls)
+        if (conv.type === 'call' && conv.call?.transcript?.toLowerCase().includes(query)) return true;
+
+        return false;
+      });
+    }
+
+    // Apply date filter
+    if (this.dateFilter !== 'all') {
+      const now = new Date();
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      let cutoffDate;
+
+      switch (this.dateFilter) {
+        case 'today':
+          cutoffDate = startOfToday;
+          break;
+        case 'yesterday':
+          cutoffDate = new Date(startOfToday);
+          cutoffDate.setDate(cutoffDate.getDate() - 1);
+          break;
+        case 'week':
+          cutoffDate = new Date(startOfToday);
+          cutoffDate.setDate(cutoffDate.getDate() - 7);
+          break;
+        case 'month':
+          cutoffDate = new Date(startOfToday);
+          cutoffDate.setDate(cutoffDate.getDate() - 30);
+          break;
+      }
+
+      if (cutoffDate) {
+        visibleConversations = visibleConversations.filter(conv => {
+          return conv.lastActivity >= cutoffDate;
+        });
+      }
     }
 
     if (visibleConversations.length === 0) {
@@ -4000,6 +4097,7 @@ Examples:
   attachEventListeners() {
     this.attachConversationListeners();
     this.attachFilterListeners();
+    this.attachSearchListener();
 
     // Only attach dropdown listeners once
     if (!this.dropdownListenersAttached) {
@@ -4011,6 +4109,91 @@ Examples:
     if (!this.phoneLinkHandlerAttached) {
       this.attachPhoneLinkHandler();
       this.phoneLinkHandlerAttached = true;
+    }
+  }
+
+  attachSearchListener() {
+    const searchToggle = document.getElementById('inbox-search-toggle');
+    const searchExpanded = document.getElementById('inbox-search-expanded');
+    const searchInput = document.getElementById('inbox-search');
+    const dateFilter = document.getElementById('inbox-date-filter');
+
+    const newConversationBtn = document.getElementById('new-conversation-btn');
+
+    // Toggle search expansion
+    if (searchToggle) {
+      searchToggle.addEventListener('click', () => {
+        this.searchExpanded = true;
+        searchToggle.style.display = 'none';
+        searchExpanded.style.display = 'flex';
+        if (newConversationBtn) newConversationBtn.style.display = 'none';
+        searchInput?.focus();
+      });
+    }
+
+    // Collapse search when input loses focus and is empty
+    const searchContainer = document.getElementById('inbox-search-container');
+    if (searchInput) {
+      searchInput.addEventListener('blur', () => {
+        // Delay to allow clicking date filter or other elements in container
+        setTimeout(() => {
+          // Check if focus moved to another element within the search container
+          const activeElement = document.activeElement;
+          const isStillInContainer = searchContainer?.contains(activeElement);
+
+          if (!isStillInContainer && !this.searchQuery && this.dateFilter === 'all') {
+            this.searchExpanded = false;
+            if (searchToggle) searchToggle.style.display = 'flex';
+            if (searchExpanded) searchExpanded.style.display = 'none';
+            if (newConversationBtn) newConversationBtn.style.display = 'flex';
+          }
+        }, 150);
+      });
+    }
+
+    // Also collapse when date filter loses focus (if both are empty/default)
+    if (dateFilter) {
+      dateFilter.addEventListener('blur', () => {
+        setTimeout(() => {
+          const activeElement = document.activeElement;
+          const isStillInContainer = searchContainer?.contains(activeElement);
+
+          if (!isStillInContainer && !this.searchQuery && this.dateFilter === 'all') {
+            this.searchExpanded = false;
+            if (searchToggle) searchToggle.style.display = 'flex';
+            if (searchExpanded) searchExpanded.style.display = 'none';
+            if (newConversationBtn) newConversationBtn.style.display = 'flex';
+          }
+        }, 150);
+      });
+    }
+
+    // Debounce search to avoid too many re-renders
+    let debounceTimer;
+    if (searchInput) {
+      searchInput.addEventListener('input', (e) => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          this.searchQuery = e.target.value;
+          const conversationsEl = document.getElementById('conversations');
+          if (conversationsEl) {
+            conversationsEl.innerHTML = this.renderConversationList();
+            this.attachConversationListeners();
+          }
+        }, 300);
+      });
+    }
+
+    // Date filter change
+    if (dateFilter) {
+      dateFilter.addEventListener('change', (e) => {
+        this.dateFilter = e.target.value;
+        const conversationsEl = document.getElementById('conversations');
+        if (conversationsEl) {
+          conversationsEl.innerHTML = this.renderConversationList();
+          this.attachConversationListeners();
+        }
+      });
     }
   }
 
