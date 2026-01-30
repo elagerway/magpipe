@@ -122,14 +122,41 @@ async function fetchNavUserData() {
 
       const { data: profile } = await supabase
         .from('users')
-        .select('name, avatar_url')
+        .select('name, avatar_url, plan, stripe_current_period_end')
         .eq('id', user.id)
         .single();
+
+      // Get minutes used this billing period
+      let minutesUsed = 0;
+      const periodStart = profile?.stripe_current_period_end
+        ? new Date(new Date(profile.stripe_current_period_end).getTime() - 30 * 24 * 60 * 60 * 1000)
+        : new Date(new Date().setDate(1)); // First of month fallback
+
+      const { data: calls } = await supabase
+        .from('call_records')
+        .select('duration_seconds')
+        .eq('user_id', user.id)
+        .gte('started_at', periodStart.toISOString());
+
+      if (calls) {
+        const totalSeconds = calls.reduce((sum, call) => sum + (call.duration_seconds || 0), 0);
+        minutesUsed = Math.round(totalSeconds / 60);
+      }
+
+      // Plan limits (customize as needed)
+      const planLimits = {
+        free: 100,
+        pro: 2000,
+        enterprise: 10000
+      };
 
       cachedUserData = {
         name: profile?.name || null,
         email: user.email,
-        avatar_url: profile?.avatar_url || null
+        avatar_url: profile?.avatar_url || null,
+        plan: profile?.plan || 'free',
+        minutesUsed: minutesUsed,
+        minutesLimit: planLimits[profile?.plan] || 2000
       };
 
       return cachedUserData;
@@ -151,6 +178,33 @@ function getInitials(name, email) {
       : name.substring(0, 2).toUpperCase();
   }
   return email ? email.substring(0, 2).toUpperCase() : 'U';
+}
+
+// Update the plan summary section in the DOM
+function updateNavPlanSection(userData) {
+  const planSection = document.getElementById('nav-plan-section');
+  if (!planSection || !userData) return;
+
+  const percentage = Math.min(100, Math.round((userData.minutesUsed / userData.minutesLimit) * 100));
+  const planLabel = userData.plan === 'pro' ? 'Pro' : userData.plan === 'enterprise' ? 'Enterprise' : 'Free';
+
+  planSection.innerHTML = `
+    <div class="nav-plan-card">
+      <div class="nav-plan-header">
+        <span class="nav-plan-usage">Minutes Used: ${userData.minutesUsed} of ${userData.minutesLimit}</span>
+        <span class="nav-plan-type">${planLabel}</span>
+      </div>
+      <div class="nav-plan-progress">
+        <div class="nav-plan-progress-bar" style="width: ${percentage}%"></div>
+      </div>
+      <button class="nav-plan-upgrade-btn" onclick="navigateTo('/settings')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+        </svg>
+        Upgrade
+      </button>
+    </div>
+  `;
 }
 
 // Update the user section in the DOM after data is fetched
@@ -220,13 +274,15 @@ export function renderBottomNav(currentPath = '/agent') {
       icon: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>`,
       label: 'Knowledge',
       desktopOnly: true
-    },
-    {
-      path: '/settings',
-      icon: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>`,
-      label: 'Settings'
     }
   ];
+
+  // Settings item shown at bottom on desktop
+  const settingsItem = {
+    path: '/settings',
+    icon: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>`,
+    label: 'Settings'
+  };
 
   // Initialize unread tracking on first render
   setTimeout(() => initUnreadTracking(), 100);
@@ -235,6 +291,7 @@ export function renderBottomNav(currentPath = '/agent') {
   setTimeout(async () => {
     const userData = await fetchNavUserData();
     if (userData) {
+      updateNavPlanSection(userData);
       updateNavUserSection(userData);
     }
   }, 0);
@@ -254,6 +311,15 @@ export function renderBottomNav(currentPath = '/agent') {
             ${item.badge ? `<span id="inbox-badge" class="nav-badge" style="display: none;">0</span>` : ''}
           </button>
         `).join('')}
+      </div>
+
+      <!-- Plan Summary Section (Desktop Only) - populated async -->
+      <div class="nav-plan-section desktop-only" id="nav-plan-section">
+        <div class="nav-plan-card" style="opacity: 0.5;">
+          <div class="nav-plan-header">
+            <span class="nav-plan-usage">Loading...</span>
+          </div>
+        </div>
       </div>
 
       <!-- User Profile Section (Desktop Only) - populated async -->
