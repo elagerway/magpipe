@@ -626,11 +626,17 @@ async def entrypoint(ctx: JobContext):
                                 participant.identity
                             )
                             if sip_caller_number:
-                                # Clean up SIP URI format: "sip:+16041234567@..." -> "+16041234567"
+                                # Clean up SIP URI/identity format to get phone number
+                                # Formats: "sip:+16041234567@...", "sip_+16041234567", "+16041234567"
                                 if sip_caller_number.startswith("sip:"):
+                                    sip_caller_number = sip_caller_number[4:]
+                                if sip_caller_number.startswith("sip_"):
                                     sip_caller_number = sip_caller_number[4:]
                                 if "@" in sip_caller_number:
                                     sip_caller_number = sip_caller_number.split("@")[0]
+                                # Ensure it starts with + for E.164 format
+                                if sip_caller_number and not sip_caller_number.startswith("+"):
+                                    sip_caller_number = "+" + sip_caller_number
                                 logger.info(f"📞 Extracted caller number from SIP: {sip_caller_number}")
                                 break
 
