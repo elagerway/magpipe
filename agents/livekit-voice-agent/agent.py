@@ -611,24 +611,71 @@ async def entrypoint(ctx: JobContext):
                     room_metadata["user_id"] = user_id
                     logger.info(f"Looked up user_id from external_sip_numbers: {user_id}")
 
-                # Update call_record with LiveKit's voice platform call ID
-                # This allows us to match the call later when saving transcript
-                if call_sid and service_number:
-                    logger.info(f"Updating call_record with LiveKit call ID: {call_sid}")
-                    time_window = datetime.datetime.now() - datetime.timedelta(minutes=5)
+                    # For Twilio external trunk inbound calls, create call_record from LiveKit data
+                    if call_sid and service_number and user_id:
+                        # Get caller phone number from SIP participant attributes
+                        sip_caller_number = None
+                        for participant in ctx.room.remote_participants.values():
+                            attrs = participant.attributes
+                            logger.info(f"📞 SIP participant attributes: {attrs}")
+                            # Try various SIP attribute names for caller number
+                            sip_caller_number = (
+                                attrs.get("sip.remoteUri") or
+                                attrs.get("sip.from") or
+                                attrs.get("sip.caller") or
+                                participant.identity
+                            )
+                            if sip_caller_number:
+                                # Clean up SIP URI format: "sip:+16041234567@..." -> "+16041234567"
+                                if sip_caller_number.startswith("sip:"):
+                                    sip_caller_number = sip_caller_number[4:]
+                                if "@" in sip_caller_number:
+                                    sip_caller_number = sip_caller_number.split("@")[0]
+                                logger.info(f"📞 Extracted caller number from SIP: {sip_caller_number}")
+                                break
 
-                    update_response = supabase.table("call_records") \
-                        .update({"livekit_call_id": call_sid}) \
-                        .eq("service_number", service_number) \
-                        .eq("user_id", user_id) \
-                        .eq("status", "in-progress") \
-                        .gte("started_at", time_window.isoformat()) \
-                        .execute()
+                        logger.info(f"Creating call_record for Twilio inbound call: {call_sid}")
 
-                    if update_response.data and len(update_response.data) > 0:
-                        logger.info(f"✅ Updated call_record with livekit_call_id")
-                    else:
-                        logger.warning(f"⚠️ Could not update call_record with livekit_call_id")
+                        # Insert call record for Twilio inbound
+                        insert_response = supabase.table("call_records") \
+                            .insert({
+                                "user_id": user_id,
+                                "caller_number": sip_caller_number or "unknown",
+                                "contact_phone": sip_caller_number or "unknown",
+                                "service_number": service_number,
+                                "call_sid": call_sid,
+                                "livekit_call_id": call_sid,
+                                "direction": "inbound",
+                                "status": "in-progress",
+                                "disposition": "answered_by_pat",
+                                "telephony_vendor": "twilio",
+                                "call_source": "external_trunk",
+                                "started_at": datetime.datetime.utcnow().isoformat(),
+                            }) \
+                            .execute()
+
+                        if insert_response.data and len(insert_response.data) > 0:
+                            logger.info(f"✅ Created call_record for Twilio inbound call")
+                        else:
+                            logger.warning(f"⚠️ Could not create call_record for Twilio inbound")
+                else:
+                    # SignalWire numbers - update existing record with livekit_call_id
+                    if call_sid and service_number and user_id:
+                        logger.info(f"Updating call_record with LiveKit call ID: {call_sid}")
+                        time_window = datetime.datetime.now() - datetime.timedelta(minutes=5)
+
+                        update_response = supabase.table("call_records") \
+                            .update({"livekit_call_id": call_sid}) \
+                            .eq("service_number", service_number) \
+                            .eq("user_id", user_id) \
+                            .eq("status", "in-progress") \
+                            .gte("started_at", time_window.isoformat()) \
+                            .execute()
+
+                        if update_response.data and len(update_response.data) > 0:
+                            logger.info(f"✅ Updated call_record with livekit_call_id")
+                        else:
+                            logger.warning(f"⚠️ Could not update call_record with livekit_call_id")
 
     if not user_id:
         logger.error("Could not determine user_id")
