@@ -49,12 +49,14 @@ export default class TeamPage {
     }
 
     // Calculate counts
+    // Distinguish cancelled invites (never approved) from removed members (were approved)
     this.counts = {
       all: allMembers?.length || 0,
       pending: allMembers?.filter(m => m.status === 'pending').length || 0,
       approved: allMembers?.filter(m => m.status === 'approved').length || 0,
       suspended: allMembers?.filter(m => m.status === 'suspended').length || 0,
-      removed: allMembers?.filter(m => m.status === 'removed').length || 0,
+      cancelled: allMembers?.filter(m => m.status === 'removed' && !m.approved_at).length || 0,
+      removed: allMembers?.filter(m => m.status === 'removed' && m.approved_at).length || 0,
     };
 
     // Get members for current tab
@@ -112,8 +114,11 @@ export default class TeamPage {
           <button class="team-tab ${this.currentTab === 'suspended' ? 'active' : ''}" data-tab="suspended">
             Suspended (${this.counts.suspended})
           </button>
+          <button class="team-tab ${this.currentTab === 'cancelled' ? 'active' : ''}" data-tab="cancelled">
+            Cancelled (${this.counts.cancelled})
+          </button>
           <button class="team-tab ${this.currentTab === 'removed' ? 'active' : ''}" data-tab="removed">
-            Cancelled (${this.counts.removed})
+            Removed (${this.counts.removed})
           </button>
         </div>
 
@@ -122,7 +127,7 @@ export default class TeamPage {
           ${this.renderMembersList()}
         </div>
       </div>
-      ${renderBottomNav('/settings')}
+      ${renderBottomNav('/team')}
 
       <!-- Invite Modal -->
       <div id="invite-modal" class="modal-overlay hidden">
@@ -262,6 +267,14 @@ export default class TeamPage {
           background: var(--error-color);
           color: white;
         }
+        .member-status.removed {
+          padding: 0.25rem 0.5rem;
+          border-radius: var(--radius-sm);
+          font-size: 0.75rem;
+          font-weight: 600;
+          background: #6b7280;
+          color: white;
+        }
 
         /* Modal Styles */
         .modal-overlay {
@@ -318,6 +331,12 @@ export default class TeamPage {
   filterMembers() {
     if (this.currentTab === 'all') {
       this.members = this.allMembers; // Show all including removed/cancelled
+    } else if (this.currentTab === 'cancelled') {
+      // Cancelled = removed status but never approved
+      this.members = this.allMembers.filter(m => m.status === 'removed' && !m.approved_at);
+    } else if (this.currentTab === 'removed') {
+      // Removed = removed status and was previously approved
+      this.members = this.allMembers.filter(m => m.status === 'removed' && m.approved_at);
     } else {
       this.members = this.allMembers.filter(m => m.status === this.currentTab);
     }
@@ -330,7 +349,8 @@ export default class TeamPage {
         pending: 'No pending invitations',
         approved: 'No approved team members',
         suspended: 'No suspended members',
-        removed: 'No cancelled invites'
+        cancelled: 'No cancelled invites',
+        removed: 'No removed members'
       };
       return `<p class="text-muted text-center" style="padding: 2rem;">${messages[this.currentTab]}</p>`;
     }
@@ -376,7 +396,7 @@ export default class TeamPage {
         `;
         break;
       case 'removed':
-        meta = `Cancelled ${removedDate}`;
+        meta = member.approved_at ? `Removed ${removedDate}` : `Cancelled ${removedDate}`;
         actions = `
           <button class="btn btn-sm btn-secondary" onclick="window.teamPage.reinvite('${member.id}', '${member.email}', '${member.full_name || ''}')">Re-invite</button>
         `;
@@ -384,6 +404,8 @@ export default class TeamPage {
     }
 
     const isRemoved = member.status === 'removed';
+    const isCancelled = isRemoved && !member.approved_at;
+    const wasRemoved = isRemoved && member.approved_at;
 
     return `
       <div class="member-card ${isRemoved ? 'member-removed' : ''}">
@@ -393,7 +415,8 @@ export default class TeamPage {
             <div class="email">${member.email}</div>
           </div>
           <div style="display: flex; align-items: center; gap: 0.5rem;">
-            ${isRemoved ? '<span class="member-status cancelled">Cancelled</span>' : ''}
+            ${isCancelled ? '<span class="member-status cancelled">Cancelled</span>' : ''}
+            ${wasRemoved ? '<span class="member-status removed">Removed</span>' : ''}
             <span class="member-role ${member.role}">${member.role}</span>
           </div>
         </div>
@@ -409,18 +432,20 @@ export default class TeamPage {
     const { members: allMembers } = await OrganizationMember.getByOrganization(this.organization.id);
     this.allMembers = allMembers || [];
 
+    // Distinguish cancelled invites (never approved) from removed members (were approved)
     this.counts = {
       all: this.allMembers.length,
       pending: this.allMembers.filter(m => m.status === 'pending').length,
       approved: this.allMembers.filter(m => m.status === 'approved').length,
       suspended: this.allMembers.filter(m => m.status === 'suspended').length,
-      removed: this.allMembers.filter(m => m.status === 'removed').length,
+      cancelled: this.allMembers.filter(m => m.status === 'removed' && !m.approved_at).length,
+      removed: this.allMembers.filter(m => m.status === 'removed' && m.approved_at).length,
     };
 
     this.filterMembers();
 
     // Update tabs
-    const tabLabels = { all: 'All', pending: 'Pending', approved: 'Approved', suspended: 'Suspended', removed: 'Cancelled' };
+    const tabLabels = { all: 'All', pending: 'Pending', approved: 'Approved', suspended: 'Suspended', cancelled: 'Cancelled', removed: 'Removed' };
     document.querySelectorAll('.team-tab').forEach(tab => {
       const tabName = tab.dataset.tab;
       tab.textContent = `${tabLabels[tabName] || tabName} (${this.counts[tabName] || 0})`;
@@ -546,16 +571,21 @@ export default class TeamPage {
   }
 
   async cancelInvite(memberId) {
-    if (!confirm('Cancel this invitation?')) return;
-
-    const { error } = await OrganizationMember.remove(memberId);
-    if (error) {
-      this.showMessage('error', 'Failed to cancel invitation');
-      return;
-    }
-
-    this.showMessage('success', 'Invitation cancelled');
-    await this.refreshList();
+    this.showConfirmModal({
+      title: 'Cancel Invitation',
+      message: 'Are you sure you want to cancel this invitation?',
+      confirmText: 'Cancel Invitation',
+      confirmDanger: true,
+      onConfirm: async () => {
+        const { error } = await OrganizationMember.remove(memberId);
+        if (error) {
+          this.showMessage('error', 'Failed to cancel invitation');
+          return;
+        }
+        this.showMessage('success', 'Invitation cancelled');
+        await this.refreshList();
+      }
+    });
   }
 
   async changeRole(memberId, newRole) {
@@ -570,16 +600,21 @@ export default class TeamPage {
   }
 
   async suspendMember(memberId) {
-    if (!confirm('Suspend this member? They will lose access until reactivated.')) return;
-
-    const { error } = await OrganizationMember.suspend(memberId);
-    if (error) {
-      this.showMessage('error', 'Failed to suspend member');
-      return;
-    }
-
-    this.showMessage('success', 'Member suspended');
-    await this.refreshList();
+    this.showConfirmModal({
+      title: 'Suspend Member',
+      message: 'Suspend this member? They will lose access until reactivated.',
+      confirmText: 'Suspend',
+      confirmDanger: true,
+      onConfirm: async () => {
+        const { error } = await OrganizationMember.suspend(memberId);
+        if (error) {
+          this.showMessage('error', 'Failed to suspend member');
+          return;
+        }
+        this.showMessage('success', 'Member suspended');
+        await this.refreshList();
+      }
+    });
   }
 
   async approveMember(memberId) {
@@ -594,16 +629,21 @@ export default class TeamPage {
   }
 
   async removeMember(memberId) {
-    if (!confirm('Remove this member from the team?')) return;
-
-    const { error } = await OrganizationMember.remove(memberId);
-    if (error) {
-      this.showMessage('error', 'Failed to remove member');
-      return;
-    }
-
-    this.showMessage('success', 'Member removed');
-    await this.refreshList();
+    this.showConfirmModal({
+      title: 'Remove Member',
+      message: 'Are you sure you want to remove this member from the team?',
+      confirmText: 'Remove',
+      confirmDanger: true,
+      onConfirm: async () => {
+        const { error } = await OrganizationMember.remove(memberId);
+        if (error) {
+          this.showMessage('error', 'Failed to remove member');
+          return;
+        }
+        this.showMessage('success', 'Member removed');
+        await this.refreshList();
+      }
+    });
   }
 
   async reinvite(memberId, email, name) {
@@ -627,5 +667,36 @@ export default class TeamPage {
 
     this.showMessage('success', 'Invitation sent');
     await this.refreshList();
+  }
+
+  showConfirmModal({ title, message, confirmText = 'Confirm', cancelText = 'Cancel', confirmDanger = false, onConfirm }) {
+    // Remove existing modal if any
+    document.getElementById('confirm-modal-overlay')?.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'confirm-modal-overlay';
+    modal.innerHTML = `
+      <div class="confirm-modal-backdrop"></div>
+      <div class="confirm-modal">
+        <h3 class="confirm-modal-title">${title}</h3>
+        <p class="confirm-modal-message">${message}</p>
+        <div class="confirm-modal-actions">
+          <button class="btn btn-secondary" id="confirm-modal-cancel">${cancelText}</button>
+          <button class="btn ${confirmDanger ? 'btn-danger' : 'btn-primary'}" id="confirm-modal-confirm">${confirmText}</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const closeModal = () => modal.remove();
+
+    document.getElementById('confirm-modal-cancel').addEventListener('click', closeModal);
+    modal.querySelector('.confirm-modal-backdrop').addEventListener('click', closeModal);
+
+    document.getElementById('confirm-modal-confirm').addEventListener('click', () => {
+      closeModal();
+      if (onConfirm) onConfirm();
+    });
   }
 }

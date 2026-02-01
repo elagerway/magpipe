@@ -41,6 +41,7 @@ export default class InboxPage {
   constructor() {
     this.conversations = [];
     this.selectedContact = null;
+    this.selectedServiceNumber = null; // Which of our numbers the conversation is on
     this.selectedCallId = null;
     this.subscription = null;
     this.userId = null;
@@ -56,6 +57,7 @@ export default class InboxPage {
     this.typeFilter = 'all'; // all, calls, texts
     this.directionFilter = 'all'; // all, inbound, outbound
     this.missedFilter = false; // special filter for missed calls
+    this.unreadFilter = false; // filter for unread conversations
     this.sentimentFilter = 'all'; // all, positive, neutral, negative
     this.filtersExpanded = false; // Toggle for filter visibility
     this.searchQuery = ''; // search filter
@@ -117,6 +119,9 @@ export default class InboxPage {
 
     // Load hidden conversations from localStorage
     this.loadHiddenConversations();
+    if (this.hiddenConversations.size > 0) {
+      console.log('Hidden conversations loaded:', Array.from(this.hiddenConversations));
+    }
 
     // Use cached data if fetched within last 30 seconds
     const now = Date.now();
@@ -130,17 +135,22 @@ export default class InboxPage {
     if (isMobile) {
       // Clear selection on mobile (no item should be highlighted on first view)
       this.selectedContact = null;
+      this.selectedServiceNumber = null;
       this.selectedCallId = null;
     } else {
       // On desktop, restore last viewed conversation or select most recent
       const lastViewedContact = localStorage.getItem('inbox_last_selected_contact');
+      const lastViewedServiceNumber = localStorage.getItem('inbox_last_selected_service_number');
       const lastViewedCallId = localStorage.getItem('inbox_last_selected_call');
 
       if (lastViewedCallId && this.conversations.some(c => c.type === 'call' && c.callId === lastViewedCallId)) {
         this.selectedCallId = lastViewedCallId;
         this.selectedContact = null;
-      } else if (lastViewedContact && this.conversations.some(c => c.type === 'sms' && c.phone === lastViewedContact)) {
+        this.selectedServiceNumber = null;
+      } else if (lastViewedContact && lastViewedServiceNumber &&
+                 this.conversations.some(c => c.type === 'sms' && c.phone === lastViewedContact && c.serviceNumber === lastViewedServiceNumber)) {
         this.selectedContact = lastViewedContact;
+        this.selectedServiceNumber = lastViewedServiceNumber;
         this.selectedCallId = null;
       } else if (this.conversations.length > 0) {
         // Default to most recent conversation
@@ -148,8 +158,10 @@ export default class InboxPage {
         if (mostRecent.type === 'call') {
           this.selectedCallId = mostRecent.callId;
           this.selectedContact = null;
+          this.selectedServiceNumber = null;
         } else {
           this.selectedContact = mostRecent.phone;
+          this.selectedServiceNumber = mostRecent.serviceNumber;
           this.selectedCallId = null;
         }
       }
@@ -356,6 +368,7 @@ export default class InboxPage {
               <button class="inbox-filter-btn ${this.directionFilter === 'inbound' ? 'active' : ''}" data-filter-direction="inbound">In</button>
               <button class="inbox-filter-btn ${this.directionFilter === 'outbound' ? 'active' : ''}" data-filter-direction="outbound">Out</button>
               <button class="inbox-filter-btn ${this.missedFilter ? 'active' : ''}" data-filter-missed="true">Missed</button>
+              <button class="inbox-filter-btn ${this.unreadFilter ? 'active' : ''}" data-filter-unread="true">Unread</button>
             </div>
             <div class="inbox-filters" id="inbox-filters-sentiment" style="padding-top: 0.375rem; justify-content: center; gap: 0.5rem;">
               <button class="inbox-filter-btn ${this.sentimentFilter === 'positive' ? 'active' : ''}" data-filter-sentiment="positive">Positive</button>
@@ -402,22 +415,33 @@ export default class InboxPage {
     }
   }
 
-  openNewConversation(phoneNumber) {
-    console.log('openNewConversation called with:', phoneNumber);
+  openNewConversation(phoneNumber, serviceNumber = null) {
+    console.log('openNewConversation called with:', phoneNumber, 'service:', serviceNumber);
 
     // Set the selected contact and show the message input
     this.selectedContact = phoneNumber;
     this.selectedCallId = null;
 
-    // Check if conversation exists
-    const existingConv = this.conversations.find(c => c.type === 'sms' && c.phone === phoneNumber);
-    console.log('Existing SMS conv found:', !!existingConv);
+    // Check if conversation exists (with specific service number if provided)
+    const existingConv = serviceNumber
+      ? this.conversations.find(c => c.type === 'sms' && c.phone === phoneNumber && c.serviceNumber === serviceNumber)
+      : this.conversations.find(c => c.type === 'sms' && c.phone === phoneNumber);
 
-    if (!existingConv) {
-      // Create a new conversation entry temporarily
+    if (existingConv) {
+      this.selectedServiceNumber = existingConv.serviceNumber;
+    } else {
+      // For new conversations, use the provided service number or leave null
+      // (will need to be selected when sending)
+      this.selectedServiceNumber = serviceNumber;
+    }
+    console.log('Existing SMS conv found:', !!existingConv, 'using serviceNumber:', this.selectedServiceNumber);
+
+    if (!existingConv && serviceNumber) {
+      // Create a new conversation entry temporarily (only if we have a service number)
       const newConv = {
         type: 'sms',
         phone: phoneNumber,
+        serviceNumber: serviceNumber,
         lastMessage: '',
         lastActivity: new Date().toISOString(),
         messages: [],
@@ -519,10 +543,11 @@ export default class InboxPage {
 
     // Auto-enrich contact for new interactions
     const contactPhone = message.direction === 'inbound' ? message.sender_number : message.recipient_number;
+    const serviceNumber = message.direction === 'inbound' ? message.recipient_number : message.sender_number;
     this.autoEnrichContact(contactPhone); // Fire and forget - don't await
 
     // Unhide conversation if it was hidden (user swipe-deleted it)
-    const convKey = `sms_${contactPhone}`;
+    const convKey = `sms_${contactPhone}_${serviceNumber}`;
     if (this.hiddenConversations.has(convKey)) {
       console.log('Unhiding conversation due to new message:', convKey);
       this.unhideConversation(convKey);
@@ -531,7 +556,7 @@ export default class InboxPage {
     // For outbound messages, update local data and re-render if viewing that thread
     if (message.direction === 'outbound') {
       // Update local data
-      const conv = this.conversations?.find(c => c.phone === contactPhone);
+      const conv = this.conversations?.find(c => c.phone === contactPhone && c.serviceNumber === serviceNumber);
       if (conv && conv.messages) {
         const exists = conv.messages.some(m => m.id === message.id);
         if (!exists) {
@@ -542,7 +567,7 @@ export default class InboxPage {
       }
 
       // Re-render thread if this is the selected contact
-      if (this.selectedContact === contactPhone) {
+      if (this.selectedContact === contactPhone && this.selectedServiceNumber === serviceNumber) {
         const threadElement = document.getElementById('message-thread');
         if (threadElement) {
           threadElement.innerHTML = this.renderMessageThread();
@@ -581,18 +606,18 @@ export default class InboxPage {
     }
 
     // If this message is for the currently selected contact, update the thread
-    console.log('Contact phone from message:', contactPhone);
-    console.log('Match?', this.selectedContact === contactPhone);
+    console.log('Contact phone from message:', contactPhone, 'service:', serviceNumber);
+    console.log('Match?', this.selectedContact === contactPhone && this.selectedServiceNumber === serviceNumber);
 
-    if (this.selectedContact === contactPhone) {
+    if (this.selectedContact === contactPhone && this.selectedServiceNumber === serviceNumber) {
       console.log('Updating thread for selected contact');
 
       // Mark conversation as read since user is viewing it
-      const lastViewedKey = `conversation_last_viewed_sms_${contactPhone}`;
+      const lastViewedKey = `conversation_last_viewed_sms_${contactPhone}_${serviceNumber}`;
       localStorage.setItem(lastViewedKey, new Date().toISOString());
 
       // Clear unread count for this conversation
-      const conv = this.conversations.find(c => c.type === 'sms' && c.phone === contactPhone);
+      const conv = this.conversations.find(c => c.type === 'sms' && c.phone === contactPhone && c.serviceNumber === serviceNumber);
       if (conv) {
         conv.unreadCount = 0;
       }
@@ -829,6 +854,7 @@ export default class InboxPage {
     const messages = messagesResult.data;
     const calls = callsResult.data;
     const contacts = contactsResult.data;
+    console.log('Inbox loaded:', messages?.length || 0, 'messages,', calls?.length || 0, 'calls');
 
     // Create a map of phone number to contact for quick lookup
     this.contactsMap = {};
@@ -841,7 +867,7 @@ export default class InboxPage {
 
     const conversationsList = [];
 
-    // Group SMS messages by contact phone number
+    // Group SMS messages by contact phone + service number (separate threads per line)
     const smsGrouped = {};
     messages?.forEach(msg => {
       const phone = msg.direction === 'inbound' ? msg.sender_number : msg.recipient_number;
@@ -849,37 +875,37 @@ export default class InboxPage {
       // For outbound: sender_number is the service number (our number sending)
       const serviceNumber = msg.direction === 'inbound' ? msg.recipient_number : msg.sender_number;
 
-      if (!smsGrouped[phone]) {
-        smsGrouped[phone] = {
+      // Group by contact + service number so each line has its own conversation
+      const convKey = `${phone}_${serviceNumber}`;
+
+      if (!smsGrouped[convKey]) {
+        smsGrouped[convKey] = {
           type: 'sms',
           phone,
-          serviceNumbers: new Set([serviceNumber]), // Track all service numbers
+          serviceNumber, // Which of our numbers this conversation is on
           messages: [],
           lastActivity: new Date(msg.sent_at || msg.created_at || Date.now()),
           lastMessage: msg.content,
           unreadCount: 0,
         };
-      } else {
-        // Add this service number to the set
-        smsGrouped[phone].serviceNumbers.add(serviceNumber);
       }
-      smsGrouped[phone].messages.push(msg);
+      smsGrouped[convKey].messages.push(msg);
 
       // Count unread inbound messages (skip if viewed in this session)
-      if (msg.direction === 'inbound' && !this.viewedConversations.has(phone)) {
-        const lastViewedKey = `conversation_last_viewed_sms_${phone}`;
+      if (msg.direction === 'inbound' && !this.viewedConversations.has(convKey)) {
+        const lastViewedKey = `conversation_last_viewed_sms_${convKey}`;
         const lastViewed = localStorage.getItem(lastViewedKey);
         const msgDate = new Date(msg.sent_at || msg.created_at || Date.now());
 
         if (!lastViewed || msgDate > new Date(lastViewed)) {
-          smsGrouped[phone].unreadCount++;
+          smsGrouped[convKey].unreadCount++;
         }
       }
 
       const msgDate = new Date(msg.sent_at || msg.created_at || Date.now());
-      if (msgDate > smsGrouped[phone].lastActivity) {
-        smsGrouped[phone].lastActivity = msgDate;
-        smsGrouped[phone].lastMessage = msg.content;
+      if (msgDate > smsGrouped[convKey].lastActivity) {
+        smsGrouped[convKey].lastActivity = msgDate;
+        smsGrouped[convKey].lastMessage = msg.content;
       }
     });
 
@@ -923,6 +949,28 @@ export default class InboxPage {
     // Sort all conversations by last activity
     this.conversations = conversationsList.sort((a, b) => b.lastActivity - a.lastActivity);
 
+    // Auto-unhide conversations that have new messages since they were hidden
+    // This handles the case where a user hides a conversation, then receives new messages while away
+    // Check for any recent inbound messages (within last 24 hours) in hidden conversations
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    this.conversations.forEach(conv => {
+      const convKey = conv.type === 'call' ? `call_${conv.callId}` : `sms_${conv.phone}_${conv.serviceNumber}`;
+      if (this.hiddenConversations.has(convKey)) {
+        // Check if there are any recent inbound messages
+        const hasRecentInbound = conv.type === 'sms' && conv.messages?.some(m =>
+          m.direction === 'inbound' && new Date(m.sent_at || m.created_at) > twentyFourHoursAgo
+        );
+        // For calls, check if the call was recent
+        const isRecentCall = conv.type === 'call' &&
+          new Date(conv.lastActivity) > twentyFourHoursAgo;
+
+        if (hasRecentInbound || isRecentCall) {
+          console.log('Auto-unhiding conversation with recent activity:', convKey);
+          this.unhideConversation(convKey);
+        }
+      }
+    });
+
     // Update the nav badge with total unread count
     const totalUnread = this.conversations.reduce((sum, conv) => sum + (conv.unreadCount || 0), 0);
     setUnreadBadgeCount(totalUnread);
@@ -931,7 +979,7 @@ export default class InboxPage {
   renderConversationList() {
     // Filter out hidden conversations
     let visibleConversations = this.conversations.filter(conv => {
-      const convKey = conv.type === 'call' ? `call_${conv.callId}` : `sms_${conv.phone}`;
+      const convKey = conv.type === 'call' ? `call_${conv.callId}` : `sms_${conv.phone}_${conv.serviceNumber}`;
       return !this.hiddenConversations.has(convKey);
     });
 
@@ -961,6 +1009,13 @@ export default class InboxPage {
     if (this.missedFilter) {
       visibleConversations = visibleConversations.filter(conv => {
         return conv.type === 'call' && (conv.call?.status === 'missed' || conv.call?.status === 'no-answer');
+      });
+    }
+
+    // Apply unread filter
+    if (this.unreadFilter) {
+      visibleConversations = visibleConversations.filter(conv => {
+        return (conv.unreadCount || 0) > 0;
       });
     }
 
@@ -1035,7 +1090,7 @@ export default class InboxPage {
     }
 
     return visibleConversations.map(conv => {
-      const isSelected = (conv.type === 'sms' && this.selectedContact === conv.phone && !this.selectedCallId) ||
+      const isSelected = (conv.type === 'sms' && this.selectedContact === conv.phone && this.selectedServiceNumber === conv.serviceNumber && !this.selectedCallId) ||
                         (conv.type === 'call' && this.selectedCallId === conv.callId);
 
       if (conv.type === 'call') {
@@ -1080,9 +1135,7 @@ export default class InboxPage {
                   <span class="conversation-name">${contactName || this.formatPhoneNumber(primaryNumber)}</span>
                   <span class="conversation-time" style="white-space: nowrap; margin-left: 0.5rem;">${this.formatTimestamp(conv.lastActivity)}</span>
                 </div>
-                <div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 2px;">
-                  ${contactName ? this.formatPhoneNumber(primaryNumber) + ' • ' : ''}${isOutbound ? 'From' : 'To'}: ${this.formatPhoneNumber(serviceNumber)}
-                </div>
+                ${contactName ? `<div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 2px;">${this.formatPhoneNumber(primaryNumber)}</div>` : ''}
                 <div class="conversation-preview" style="display: flex; align-items: center;">
                   <span class="call-status-indicator ${conv.statusInfo.class}" style="color: ${conv.statusInfo.color}; margin-right: 0.25rem;">${conv.statusInfo.icon}</span>
                   <span style="flex: 1;">${conv.lastMessage}</span>
@@ -1098,15 +1151,15 @@ export default class InboxPage {
         const contactName = contact ? [contact.first_name, contact.last_name].filter(Boolean).join(' ') || contact.name : null;
 
         return `
-          <div class="swipe-container" data-conv-key="sms_${conv.phone}">
-            <div class="swipe-delete-btn" data-conv-key="sms_${conv.phone}">
+          <div class="swipe-container" data-conv-key="sms_${conv.phone}_${conv.serviceNumber}">
+            <div class="swipe-delete-btn" data-conv-key="sms_${conv.phone}_${conv.serviceNumber}">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="3 6 5 6 21 6"></polyline>
                 <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
               </svg>
               <span>Delete</span>
             </div>
-            <div class="conversation-item swipe-content ${isSelected ? 'selected' : ''} ${conv.unreadCount > 0 ? 'unread' : ''}" data-phone="${conv.phone}" data-type="sms" style="display: flex !important; flex-direction: row !important; gap: 0.75rem;">
+            <div class="conversation-item swipe-content ${isSelected ? 'selected' : ''} ${conv.unreadCount > 0 ? 'unread' : ''}" data-phone="${conv.phone}" data-service-number="${conv.serviceNumber}" data-type="sms" style="display: flex !important; flex-direction: row !important; gap: 0.75rem;">
               <div class="conversation-avatar sms-avatar" style="flex-shrink: 0; ${contact?.avatar_url ? 'padding: 0; background: none;' : ''}">
                 ${contact?.avatar_url
                   ? `<img src="${contact.avatar_url}" alt="${contactName}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" />`
@@ -1152,12 +1205,14 @@ export default class InboxPage {
       return this.renderCallDetailView(conv.call);
     }
 
-    const conv = this.conversations.find(c => c.type === 'sms' && c.phone === this.selectedContact);
+    const conv = this.conversations.find(c => c.type === 'sms' && c.phone === this.selectedContact && c.serviceNumber === this.selectedServiceNumber);
     if (!conv) return this.renderEmptyState();
 
     // Get contact info if available
     const contact = this.contactsMap?.[conv.phone];
     const contactName = contact ? [contact.first_name, contact.last_name].filter(Boolean).join(' ') || contact.name : null;
+    const serviceNumberDisplay = this.formatPhoneNumber(conv.serviceNumber);
+    const smsSentiment = this.getConversationSentiment(conv);
 
     return `
       <div class="thread-header" style="display: flex; align-items: flex-start; gap: 0.75rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border-color);">
@@ -1165,43 +1220,62 @@ export default class InboxPage {
           display: none;
           background: none;
           border: none;
-          font-size: 1.75rem;
+          font-size: 1.5rem;
           cursor: pointer;
           padding: 0;
+          margin: 0;
           color: var(--primary-color);
           line-height: 1;
         ">←</button>
         ${contact?.avatar_url ? `
-          <img src="${contact.avatar_url}" alt="${contactName}" style="width: 48px; height: 48px; border-radius: 50%; object-fit: cover; flex-shrink: 0;" />
+          <img src="${contact.avatar_url}" alt="${contactName}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex-shrink: 0;" />
         ` : ''}
-        <div style="flex: 1; min-width: 0;">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <h2 style="margin: 0; font-size: 1rem; font-weight: 600;">
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 0.25rem;">
+          <div style="display: flex; align-items: center; gap: 0.75rem; justify-content: space-between;">
+            <h2 style="margin: 0; font-size: calc(1.125rem - 5px); font-weight: 600; line-height: 1;">
               ${contactName || this.formatPhoneNumber(conv.phone)}
             </h2>
-            ${contact?.company || contact?.job_title || contact?.linkedin_url || contact?.twitter_url ? `
-              <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; color: var(--text-secondary);">
-                ${contact?.company || contact?.job_title ? `
-                  <span>${[contact.job_title, contact.company].filter(Boolean).join(' at ')}</span>
-                ` : ''}
-                ${contact?.linkedin_url ? `
-                  <a href="${contact.linkedin_url}" target="_blank" rel="noopener" style="color: #0077b5; display: flex;" title="LinkedIn">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
-                    </svg>
-                  </a>
-                ` : ''}
-                ${contact?.twitter_url ? `
-                  <a href="${contact.twitter_url}" target="_blank" rel="noopener" style="color: #1da1f2; display: flex;" title="Twitter/X">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-                    </svg>
-                  </a>
-                ` : ''}
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+              <div style="
+                display: flex;
+                border: 1px solid var(--border-color, #e5e7eb);
+                border-radius: 6px;
+                overflow: hidden;
+                font-size: 0.8rem;
+              ">
+                <a href="#" id="call-action-btn" data-phone="${conv.phone}" style="
+                  padding: 0.35rem 0.75rem;
+                  color: var(--primary-color, #6366f1);
+                  text-decoration: none;
+                ">Call</a>
               </div>
-            ` : ''}
+              ${contact?.company || contact?.job_title || contact?.linkedin_url || contact?.twitter_url ? `
+                <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; color: var(--text-secondary);">
+                  ${contact?.company || contact?.job_title ? `
+                    <span>${[contact.job_title, contact.company].filter(Boolean).join(' at ')}</span>
+                  ` : ''}
+                  ${contact?.linkedin_url ? `
+                    <a href="${contact.linkedin_url}" target="_blank" rel="noopener" style="color: #0077b5; display: flex;" title="LinkedIn">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+                      </svg>
+                    </a>
+                  ` : ''}
+                  ${contact?.twitter_url ? `
+                    <a href="${contact.twitter_url}" target="_blank" rel="noopener" style="color: #1da1f2; display: flex;" title="Twitter/X">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                      </svg>
+                    </a>
+                  ` : ''}
+                </div>
+              ` : ''}
+                          </div>
           </div>
-          ${contactName ? `<div style="font-size: 0.8rem; color: var(--text-secondary);">${this.formatPhoneNumber(conv.phone)}</div>` : ''}
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: -5px;">
+            <span style="font-size: 0.8rem; color: var(--text-secondary);">${contactName ? this.formatPhoneNumber(conv.phone) : ''}</span>
+            <span style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.7;">Messaged: ${serviceNumberDisplay}</span>
+          </div>
         </div>
       </div>
       <div class="thread-messages" id="thread-messages">
@@ -1381,55 +1455,70 @@ export default class InboxPage {
     const contactName = contact ? [contact.first_name, contact.last_name].filter(Boolean).join(' ') || contact.name : null;
 
     return `
-      <div class="thread-header" style="display: flex; align-items: center; gap: 0.75rem; justify-content: space-between;">
-        <div style="display: flex; align-items: center; gap: 0.5rem;">
-          <button class="back-button" id="back-button" style="
-            display: none;
-            background: none;
-            border: none;
-            font-size: 1.5rem;
-            cursor: pointer;
-            padding: 0;
-            margin: 0;
-            color: var(--primary-color);
-            line-height: 1;
-          ">←</button>
-          <div>
+      <div class="thread-header" style="display: flex; flex-direction: column; gap: 0.25rem;">
+        <div style="display: flex; align-items: center; gap: 0.75rem; justify-content: space-between;">
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <button class="back-button" id="back-button" style="
+              display: none;
+              background: none;
+              border: none;
+              font-size: 1.5rem;
+              cursor: pointer;
+              padding: 0;
+              margin: 0;
+              color: var(--primary-color);
+              line-height: 1;
+            ">←</button>
             <h2 style="margin: 0; font-size: calc(1.125rem - 5px); font-weight: 600; line-height: 1;">
               ${contactName || this.formatPhoneNumber(call.contact_phone)}
             </h2>
-            ${contactName ? `<div style="font-size: 0.75rem; color: var(--text-secondary);">${this.formatPhoneNumber(call.contact_phone)}</div>` : ''}
           </div>
-        </div>
-        <div style="display: flex; align-items: center; gap: 0.75rem;">
-          <div style="
-            display: flex;
-            border: 1px solid var(--border-color, #e5e7eb);
-            border-radius: 6px;
-            overflow: hidden;
-            font-size: 0.8rem;
-          ">
-            <a href="#" id="call-action-btn" data-phone="${call.contact_phone}" style="
-              padding: 0.35rem 0.75rem;
-              color: var(--primary-color, #6366f1);
-              text-decoration: none;
-              border-right: 1px solid var(--border-color, #e5e7eb);
-            ">Call</a>
-            <a href="#" id="message-action-btn" data-phone="${call.contact_phone}" style="
-              padding: 0.35rem 0.75rem;
-              color: var(--primary-color, #6366f1);
-              text-decoration: none;
-            ">Message</a>
-          </div>
-          <div style="font-size: 0.875rem; color: var(--text-secondary); display: flex; gap: 0.5rem; align-items: center; white-space: nowrap;">
-            <span>${call.direction === 'inbound' ? 'Incoming' : 'Outgoing'} Call</span>
-            <span>•</span>
-            <span>${durationText}</span>
-            ${call.user_sentiment ? `
-              <span>•</span>
-              <span class="sentiment-label sentiment-${call.user_sentiment.toLowerCase()}" style="padding: 0.125rem 0.5rem; border-radius: 0.25rem;">${call.user_sentiment.charAt(0).toUpperCase() + call.user_sentiment.slice(1)}</span>
+          <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <div style="
+              display: flex;
+              border: 1px solid var(--border-color, #e5e7eb);
+              border-radius: 6px;
+              overflow: hidden;
+              font-size: 0.8rem;
+            ">
+              <a href="#" id="call-action-btn" data-phone="${call.contact_phone}" style="
+                padding: 0.35rem 0.75rem;
+                color: var(--primary-color, #6366f1);
+                text-decoration: none;
+                border-right: 1px solid var(--border-color, #e5e7eb);
+              ">Call</a>
+              <a href="#" id="message-action-btn" data-phone="${call.contact_phone}" style="
+                padding: 0.35rem 0.75rem;
+                color: var(--primary-color, #6366f1);
+                text-decoration: none;
+              ">Message</a>
+            </div>
+            ${contact?.company || contact?.job_title || contact?.linkedin_url || contact?.twitter_url ? `
+              <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; color: var(--text-secondary);">
+                ${contact?.company || contact?.job_title ? `
+                  <span>${[contact.job_title, contact.company].filter(Boolean).join(' at ')}</span>
+                ` : ''}
+                ${contact?.linkedin_url ? `
+                  <a href="${contact.linkedin_url}" target="_blank" rel="noopener" style="color: #0077b5; display: flex;" title="LinkedIn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+                    </svg>
+                  </a>
+                ` : ''}
+                ${contact?.twitter_url ? `
+                  <a href="${contact.twitter_url}" target="_blank" rel="noopener" style="color: #1da1f2; display: flex;" title="Twitter/X">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                    </svg>
+                  </a>
+                ` : ''}
+              </div>
             ` : ''}
           </div>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: -5px;">
+          <span style="font-size: 0.8rem; color: var(--text-secondary);">${contactName ? this.formatPhoneNumber(call.contact_phone) : ''}</span>
+          <span style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.7;">Called: ${this.formatPhoneNumber(call.service_number || (call.direction === 'inbound' ? call.callee_number : call.caller_number) || '')}</span>
         </div>
       </div>
 
@@ -1589,6 +1678,7 @@ export default class InboxPage {
     return this.typeFilter !== 'all' ||
            this.directionFilter !== 'all' ||
            this.missedFilter ||
+           this.unreadFilter ||
            this.sentimentFilter !== 'all';
   }
 
@@ -4151,6 +4241,7 @@ Examples:
       // Success - reload conversations and select this one
       await this.loadConversations(this.userId);
       this.selectedContact = normalizedPhone;
+      this.selectedServiceNumber = serviceNumber;
       this.selectedCallId = null;
 
       // Update UI
@@ -4305,6 +4396,7 @@ Examples:
         this.typeFilter = 'all';
         this.directionFilter = 'all';
         this.missedFilter = false;
+        this.unreadFilter = false;
         this.sentimentFilter = 'all';
       }
       // Handle type filter (calls/texts)
@@ -4328,6 +4420,10 @@ Examples:
         if (this.missedFilter && this.typeFilter === 'texts') {
           this.typeFilter = 'calls';
         }
+      }
+      // Handle unread filter
+      else if (btn.dataset.filterUnread) {
+        this.unreadFilter = !this.unreadFilter;
       }
       // Handle sentiment filter
       else if (btn.dataset.filterSentiment) {
@@ -4360,15 +4456,16 @@ Examples:
     const inBtn = document.querySelector('[data-filter-direction="inbound"]');
     const outBtn = document.querySelector('[data-filter-direction="outbound"]');
     const missedBtn = document.querySelector('[data-filter-missed]');
+    const unreadBtn = document.querySelector('[data-filter-unread]');
     const positiveBtn = document.querySelector('[data-filter-sentiment="positive"]');
     const neutralBtn = document.querySelector('[data-filter-sentiment="neutral"]');
     const negativeBtn = document.querySelector('[data-filter-sentiment="negative"]');
 
     // Reset all
-    [allBtn, callsBtn, textsBtn, inBtn, outBtn, missedBtn, positiveBtn, neutralBtn, negativeBtn].forEach(b => b?.classList.remove('active'));
+    [allBtn, callsBtn, textsBtn, inBtn, outBtn, missedBtn, unreadBtn, positiveBtn, neutralBtn, negativeBtn].forEach(b => b?.classList.remove('active'));
 
     // Set active states
-    const isAllClear = this.typeFilter === 'all' && this.directionFilter === 'all' && !this.missedFilter && this.sentimentFilter === 'all';
+    const isAllClear = this.typeFilter === 'all' && this.directionFilter === 'all' && !this.missedFilter && !this.unreadFilter && this.sentimentFilter === 'all';
     if (isAllClear) {
       allBtn?.classList.add('active');
     } else {
@@ -4377,6 +4474,7 @@ Examples:
       if (this.directionFilter === 'inbound') inBtn?.classList.add('active');
       if (this.directionFilter === 'outbound') outBtn?.classList.add('active');
       if (this.missedFilter) missedBtn?.classList.add('active');
+      if (this.unreadFilter) unreadBtn?.classList.add('active');
       if (this.sentimentFilter === 'positive') positiveBtn?.classList.add('active');
       if (this.sentimentFilter === 'neutral') neutralBtn?.classList.add('active');
       if (this.sentimentFilter === 'negative') negativeBtn?.classList.add('active');
@@ -4489,27 +4587,32 @@ Examples:
         // Handle call conversation click
         this.selectedCallId = item.dataset.callId;
         this.selectedContact = null;
+        this.selectedServiceNumber = null;
 
         // Save as last selected for next page load
         localStorage.setItem('inbox_last_selected_call', this.selectedCallId);
         localStorage.removeItem('inbox_last_selected_contact');
+        localStorage.removeItem('inbox_last_selected_service_number');
       } else {
         // Handle SMS conversation click
         this.selectedContact = item.dataset.phone;
+        this.selectedServiceNumber = item.dataset.serviceNumber;
         this.selectedCallId = null;
 
         // Save as last selected for next page load
         localStorage.setItem('inbox_last_selected_contact', this.selectedContact);
+        localStorage.setItem('inbox_last_selected_service_number', this.selectedServiceNumber);
         localStorage.removeItem('inbox_last_selected_call');
 
         // Mark this conversation as viewed (both localStorage and in-memory)
-        const lastViewedKey = `conversation_last_viewed_sms_${this.selectedContact}`;
+        const convKey = `${this.selectedContact}_${this.selectedServiceNumber}`;
+        const lastViewedKey = `conversation_last_viewed_sms_${convKey}`;
         localStorage.setItem(lastViewedKey, new Date().toISOString());
-        this.viewedConversations.add(this.selectedContact);
+        this.viewedConversations.add(convKey);
         localStorage.setItem('inbox_viewed_conversations', JSON.stringify([...this.viewedConversations]));
 
         // Clear unread count for this conversation
-        const conv = this.conversations.find(c => c.type === 'sms' && c.phone === this.selectedContact);
+        const conv = this.conversations.find(c => c.type === 'sms' && c.phone === this.selectedContact && c.serviceNumber === this.selectedServiceNumber);
         if (conv) {
           conv.unreadCount = 0;
         }
@@ -4733,6 +4836,7 @@ Examples:
       } else {
         // On desktop, clear selection
         this.selectedContact = null;
+        this.selectedServiceNumber = null;
         this.selectedCallId = null;
         threadElement.innerHTML = this.renderEmptyState();
 
@@ -4957,7 +5061,7 @@ Examples:
 
       // Get the service number from the current conversation
       // Use the most recent message's service number (the one they last texted)
-      const conv = this.conversations.find(c => c.type === 'sms' && c.phone === this.selectedContact);
+      const conv = this.conversations.find(c => c.type === 'sms' && c.phone === this.selectedContact && c.serviceNumber === this.selectedServiceNumber);
       if (!conv || !conv.messages || conv.messages.length === 0) {
         alert('No conversation found.');
         return;
@@ -5034,7 +5138,7 @@ Examples:
 
       // Also add to local conversations data (if not already added by real-time)
       if (newMsgData) {
-        const conv = this.conversations?.find(c => c.phone === this.selectedContact);
+        const conv = this.conversations?.find(c => c.phone === this.selectedContact && c.serviceNumber === this.selectedServiceNumber);
         if (conv && conv.messages) {
           const exists = conv.messages.some(m => m.id === newMsgData.id);
           if (!exists) {
@@ -5080,7 +5184,7 @@ Examples:
       const { data: { session } } = await supabase.auth.getSession();
 
       // Get the service number from the current conversation
-      const conv = this.conversations.find(c => c.type === 'sms' && c.phone === this.selectedContact);
+      const conv = this.conversations.find(c => c.type === 'sms' && c.phone === this.selectedContact && c.serviceNumber === this.selectedServiceNumber);
       if (!conv || !conv.messages || conv.messages.length === 0) {
         throw new Error('No conversation found');
       }
@@ -5096,7 +5200,7 @@ Examples:
       }
 
       // Get contact name if available
-      const contact = this.conversations.find(c => c.phone === this.selectedContact);
+      const contact = this.conversations.find(c => c.phone === this.selectedContact && c.serviceNumber === this.selectedServiceNumber);
       const recipientName = contact?.name || null;
 
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || window.SUPABASE_URL || 'https://mtxbiyilvgwhbdptysex.supabase.co';
