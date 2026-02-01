@@ -114,15 +114,29 @@ export default class AgentDetailPage {
 
     this.clonedVoices = clonedVoices || [];
 
-    // Load service numbers for deployment tab
-    const { data: serviceNumbers } = await supabase
-      .from('service_numbers')
-      .select('id, phone_number, friendly_name, agent_id')
-      .eq('user_id', user.id)
-      .eq('is_active', true)
-      .order('created_at', { ascending: true });
+    // Load service numbers for deployment tab (both regular and external SIP)
+    const [serviceNumbersResult, externalSipResult] = await Promise.all([
+      supabase
+        .from('service_numbers')
+        .select('id, phone_number, friendly_name, agent_id, termination_uri')
+        .eq('user_id', user.id)
+        .eq('is_active', true)
+        .order('created_at', { ascending: true }),
+      supabase
+        .from('external_sip_numbers')
+        .select('id, phone_number, friendly_name, agent_id, trunk_id, external_sip_trunks(name)')
+        .eq('user_id', user.id)
+        .eq('is_active', true)
+        .order('created_at', { ascending: true })
+    ]);
 
-    this.serviceNumbers = serviceNumbers || [];
+    const regularNumbers = (serviceNumbersResult.data || []).map(n => ({ ...n, isSipTrunk: false }));
+    const sipNumbers = (externalSipResult.data || []).map(n => ({
+      ...n,
+      isSipTrunk: true,
+      trunkName: n.external_sip_trunks?.name || null
+    }));
+    this.serviceNumbers = [...regularNumbers, ...sipNumbers];
 
     // Add styles
     this.addStyles();
@@ -186,8 +200,8 @@ export default class AgentDetailPage {
             <button class="agent-tab active" data-tab="configure">Configure</button>
             <button class="agent-tab" data-tab="prompt">Prompt</button>
             <button class="agent-tab" data-tab="functions">Functions</button>
-            <button class="agent-tab" data-tab="deployment">Deployment</button>
             <button class="agent-tab" data-tab="schedule">Schedule</button>
+            <button class="agent-tab" data-tab="deployment">Deployment</button>
             <button class="agent-tab" data-tab="analytics">Analytics</button>
           </div>
           <div class="tabs-scroll-indicator" id="tabs-scroll-indicator">
@@ -215,6 +229,13 @@ export default class AgentDetailPage {
 
     attachBottomNav();
     this.attachEventListeners();
+
+    // Check for tab query parameter and switch to it
+    const urlParams = new URLSearchParams(window.location.search);
+    const tabParam = urlParams.get('tab');
+    if (tabParam) {
+      this.switchTab(tabParam);
+    }
   }
 
   getInitials(name) {
@@ -772,40 +793,44 @@ export default class AgentDetailPage {
 
     return `
       <div class="config-section">
-        <h3>Phone Numbers</h3>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+          <h3 style="margin: 0;">Phone Numbers</h3>
+          ${availableNumbers.length > 0 ? `
+            <button class="btn btn-primary btn-sm" id="assign-numbers-btn" style="display: flex; align-items: center;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.4rem;">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              Assign
+            </button>
+          ` : ''}
+        </div>
         <p class="section-desc">Assign phone numbers to this agent for handling calls and messages.</p>
 
         ${assignedNumbers.length > 0 ? `
           <div class="assigned-numbers">
-            <label class="form-label">Assigned Numbers</label>
-            ${assignedNumbers.map(num => `
+            ${assignedNumbers.map(num => {
+              // Clean up friendly_name - remove "Pat AI - email" format
+              let displayName = '';
+              if (num.friendly_name && !num.friendly_name.startsWith('Pat AI')) {
+                displayName = num.friendly_name;
+              }
+              const label = num.isSipTrunk ? (num.trunkName || displayName || 'SIP Trunk') : displayName;
+              return `
               <div class="assigned-number">
                 <div class="number-info">
                   <span class="number-value">${this.formatPhoneNumber(num.phone_number)}</span>
-                  ${num.friendly_name ? `<span class="number-name">${num.friendly_name}</span>` : ''}
+                  ${label ? `<span class="number-name">(${label})</span>` : ''}
                 </div>
-                <button class="btn btn-sm btn-secondary detach-btn" data-number-id="${num.id}">Detach</button>
+                <button class="btn btn-sm btn-secondary detach-btn" data-number-id="${num.id}" data-is-sip="${num.isSipTrunk || false}">Detach</button>
               </div>
-            `).join('')}
+            `;}).join('')}
           </div>
         ` : `
           <div class="no-numbers-message">No phone numbers assigned to this agent</div>
         `}
 
-        ${availableNumbers.length > 0 ? `
-          <div class="form-group" style="margin-top: 1rem;">
-            <label class="form-label">Assign a Number</label>
-            <div class="assign-number-row">
-              <select id="number-to-assign" class="form-select">
-                <option value="">Select a number...</option>
-                ${availableNumbers.map(num => `
-                  <option value="${num.id}">${this.formatPhoneNumber(num.phone_number)}${num.friendly_name ? ` (${num.friendly_name})` : ''}</option>
-                `).join('')}
-              </select>
-              <button class="btn btn-primary" id="assign-number-btn">Assign</button>
-            </div>
-          </div>
-        ` : this.serviceNumbers.length === 0 ? `
+        ${this.serviceNumbers.length === 0 ? `
           <div class="no-numbers-available">
             <p>You don't have any phone numbers yet.</p>
             <a href="#" onclick="navigateTo('/select-number'); return false;" class="btn btn-primary">Get a Phone Number</a>
@@ -884,6 +909,12 @@ export default class AgentDetailPage {
             <input type="time" id="${prefix}-${day}-start" class="schedule-time-input" value="${start}" ${!enabled ? 'disabled' : ''} />
             <span class="schedule-time-separator">to</span>
             <input type="time" id="${prefix}-${day}-end" class="schedule-time-input" value="${end}" ${!enabled ? 'disabled' : ''} />
+            <button type="button" class="btn-apply-time" data-prefix="${prefix}" data-day="${day}" title="Apply this time to all days">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+                <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
+              </svg>
+            </button>
           </div>
         </div>
       `;
@@ -997,6 +1028,19 @@ export default class AgentDetailPage {
     document.querySelectorAll('.agent-active-toggle-input').forEach(toggle => {
       toggle.addEventListener('change', (e) => {
         const isActive = e.target.checked;
+
+        // Check if trying to activate without a deployed number
+        if (isActive) {
+          const assignedNumbers = this.serviceNumbers.filter(n => n.agent_id === this.agent.id);
+          if (assignedNumbers.length === 0) {
+            // Revert the toggle
+            e.target.checked = false;
+            // Show modal
+            this.showNoNumberModal();
+            return;
+          }
+        }
+
         // Sync both toggles
         document.querySelectorAll('.agent-active-toggle-input').forEach(t => {
           t.checked = isActive;
@@ -1400,15 +1444,11 @@ export default class AgentDetailPage {
       });
     });
 
-    // Assign button
-    const assignBtn = document.getElementById('assign-number-btn');
-    const numberSelect = document.getElementById('number-to-assign');
-    if (assignBtn && numberSelect) {
-      assignBtn.addEventListener('click', async () => {
-        const numberId = numberSelect.value;
-        if (numberId) {
-          await this.assignNumber(numberId);
-        }
+    // Assign numbers button - opens modal
+    const assignBtn = document.getElementById('assign-numbers-btn');
+    if (assignBtn) {
+      assignBtn.addEventListener('click', () => {
+        this.showAssignNumbersModal();
       });
     }
   }
@@ -1574,6 +1614,87 @@ export default class AgentDetailPage {
         this.switchTab('schedule');
       });
     }
+
+    // Apply time to all buttons (per-row)
+    document.querySelectorAll('.btn-apply-time').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const prefix = btn.dataset.prefix; // 'calls' or 'texts'
+        const sourceDay = btn.dataset.day;
+        const dayLabel = sourceDay.charAt(0).toUpperCase() + sourceDay.slice(1);
+
+        // Get the source row's times
+        const sourceStart = document.getElementById(`${prefix}-${sourceDay}-start`)?.value;
+        const sourceEnd = document.getElementById(`${prefix}-${sourceDay}-end`)?.value;
+
+        if (!sourceStart || !sourceEnd) return;
+
+        // Format times for display
+        const formatTime = (t) => {
+          const [h, m] = t.split(':');
+          const hour = parseInt(h);
+          const ampm = hour >= 12 ? 'PM' : 'AM';
+          const hour12 = hour % 12 || 12;
+          return `${hour12}:${m} ${ampm}`;
+        };
+
+        const scheduleType = prefix === 'calls' ? 'Calls' : 'Texts';
+
+        // Show custom confirmation modal
+        this.showConfirmModal({
+          title: 'Apply to All Days',
+          message: `Apply <strong>${dayLabel}'s</strong> hours <strong>(${formatTime(sourceStart)} - ${formatTime(sourceEnd)})</strong> to all enabled days for <strong>${scheduleType}</strong>?`,
+          confirmText: 'Apply',
+          onConfirm: () => {
+            // Apply to all days
+            days.forEach(day => {
+              const startInput = document.getElementById(`${prefix}-${day}-start`);
+              const endInput = document.getElementById(`${prefix}-${day}-end`);
+
+              if (startInput && !startInput.disabled) startInput.value = sourceStart;
+              if (endInput && !endInput.disabled) endInput.value = sourceEnd;
+            });
+
+            // Save the schedule
+            if (prefix === 'calls') {
+              saveCallsSchedule();
+            } else {
+              saveTextsSchedule();
+            }
+          }
+        });
+      });
+    });
+  }
+
+  showConfirmModal({ title, message, confirmText = 'Confirm', cancelText = 'Cancel', onConfirm }) {
+    // Remove existing modal if any
+    document.getElementById('confirm-modal-overlay')?.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'confirm-modal-overlay';
+    modal.innerHTML = `
+      <div class="confirm-modal-backdrop"></div>
+      <div class="confirm-modal">
+        <h3 class="confirm-modal-title">${title}</h3>
+        <p class="confirm-modal-message">${message}</p>
+        <div class="confirm-modal-actions">
+          <button class="btn btn-secondary" id="confirm-modal-cancel">${cancelText}</button>
+          <button class="btn btn-primary" id="confirm-modal-confirm">${confirmText}</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const closeModal = () => modal.remove();
+
+    document.getElementById('confirm-modal-cancel').addEventListener('click', closeModal);
+    modal.querySelector('.confirm-modal-backdrop').addEventListener('click', closeModal);
+
+    document.getElementById('confirm-modal-confirm').addEventListener('click', () => {
+      closeModal();
+      if (onConfirm) onConfirm();
+    });
   }
 
   async switchTab(tabName) {
@@ -1701,15 +1822,17 @@ export default class AgentDetailPage {
 
   async assignNumber(numberId) {
     try {
+      const num = this.serviceNumbers.find(n => n.id === numberId);
+      const table = num?.isSipTrunk ? 'external_sip_numbers' : 'service_numbers';
+
       const { error } = await supabase
-        .from('service_numbers')
+        .from(table)
         .update({ agent_id: this.agent.id })
         .eq('id', numberId);
 
       if (error) throw error;
 
       // Update local state and re-render
-      const num = this.serviceNumbers.find(n => n.id === numberId);
       if (num) num.agent_id = this.agent.id;
 
       this.switchTab('deployment');
@@ -1721,21 +1844,210 @@ export default class AgentDetailPage {
 
   async detachNumber(numberId) {
     try {
+      const num = this.serviceNumbers.find(n => n.id === numberId);
+      const table = num?.isSipTrunk ? 'external_sip_numbers' : 'service_numbers';
+
       const { error } = await supabase
-        .from('service_numbers')
+        .from(table)
         .update({ agent_id: null })
         .eq('id', numberId);
 
       if (error) throw error;
 
       // Update local state and re-render
-      const num = this.serviceNumbers.find(n => n.id === numberId);
       if (num) num.agent_id = null;
 
       this.switchTab('deployment');
     } catch (err) {
       console.error('Error detaching number:', err);
       alert('Failed to detach number. Please try again.');
+    }
+  }
+
+  showNoNumberModal() {
+    const modal = document.createElement('div');
+    modal.className = 'voice-modal-overlay';
+    modal.innerHTML = `
+      <div class="voice-modal" style="max-width: 400px;">
+        <div class="voice-modal-header">
+          <h3>Phone Number Required</h3>
+          <button class="close-modal-btn">&times;</button>
+        </div>
+        <div class="voice-modal-content" style="padding: 1.5rem;">
+          <p style="margin: 0 0 1.5rem; color: var(--text-secondary);">
+            Your agent can't go live without a phone number. Please deploy a number first in the Deploy tab.
+          </p>
+          <button class="go-to-deploy-btn" style="
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+          ">Go to Deploy</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // Close button
+    modal.querySelector('.close-modal-btn').addEventListener('click', () => {
+      document.body.removeChild(modal);
+    });
+
+    // Click outside to close
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        document.body.removeChild(modal);
+      }
+    });
+
+    // Go to Deploy button
+    modal.querySelector('.go-to-deploy-btn').addEventListener('click', () => {
+      document.body.removeChild(modal);
+      this.switchTab('deployment');
+    });
+  }
+
+  showAssignNumbersModal() {
+    const availableNumbers = this.serviceNumbers.filter(n => !n.agent_id);
+
+    if (availableNumbers.length === 0) {
+      return;
+    }
+
+    const modal = document.createElement('div');
+    modal.className = 'voice-modal-overlay';
+    modal.innerHTML = `
+      <div class="voice-modal" style="max-width: 450px;">
+        <div class="voice-modal-header">
+          <h3>Assign Phone Numbers</h3>
+          <button class="close-modal-btn">&times;</button>
+        </div>
+        <div class="voice-modal-content" style="padding: 1rem;">
+          <p style="margin: 0 0 1rem; color: var(--text-secondary); font-size: 0.9rem;">
+            Select the phone numbers you want to assign to this agent.
+          </p>
+          <div class="number-list" style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 300px; overflow-y: auto;">
+            ${availableNumbers.map(num => {
+              let displayName = '';
+              if (num.friendly_name && !num.friendly_name.startsWith('Pat AI')) {
+                displayName = num.friendly_name;
+              }
+              const label = num.isSipTrunk ? (num.trunkName || displayName || 'SIP Trunk') : displayName;
+              return `
+                <label class="number-option" style="
+                  display: flex;
+                  align-items: center;
+                  gap: 0.75rem;
+                  padding: 0.75rem;
+                  border: 1px solid var(--border-color);
+                  border-radius: 8px;
+                  cursor: pointer;
+                  transition: background 0.15s;
+                ">
+                  <input type="checkbox" value="${num.id}" data-is-sip="${num.isSipTrunk || false}" style="width: 18px; height: 18px; cursor: pointer;" />
+                  <div style="flex: 1; display: flex; align-items: center; gap: 0.5rem;">
+                    <span style="font-weight: 500;">${this.formatPhoneNumber(num.phone_number)}</span>
+                    ${label ? `<span style="font-size: 0.8rem; color: var(--text-secondary);">(${label})</span>` : ''}
+                  </div>
+                </label>
+              `;
+            }).join('')}
+          </div>
+          <button class="assign-selected-btn" style="
+            width: 100%;
+            margin-top: 1rem;
+            padding: 0.75rem 1rem;
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+          " disabled>Assign Selected</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const checkboxes = modal.querySelectorAll('input[type="checkbox"]');
+    const assignBtn = modal.querySelector('.assign-selected-btn');
+
+    // Enable/disable button based on selection
+    const updateButtonState = () => {
+      const checked = modal.querySelectorAll('input[type="checkbox"]:checked');
+      assignBtn.disabled = checked.length === 0;
+      assignBtn.textContent = checked.length > 0 ? `Assign ${checked.length} Number${checked.length > 1 ? 's' : ''}` : 'Assign Selected';
+    };
+
+    checkboxes.forEach(cb => {
+      cb.addEventListener('change', updateButtonState);
+    });
+
+    // Hover effect for labels
+    modal.querySelectorAll('.number-option').forEach(label => {
+      label.addEventListener('mouseenter', () => {
+        label.style.background = 'var(--bg-secondary, #f9fafb)';
+      });
+      label.addEventListener('mouseleave', () => {
+        label.style.background = '';
+      });
+    });
+
+    // Close button
+    modal.querySelector('.close-modal-btn').addEventListener('click', () => {
+      document.body.removeChild(modal);
+    });
+
+    // Click outside to close
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        document.body.removeChild(modal);
+      }
+    });
+
+    // Assign button
+    assignBtn.addEventListener('click', async () => {
+      const selectedIds = Array.from(modal.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
+      if (selectedIds.length > 0) {
+        assignBtn.disabled = true;
+        assignBtn.textContent = 'Assigning...';
+        await this.assignMultipleNumbers(selectedIds);
+        document.body.removeChild(modal);
+      }
+    });
+  }
+
+  async assignMultipleNumbers(numberIds) {
+    try {
+      for (const numberId of numberIds) {
+        const num = this.serviceNumbers.find(n => n.id === numberId);
+        const table = num?.isSipTrunk ? 'external_sip_numbers' : 'service_numbers';
+
+        const { error } = await supabase
+          .from(table)
+          .update({ agent_id: this.agent.id })
+          .eq('id', numberId);
+
+        if (error) {
+          console.error('Error assigning number:', error);
+          continue;
+        }
+
+        if (num) num.agent_id = this.agent.id;
+      }
+
+      this.switchTab('deployment');
+    } catch (err) {
+      console.error('Error assigning numbers:', err);
+      alert('Failed to assign some numbers. Please try again.');
     }
   }
 
@@ -2745,7 +3057,8 @@ export default class AgentDetailPage {
 
       .number-info {
         display: flex;
-        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
       }
 
       .number-value {
@@ -2754,7 +3067,7 @@ export default class AgentDetailPage {
       }
 
       .number-name {
-        font-size: 0.8rem;
+        font-size: 0.85rem;
         color: var(--text-secondary);
       }
 

@@ -769,6 +769,15 @@ p {
     background-color: var(--bg-secondary);
   }
 
+  .nav-modal-item.active {
+    background-color: var(--bg-secondary);
+    color: var(--primary-color);
+  }
+
+  .nav-modal-item.active svg {
+    color: var(--primary-color);
+  }
+
   .nav-modal-item svg {
     color: var(--text-secondary);
     flex-shrink: 0;
@@ -1047,7 +1056,7 @@ p {
   border-radius: 9999px;
   background: var(--bg-primary);
   color: var(--text-secondary);
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
@@ -2120,7 +2129,7 @@ p {
   font-size: 0.875rem;
   font-family: inherit;
   background: white;
-  width: 100px;
+  width: 130px;
 }
 
 .schedule-time-input:focus {
@@ -2137,6 +2146,87 @@ p {
 .schedule-time-separator {
   color: var(--text-secondary);
   font-size: 0.875rem;
+}
+
+.btn-apply-time {
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 0.35rem;
+  cursor: pointer;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.btn-apply-time:hover {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: white;
+}
+
+/* Confirmation Modal */
+#confirm-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.confirm-modal-backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.confirm-modal {
+  position: relative;
+  background: var(--bg-primary);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  max-width: 400px;
+  width: 90%;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  animation: modalSlideIn 0.2s ease-out;
+}
+
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.confirm-modal-title {
+  margin: 0 0 0.75rem 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.confirm-modal-message {
+  margin: 0 0 1.5rem 0;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.confirm-modal-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
 }
 
 .schedule-clear-row {
@@ -2178,6 +2268,6 @@ p {
 
   .schedule-time-input {
     flex: 1;
-    max-width: 110px;
+    max-width: 140px;
   }
 }

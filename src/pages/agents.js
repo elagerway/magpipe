@@ -3,7 +3,7 @@
  * List and manage multiple AI agents
  */
 
-import { getCurrentUser } from '../lib/supabase.js';
+import { getCurrentUser, supabase } from '../lib/supabase.js';
 import { renderBottomNav, attachBottomNav } from '../components/BottomNav.js';
 import { createAgentCard, addAgentCardStyles } from '../components/AgentCard.js';
 import { AgentConfig } from '../models/AgentConfig.js';
@@ -37,6 +37,57 @@ function addAgentsPageStyles() {
         justify-content: center;
       }
     }
+
+    /* Modal styles */
+    .voice-modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      padding: 1rem;
+    }
+
+    .voice-modal {
+      background: white;
+      border-radius: var(--radius-lg);
+      width: 100%;
+      max-width: 500px;
+      max-height: 80vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .voice-modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .voice-modal-header h3 {
+      margin: 0;
+      font-size: 1.1rem;
+    }
+
+    .close-modal-btn {
+      background: none;
+      border: none;
+      font-size: 1.5rem;
+      color: var(--text-secondary);
+      cursor: pointer;
+      padding: 0;
+      line-height: 1;
+    }
+
+    .voice-modal-content {
+      padding: 1rem 1.25rem;
+      overflow-y: auto;
+    }
   `;
 
   document.head.appendChild(styles);
@@ -45,6 +96,7 @@ function addAgentsPageStyles() {
 export default class AgentsPage {
   constructor() {
     this.agents = [];
+    this.serviceNumbers = [];
     this.userId = null;
   }
 
@@ -65,9 +117,13 @@ export default class AgentsPage {
     addAgentCardStyles();
     addAgentsPageStyles();
 
-    // Load agents
-    const { configs: agents, error } = await AgentConfig.getAllByUserId(user.id);
-    this.agents = agents || [];
+    // Load agents and service numbers
+    const [agentsResult, numbersResult] = await Promise.all([
+      AgentConfig.getAllByUserId(user.id),
+      supabase.from('service_numbers').select('id, phone_number, agent_id').eq('user_id', user.id).eq('is_active', true)
+    ]);
+    this.agents = agentsResult.configs || [];
+    this.serviceNumbers = numbersResult.data || [];
 
     const appElement = document.getElementById('app');
 
@@ -218,6 +274,17 @@ export default class AgentsPage {
 
   async toggleAgentActive(agentId, isActive) {
     try {
+      // Check if trying to activate without a deployed number
+      if (isActive) {
+        const hasNumber = this.serviceNumbers.some(n => n.agent_id === agentId);
+        if (!hasNumber) {
+          this.showNoNumberModal(agentId);
+          // Revert the toggle in UI
+          this.renderAgentCards();
+          return;
+        }
+      }
+
       const { error } = await AgentConfig.updateById(agentId, { is_active: isActive });
 
       if (error) {
@@ -237,6 +304,55 @@ export default class AgentsPage {
       // Revert the toggle in UI
       this.renderAgentCards();
     }
+  }
+
+  showNoNumberModal(agentId) {
+    const modal = document.createElement('div');
+    modal.className = 'voice-modal-overlay';
+    modal.innerHTML = `
+      <div class="voice-modal" style="max-width: 400px;">
+        <div class="voice-modal-header">
+          <h3>Phone Number Required</h3>
+          <button class="close-modal-btn">&times;</button>
+        </div>
+        <div class="voice-modal-content" style="padding: 1.5rem;">
+          <p style="margin: 0 0 1.5rem; color: var(--text-secondary);">
+            Your agent can't go live without a phone number. Please deploy a number first.
+          </p>
+          <button class="go-to-agent-btn" style="
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+          ">Go to Deploy</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // Close button
+    modal.querySelector('.close-modal-btn').addEventListener('click', () => {
+      document.body.removeChild(modal);
+    });
+
+    // Click outside to close
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        document.body.removeChild(modal);
+      }
+    });
+
+    // Go to agent button
+    modal.querySelector('.go-to-agent-btn').addEventListener('click', () => {
+      document.body.removeChild(modal);
+      window.navigateTo(`/agents/${agentId}?tab=deployment`);
+    });
   }
 
   cleanup() {

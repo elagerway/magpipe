@@ -11,6 +11,7 @@ export class Router {
     this.routes = new Map();
     this.dynamicRoutes = []; // For routes with parameters like /agents/:id
     this.currentRoute = null;
+    this.currentPage = null; // Current page instance for cleanup
     this.currentParams = {}; // Route parameters (e.g., { id: '123' })
     this.pageCache = new Map(); // Cache page instances
     this.setupRoutes();
@@ -192,6 +193,15 @@ export class Router {
       }
     }
 
+    // Cleanup previous page if it has a cleanup method
+    if (this.currentPage && typeof this.currentPage.cleanup === 'function') {
+      try {
+        this.currentPage.cleanup();
+      } catch (e) {
+        console.error('Error during page cleanup:', e);
+      }
+    }
+
     // Load and render page (with caching for main tabs)
     try {
       // Don't cache inbox or dynamic routes - they need fresh instances
@@ -216,6 +226,7 @@ export class Router {
       }
 
       this.currentRoute = path;
+      this.currentPage = page;
       await page.render();
 
       // Preload other main tabs in background after first render
