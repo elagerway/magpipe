@@ -33,10 +33,11 @@ interface UpdateTrunkRequest {
   trunk_id: string
   name?: string
   provider?: string
-  allowed_source_ips?: string[]
-  auth_username?: string
-  auth_password?: string
-  outbound_address?: string
+  auth_type?: 'ip' | 'registration'
+  allowed_source_ips?: string[] | null
+  auth_username?: string | null
+  auth_password?: string | null
+  outbound_address?: string | null
   outbound_transport?: 'udp' | 'tcp' | 'tls'
   is_active?: boolean
 }
@@ -189,7 +190,7 @@ async function handleUpdate(
   userId: string,
   request: UpdateTrunkRequest
 ) {
-  const { trunk_id, name, provider, allowed_source_ips, auth_username, auth_password, outbound_address, outbound_transport, is_active } = request
+  const { trunk_id, name, provider, auth_type, allowed_source_ips, auth_username, auth_password, outbound_address, outbound_transport, is_active } = request
 
   // Verify ownership
   const { data: trunk, error: fetchError } = await supabase
@@ -207,6 +208,7 @@ async function handleUpdate(
   const updates: any = {}
   if (name !== undefined) updates.name = name
   if (provider !== undefined) updates.provider = provider
+  if (auth_type !== undefined) updates.auth_type = auth_type
   if (allowed_source_ips !== undefined) updates.allowed_source_ips = allowed_source_ips
   if (auth_username !== undefined) updates.auth_username = auth_username
   if (auth_password !== undefined) updates.auth_password_encrypted = auth_password // TODO: Encrypt
