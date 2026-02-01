@@ -173,6 +173,8 @@ export function addExternalTrunkSettingsStyles() {
       display: flex;
       gap: 0.5rem;
       margin-top: 0.75rem;
+      justify-content: flex-end;
+      padding: 5px;
     }
 
     .add-number-form {
@@ -354,7 +356,7 @@ function renderTrunkCard(trunk) {
       <div class="trunk-header">
         <div>
           <div class="trunk-title">${trunk.name}</div>
-          ${trunk.provider ? `<div class="trunk-provider">${trunk.provider}</div>` : ''}
+          ${trunk.provider ? `<div class="trunk-provider">Provider: ${trunk.provider}</div>` : ''}
         </div>
         <span class="trunk-status ${trunk.status}">${trunk.status}</span>
       </div>
@@ -405,8 +407,11 @@ function renderTrunkCard(trunk) {
 
       <!-- Numbers Section -->
       <div class="trunk-numbers">
-        <div class="trunk-numbers-header">
+        <div class="trunk-numbers-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
           <span class="trunk-numbers-title">Phone Numbers (${numbers.length})</span>
+          <button class="btn btn-sm btn-secondary" id="show-add-number-${trunk.id}">
+            + Add Number
+          </button>
         </div>
 
         ${numbers.length > 0 ? numbers.map(num => `
@@ -429,13 +434,12 @@ function renderTrunkCard(trunk) {
           <button class="btn btn-sm btn-primary" id="save-number-btn-${trunk.id}">Add</button>
           <button class="btn btn-sm btn-secondary" id="cancel-number-btn-${trunk.id}">Cancel</button>
         </div>
-
-        <button class="btn btn-sm btn-secondary" id="show-add-number-${trunk.id}" style="margin-top: 0.5rem;">
-          + Add Number
-        </button>
       </div>
 
       <div class="trunk-actions">
+        <button class="btn btn-sm btn-secondary" id="edit-trunk-${trunk.id}">
+          Edit
+        </button>
         <button class="btn btn-sm btn-secondary" id="toggle-trunk-${trunk.id}">
           ${trunk.is_active ? 'Disable' : 'Enable'}
         </button>
@@ -564,6 +568,14 @@ function attachTrunkEventListeners(trunk) {
         toggleTrunkBtn.disabled = false;
         toggleTrunkBtn.textContent = trunk.is_active ? 'Disable' : 'Enable';
       }
+    });
+  }
+
+  // Edit trunk
+  const editTrunkBtn = document.getElementById(`edit-trunk-${trunk.id}`);
+  if (editTrunkBtn) {
+    editTrunkBtn.addEventListener('click', () => {
+      showEditTrunkModal(trunk);
     });
   }
 
@@ -812,6 +824,191 @@ function showAddTrunkModal() {
       alert(`Failed to create trunk: ${error.message}`);
       saveBtn.disabled = false;
       saveBtn.textContent = 'Create Trunk';
+    }
+  });
+}
+
+function showEditTrunkModal(trunk) {
+  // Remove existing modal if any
+  const existingModal = document.getElementById('edit-trunk-modal');
+  if (existingModal) existingModal.remove();
+
+  const isIpAuth = trunk.auth_type === 'ip';
+
+  const modal = document.createElement('div');
+  modal.id = 'edit-trunk-modal';
+  modal.className = 'add-trunk-modal';
+  modal.innerHTML = `
+    <div class="add-trunk-modal-content">
+      <div class="add-trunk-modal-header">
+        <h2 class="add-trunk-modal-title">Edit SIP Trunk</h2>
+        <button class="btn btn-sm btn-secondary" id="close-edit-trunk-modal">&times;</button>
+      </div>
+
+      <div class="form-group">
+        <label for="edit-trunk-name">Trunk Name *</label>
+        <input type="text" id="edit-trunk-name" class="form-input" value="${trunk.name || ''}" required />
+      </div>
+
+      <div class="form-group">
+        <label for="edit-trunk-provider">Provider (optional)</label>
+        <input type="text" id="edit-trunk-provider" class="form-input" value="${trunk.provider || ''}" />
+      </div>
+
+      <div class="form-group">
+        <label>Authentication Type *</label>
+        <div class="auth-type-selector">
+          <button type="button" class="auth-type-btn ${isIpAuth ? 'selected' : ''}" data-auth-type="ip">
+            <strong>IP Whitelist</strong><br>
+            <small>Authenticate by source IP</small>
+          </button>
+          <button type="button" class="auth-type-btn ${!isIpAuth ? 'selected' : ''}" data-auth-type="registration">
+            <strong>Registration</strong><br>
+            <small>Username & password</small>
+          </button>
+        </div>
+      </div>
+
+      <div class="auth-fields" id="edit-ip-auth-fields" style="display: ${isIpAuth ? 'block' : 'none'};">
+        <div class="form-group">
+          <label for="edit-allowed-ips">Allowed IP Addresses *</label>
+          <textarea id="edit-allowed-ips" class="form-input ip-list-input" placeholder="Enter IP addresses (one per line)&#10;e.g., 192.168.1.100&#10;10.0.0.0/24">${(trunk.allowed_source_ips || []).join('\n')}</textarea>
+          <small class="text-muted">Enter IP addresses or CIDR ranges, one per line</small>
+        </div>
+      </div>
+
+      <div class="auth-fields" id="edit-registration-auth-fields" style="display: ${!isIpAuth ? 'block' : 'none'};">
+        <div class="form-group">
+          <label for="edit-auth-username">Username *</label>
+          <input type="text" id="edit-auth-username" class="form-input" value="${trunk.auth_username || ''}" placeholder="SIP username" />
+        </div>
+        <div class="form-group">
+          <label for="edit-auth-password">Password</label>
+          <input type="password" id="edit-auth-password" class="form-input" placeholder="Leave blank to keep existing" />
+          <small class="text-muted">Leave blank to keep the current password</small>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="edit-outbound-address">Outbound SIP Server (optional)</label>
+        <input type="text" id="edit-outbound-address" class="form-input" value="${trunk.outbound_address || ''}" placeholder="e.g., sip.orange.cm:5060" />
+        <small class="text-muted">Required if you want to make outbound calls via this trunk</small>
+      </div>
+
+      <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1.5rem;">
+        <button class="btn btn-secondary" id="cancel-edit-trunk">Cancel</button>
+        <button class="btn btn-primary" id="save-edit-trunk">Save Changes</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  // Auth type selector
+  const authTypeBtns = modal.querySelectorAll('.auth-type-btn');
+  const ipAuthFields = document.getElementById('edit-ip-auth-fields');
+  const registrationAuthFields = document.getElementById('edit-registration-auth-fields');
+
+  authTypeBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      authTypeBtns.forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+
+      const authType = btn.dataset.authType;
+      if (authType === 'ip') {
+        ipAuthFields.style.display = 'block';
+        registrationAuthFields.style.display = 'none';
+      } else {
+        ipAuthFields.style.display = 'none';
+        registrationAuthFields.style.display = 'block';
+      }
+    });
+  });
+
+  // Close modal
+  const closeModal = () => modal.remove();
+  document.getElementById('close-edit-trunk-modal').addEventListener('click', closeModal);
+  document.getElementById('cancel-edit-trunk').addEventListener('click', closeModal);
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) closeModal();
+  });
+
+  // Save trunk changes
+  document.getElementById('save-edit-trunk').addEventListener('click', async () => {
+    const saveBtn = document.getElementById('save-edit-trunk');
+    const name = document.getElementById('edit-trunk-name').value.trim();
+    const provider = document.getElementById('edit-trunk-provider').value.trim();
+    const authType = modal.querySelector('.auth-type-btn.selected').dataset.authType;
+    const outboundAddress = document.getElementById('edit-outbound-address').value.trim();
+
+    // Validate
+    if (!name) {
+      alert('Please enter a trunk name');
+      return;
+    }
+
+    let requestBody = {
+      action: 'update',
+      trunk_id: trunk.id,
+      name,
+      provider: provider || null,
+      auth_type: authType,
+      outbound_address: outboundAddress || null
+    };
+
+    if (authType === 'ip') {
+      const ipsText = document.getElementById('edit-allowed-ips').value.trim();
+      if (!ipsText) {
+        alert('Please enter at least one allowed IP address');
+        return;
+      }
+      const ips = ipsText.split('\n').map(ip => ip.trim()).filter(ip => ip);
+      requestBody.allowed_source_ips = ips;
+      // Clear registration fields
+      requestBody.auth_username = null;
+      requestBody.auth_password = null;
+    } else {
+      const username = document.getElementById('edit-auth-username').value.trim();
+      const password = document.getElementById('edit-auth-password').value;
+      if (!username) {
+        alert('Please enter a username');
+        return;
+      }
+      requestBody.auth_username = username;
+      // Only include password if it was changed
+      if (password) {
+        requestBody.auth_password = password;
+      }
+      // Clear IP fields
+      requestBody.allowed_source_ips = null;
+    }
+
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving...';
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-external-trunk`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to update trunk');
+
+      closeModal();
+      loadTrunks();
+    } catch (error) {
+      console.error('Error updating trunk:', error);
+      alert(`Failed to update trunk: ${error.message}`);
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save Changes';
     }
   });
 }
