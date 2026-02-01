@@ -18,6 +18,16 @@ async function loadSipClient() {
   return sipClient;
 }
 
+// Lazy load Twilio client for external SIP trunk calls
+let twilioClient = null;
+async function loadTwilioClient() {
+  if (!twilioClient) {
+    const module = await import('../lib/twilioClient.js');
+    twilioClient = module.twilioClient;
+  }
+  return twilioClient;
+}
+
 export default class PhonePage {
   constructor() {
     this.userId = null;
@@ -26,6 +36,8 @@ export default class PhonePage {
     this.serviceNumbers = [];
     this.numbersToDelete = [];
     this.currentSipSession = null; // For WebRTC SIP calls
+    this.currentTwilioCall = null; // For Twilio Client SDK calls
+    this.isExternalTrunkCall = false; // Whether current call uses external SIP trunk
   }
 
   async loadUserPhoneNumber() {
@@ -592,6 +604,30 @@ export default class PhonePage {
     // Load service numbers for caller ID
     this.loadServiceNumbers();
 
+    // When external SIP trunk number is selected, force Direct + SIP mode
+    if (callerIdSelect) {
+      callerIdSelect.addEventListener('change', () => {
+        const selectedOption = callerIdSelect.selectedOptions[0];
+        const source = selectedOption?.dataset?.source;
+
+        if (source === 'external_sip') {
+          // Force Direct mode (uncheck agent toggle)
+          const agentToggle = document.getElementById('agent-toggle');
+          if (agentToggle && agentToggle.checked) {
+            agentToggle.checked = false;
+            agentToggle.dispatchEvent(new Event('change'));
+          }
+
+          // Force SIP mode (check sip toggle)
+          const sipToggle = document.getElementById('sip-toggle');
+          if (sipToggle && !sipToggle.checked) {
+            sipToggle.checked = true;
+            sipToggle.dispatchEvent(new Event('change'));
+          }
+        }
+      });
+    }
+
     // Agent toggle animation and direct mode options
     const agentToggle = document.getElementById('agent-toggle');
     const agentToggleTrack = document.getElementById('agent-toggle-track');
@@ -766,6 +802,16 @@ export default class PhonePage {
               console.error('Failed to terminate SIP session:', error);
             }
             this.currentSipSession = null;
+          } else if (this.currentTwilioCall) {
+            // Hangup Twilio Client SDK call
+            console.log('🔴 Terminating Twilio call');
+            try {
+              const client = await loadTwilioClient();
+              client.hangup();
+            } catch (error) {
+              console.error('Failed to terminate Twilio call:', error);
+            }
+            this.currentTwilioCall = null;
           } else if (sipClient) {
             // Hangup legacy SIP call
             sipClient.hangup();
@@ -841,22 +887,58 @@ export default class PhonePage {
     const select = document.getElementById('caller-id-select');
     if (!select) return;
 
-    const { data: numbers, error } = await supabase
+    // Load SignalWire service numbers
+    const { data: serviceNumbers, error: serviceError } = await supabase
       .from('service_numbers')
       .select('phone_number')
       .eq('user_id', this.userId)
       .eq('is_active', true)
       .order('created_at', { ascending: false });
 
-    if (error) {
-      console.error('Error loading service numbers:', error);
-      select.innerHTML = '<option value="">No numbers available</option>';
-      return;
+    if (serviceError) {
+      console.error('Error loading service numbers:', serviceError);
     }
 
-    if (numbers && numbers.length > 0) {
-      select.innerHTML = numbers
-        .map(num => `<option value="${num.phone_number}">${num.phone_number}</option>`)
+    // Load external SIP trunk numbers
+    const { data: externalNumbers, error: externalError } = await supabase
+      .from('external_sip_numbers')
+      .select('phone_number, friendly_name, external_sip_trunks!inner(name, is_active)')
+      .eq('user_id', this.userId)
+      .eq('is_active', true)
+      .eq('external_sip_trunks.is_active', true);
+
+    if (externalError) {
+      console.error('Error loading external SIP numbers:', externalError);
+    }
+
+    const allNumbers = [];
+
+    // Add service numbers
+    if (serviceNumbers && serviceNumbers.length > 0) {
+      serviceNumbers.forEach(num => {
+        allNumbers.push({
+          phone_number: num.phone_number,
+          label: num.phone_number,
+          source: 'signalwire'
+        });
+      });
+    }
+
+    // Add external SIP numbers
+    if (externalNumbers && externalNumbers.length > 0) {
+      externalNumbers.forEach(num => {
+        const trunkName = num.external_sip_trunks?.name || 'External';
+        allNumbers.push({
+          phone_number: num.phone_number,
+          label: `${num.phone_number} (${trunkName})`,
+          source: 'external_sip'
+        });
+      });
+    }
+
+    if (allNumbers.length > 0) {
+      select.innerHTML = allNumbers
+        .map(num => `<option value="${num.phone_number}" data-source="${num.source}">${num.label}</option>`)
         .join('');
     } else {
       select.innerHTML = '<option value="">No numbers available</option>';
@@ -1547,6 +1629,7 @@ export default class PhonePage {
         }
       } else {
         // Verify the selected caller ID is valid and active
+        // First check service_numbers
         const { data: serviceNumber } = await supabase
           .from('service_numbers')
           .select('phone_number')
@@ -1556,8 +1639,27 @@ export default class PhonePage {
           .single();
 
         if (!serviceNumber) {
-          alert('Selected number not found or inactive');
-          return;
+          // Check external_sip_numbers
+          const { data: externalNumber } = await supabase
+            .from('external_sip_numbers')
+            .select('phone_number, external_sip_trunks!inner(id, is_active, outbound_address)')
+            .eq('phone_number', fromNumber)
+            .eq('user_id', this.userId)
+            .eq('is_active', true)
+            .eq('external_sip_trunks.is_active', true)
+            .single();
+
+          if (!externalNumber) {
+            alert('Selected number not found or inactive');
+            return;
+          }
+
+          // Mark this as an external trunk call
+          this.isExternalTrunkCall = true;
+          this.externalTrunkId = externalNumber.external_sip_trunks.id;
+        } else {
+          this.isExternalTrunkCall = false;
+          this.externalTrunkId = null;
         }
       }
 
@@ -1649,10 +1751,18 @@ export default class PhonePage {
       const useSip = sipToggle ? sipToggle.checked : false;
 
       if (useSip) {
-        // WebRTC SIP mode - use browser SIP to SignalWire
-        console.log('📞 Using WebRTC SIP for direct call');
-        await this.initiateSipCall(phoneNumber, fromNumber, displayName, sipCredentials);
-        console.log('📞 SIP call initiated');
+        // WebRTC mode
+        if (this.isExternalTrunkCall) {
+          // External trunk (Twilio) - use Twilio Client SDK
+          console.log('📞 Using Twilio Client SDK for external trunk call');
+          await this.initiateTwilioCall(phoneNumber, fromNumber);
+          console.log('📞 Twilio call initiated');
+        } else {
+          // Regular number - use SignalWire SIP
+          console.log('📞 Using WebRTC SIP for direct call');
+          await this.initiateSipCall(phoneNumber, fromNumber, displayName, sipCredentials);
+          console.log('📞 SIP call initiated');
+        }
       } else {
         // Callback mode - calls user's cell phone first, then bridges to destination
         console.log('📞 Using callback approach for direct call');
@@ -1910,7 +2020,6 @@ export default class PhonePage {
       this.updateCallState('connecting', 'Calling...');
       this.transformToHangupButton();
 
-      // Make the call
       const session = await client.makeCall(normalizedPhoneNumber, callerIdNumber, displayName, {
         onProgress: () => {
           console.log('📞 Call ringing...');
@@ -1938,6 +2047,70 @@ export default class PhonePage {
 
     } catch (error) {
       console.error('Failed to initiate SIP call:', error);
+      alert(`Failed to initiate call: ${error.message}`);
+      this.updateCallState('idle');
+      this.transformToCallButton();
+    }
+  }
+
+  async initiateTwilioCall(phoneNumber, callerIdNumber) {
+    console.log('📞 Initiating Twilio Client SDK call');
+    console.log('   To:', phoneNumber);
+    console.log('   From:', callerIdNumber);
+
+    try {
+      // Normalize phone number to E.164 format
+      let normalizedPhoneNumber = phoneNumber;
+      if (!normalizedPhoneNumber.startsWith('+')) {
+        const digitsOnly = normalizedPhoneNumber.replace(/\D/g, '');
+        if (digitsOnly.startsWith('1') && digitsOnly.length === 11) {
+          normalizedPhoneNumber = '+' + digitsOnly;
+        } else {
+          normalizedPhoneNumber = '+1' + digitsOnly;
+        }
+      }
+
+      // Check if user is trying to call their own phone number
+      if (this.userPhoneNumber && this.normalizePhoneForComparison(normalizedPhoneNumber) === this.normalizePhoneForComparison(this.userPhoneNumber)) {
+        this.showOwnNumberModal();
+        return;
+      }
+
+      // Update UI
+      this.updateCallState('connecting', 'Initializing Twilio...');
+
+      // Load and initialize Twilio client
+      const client = await loadTwilioClient();
+      await client.initialize();
+
+      this.updateCallState('connecting', 'Calling...');
+      this.transformToHangupButton();
+
+      this.currentTwilioCall = await client.makeCall(normalizedPhoneNumber, callerIdNumber, {
+        onProgress: () => {
+          console.log('📞 Twilio call ringing...');
+          this.updateCallState('ringing', 'Ringing...');
+        },
+        onAccepted: () => {
+          console.log('✅ Twilio call answered');
+          this.updateCallState('connected', 'Connected');
+        },
+        onEnded: () => {
+          console.log('📞 Twilio call ended');
+          this.updateCallState('idle');
+          this.transformToCallButton();
+          this.currentTwilioCall = null;
+        },
+        onFailed: (cause) => {
+          console.error('❌ Twilio call failed:', cause);
+          this.updateCallState('idle');
+          this.transformToCallButton();
+          this.currentTwilioCall = null;
+        }
+      });
+
+    } catch (error) {
+      console.error('Failed to initiate Twilio call:', error);
       alert(`Failed to initiate call: ${error.message}`);
       this.updateCallState('idle');
       this.transformToCallButton();

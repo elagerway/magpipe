@@ -19,8 +19,10 @@ agents/        # LiveKit voice agent (Python)
 ```bash
 npm test          # Run tests
 npm run lint      # Lint code
-npm run dev       # Local dev server
+npm run dev       # Local dev server (port 3000)
 ```
+
+**IMPORTANT: Dev server runs on port 3000, NOT 5173**
 
 ## Critical Working Principles
 - **NEVER make assertions without verification**: Verify with actual data before stating facts
@@ -28,6 +30,52 @@ npm run dev       # Local dev server
 - **NEVER ask user to check logs**: Use API calls, CLI commands, or database queries yourself
 - **ALWAYS verify changes work AND don't break other elements**: Use Playwright tests or manual verification to confirm changes work and don't break related functionality
 - **If uncertain, ask or investigate**: Better to check than assert something incorrect
+
+## Destructive Git Operations (NEVER DO WITHOUT ASKING)
+- **NEVER run `git stash`** without explicit user permission
+- **NEVER run `git clean`** - this permanently deletes untracked files
+- **NEVER run `git checkout --force`** - this discards uncommitted changes
+- **NEVER run `git reset --hard`** - this destroys work
+- **Ask before ANY git operation** that could lose uncommitted or untracked work
+
+## Feature Preservation (NON-NEGOTIABLE)
+When adding new features, you MUST ensure existing features are NOT removed or modified:
+
+### Before Modifying Arrays/Lists/Collections:
+1. **Read and document ALL existing items** before making changes
+2. **Add new items, NEVER replace** - use append/insert, not assignment that overwrites
+3. **After editing, verify existing items still present** - count items before and after
+
+### Mandatory Pre-Edit Checklist:
+```
+Before: List existing items → Document them
+During: ADD new items, don't replace existing
+After:  Verify ALL original items still present
+```
+
+### Example - Adding Nav Item (WRONG vs RIGHT):
+```javascript
+// WRONG - Replaces existing item:
+navItems[5] = { path: '/new', label: 'New' };
+
+// RIGHT - Add new item while preserving existing:
+// 1. First verify what exists at position 5
+// 2. Add new item at NEW position or insert
+navItems.push({ path: '/new', label: 'New' });
+```
+
+### Verification Steps:
+1. Run `git diff` before committing to review ALL changes
+2. Verify no unintended deletions (look for red `-` lines that weren't requested)
+3. Test that existing functionality still works
+4. If modifying a file with multiple features, test ALL features in that file
+
+### Real Incident (2026-01-31):
+- Task: Add Knowledge nav item to BottomNav.js
+- Error: Settings nav item was REPLACED instead of Knowledge being ADDED
+- Result: Settings icon disappeared from mobile nav for days
+- Fix: Had to re-add Settings as mobile-only item
+- Prevention: Always document existing items before editing, verify after
 
 ## Git & Deployment
 
@@ -39,8 +87,8 @@ npm run dev       # Local dev server
 ### Vercel (Frontend)
 - **Production**: https://solomobile.ai
 - **Branch**: `master` (auto-deploys on push)
-- **User tests on production**, not local dev server
-- **Mobile testing**: Erik tests on iPhone using production site - changes must be deployed to see them on mobile
+- **User can test on localhost** (including mobile) - do NOT push without user testing first
+- **Wait for user approval before pushing**: Always let user test changes on localhost before committing/pushing
 
 ### Render (LiveKit Agent)
 - **DO NOT use Pat-AI branch**: Work on `master` only, Pat-AI is outdated
@@ -49,8 +97,19 @@ npm run dev       # Local dev server
 
 ## Test Credentials
 - **Email**: `erik@snapsonic.com`
+- **Password**: `Snapsonic123` (for localhost Playwright tests)
 - **Phone**: `+16044182180` (Erik's cell for outbound tests)
 - **API tests**: Use `SUPABASE_SERVICE_ROLE_KEY` from `.env`
+
+### Playwright Login (Preferred Method)
+For Playwright tests, use email/password login instead of OTP:
+```javascript
+await page.goto('http://localhost:3000/login');
+await page.fill('input[type="email"]', 'erik@snapsonic.com');
+await page.fill('input[type="password"]', 'Snapsonic123');
+await page.click('button[type="submit"]');
+await page.waitForURL('**/home');
+```
 
 ## Playwright Testing
 
@@ -90,6 +149,11 @@ const sessionResult = await page.evaluate(async ({ email, otp }) => {
 ## UI Guidelines
 - **Never expose vendor names** (Retell, SignalWire, OpenAI) in user-facing messages
 - Use product-centric language: "Pat AI assistant", "your number"
+- **Be mindful of mobile vs desktop styling differences**:
+  - Back buttons: typically only needed on mobile (desktop has persistent sidebar nav)
+  - Use `mobile-only` class to show elements only on mobile
+  - Use `desktop-only` class to show elements only on desktop
+  - Test both viewports when making UI changes
 
 ## Database Management
 

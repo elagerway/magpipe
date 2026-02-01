@@ -431,17 +431,24 @@ p {
   font-weight: 500;
 }
 
+.nav-icon-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .nav-badge {
   position: absolute;
-  top: 4px;
-  right: 8px;
+  top: -6px;
+  right: -8px;
   background: var(--error-color);
   color: white;
   font-size: 0.625rem;
   font-weight: 600;
-  min-width: 18px;
-  height: 18px;
-  border-radius: 9px;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -840,6 +847,10 @@ p {
 
   .bottom-nav-item.desktop-only {
     display: none !important;
+  }
+
+  .bottom-nav-item.mobile-only {
+    display: flex !important;
   }
 
   .mobile-only {
@@ -1866,8 +1877,8 @@ p {
 .toggle-switch {
   position: relative;
   display: inline-block;
-  width: 48px;
-  height: 26px;
+  width: 44px;
+  height: 24px;
 }
 
 .toggle-switch input {
@@ -1885,16 +1896,16 @@ p {
   bottom: 0;
   background-color: #ccc;
   transition: .3s;
-  border-radius: 26px;
+  border-radius: 24px;
 }
 
 .toggle-slider:before {
   position: absolute;
   content: "";
-  height: 18px;
-  width: 18px;
-  left: 4px;
-  bottom: 4px;
+  height: 20px;
+  width: 20px;
+  left: 2px;
+  bottom: 2px;
   background-color: white;
   transition: .3s;
   border-radius: 50%;
@@ -1905,7 +1916,7 @@ p {
 }
 
 .toggle-switch input:checked + .toggle-slider:before {
-  transform: translateX(22px);
+  transform: translateX(20px);
 }
 
 .toggle-switch input:disabled + .toggle-slider {
@@ -2041,5 +2052,132 @@ p {
 @media (min-width: 769px) {
   .swipe-delete-btn {
     display: none;
+  }
+}
+
+/* Agent Schedule Styles */
+.schedule-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.25rem;
+}
+
+.schedule-section-header h3 {
+  margin: 0;
+}
+
+.schedule-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.schedule-day-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  transition: opacity 0.2s;
+}
+
+.schedule-day-row.disabled {
+  opacity: 0.5;
+}
+
+.schedule-day-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  cursor: pointer;
+  min-width: 140px;
+}
+
+.schedule-day-toggle input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--primary-color);
+}
+
+.schedule-day-name {
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.schedule-time-inputs {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.schedule-time-input {
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  font-family: inherit;
+  background: white;
+  width: 100px;
+}
+
+.schedule-time-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+
+.schedule-time-input:disabled {
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: not-allowed;
+}
+
+.schedule-time-separator {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.schedule-clear-row {
+  margin-top: 1rem;
+  text-align: center;
+}
+
+.schedule-clear-row .btn {
+  color: var(--text-secondary);
+}
+
+.schedule-clear-row .btn:hover {
+  color: var(--error-color);
+  border-color: var(--error-color);
+}
+
+@media (max-width: 600px) {
+  .schedule-section-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .schedule-day-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.75rem;
+  }
+
+  .schedule-day-toggle {
+    min-width: auto;
+  }
+
+  .schedule-time-inputs {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .schedule-time-input {
+    flex: 1;
+    max-width: 110px;
   }
 }

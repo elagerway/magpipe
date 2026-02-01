@@ -109,6 +109,39 @@ serve(async (req) => {
       })
     }
 
+    // Check if agent is active
+    if (agentConfig.is_active === false) {
+      console.log('Agent is inactive:', agentConfig.id, agentConfig.name || 'Unnamed')
+      const response = `<?xml version="1.0" encoding="UTF-8"?>
+      <Response>
+        <Say voice="alice">Hello! This number is currently unavailable. Please try again later. Goodbye.</Say>
+        <Hangup/>
+      </Response>`
+
+      return new Response(response, {
+        headers: { 'Content-Type': 'text/xml' },
+        status: 200,
+      })
+    }
+
+    // Check if within calls schedule
+    if (agentConfig.calls_schedule) {
+      const inSchedule = isWithinSchedule(agentConfig.calls_schedule, agentConfig.schedule_timezone)
+      if (!inSchedule) {
+        console.log('Call outside scheduled hours for agent:', agentConfig.id, agentConfig.name || 'Unnamed')
+        const response = `<?xml version="1.0" encoding="UTF-8"?>
+        <Response>
+          <Say voice="alice">Hello! You've reached us outside of our business hours. Please try again during our regular hours. Goodbye.</Say>
+          <Hangup/>
+        </Response>`
+
+        return new Response(response, {
+          headers: { 'Content-Type': 'text/xml' },
+          status: 200,
+        })
+      }
+    }
+
     console.log('Using agent:', agentConfig.id, agentConfig.name || 'Unnamed')
 
     // Route based on active Voice AI stack
@@ -297,6 +330,63 @@ serve(async (req) => {
     )
   }
 })
+
+/**
+ * Check if the current time is within the agent's schedule
+ * @param schedule - Schedule object with days as keys
+ * @param timezone - IANA timezone string
+ * @returns boolean - true if within schedule, false if outside
+ */
+function isWithinSchedule(
+  schedule: Record<string, { enabled: boolean; start: string; end: string }>,
+  timezone?: string
+): boolean {
+  try {
+    const tz = timezone || 'America/Los_Angeles'
+    const now = new Date()
+
+    // Get current day and time in the agent's timezone
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      weekday: 'long',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    })
+
+    const parts = formatter.formatToParts(now)
+    const weekday = parts.find(p => p.type === 'weekday')?.value?.toLowerCase()
+    const hour = parts.find(p => p.type === 'hour')?.value
+    const minute = parts.find(p => p.type === 'minute')?.value
+
+    if (!weekday || !hour || !minute) {
+      console.error('Failed to parse current time for schedule check')
+      return true // Default to available on parse error
+    }
+
+    const currentTime = `${hour}:${minute}`
+    const daySchedule = schedule[weekday]
+
+    if (!daySchedule) {
+      console.log(`No schedule defined for ${weekday}, defaulting to available`)
+      return true
+    }
+
+    if (!daySchedule.enabled) {
+      console.log(`Schedule disabled for ${weekday}`)
+      return false
+    }
+
+    // Compare times as strings (HH:MM format)
+    const isWithin = currentTime >= daySchedule.start && currentTime <= daySchedule.end
+    console.log(`Schedule check: ${weekday} ${currentTime} in ${daySchedule.start}-${daySchedule.end}: ${isWithin}`)
+
+    return isWithin
+  } catch (error) {
+    console.error('Error checking schedule:', error)
+    return true // Default to available on error
+  }
+}
 
 /**
  * Auto-enrich contact if phone number doesn't exist in contacts

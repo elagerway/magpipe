@@ -276,6 +276,24 @@ async function processAndReplySMS(
       return
     }
 
+    // Check if agent is active - don't respond if inactive
+    if (agentConfig.is_active === false) {
+      console.log('Agent is inactive, not responding to SMS:', agentConfig.id, agentConfig.name || 'Unnamed')
+      return
+    }
+
+    // Check if within texts schedule
+    if (agentConfig.texts_schedule) {
+      const inSchedule = isWithinSchedule(agentConfig.texts_schedule, agentConfig.schedule_timezone)
+      if (!inSchedule) {
+        console.log('SMS outside scheduled hours for agent:', agentConfig.id, agentConfig.name || 'Unnamed')
+        // Send an auto-reply indicating outside business hours
+        const outsideHoursReply = "Thanks for your message! We're currently outside of our business hours. We'll get back to you during our next available time."
+        await sendSMS(userId, from, to, outsideHoursReply, supabase, false)
+        return
+      }
+    }
+
     // Get recent conversation history for context
     const { data: recentMessages } = await supabase
       .from('sms_messages')
@@ -543,6 +561,63 @@ async function autoEnrichContact(
 
   } catch (error) {
     console.error('Error in autoEnrichContact:', error)
+  }
+}
+
+/**
+ * Check if the current time is within the agent's schedule
+ * @param schedule - Schedule object with days as keys
+ * @param timezone - IANA timezone string
+ * @returns boolean - true if within schedule, false if outside
+ */
+function isWithinSchedule(
+  schedule: Record<string, { enabled: boolean; start: string; end: string }>,
+  timezone?: string
+): boolean {
+  try {
+    const tz = timezone || 'America/Los_Angeles'
+    const now = new Date()
+
+    // Get current day and time in the agent's timezone
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      weekday: 'long',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    })
+
+    const parts = formatter.formatToParts(now)
+    const weekday = parts.find(p => p.type === 'weekday')?.value?.toLowerCase()
+    const hour = parts.find(p => p.type === 'hour')?.value
+    const minute = parts.find(p => p.type === 'minute')?.value
+
+    if (!weekday || !hour || !minute) {
+      console.error('Failed to parse current time for schedule check')
+      return true // Default to available on parse error
+    }
+
+    const currentTime = `${hour}:${minute}`
+    const daySchedule = schedule[weekday]
+
+    if (!daySchedule) {
+      console.log(`No schedule defined for ${weekday}, defaulting to available`)
+      return true
+    }
+
+    if (!daySchedule.enabled) {
+      console.log(`Schedule disabled for ${weekday}`)
+      return false
+    }
+
+    // Compare times as strings (HH:MM format)
+    const isWithin = currentTime >= daySchedule.start && currentTime <= daySchedule.end
+    console.log(`Schedule check: ${weekday} ${currentTime} in ${daySchedule.start}-${daySchedule.end}: ${isWithin}`)
+
+    return isWithin
+  } catch (error) {
+    console.error('Error checking schedule:', error)
+    return true // Default to available on error
   }
 }
 
