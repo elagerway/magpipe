@@ -433,7 +433,7 @@ function generateNavHtml(currentPath) {
 
         <div class="nav-modal-section">
           <div class="nav-modal-section-title">Help</div>
-          <button class="nav-modal-item" onclick="window.open('mailto:support@solomobile.ai', '_blank'); closeUserModal();">
+          <button class="nav-modal-item" onclick="openContactModal()">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="2" y="4" width="20" height="16" rx="2"></rect>
               <path d="M22 6l-10 7L2 6"></path>
@@ -474,6 +474,32 @@ function generateNavHtml(currentPath) {
           </svg>
           <span>Log out</span>
         </button>
+      </div>
+
+      <!-- Contact Modal -->
+      <div class="contact-modal-overlay" id="contact-modal-overlay" style="display: none;" onclick="handleContactOverlayClick(event)">
+        <div class="contact-modal" onclick="event.stopPropagation()">
+          <div class="contact-modal-header">
+            <h3>Contact Us</h3>
+            <button class="close-modal-btn" onclick="closeContactModal()">&times;</button>
+          </div>
+          <form id="contact-form" onsubmit="submitContactForm(event)">
+            <div class="contact-modal-body">
+              <div class="form-group">
+                <label for="contact-subject">Subject</label>
+                <input type="text" id="contact-subject" name="subject" required placeholder="What can we help you with?">
+              </div>
+              <div class="form-group">
+                <label for="contact-message">Message</label>
+                <textarea id="contact-message" name="message" required rows="5" placeholder="Tell us more..."></textarea>
+              </div>
+            </div>
+            <div class="contact-modal-footer">
+              <button type="button" class="btn btn-secondary" onclick="closeContactModal()">Cancel</button>
+              <button type="submit" class="btn btn-primary" id="contact-submit-btn">Send Message</button>
+            </div>
+          </form>
+        </div>
       </div>
     </nav>
   `;
@@ -635,7 +661,7 @@ export function renderBottomNav(currentPath = '/agent') {
 
         <div class="nav-modal-section">
           <div class="nav-modal-section-title">Help</div>
-          <button class="nav-modal-item" onclick="window.open('mailto:support@solomobile.ai', '_blank'); closeUserModal();">
+          <button class="nav-modal-item" onclick="openContactModal()">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="2" y="4" width="20" height="16" rx="2"></rect>
               <path d="M22 6l-10 7L2 6"></path>
@@ -676,6 +702,32 @@ export function renderBottomNav(currentPath = '/agent') {
           </svg>
           <span>Log out</span>
         </button>
+      </div>
+
+      <!-- Contact Modal -->
+      <div class="contact-modal-overlay" id="contact-modal-overlay" style="display: none;" onclick="handleContactOverlayClick(event)">
+        <div class="contact-modal" onclick="event.stopPropagation()">
+          <div class="contact-modal-header">
+            <h3>Contact Us</h3>
+            <button class="close-modal-btn" onclick="closeContactModal()">&times;</button>
+          </div>
+          <form id="contact-form" onsubmit="submitContactForm(event)">
+            <div class="contact-modal-body">
+              <div class="form-group">
+                <label for="contact-subject">Subject</label>
+                <input type="text" id="contact-subject" name="subject" required placeholder="What can we help you with?">
+              </div>
+              <div class="form-group">
+                <label for="contact-message">Message</label>
+                <textarea id="contact-message" name="message" required rows="5" placeholder="Tell us more..."></textarea>
+              </div>
+            </div>
+            <div class="contact-modal-footer">
+              <button type="button" class="btn btn-secondary" onclick="closeContactModal()">Cancel</button>
+              <button type="submit" class="btn btn-primary" id="contact-submit-btn">Send Message</button>
+            </div>
+          </form>
+        </div>
       </div>
     </nav>
   `;
@@ -723,6 +775,112 @@ window.handleLogout = async function() {
   await signOut();
   navigateTo('/login');
 };
+
+// Contact modal functions
+window.openContactModal = function() {
+  closeUserModal();
+  const overlay = document.getElementById('contact-modal-overlay');
+  if (overlay) {
+    overlay.style.display = 'flex';
+    // Focus on subject field
+    setTimeout(() => {
+      const subjectInput = document.getElementById('contact-subject');
+      if (subjectInput) subjectInput.focus();
+    }, 100);
+  }
+};
+
+window.closeContactModal = function() {
+  const overlay = document.getElementById('contact-modal-overlay');
+  if (overlay) {
+    overlay.style.display = 'none';
+    // Reset form
+    const form = document.getElementById('contact-form');
+    if (form) form.reset();
+  }
+};
+
+window.handleContactOverlayClick = function(event) {
+  // Close modal when clicking the overlay (not the modal content)
+  if (event.target.id === 'contact-modal-overlay') {
+    closeContactModal();
+  }
+};
+
+window.submitContactForm = async function(event) {
+  event.preventDefault();
+
+  const submitBtn = document.getElementById('contact-submit-btn');
+  const subject = document.getElementById('contact-subject').value.trim();
+  const message = document.getElementById('contact-message').value.trim();
+
+  if (!subject || !message) return;
+
+  // Disable button and show loading
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Sending...';
+
+  try {
+    const { supabase } = await import('../lib/supabase.js');
+    const { data: { session } } = await supabase.auth.getSession();
+
+    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-contact-email`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': session ? `Bearer ${session.access_token}` : '',
+      },
+      body: JSON.stringify({ subject, message })
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.error || 'Failed to send message');
+    }
+
+    // Success - close modal and show notification
+    closeContactModal();
+    showContactNotification('Message sent! We\'ll get back to you soon.', 'success');
+
+  } catch (error) {
+    console.error('Error sending contact message:', error);
+    showContactNotification('Failed to send message. Please try again.', 'error');
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Send Message';
+  }
+};
+
+function showContactNotification(message, type) {
+  // Create notification element
+  const notification = document.createElement('div');
+  notification.className = `contact-notification ${type}`;
+  notification.textContent = message;
+  notification.style.cssText = `
+    position: fixed;
+    bottom: 100px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    z-index: 10001;
+    animation: slideUp 0.3s ease;
+    ${type === 'success'
+      ? 'background: #10b981; color: white;'
+      : 'background: #ef4444; color: white;'}
+  `;
+
+  document.body.appendChild(notification);
+
+  // Remove after 3 seconds
+  setTimeout(() => {
+    notification.style.animation = 'slideDown 0.3s ease';
+    setTimeout(() => notification.remove(), 300);
+  }, 3000);
+}
 
 export function setPhoneNavActive(isActive) {
   const phoneBtn = document.getElementById('phone-nav-btn');
