@@ -70,6 +70,21 @@ serve(async (req) => {
       })
     }
 
+    // Check if user is an organization owner (only owners can manage billing)
+    const { data: membership } = await supabase
+      .from('organization_members')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('status', 'approved')
+      .single()
+
+    if (membership && membership.role !== 'owner') {
+      return new Response(JSON.stringify({ error: 'Only organization owners can manage billing' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
+
     // Check if already on pro
     if (profile.plan === 'pro') {
       return new Response(JSON.stringify({ error: 'Already on Pro plan' }), {

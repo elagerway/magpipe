@@ -1,0 +1,631 @@
+/**
+ * Team Management Page
+ * Allows organization owners to invite and manage team members
+ */
+
+import { Organization, OrganizationMember } from '../models/index.js';
+import { getCurrentUser, supabase } from '../lib/supabase.js';
+import { renderBottomNav } from '../components/BottomNav.js';
+
+export default class TeamPage {
+  constructor() {
+    this.currentTab = 'all';
+    this.organization = null;
+    this.userRole = null;
+    this.members = [];
+    this.counts = {};
+    // Make page accessible globally for onclick handlers
+    window.teamPage = this;
+  }
+
+  async render() {
+    const { user } = await getCurrentUser();
+
+    if (!user) {
+      navigateTo('/login');
+      return;
+    }
+
+    // Get current organization
+    const { organization, error: orgError } = await Organization.getForUser(user.id);
+    if (orgError || !organization) {
+      console.error('Error loading organization:', orgError);
+      navigateTo('/agent');
+      return;
+    }
+
+    this.organization = organization;
+    this.currentUser = user;
+
+    // Get user's role from membership
+    const { members: allMembers } = await OrganizationMember.getByOrganization(organization.id);
+    const currentMembership = allMembers?.find(m => m.user_id === user.id);
+    this.userRole = currentMembership?.role || 'member';
+
+    // Only owners can access team management
+    if (this.userRole !== 'owner') {
+      navigateTo('/agent');
+      return;
+    }
+
+    // Calculate counts
+    this.counts = {
+      all: allMembers?.length || 0,
+      pending: allMembers?.filter(m => m.status === 'pending').length || 0,
+      approved: allMembers?.filter(m => m.status === 'approved').length || 0,
+      suspended: allMembers?.filter(m => m.status === 'suspended').length || 0,
+      removed: allMembers?.filter(m => m.status === 'removed').length || 0,
+    };
+
+    // Get members for current tab
+    this.allMembers = allMembers || [];
+    this.filterMembers();
+
+    const appElement = document.getElementById('app');
+
+    appElement.innerHTML = `
+      <div class="container with-bottom-nav" style="max-width: 900px; padding: 2rem 1rem 4rem 1rem;">
+        <!-- Header with Invite Button -->
+        <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+          <div style="display: flex; align-items: center;">
+            <button class="back-btn mobile-only" onclick="navigateTo('/settings')" style="
+              background: none;
+              border: none;
+              padding: 0.5rem;
+              margin: -0.5rem;
+              margin-right: 0.5rem;
+              cursor: pointer;
+              display: inline-flex;
+              align-items: center;
+            ">
+              <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+              </svg>
+            </button>
+            <div>
+              <h1 style="margin: 0;">Team Members</h1>
+              <p class="text-muted" style="margin: 0.25rem 0 0 0;">Manage your team and their roles</p>
+            </div>
+          </div>
+          <button class="btn btn-primary" id="open-invite-modal-btn" style="white-space: nowrap;">
+            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right: 0.5rem;">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            Invite team member
+          </button>
+        </div>
+
+        <div id="error-message" class="hidden"></div>
+        <div id="success-message" class="hidden"></div>
+
+        <!-- Tabs -->
+        <div class="team-tabs" style="display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap;">
+          <button class="team-tab ${this.currentTab === 'all' ? 'active' : ''}" data-tab="all">
+            All (${this.counts.all || 0})
+          </button>
+          <button class="team-tab ${this.currentTab === 'pending' ? 'active' : ''}" data-tab="pending">
+            Pending (${this.counts.pending})
+          </button>
+          <button class="team-tab ${this.currentTab === 'approved' ? 'active' : ''}" data-tab="approved">
+            Approved (${this.counts.approved})
+          </button>
+          <button class="team-tab ${this.currentTab === 'suspended' ? 'active' : ''}" data-tab="suspended">
+            Suspended (${this.counts.suspended})
+          </button>
+          <button class="team-tab ${this.currentTab === 'removed' ? 'active' : ''}" data-tab="removed">
+            Cancelled (${this.counts.removed})
+          </button>
+        </div>
+
+        <!-- Members List -->
+        <div id="members-list" style="margin-bottom: 2rem;">
+          ${this.renderMembersList()}
+        </div>
+      </div>
+      ${renderBottomNav('/settings')}
+
+      <!-- Invite Modal -->
+      <div id="invite-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2 style="margin: 0;">Invite Team Member</h2>
+            <button class="modal-close-btn" id="close-invite-modal-btn">
+              <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+          <form id="invite-form">
+            <div class="form-group">
+              <label class="form-label" for="invite-email">Email</label>
+              <input
+                type="email"
+                id="invite-email"
+                class="form-input"
+                placeholder="colleague@example.com"
+                required
+              />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="invite-name">Full Name</label>
+              <input
+                type="text"
+                id="invite-name"
+                class="form-input"
+                placeholder="John Doe"
+                required
+              />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="invite-role">Role</label>
+              <select id="invite-role" class="form-input">
+                <option value="editor">Editor</option>
+                <option value="support">Support</option>
+              </select>
+              <p class="text-muted" style="margin-top: 0.5rem; font-size: 0.75rem;">
+                <strong>Editor:</strong> Full access except billing and team management<br>
+                <strong>Support:</strong> View and edit access, cannot delete items
+              </p>
+            </div>
+            <div style="display: flex; gap: 0.75rem; justify-content: flex-end; margin-top: 1.5rem;">
+              <button type="button" class="btn btn-secondary" id="cancel-invite-btn">Cancel</button>
+              <button type="submit" class="btn btn-primary" id="invite-btn">Send Invitation</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <style>
+        .team-tab {
+          padding: 0.5rem 1rem;
+          border: 1px solid var(--border-color);
+          background: var(--bg-primary);
+          border-radius: var(--radius-md);
+          cursor: pointer;
+          font-size: 0.875rem;
+          transition: all 0.2s;
+        }
+        .team-tab:hover {
+          background: var(--bg-secondary);
+        }
+        .team-tab.active {
+          background: var(--primary-color);
+          color: white;
+          border-color: var(--primary-color);
+        }
+        .member-card {
+          background: var(--bg-primary);
+          border: 1px solid var(--border-color);
+          border-radius: var(--radius-md);
+          padding: 1rem;
+          margin-bottom: 0.75rem;
+        }
+        .member-card:last-child {
+          margin-bottom: 0;
+        }
+        .member-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          margin-bottom: 0.5rem;
+        }
+        .member-info h3 {
+          margin: 0;
+          font-size: 1rem;
+        }
+        .member-info .email {
+          color: var(--text-secondary);
+          font-size: 0.875rem;
+        }
+        .member-role {
+          padding: 0.25rem 0.5rem;
+          border-radius: var(--radius-sm);
+          font-size: 0.75rem;
+          font-weight: 600;
+          text-transform: capitalize;
+        }
+        .member-role.owner {
+          background: var(--primary-color);
+          color: white;
+        }
+        .member-role.editor {
+          background: #3b82f6;
+          color: white;
+        }
+        .member-role.support {
+          background: #8b5cf6;
+          color: white;
+        }
+        .member-meta {
+          color: var(--text-secondary);
+          font-size: 0.75rem;
+          margin-bottom: 0.75rem;
+        }
+        .member-actions {
+          display: flex;
+          gap: 0.5rem;
+          flex-wrap: wrap;
+        }
+        .member-actions .btn {
+          font-size: 0.875rem;
+          padding: 0.375rem 0.75rem;
+        }
+        .member-card.member-removed {
+          opacity: 0.6;
+          background: var(--bg-secondary);
+        }
+        .member-status.cancelled {
+          padding: 0.25rem 0.5rem;
+          border-radius: var(--radius-sm);
+          font-size: 0.75rem;
+          font-weight: 600;
+          background: var(--error-color);
+          color: white;
+        }
+
+        /* Modal Styles */
+        .modal-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.5);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1000;
+          padding: 1rem;
+        }
+        .modal-overlay.hidden {
+          display: none;
+        }
+        .modal-content {
+          background: var(--bg-primary);
+          border-radius: var(--radius-lg);
+          padding: 1.5rem;
+          max-width: 450px;
+          width: 100%;
+          max-height: 90vh;
+          overflow-y: auto;
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        }
+        .modal-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 1.5rem;
+        }
+        .modal-close-btn {
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 0.25rem;
+          color: var(--text-secondary);
+          border-radius: var(--radius-sm);
+          transition: all 0.2s;
+        }
+        .modal-close-btn:hover {
+          background: var(--bg-secondary);
+          color: var(--text-primary);
+        }
+      </style>
+    `;
+
+    this.attachEventListeners();
+  }
+
+  filterMembers() {
+    if (this.currentTab === 'all') {
+      this.members = this.allMembers; // Show all including removed/cancelled
+    } else {
+      this.members = this.allMembers.filter(m => m.status === this.currentTab);
+    }
+  }
+
+  renderMembersList() {
+    if (this.members.length === 0) {
+      const messages = {
+        all: 'No team members yet',
+        pending: 'No pending invitations',
+        approved: 'No approved team members',
+        suspended: 'No suspended members',
+        removed: 'No cancelled invites'
+      };
+      return `<p class="text-muted text-center" style="padding: 2rem;">${messages[this.currentTab]}</p>`;
+    }
+
+    return this.members.map(member => this.renderMemberCard(member)).join('');
+  }
+
+  renderMemberCard(member) {
+    const invitedDate = member.invited_at ? new Date(member.invited_at).toLocaleDateString() : '';
+    const approvedDate = member.approved_at ? new Date(member.approved_at).toLocaleDateString() : '';
+    const suspendedDate = member.suspended_at ? new Date(member.suspended_at).toLocaleDateString() : '';
+    const removedDate = member.removed_at ? new Date(member.removed_at).toLocaleDateString() : '';
+
+    let actions = '';
+    let meta = '';
+
+    switch (member.status) {
+      case 'pending':
+        meta = `Invited ${invitedDate}`;
+        actions = `
+          <button class="btn btn-sm btn-secondary" onclick="window.teamPage.resendInvite('${member.id}')">Resend</button>
+          <button class="btn btn-sm btn-secondary" onclick="window.teamPage.cancelInvite('${member.id}')">Cancel</button>
+        `;
+        break;
+      case 'approved':
+        meta = `Approved ${approvedDate}`;
+        if (member.role !== 'owner') {
+          actions = `
+            <select class="form-input" style="width: auto; padding: 0.375rem 0.5rem; font-size: 0.875rem;" onchange="window.teamPage.changeRole('${member.id}', this.value)">
+              <option value="editor" ${member.role === 'editor' ? 'selected' : ''}>Editor</option>
+              <option value="support" ${member.role === 'support' ? 'selected' : ''}>Support</option>
+            </select>
+            <button class="btn btn-sm btn-secondary" onclick="window.teamPage.suspendMember('${member.id}')">Suspend</button>
+            <button class="btn btn-sm btn-danger" onclick="window.teamPage.removeMember('${member.id}')">Remove</button>
+          `;
+        }
+        break;
+      case 'suspended':
+        meta = `Suspended ${suspendedDate}`;
+        actions = `
+          <button class="btn btn-sm btn-primary" onclick="window.teamPage.approveMember('${member.id}')">Reactivate</button>
+          <button class="btn btn-sm btn-danger" onclick="window.teamPage.removeMember('${member.id}')">Remove</button>
+        `;
+        break;
+      case 'removed':
+        meta = `Cancelled ${removedDate}`;
+        actions = `
+          <button class="btn btn-sm btn-secondary" onclick="window.teamPage.reinvite('${member.id}', '${member.email}', '${member.full_name || ''}')">Re-invite</button>
+        `;
+        break;
+    }
+
+    const isRemoved = member.status === 'removed';
+
+    return `
+      <div class="member-card ${isRemoved ? 'member-removed' : ''}">
+        <div class="member-header">
+          <div class="member-info">
+            <h3>${member.full_name || 'Unnamed'}</h3>
+            <div class="email">${member.email}</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            ${isRemoved ? '<span class="member-status cancelled">Cancelled</span>' : ''}
+            <span class="member-role ${member.role}">${member.role}</span>
+          </div>
+        </div>
+        <div class="member-meta">${meta}</div>
+        <div class="member-actions">
+          ${actions}
+        </div>
+      </div>
+    `;
+  }
+
+  async refreshList() {
+    const { members: allMembers } = await OrganizationMember.getByOrganization(this.organization.id);
+    this.allMembers = allMembers || [];
+
+    this.counts = {
+      all: this.allMembers.length,
+      pending: this.allMembers.filter(m => m.status === 'pending').length,
+      approved: this.allMembers.filter(m => m.status === 'approved').length,
+      suspended: this.allMembers.filter(m => m.status === 'suspended').length,
+      removed: this.allMembers.filter(m => m.status === 'removed').length,
+    };
+
+    this.filterMembers();
+
+    // Update tabs
+    const tabLabels = { all: 'All', pending: 'Pending', approved: 'Approved', suspended: 'Suspended', removed: 'Cancelled' };
+    document.querySelectorAll('.team-tab').forEach(tab => {
+      const tabName = tab.dataset.tab;
+      tab.textContent = `${tabLabels[tabName] || tabName} (${this.counts[tabName] || 0})`;
+      tab.classList.toggle('active', tabName === this.currentTab);
+    });
+
+    // Update list
+    document.getElementById('members-list').innerHTML = this.renderMembersList();
+  }
+
+  showMessage(type, message) {
+    const el = document.getElementById(type === 'error' ? 'error-message' : 'success-message');
+    el.className = `alert alert-${type === 'error' ? 'error' : 'success'}`;
+    el.textContent = message;
+    el.classList.remove('hidden');
+    setTimeout(() => el.classList.add('hidden'), 5000);
+  }
+
+  openInviteModal() {
+    document.getElementById('invite-modal').classList.remove('hidden');
+    document.getElementById('invite-email').focus();
+  }
+
+  closeInviteModal() {
+    document.getElementById('invite-modal').classList.add('hidden');
+    document.getElementById('invite-email').value = '';
+    document.getElementById('invite-name').value = '';
+    document.getElementById('invite-role').value = 'editor';
+  }
+
+  attachEventListeners() {
+    // Tab switching
+    document.querySelectorAll('.team-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        this.currentTab = tab.dataset.tab;
+        this.filterMembers();
+        document.querySelectorAll('.team-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById('members-list').innerHTML = this.renderMembersList();
+      });
+    });
+
+    // Modal open/close
+    document.getElementById('open-invite-modal-btn')?.addEventListener('click', () => this.openInviteModal());
+    document.getElementById('close-invite-modal-btn')?.addEventListener('click', () => this.closeInviteModal());
+    document.getElementById('cancel-invite-btn')?.addEventListener('click', () => this.closeInviteModal());
+
+    // Click outside modal to close
+    document.getElementById('invite-modal')?.addEventListener('click', (e) => {
+      if (e.target.id === 'invite-modal') this.closeInviteModal();
+    });
+
+    // Invite form
+    document.getElementById('invite-form')?.addEventListener('submit', (e) => this.handleInvite(e));
+  }
+
+  async handleInvite(e) {
+    e.preventDefault();
+
+    const email = document.getElementById('invite-email').value.trim();
+    const name = document.getElementById('invite-name').value.trim();
+    const role = document.getElementById('invite-role').value;
+    const btn = document.getElementById('invite-btn');
+
+    if (!email || !name) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Sending...';
+
+    try {
+      const { member, error } = await OrganizationMember.invite(
+        this.organization.id,
+        email,
+        name,
+        role,
+        this.currentUser.id
+      );
+
+      if (error) throw error;
+
+      // Send email
+      await supabase.functions.invoke('send-team-invitation', {
+        body: {
+          memberId: member.id,
+          email,
+          name,
+          organizationName: this.organization.name,
+          inviterName: this.currentUser.email,
+        },
+      });
+
+      this.closeInviteModal();
+      this.showMessage('success', 'Invitation sent successfully');
+      await this.refreshList();
+    } catch (error) {
+      console.error('Failed to invite:', error);
+      this.showMessage('error', error.message || 'Failed to send invitation');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Send Invitation';
+    }
+  }
+
+  async resendInvite(memberId) {
+    try {
+      const member = this.allMembers.find(m => m.id === memberId);
+      if (!member) return;
+
+      await supabase.functions.invoke('send-team-invitation', {
+        body: {
+          memberId: member.id,
+          email: member.email,
+          name: member.full_name,
+          organizationName: this.organization.name,
+          inviterName: this.currentUser.email,
+        },
+      });
+
+      this.showMessage('success', 'Invitation resent successfully');
+    } catch (error) {
+      this.showMessage('error', 'Failed to resend invitation');
+    }
+  }
+
+  async cancelInvite(memberId) {
+    if (!confirm('Cancel this invitation?')) return;
+
+    const { error } = await OrganizationMember.remove(memberId);
+    if (error) {
+      this.showMessage('error', 'Failed to cancel invitation');
+      return;
+    }
+
+    this.showMessage('success', 'Invitation cancelled');
+    await this.refreshList();
+  }
+
+  async changeRole(memberId, newRole) {
+    const { error } = await OrganizationMember.updateRole(memberId, newRole);
+    if (error) {
+      this.showMessage('error', 'Failed to update role');
+      await this.refreshList();
+      return;
+    }
+
+    this.showMessage('success', 'Role updated successfully');
+  }
+
+  async suspendMember(memberId) {
+    if (!confirm('Suspend this member? They will lose access until reactivated.')) return;
+
+    const { error } = await OrganizationMember.suspend(memberId);
+    if (error) {
+      this.showMessage('error', 'Failed to suspend member');
+      return;
+    }
+
+    this.showMessage('success', 'Member suspended');
+    await this.refreshList();
+  }
+
+  async approveMember(memberId) {
+    const { error } = await OrganizationMember.approve(memberId);
+    if (error) {
+      this.showMessage('error', 'Failed to reactivate member');
+      return;
+    }
+
+    this.showMessage('success', 'Member reactivated');
+    await this.refreshList();
+  }
+
+  async removeMember(memberId) {
+    if (!confirm('Remove this member from the team?')) return;
+
+    const { error } = await OrganizationMember.remove(memberId);
+    if (error) {
+      this.showMessage('error', 'Failed to remove member');
+      return;
+    }
+
+    this.showMessage('success', 'Member removed');
+    await this.refreshList();
+  }
+
+  async reinvite(memberId, email, name) {
+    // Update existing record back to pending instead of creating new one
+    const { member, error } = await OrganizationMember.reinvite(memberId, this.currentUser.id);
+
+    if (error) {
+      this.showMessage('error', error.message || 'Failed to re-invite member');
+      return;
+    }
+
+    await supabase.functions.invoke('send-team-invitation', {
+      body: {
+        memberId: member.id,
+        email,
+        name,
+        organizationName: this.organization.name,
+        inviterName: this.currentUser.email,
+      },
+    });
+
+    this.showMessage('success', 'Invitation sent');
+    await this.refreshList();
+  }
+}
