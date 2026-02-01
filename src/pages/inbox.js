@@ -3,7 +3,7 @@
  */
 
 import { getCurrentUser, supabase } from '../lib/supabase.js';
-import { renderBottomNav, clearUnreadBadge, setPhoneNavActive, setUnreadBadgeCount } from '../components/BottomNav.js';
+import { renderBottomNav, clearUnreadBadge, setPhoneNavActive, setUnreadBadgeCount, resetInboxManagedCount } from '../components/BottomNav.js';
 import { User } from '../models/index.js';
 
 // Lazy load heavy libraries only when needed for calls
@@ -48,12 +48,16 @@ export default class InboxPage {
     this.phoneLinkHandlerAttached = false;
     this.lastFetchTime = 0;
     this.hiddenConversations = new Set(); // Track hidden conversations locally
+    // Load viewed conversations from localStorage (persists across page navigation)
+    const savedViewed = localStorage.getItem('inbox_viewed_conversations');
+    this.viewedConversations = savedViewed ? new Set(JSON.parse(savedViewed)) : new Set();
     this.swipeState = null; // Track active swipe
     // Filters can be combined: type (all/calls/texts) + direction (all/in/out) + sentiment
     this.typeFilter = 'all'; // all, calls, texts
     this.directionFilter = 'all'; // all, inbound, outbound
     this.missedFilter = false; // special filter for missed calls
     this.sentimentFilter = 'all'; // all, positive, neutral, negative
+    this.filtersExpanded = false; // Toggle for filter visibility
     this.searchQuery = ''; // search filter
     this.dateFilter = 'all'; // all, today, yesterday, week, month
     this.searchExpanded = false; // whether search is expanded
@@ -111,13 +115,6 @@ export default class InboxPage {
     // Fetch user profile for bottom nav
     const { profile } = await User.getProfile(user.id);
 
-    // Clear selection on mobile (no item should be highlighted on first view)
-    const isMobile = window.innerWidth <= 768;
-    if (isMobile) {
-      this.selectedContact = null;
-      this.selectedCallId = null;
-    }
-
     // Load hidden conversations from localStorage
     this.loadHiddenConversations();
 
@@ -126,6 +123,36 @@ export default class InboxPage {
     if (this.conversations.length === 0 || (now - this.lastFetchTime) > 30000) {
       await this.loadConversations(user.id);
       this.lastFetchTime = now;
+    }
+
+    // Handle initial selection
+    const isMobile = window.innerWidth <= 768;
+    if (isMobile) {
+      // Clear selection on mobile (no item should be highlighted on first view)
+      this.selectedContact = null;
+      this.selectedCallId = null;
+    } else {
+      // On desktop, restore last viewed conversation or select most recent
+      const lastViewedContact = localStorage.getItem('inbox_last_selected_contact');
+      const lastViewedCallId = localStorage.getItem('inbox_last_selected_call');
+
+      if (lastViewedCallId && this.conversations.some(c => c.type === 'call' && c.callId === lastViewedCallId)) {
+        this.selectedCallId = lastViewedCallId;
+        this.selectedContact = null;
+      } else if (lastViewedContact && this.conversations.some(c => c.type === 'sms' && c.phone === lastViewedContact)) {
+        this.selectedContact = lastViewedContact;
+        this.selectedCallId = null;
+      } else if (this.conversations.length > 0) {
+        // Default to most recent conversation
+        const mostRecent = this.conversations[0];
+        if (mostRecent.type === 'call') {
+          this.selectedCallId = mostRecent.callId;
+          this.selectedContact = null;
+        } else {
+          this.selectedContact = mostRecent.phone;
+          this.selectedCallId = null;
+        }
+      }
     }
 
     const appElement = document.getElementById('app');
@@ -197,6 +224,24 @@ export default class InboxPage {
               flex-shrink: 0;
               transition: all 0.2s ease;
             " onmouseover="this.style.backgroundImage='linear-gradient(var(--bg-secondary), var(--bg-secondary)), linear-gradient(135deg, #6366f1, #8b5cf6)'" onmouseout="this.style.backgroundImage='linear-gradient(white, white), linear-gradient(135deg, #6366f1, #8b5cf6)'">+</button>
+            <button id="filter-toggle-btn" style="
+              background: ${this.filtersExpanded || this.hasActiveFilters() ? 'var(--primary-color)' : 'none'};
+              color: ${this.filtersExpanded || this.hasActiveFilters() ? 'white' : 'var(--text-secondary)'};
+              border: 1px solid ${this.filtersExpanded || this.hasActiveFilters() ? 'var(--primary-color)' : 'var(--border-color)'};
+              border-radius: 50%;
+              width: 29px;
+              height: 29px;
+              cursor: pointer;
+              display: ${this.searchExpanded ? 'none' : 'flex'};
+              align-items: center;
+              justify-content: center;
+              flex-shrink: 0;
+              transition: all 0.2s ease;
+            ">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+              </svg>
+            </button>
 
             <!-- New Message Dropdown Menu -->
             <div id="new-message-dropdown" style="
@@ -303,18 +348,20 @@ export default class InboxPage {
           </div>
 
           <!-- Filter Tabs -->
-          <div class="inbox-filters" id="inbox-filters" style="border-bottom: none; padding-bottom: 0;">
-            <button class="inbox-filter-btn ${this.typeFilter === 'all' && this.directionFilter === 'all' && !this.missedFilter && this.sentimentFilter === 'all' ? 'active' : ''}" data-filter-type="all" data-filter-reset="true">All</button>
-            <button class="inbox-filter-btn ${this.typeFilter === 'calls' ? 'active' : ''}" data-filter-type="calls">Calls</button>
-            <button class="inbox-filter-btn ${this.typeFilter === 'texts' ? 'active' : ''}" data-filter-type="texts">Texts</button>
-            <button class="inbox-filter-btn ${this.directionFilter === 'inbound' ? 'active' : ''}" data-filter-direction="inbound">In</button>
-            <button class="inbox-filter-btn ${this.directionFilter === 'outbound' ? 'active' : ''}" data-filter-direction="outbound">Out</button>
-            <button class="inbox-filter-btn ${this.missedFilter ? 'active' : ''}" data-filter-missed="true">Missed</button>
-          </div>
-          <div class="inbox-filters" id="inbox-filters-sentiment" style="padding-top: 0.375rem; justify-content: center; gap: 0.5rem;">
-            <button class="inbox-filter-btn ${this.sentimentFilter === 'positive' ? 'active' : ''}" data-filter-sentiment="positive">Positive</button>
-            <button class="inbox-filter-btn ${this.sentimentFilter === 'neutral' ? 'active' : ''}" data-filter-sentiment="neutral">Neutral</button>
-            <button class="inbox-filter-btn ${this.sentimentFilter === 'negative' ? 'active' : ''}" data-filter-sentiment="negative">Negative</button>
+          <div id="filters-container" style="display: ${this.filtersExpanded ? 'block' : 'none'};">
+            <div class="inbox-filters" id="inbox-filters" style="border-bottom: none; padding-bottom: 0;">
+              <button class="inbox-filter-btn ${this.typeFilter === 'all' && this.directionFilter === 'all' && !this.missedFilter && this.sentimentFilter === 'all' ? 'active' : ''}" data-filter-type="all" data-filter-reset="true">All</button>
+              <button class="inbox-filter-btn ${this.typeFilter === 'calls' ? 'active' : ''}" data-filter-type="calls">Calls</button>
+              <button class="inbox-filter-btn ${this.typeFilter === 'texts' ? 'active' : ''}" data-filter-type="texts">Texts</button>
+              <button class="inbox-filter-btn ${this.directionFilter === 'inbound' ? 'active' : ''}" data-filter-direction="inbound">In</button>
+              <button class="inbox-filter-btn ${this.directionFilter === 'outbound' ? 'active' : ''}" data-filter-direction="outbound">Out</button>
+              <button class="inbox-filter-btn ${this.missedFilter ? 'active' : ''}" data-filter-missed="true">Missed</button>
+            </div>
+            <div class="inbox-filters" id="inbox-filters-sentiment" style="padding-top: 0.375rem; justify-content: center; gap: 0.5rem;">
+              <button class="inbox-filter-btn ${this.sentimentFilter === 'positive' ? 'active' : ''}" data-filter-sentiment="positive">Positive</button>
+              <button class="inbox-filter-btn ${this.sentimentFilter === 'neutral' ? 'active' : ''}" data-filter-sentiment="neutral">Neutral</button>
+              <button class="inbox-filter-btn ${this.sentimentFilter === 'negative' ? 'active' : ''}" data-filter-sentiment="negative">Negative</button>
+            </div>
           </div>
 
           <div id="conversations">
@@ -324,11 +371,15 @@ export default class InboxPage {
 
         <!-- Message Thread -->
         <div class="message-thread" id="message-thread">
-          ${this.selectedContact ? this.renderMessageThread() : this.renderEmptyState()}
+          ${(this.selectedContact || this.selectedCallId) ? this.renderMessageThread() : this.renderEmptyState()}
         </div>
       </div>
       ${renderBottomNav('/inbox')}
     `;
+
+    // Now that DOM is rendered, update the badge with the correct count
+    const totalUnread = this.conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
+    setUnreadBadgeCount(totalUnread);
 
     // Defer heavy operations to allow UI to be scrollable immediately
     requestAnimationFrame(() => {
@@ -535,6 +586,21 @@ export default class InboxPage {
 
     if (this.selectedContact === contactPhone) {
       console.log('Updating thread for selected contact');
+
+      // Mark conversation as read since user is viewing it
+      const lastViewedKey = `conversation_last_viewed_sms_${contactPhone}`;
+      localStorage.setItem(lastViewedKey, new Date().toISOString());
+
+      // Clear unread count for this conversation
+      const conv = this.conversations.find(c => c.type === 'sms' && c.phone === contactPhone);
+      if (conv) {
+        conv.unreadCount = 0;
+      }
+
+      // Update the nav badge
+      const totalUnread = this.conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
+      setUnreadBadgeCount(totalUnread);
+
       const threadElement = document.getElementById('message-thread');
       if (threadElement) {
         threadElement.innerHTML = this.renderMessageThread();
@@ -748,6 +814,8 @@ export default class InboxPage {
       this.subscription.unsubscribe();
       this.subscription = null;
     }
+    // Reset the flag so BottomNav can track unread count again
+    resetInboxManagedCount();
   }
 
   async loadConversations(userId) {
@@ -797,8 +865,8 @@ export default class InboxPage {
       }
       smsGrouped[phone].messages.push(msg);
 
-      // Count unread inbound messages
-      if (msg.direction === 'inbound') {
+      // Count unread inbound messages (skip if viewed in this session)
+      if (msg.direction === 'inbound' && !this.viewedConversations.has(phone)) {
         const lastViewedKey = `conversation_last_viewed_sms_${phone}`;
         const lastViewed = localStorage.getItem(lastViewedKey);
         const msgDate = new Date(msg.sent_at || msg.created_at || Date.now());
@@ -1515,6 +1583,13 @@ export default class InboxPage {
   getInitials(phone) {
     // Use last 2 digits of phone as "initials"
     return phone.slice(-2);
+  }
+
+  hasActiveFilters() {
+    return this.typeFilter !== 'all' ||
+           this.directionFilter !== 'all' ||
+           this.missedFilter ||
+           this.sentimentFilter !== 'all';
   }
 
   formatPhoneNumber(phone) {
@@ -4098,6 +4173,7 @@ Examples:
     this.attachConversationListeners();
     this.attachFilterListeners();
     this.attachSearchListener();
+    this.attachFilterToggleListener();
 
     // Only attach dropdown listeners once
     if (!this.dropdownListenersAttached) {
@@ -4109,6 +4185,24 @@ Examples:
     if (!this.phoneLinkHandlerAttached) {
       this.attachPhoneLinkHandler();
       this.phoneLinkHandlerAttached = true;
+    }
+  }
+
+  attachFilterToggleListener() {
+    const filterToggleBtn = document.getElementById('filter-toggle-btn');
+    const filtersContainer = document.getElementById('filters-container');
+
+    if (filterToggleBtn && filtersContainer) {
+      filterToggleBtn.addEventListener('click', () => {
+        this.filtersExpanded = !this.filtersExpanded;
+        filtersContainer.style.display = this.filtersExpanded ? 'block' : 'none';
+
+        // Update button appearance
+        const hasFilters = this.hasActiveFilters();
+        filterToggleBtn.style.background = (this.filtersExpanded || hasFilters) ? 'var(--primary-color)' : 'none';
+        filterToggleBtn.style.color = (this.filtersExpanded || hasFilters) ? 'white' : 'var(--text-secondary)';
+        filterToggleBtn.style.borderColor = (this.filtersExpanded || hasFilters) ? 'var(--primary-color)' : 'var(--border-color)';
+      });
     }
   }
 
@@ -4287,6 +4381,15 @@ Examples:
       if (this.sentimentFilter === 'neutral') neutralBtn?.classList.add('active');
       if (this.sentimentFilter === 'negative') negativeBtn?.classList.add('active');
     }
+
+    // Update filter toggle button appearance
+    const filterToggleBtn = document.getElementById('filter-toggle-btn');
+    if (filterToggleBtn) {
+      const hasFilters = !isAllClear;
+      filterToggleBtn.style.background = (this.filtersExpanded || hasFilters) ? 'var(--primary-color)' : 'none';
+      filterToggleBtn.style.color = (this.filtersExpanded || hasFilters) ? 'white' : 'var(--text-secondary)';
+      filterToggleBtn.style.borderColor = (this.filtersExpanded || hasFilters) ? 'var(--primary-color)' : 'var(--border-color)';
+    }
   }
 
   attachPhoneLinkHandler() {
@@ -4386,14 +4489,24 @@ Examples:
         // Handle call conversation click
         this.selectedCallId = item.dataset.callId;
         this.selectedContact = null;
+
+        // Save as last selected for next page load
+        localStorage.setItem('inbox_last_selected_call', this.selectedCallId);
+        localStorage.removeItem('inbox_last_selected_contact');
       } else {
         // Handle SMS conversation click
         this.selectedContact = item.dataset.phone;
         this.selectedCallId = null;
 
-        // Mark this conversation as viewed
+        // Save as last selected for next page load
+        localStorage.setItem('inbox_last_selected_contact', this.selectedContact);
+        localStorage.removeItem('inbox_last_selected_call');
+
+        // Mark this conversation as viewed (both localStorage and in-memory)
         const lastViewedKey = `conversation_last_viewed_sms_${this.selectedContact}`;
         localStorage.setItem(lastViewedKey, new Date().toISOString());
+        this.viewedConversations.add(this.selectedContact);
+        localStorage.setItem('inbox_viewed_conversations', JSON.stringify([...this.viewedConversations]));
 
         // Clear unread count for this conversation
         const conv = this.conversations.find(c => c.type === 'sms' && c.phone === this.selectedContact);

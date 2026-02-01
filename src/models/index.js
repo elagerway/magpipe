@@ -9,3 +9,5 @@ export { CallRecord } from './CallRecord.js';
 export { SmsMessage } from './SmsMessage.js';
 export { AgentConfig } from './AgentConfig.js';
 export { ConversationContext } from './ConversationContext.js';
+export { Organization } from './Organization.js';
+export { OrganizationMember } from './OrganizationMember.js';

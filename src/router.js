@@ -41,6 +41,7 @@ export class Router {
     this.addRoute('/apps', () => import('./pages/apps.js'), true);
     this.addRoute('/knowledge', () => import('./pages/knowledge.js'), true);
     this.addRoute('/settings', () => import('./pages/settings.js'), true);
+    this.addRoute('/team', () => import('./pages/team.js'), true);
     this.addRoute('/bulk-calling', () => import('./pages/bulk-calling.js'), true);
 
     // Admin routes (role-protected)

@@ -2,7 +2,7 @@
  * Settings Page
  */
 
-import { User } from '../models/index.js';
+import { User, Organization } from '../models/index.js';
 import { getCurrentUser, signOut, supabase } from '../lib/supabase.js';
 import { renderBottomNav, clearNavUserCache } from '../components/BottomNav.js';
 import { createAccessCodeSettings, addAccessCodeSettingsStyles } from '../components/AccessCodeSettings.js';
@@ -34,24 +34,26 @@ export default class SettingsPage {
 
     // Use cached data if fetched within last 30 seconds
     const now = Date.now();
-    let profile, billingInfo, notifPrefs, serviceNumbers;
+    let profile, billingInfo, notifPrefs, serviceNumbers, organization;
 
     if (this.cachedData && (now - this.lastFetchTime) < 30000) {
-      ({ profile, billingInfo, notifPrefs, serviceNumbers } = this.cachedData);
+      ({ profile, billingInfo, notifPrefs, serviceNumbers, organization } = this.cachedData);
     } else {
       // Fetch all data in parallel for speed
-      const [profileResult, billingResult, notifResult, numbersResult, calComResult] = await Promise.all([
+      const [profileResult, billingResult, notifResult, numbersResult, calComResult, orgResult] = await Promise.all([
         User.getProfile(user.id),
         supabase.from('users').select('plan, stripe_customer_id, stripe_subscription_id, stripe_subscription_status, stripe_current_period_end').eq('id', user.id).single(),
         supabase.from('notification_preferences').select('*').eq('user_id', user.id).single(),
         supabase.from('service_numbers').select('phone_number, is_active').eq('user_id', user.id).order('is_active', { ascending: false }),
-        supabase.from('users').select('cal_com_access_token, cal_com_user_id').eq('id', user.id).single()
+        supabase.from('users').select('cal_com_access_token, cal_com_user_id').eq('id', user.id).single(),
+        Organization.getForUser(user.id)
       ]);
 
       profile = profileResult.profile;
       billingInfo = billingResult.data;
       notifPrefs = notifResult.data;
       serviceNumbers = numbersResult.data;
+      organization = orgResult.organization;
 
       // Add Cal.com status to profile
       if (calComResult.data) {
@@ -60,7 +62,7 @@ export default class SettingsPage {
       }
 
       // Cache the data
-      this.cachedData = { profile, billingInfo, notifPrefs, serviceNumbers };
+      this.cachedData = { profile, billingInfo, notifPrefs, serviceNumbers, organization };
       this.lastFetchTime = now;
     }
 
@@ -73,6 +75,9 @@ export default class SettingsPage {
       phone_number: profile?.phone_number,
       phone_verified: profile?.phone_verified
     });
+
+    // Store organization for event listeners
+    this.organization = organization;
 
     const activeNumbers = serviceNumbers?.filter(n => n.is_active) || [];
     const inactiveNumbers = serviceNumbers?.filter(n => !n.is_active) || [];
@@ -213,6 +218,19 @@ export default class SettingsPage {
                 <button class="btn btn-sm btn-secondary" id="cancel-phone-btn">Cancel</button>
               </div>
               <p class="text-muted" style="margin-top: 0.5rem; font-size: 0.875rem;">You'll need to verify your new phone number</p>
+            </div>
+          </div>
+
+          <!-- Organization -->
+          <div class="form-group">
+            <label style="font-weight: 600; margin: 0 0 0.5rem 0;">Organization</label>
+            <div id="org-display" style="cursor: pointer; padding: 0.5rem; border-radius: var(--radius-sm); transition: background 0.2s;" onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='transparent'">${organization?.name || 'Click to add'}</div>
+            <div id="org-edit" style="display: none;">
+              <input type="text" id="org-input" class="form-input" value="${organization?.name || ''}" style="margin-bottom: 0.5rem;" />
+              <div style="display: flex; gap: 0.5rem;">
+                <button class="btn btn-sm btn-primary" id="save-org-btn">Save</button>
+                <button class="btn btn-sm btn-secondary" id="cancel-org-btn">Cancel</button>
+              </div>
             </div>
           </div>
 
@@ -385,6 +403,18 @@ export default class SettingsPage {
             <button class="btn btn-secondary btn-full" onclick="navigateTo('/apps')" style="justify-content: flex-start;">
               <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right: 0.5rem;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
               All Apps & Integrations
+            </button>
+          </div>
+        </div>
+
+        <!-- Team (Mobile Only) -->
+        <div class="card mobile-only">
+          <h2>Team</h2>
+          <p class="text-muted" style="margin-bottom: 1rem;">Manage your team members and permissions</p>
+          <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+            <button class="btn btn-secondary btn-full" onclick="navigateTo('/team')" style="justify-content: flex-start;">
+              <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right: 0.5rem;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+              Manage Team
             </button>
           </div>
         </div>
@@ -1278,6 +1308,62 @@ export default class SettingsPage {
         console.error('Save phone error:', error);
         errorMessage.className = 'alert alert-error';
         errorMessage.textContent = 'Failed to save phone number. Please try again.';
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save';
+      }
+    });
+
+    // Organization inline editing
+    document.getElementById('org-display').addEventListener('click', () => {
+      document.getElementById('org-display').style.display = 'none';
+      document.getElementById('org-edit').style.display = 'block';
+      document.getElementById('org-input').focus();
+    });
+
+    document.getElementById('cancel-org-btn').addEventListener('click', () => {
+      document.getElementById('org-display').style.display = 'block';
+      document.getElementById('org-edit').style.display = 'none';
+    });
+
+    document.getElementById('save-org-btn').addEventListener('click', async () => {
+      const saveBtn = document.getElementById('save-org-btn');
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+      errorMessage.classList.add('hidden');
+      successMessage.classList.add('hidden');
+
+      try {
+        if (!this.organization?.id) {
+          throw new Error('No organization found');
+        }
+
+        const newName = document.getElementById('org-input').value.trim();
+        if (!newName) {
+          throw new Error('Organization name cannot be empty');
+        }
+
+        const { error } = await Organization.update(this.organization.id, { name: newName });
+        if (error) throw error;
+
+        // Update display and cache
+        document.getElementById('org-display').textContent = newName;
+        document.getElementById('org-display').style.display = 'block';
+        document.getElementById('org-edit').style.display = 'none';
+        this.organization.name = newName;
+        if (this.cachedData) {
+          this.cachedData.organization = this.organization;
+        }
+
+        successMessage.className = 'alert alert-success';
+        successMessage.textContent = 'Organization name updated successfully';
+        successMessage.classList.remove('hidden');
+        setTimeout(() => successMessage.classList.add('hidden'), 3000);
+      } catch (error) {
+        console.error('Save org error:', error);
+        errorMessage.className = 'alert alert-error';
+        errorMessage.textContent = error.message || 'Failed to save organization name. Please try again.';
+        errorMessage.classList.remove('hidden');
+      } finally {
         saveBtn.disabled = false;
         saveBtn.textContent = 'Save';
       }
