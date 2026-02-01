@@ -131,14 +131,26 @@ export default class AgentDetailPage {
 
     appElement.innerHTML = `
       <div class="container with-bottom-nav" style="max-width: 900px; padding: 1.5rem 1rem;">
-        <!-- Header -->
-        <div class="agent-detail-header">
+        <!-- Back Button Row -->
+        <div class="agent-back-row">
           <button class="back-btn" onclick="navigateTo('/agents')">
             <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
             </svg>
             Agents
           </button>
+          <!-- Mobile-only toggle -->
+          <div class="agent-status-toggle mobile-toggle">
+            <span class="status-label ${this.agent.is_active !== false ? 'active' : 'inactive'}">${this.agent.is_active !== false ? 'Active' : 'Inactive'}</span>
+            <label class="toggle-switch-sm">
+              <input type="checkbox" class="agent-active-toggle-input" ${this.agent.is_active !== false ? 'checked' : ''} />
+              <span class="toggle-slider-sm"></span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Header -->
+        <div class="agent-detail-header">
           <div class="agent-detail-title">
             <div class="agent-detail-avatar" style="background: linear-gradient(135deg, #6366f1, #8b5cf6);">
               ${this.agent.avatar_url
@@ -152,24 +164,37 @@ export default class AgentDetailPage {
                 <span class="agent-id" onclick="navigator.clipboard.writeText('${this.agent.agent_id}'); this.textContent='Copied!'; setTimeout(() => this.textContent='ID: ${this.agent.agent_id?.substring(0, 8)}...', 1500);">
                   ID: ${this.agent.agent_id?.substring(0, 8)}...
                 </span>
-                ${this.agent.is_default ? '<span class="default-badge">Default</span>' : ''}
+                ${this.agent.is_default ? '<span class="default-badge">DEFAULT</span>' : ''}
               </div>
             </div>
           </div>
-          <div class="agent-detail-actions">
-            ${!this.agent.is_default ? `
-              <button class="btn btn-secondary btn-sm" id="set-default-btn">Set as Default</button>
-            ` : ''}
+          <!-- Desktop-only toggle -->
+          <div class="agent-detail-actions desktop-toggle">
+            <div class="agent-status-toggle">
+              <span class="status-label ${this.agent.is_active !== false ? 'active' : 'inactive'}">${this.agent.is_active !== false ? 'Active' : 'Inactive'}</span>
+              <label class="agent-toggle">
+                <input type="checkbox" class="agent-active-toggle-input" ${this.agent.is_active !== false ? 'checked' : ''} />
+                <span class="agent-toggle-slider"></span>
+              </label>
+            </div>
           </div>
         </div>
 
         <!-- Tabs -->
-        <div class="agent-tabs">
-          <button class="agent-tab active" data-tab="configure">Configure</button>
-          <button class="agent-tab" data-tab="prompt">Prompt</button>
-          <button class="agent-tab" data-tab="functions">Functions</button>
-          <button class="agent-tab" data-tab="deployment">Deployment</button>
-          <button class="agent-tab" data-tab="analytics">Analytics</button>
+        <div class="agent-tabs-container">
+          <div class="agent-tabs" id="agent-tabs">
+            <button class="agent-tab active" data-tab="configure">Configure</button>
+            <button class="agent-tab" data-tab="prompt">Prompt</button>
+            <button class="agent-tab" data-tab="functions">Functions</button>
+            <button class="agent-tab" data-tab="deployment">Deployment</button>
+            <button class="agent-tab" data-tab="schedule">Schedule</button>
+            <button class="agent-tab" data-tab="analytics">Analytics</button>
+          </div>
+          <div class="tabs-scroll-indicator" id="tabs-scroll-indicator">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+          </div>
         </div>
 
         <!-- Tab Content -->
@@ -219,6 +244,33 @@ export default class AgentDetailPage {
 
   renderConfigureTab() {
     return `
+      <div class="config-section">
+        <h3>Identity</h3>
+
+        <div class="form-group">
+          <label class="form-label">Organization Name</label>
+          <input type="text" id="organization-name" class="form-input"
+                 placeholder="e.g., ACME Corp"
+                 value="${this.agent.organization_name || ''}">
+          <p class="form-help">The organization your agent represents. Use <code>&lt;organization&gt;</code> in prompts.</p>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Owner Name</label>
+          <input type="text" id="owner-name" class="form-input"
+                 placeholder="e.g., John Smith"
+                 value="${this.agent.owner_name || ''}">
+          <p class="form-help">The person this agent works for. Use <code>&lt;owner&gt;</code> in prompts.</p>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Agent Role</label>
+          <textarea id="agent-role" class="form-textarea" rows="4"
+                    placeholder="e.g., You are a helpful, courteous assistant for ACME Corp. Your duty is to route calls, take messages and book appointments for John Smith.">${this.agent.agent_role || ''}</textarea>
+          <p class="form-help">Define your agent's role and responsibilities. Use <code>&lt;role&gt;</code> in prompts to insert this.</p>
+        </div>
+      </div>
+
       <div class="config-section">
         <h3>Basic Settings</h3>
 
@@ -448,9 +500,9 @@ export default class AgentDetailPage {
         <div class="form-group">
           <label class="form-label toggle-row">
             <span>Backchannel</span>
-            <label class="toggle">
+            <label class="agent-toggle">
               <input type="checkbox" id="backchannel-enabled" ${this.agent.backchannel_enabled !== false ? 'checked' : ''} />
-              <span class="toggle-slider"></span>
+              <span class="agent-toggle-slider"></span>
             </label>
           </label>
           <p class="form-help">Agent says "uh-huh", "I see" while listening</p>
@@ -569,9 +621,9 @@ export default class AgentDetailPage {
         <div class="form-group">
           <label class="form-label toggle-row">
             <span>Priority Sequencing</span>
-            <label class="toggle">
+            <label class="agent-toggle">
               <input type="checkbox" id="priority-sequencing" ${this.agent.priority_sequencing ? 'checked' : ''} />
-              <span class="toggle-slider"></span>
+              <span class="agent-toggle-slider"></span>
             </label>
           </label>
           <p class="form-help">OpenAI fast mode - lower latency (+$0.10/min)</p>
@@ -601,20 +653,48 @@ export default class AgentDetailPage {
   }
 
   renderPromptTab() {
+    // Build the current identity summary
+    const hasIdentity = this.agent.agent_role || this.agent.organization_name || this.agent.owner_name;
+
     return `
       <div class="config-section">
         <h3>System Prompts</h3>
         <p class="section-desc">Define how your agent should behave in conversations.</p>
 
+        ${hasIdentity ? `
+        <div class="identity-summary">
+          <div class="identity-summary-header">
+            <h4>Identity (from Configure tab)</h4>
+            <button type="button" class="btn btn-sm btn-secondary" id="regenerate-prompts-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16"/>
+              </svg>
+              Regenerate Prompts
+            </button>
+          </div>
+          ${this.agent.agent_role ? `<p class="identity-role">${this.agent.agent_role}</p>` : ''}
+          <div class="identity-details">
+            ${this.agent.name ? `<span><strong>Agent:</strong> ${this.agent.name}</span>` : ''}
+            ${this.agent.organization_name ? `<span><strong>Organization:</strong> ${this.agent.organization_name}</span>` : ''}
+            ${this.agent.owner_name ? `<span><strong>Owner:</strong> ${this.agent.owner_name}</span>` : ''}
+          </div>
+        </div>
+        ` : `
+        <div class="identity-empty">
+          <p>Set up your agent's identity in the <strong>Configure</strong> tab to auto-generate prompts.</p>
+          <p class="identity-empty-hint">Fill in Organization Name, Owner Name, and Role to get started.</p>
+        </div>
+        `}
+
         <div class="form-group">
           <label class="form-label">Inbound Prompt</label>
-          <textarea id="system-prompt" class="form-textarea" rows="8" placeholder="Instructions for handling incoming calls...">${this.agent.system_prompt || ''}</textarea>
+          <textarea id="system-prompt" class="form-textarea" rows="10" placeholder="Instructions for handling incoming calls...">${this.agent.system_prompt || ''}</textarea>
           <p class="form-help">How the agent handles incoming calls and messages</p>
         </div>
 
         <div class="form-group">
           <label class="form-label">Outbound Prompt</label>
-          <textarea id="outbound-prompt" class="form-textarea" rows="8" placeholder="Instructions for making outbound calls...">${this.agent.outbound_system_prompt || ''}</textarea>
+          <textarea id="outbound-prompt" class="form-textarea" rows="10" placeholder="Instructions for making outbound calls...">${this.agent.outbound_system_prompt || ''}</textarea>
           <p class="form-help">How the agent behaves when making calls on your behalf</p>
         </div>
       </div>
@@ -770,6 +850,120 @@ export default class AgentDetailPage {
     `;
   }
 
+  renderScheduleTab() {
+    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    const dayLabels = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+    const defaultSchedule = {
+      monday: { enabled: true, start: '09:00', end: '17:00' },
+      tuesday: { enabled: true, start: '09:00', end: '17:00' },
+      wednesday: { enabled: true, start: '09:00', end: '17:00' },
+      thursday: { enabled: true, start: '09:00', end: '17:00' },
+      friday: { enabled: true, start: '09:00', end: '17:00' },
+      saturday: { enabled: false, start: '09:00', end: '17:00' },
+      sunday: { enabled: false, start: '09:00', end: '17:00' },
+    };
+
+    const callsSchedule = this.agent.calls_schedule || null;
+    const textsSchedule = this.agent.texts_schedule || null;
+    const timezone = this.agent.schedule_timezone || 'America/Los_Angeles';
+
+    const renderDayRow = (day, label, schedule, prefix) => {
+      const daySchedule = schedule ? schedule[day] : defaultSchedule[day];
+      const enabled = daySchedule?.enabled ?? defaultSchedule[day].enabled;
+      const start = daySchedule?.start || defaultSchedule[day].start;
+      const end = daySchedule?.end || defaultSchedule[day].end;
+
+      return `
+        <div class="schedule-day-row ${!enabled ? 'disabled' : ''}">
+          <label class="schedule-day-toggle">
+            <input type="checkbox" id="${prefix}-${day}-enabled" ${enabled ? 'checked' : ''} />
+            <span class="schedule-day-name">${label}</span>
+          </label>
+          <div class="schedule-time-inputs">
+            <input type="time" id="${prefix}-${day}-start" class="schedule-time-input" value="${start}" ${!enabled ? 'disabled' : ''} />
+            <span class="schedule-time-separator">to</span>
+            <input type="time" id="${prefix}-${day}-end" class="schedule-time-input" value="${end}" ${!enabled ? 'disabled' : ''} />
+          </div>
+        </div>
+      `;
+    };
+
+    const timezones = [
+      { value: 'America/Los_Angeles', label: 'Pacific Time (Los Angeles)' },
+      { value: 'America/Denver', label: 'Mountain Time (Denver)' },
+      { value: 'America/Chicago', label: 'Central Time (Chicago)' },
+      { value: 'America/New_York', label: 'Eastern Time (New York)' },
+      { value: 'America/Anchorage', label: 'Alaska Time (Anchorage)' },
+      { value: 'Pacific/Honolulu', label: 'Hawaii Time (Honolulu)' },
+      { value: 'America/Phoenix', label: 'Arizona Time (Phoenix)' },
+      { value: 'America/Toronto', label: 'Eastern Time (Toronto)' },
+      { value: 'America/Vancouver', label: 'Pacific Time (Vancouver)' },
+      { value: 'Europe/London', label: 'GMT (London)' },
+      { value: 'Europe/Paris', label: 'CET (Paris)' },
+      { value: 'Asia/Tokyo', label: 'JST (Tokyo)' },
+      { value: 'Australia/Sydney', label: 'AEST (Sydney)' },
+    ];
+
+    return `
+      <div class="config-section">
+        <h3>Schedule Settings</h3>
+        <p class="section-desc">Set when your agent handles calls and texts. Leave empty to always be available.</p>
+
+        <div class="form-group">
+          <label class="form-label">Timezone</label>
+          <select id="schedule-timezone" class="form-select">
+            ${timezones.map(tz => `
+              <option value="${tz.value}" ${timezone === tz.value ? 'selected' : ''}>${tz.label}</option>
+            `).join('')}
+          </select>
+        </div>
+      </div>
+
+      <div class="config-section">
+        <div class="schedule-section-header">
+          <h3>Calls Schedule</h3>
+          <button type="button" class="btn btn-sm btn-secondary" id="apply-calls-to-all">Apply to All Days</button>
+        </div>
+        <p class="section-desc">When your agent will answer phone calls.</p>
+
+        <div class="schedule-grid" id="calls-schedule-grid">
+          ${days.map((day, i) => renderDayRow(day, dayLabels[i], callsSchedule, 'calls')).join('')}
+        </div>
+
+        <div class="schedule-clear-row">
+          <button type="button" class="btn btn-sm btn-secondary" id="clear-calls-schedule">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            </svg>
+            Clear Schedule (Always Available)
+          </button>
+        </div>
+      </div>
+
+      <div class="config-section">
+        <div class="schedule-section-header">
+          <h3>Texts Schedule</h3>
+          <button type="button" class="btn btn-sm btn-secondary" id="apply-texts-to-all">Apply to All Days</button>
+        </div>
+        <p class="section-desc">When your agent will respond to text messages.</p>
+
+        <div class="schedule-grid" id="texts-schedule-grid">
+          ${days.map((day, i) => renderDayRow(day, dayLabels[i], textsSchedule, 'texts')).join('')}
+        </div>
+
+        <div class="schedule-clear-row">
+          <button type="button" class="btn btn-sm btn-secondary" id="clear-texts-schedule">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            </svg>
+            Clear Schedule (Always Available)
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
   formatPhoneNumber(phone) {
     if (!phone) return '';
     const cleaned = phone.replace(/\D/g, '');
@@ -785,10 +979,12 @@ export default class AgentDetailPage {
       tab.addEventListener('click', () => this.switchTab(tab.dataset.tab));
     });
 
-    // Name input
+    // Name input - also triggers prompt regeneration since it's part of identity
     const nameInput = document.getElementById('agent-name-input');
     if (nameInput) {
-      nameInput.addEventListener('input', () => this.scheduleAutoSave({ name: nameInput.value }));
+      nameInput.addEventListener('input', () => {
+        this.onIdentityFieldChange('name', nameInput.value);
+      });
     }
 
     // Set default button
@@ -797,11 +993,80 @@ export default class AgentDetailPage {
       setDefaultBtn.addEventListener('click', () => this.setAsDefault());
     }
 
+    // Active toggles (both mobile and desktop)
+    document.querySelectorAll('.agent-active-toggle-input').forEach(toggle => {
+      toggle.addEventListener('change', (e) => {
+        const isActive = e.target.checked;
+        // Sync both toggles
+        document.querySelectorAll('.agent-active-toggle-input').forEach(t => {
+          t.checked = isActive;
+        });
+        // Update all status labels
+        document.querySelectorAll('.agent-status-toggle .status-label').forEach(label => {
+          label.textContent = isActive ? 'Active' : 'Inactive';
+          label.classList.toggle('active', isActive);
+          label.classList.toggle('inactive', !isActive);
+        });
+        this.scheduleAutoSave({ is_active: isActive });
+      });
+    });
+
+    // Tabs scroll indicator
+    const tabsContainer = document.getElementById('agent-tabs');
+    const scrollIndicator = document.getElementById('tabs-scroll-indicator');
+    if (tabsContainer && scrollIndicator) {
+      const updateScrollIndicator = () => {
+        const hasMoreToScroll = tabsContainer.scrollWidth > tabsContainer.clientWidth &&
+          tabsContainer.scrollLeft < (tabsContainer.scrollWidth - tabsContainer.clientWidth - 10);
+        scrollIndicator.classList.toggle('visible', hasMoreToScroll);
+      };
+
+      // Initial check
+      updateScrollIndicator();
+
+      // Check on scroll
+      tabsContainer.addEventListener('scroll', updateScrollIndicator);
+
+      // Check on resize
+      window.addEventListener('resize', updateScrollIndicator);
+
+      // Click indicator to scroll right
+      scrollIndicator.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        tabsContainer.scrollBy({ left: 150, behavior: 'smooth' });
+      });
+    }
+
     // Attach tab-specific listeners
     this.attachConfigureTabListeners();
   }
 
   attachConfigureTabListeners() {
+    // Organization name input - triggers prompt regeneration
+    const organizationName = document.getElementById('organization-name');
+    if (organizationName) {
+      organizationName.addEventListener('input', () => {
+        this.onIdentityFieldChange('organization_name', organizationName.value);
+      });
+    }
+
+    // Owner name input - triggers prompt regeneration
+    const ownerName = document.getElementById('owner-name');
+    if (ownerName) {
+      ownerName.addEventListener('input', () => {
+        this.onIdentityFieldChange('owner_name', ownerName.value);
+      });
+    }
+
+    // Agent role textarea - triggers prompt regeneration
+    const agentRole = document.getElementById('agent-role');
+    if (agentRole) {
+      agentRole.addEventListener('input', () => {
+        this.onIdentityFieldChange('agent_role', agentRole.value);
+      });
+    }
+
     // Agent type radio buttons
     document.querySelectorAll('input[name="agent_type"]').forEach(radio => {
       radio.addEventListener('change', (e) => {
@@ -1079,16 +1344,28 @@ export default class AgentDetailPage {
   }
 
   attachPromptTabListeners() {
+    // Regenerate prompts button
+    const regenerateBtn = document.getElementById('regenerate-prompts-btn');
+    if (regenerateBtn) {
+      regenerateBtn.addEventListener('click', () => {
+        this.regeneratePrompts();
+      });
+    }
+
+    // System prompt textarea - also update local state when user edits
     const systemPrompt = document.getElementById('system-prompt');
     if (systemPrompt) {
       systemPrompt.addEventListener('input', () => {
+        this.agent.system_prompt = systemPrompt.value;
         this.scheduleAutoSave({ system_prompt: systemPrompt.value });
       });
     }
 
+    // Outbound prompt textarea - also update local state when user edits
     const outboundPrompt = document.getElementById('outbound-prompt');
     if (outboundPrompt) {
       outboundPrompt.addEventListener('input', () => {
+        this.agent.outbound_system_prompt = outboundPrompt.value;
         this.scheduleAutoSave({ outbound_system_prompt: outboundPrompt.value });
       });
     }
@@ -1136,6 +1413,169 @@ export default class AgentDetailPage {
     }
   }
 
+  attachScheduleTabListeners() {
+    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+
+    // Timezone dropdown
+    const timezoneSelect = document.getElementById('schedule-timezone');
+    if (timezoneSelect) {
+      timezoneSelect.addEventListener('change', () => {
+        this.scheduleAutoSave({ schedule_timezone: timezoneSelect.value });
+      });
+    }
+
+    // Helper to build schedule object from form
+    const buildSchedule = (prefix) => {
+      const schedule = {};
+      days.forEach(day => {
+        const enabledCheckbox = document.getElementById(`${prefix}-${day}-enabled`);
+        const startInput = document.getElementById(`${prefix}-${day}-start`);
+        const endInput = document.getElementById(`${prefix}-${day}-end`);
+        schedule[day] = {
+          enabled: enabledCheckbox?.checked ?? false,
+          start: startInput?.value || '09:00',
+          end: endInput?.value || '17:00',
+        };
+      });
+      return schedule;
+    };
+
+    // Helper to save schedule
+    const saveCallsSchedule = () => {
+      const schedule = buildSchedule('calls');
+      this.agent.calls_schedule = schedule;
+      this.scheduleAutoSave({ calls_schedule: schedule });
+    };
+
+    const saveTextsSchedule = () => {
+      const schedule = buildSchedule('texts');
+      this.agent.texts_schedule = schedule;
+      this.scheduleAutoSave({ texts_schedule: schedule });
+    };
+
+    // Attach listeners for calls schedule
+    days.forEach(day => {
+      const enabledCheckbox = document.getElementById(`calls-${day}-enabled`);
+      const startInput = document.getElementById(`calls-${day}-start`);
+      const endInput = document.getElementById(`calls-${day}-end`);
+      const row = enabledCheckbox?.closest('.schedule-day-row');
+
+      if (enabledCheckbox) {
+        enabledCheckbox.addEventListener('change', () => {
+          const enabled = enabledCheckbox.checked;
+          if (startInput) startInput.disabled = !enabled;
+          if (endInput) endInput.disabled = !enabled;
+          if (row) row.classList.toggle('disabled', !enabled);
+          saveCallsSchedule();
+        });
+      }
+      if (startInput) startInput.addEventListener('change', saveCallsSchedule);
+      if (endInput) endInput.addEventListener('change', saveCallsSchedule);
+    });
+
+    // Attach listeners for texts schedule
+    days.forEach(day => {
+      const enabledCheckbox = document.getElementById(`texts-${day}-enabled`);
+      const startInput = document.getElementById(`texts-${day}-start`);
+      const endInput = document.getElementById(`texts-${day}-end`);
+      const row = enabledCheckbox?.closest('.schedule-day-row');
+
+      if (enabledCheckbox) {
+        enabledCheckbox.addEventListener('change', () => {
+          const enabled = enabledCheckbox.checked;
+          if (startInput) startInput.disabled = !enabled;
+          if (endInput) endInput.disabled = !enabled;
+          if (row) row.classList.toggle('disabled', !enabled);
+          saveTextsSchedule();
+        });
+      }
+      if (startInput) startInput.addEventListener('change', saveTextsSchedule);
+      if (endInput) endInput.addEventListener('change', saveTextsSchedule);
+    });
+
+    // Apply to all days buttons
+    const applyCallsBtn = document.getElementById('apply-calls-to-all');
+    if (applyCallsBtn) {
+      applyCallsBtn.addEventListener('click', () => {
+        // Get values from the first day (Monday)
+        const mondayEnabled = document.getElementById('calls-monday-enabled')?.checked ?? true;
+        const mondayStart = document.getElementById('calls-monday-start')?.value || '09:00';
+        const mondayEnd = document.getElementById('calls-monday-end')?.value || '17:00';
+
+        days.forEach(day => {
+          const enabledCheckbox = document.getElementById(`calls-${day}-enabled`);
+          const startInput = document.getElementById(`calls-${day}-start`);
+          const endInput = document.getElementById(`calls-${day}-end`);
+          const row = enabledCheckbox?.closest('.schedule-day-row');
+
+          if (enabledCheckbox) enabledCheckbox.checked = mondayEnabled;
+          if (startInput) {
+            startInput.value = mondayStart;
+            startInput.disabled = !mondayEnabled;
+          }
+          if (endInput) {
+            endInput.value = mondayEnd;
+            endInput.disabled = !mondayEnabled;
+          }
+          if (row) row.classList.toggle('disabled', !mondayEnabled);
+        });
+
+        saveCallsSchedule();
+      });
+    }
+
+    const applyTextsBtn = document.getElementById('apply-texts-to-all');
+    if (applyTextsBtn) {
+      applyTextsBtn.addEventListener('click', () => {
+        // Get values from the first day (Monday)
+        const mondayEnabled = document.getElementById('texts-monday-enabled')?.checked ?? true;
+        const mondayStart = document.getElementById('texts-monday-start')?.value || '09:00';
+        const mondayEnd = document.getElementById('texts-monday-end')?.value || '17:00';
+
+        days.forEach(day => {
+          const enabledCheckbox = document.getElementById(`texts-${day}-enabled`);
+          const startInput = document.getElementById(`texts-${day}-start`);
+          const endInput = document.getElementById(`texts-${day}-end`);
+          const row = enabledCheckbox?.closest('.schedule-day-row');
+
+          if (enabledCheckbox) enabledCheckbox.checked = mondayEnabled;
+          if (startInput) {
+            startInput.value = mondayStart;
+            startInput.disabled = !mondayEnabled;
+          }
+          if (endInput) {
+            endInput.value = mondayEnd;
+            endInput.disabled = !mondayEnabled;
+          }
+          if (row) row.classList.toggle('disabled', !mondayEnabled);
+        });
+
+        saveTextsSchedule();
+      });
+    }
+
+    // Clear schedule buttons
+    const clearCallsBtn = document.getElementById('clear-calls-schedule');
+    if (clearCallsBtn) {
+      clearCallsBtn.addEventListener('click', () => {
+        this.agent.calls_schedule = null;
+        this.scheduleAutoSave({ calls_schedule: null });
+        // Re-render to show default state
+        this.switchTab('schedule');
+      });
+    }
+
+    const clearTextsBtn = document.getElementById('clear-texts-schedule');
+    if (clearTextsBtn) {
+      clearTextsBtn.addEventListener('click', () => {
+        this.agent.texts_schedule = null;
+        this.scheduleAutoSave({ texts_schedule: null });
+        // Re-render to show default state
+        this.switchTab('schedule');
+      });
+    }
+  }
+
   async switchTab(tabName) {
     this.activeTab = tabName;
 
@@ -1162,6 +1602,10 @@ export default class AgentDetailPage {
       case 'deployment':
         tabContent.innerHTML = this.renderDeploymentTab();
         this.attachDeploymentTabListeners();
+        break;
+      case 'schedule':
+        tabContent.innerHTML = this.renderScheduleTab();
+        this.attachScheduleTabListeners();
         break;
       case 'analytics':
         tabContent.innerHTML = this.renderAnalyticsTab();
@@ -1381,15 +1825,210 @@ export default class AgentDetailPage {
     }
   }
 
+  /**
+   * Generate inbound prompt from identity fields
+   */
+  generateInboundPrompt() {
+    const agentName = this.agent.name || 'Pat';
+    const organization = this.agent.organization_name || '';
+    const owner = this.agent.owner_name || '';
+    const role = this.agent.agent_role || '';
+
+    let prompt = '';
+
+    // Start with the role if defined
+    if (role) {
+      prompt = role + '\n\n';
+    } else {
+      // Default role based on identity
+      prompt = `You are ${agentName}`;
+      if (organization) {
+        prompt += `, a professional AI assistant for ${organization}`;
+      }
+      if (owner) {
+        prompt += `. You work on behalf of ${owner}`;
+      }
+      prompt += '.\n\n';
+    }
+
+    // Add inbound-specific instructions
+    prompt += `When someone calls:\n`;
+    prompt += `1. Greet them warmly and introduce yourself as ${agentName}`;
+    if (organization) {
+      prompt += ` from ${organization}`;
+    }
+    prompt += `\n`;
+    prompt += `2. Ask for their name and the purpose of their call\n`;
+    prompt += `3. Be helpful, professional, and courteous\n`;
+
+    if (owner) {
+      prompt += `\nYou are answering calls on behalf of ${owner}. `;
+      prompt += `Offer to take a message, transfer the call, or schedule a callback as appropriate.`;
+    }
+
+    return prompt;
+  }
+
+  /**
+   * Generate outbound prompt from identity fields
+   */
+  generateOutboundPrompt() {
+    const agentName = this.agent.name || 'Pat';
+    const organization = this.agent.organization_name || '';
+    const owner = this.agent.owner_name || '';
+    const role = this.agent.agent_role || '';
+
+    let prompt = '';
+
+    // Start with the role if defined
+    if (role) {
+      prompt = role + '\n\n';
+    } else {
+      // Default role based on identity
+      prompt = `You are ${agentName}`;
+      if (organization) {
+        prompt += `, a professional AI assistant for ${organization}`;
+      }
+      if (owner) {
+        prompt += `, making calls on behalf of ${owner}`;
+      }
+      prompt += '.\n\n';
+    }
+
+    // Add outbound-specific instructions
+    prompt += `THIS IS AN OUTBOUND CALL - you called them, they did not call you.\n\n`;
+    prompt += `When the call is answered:\n`;
+    prompt += `1. Introduce yourself: "Hi, this is ${agentName}`;
+    if (organization) {
+      prompt += ` from ${organization}`;
+    }
+    if (owner) {
+      prompt += ` calling on behalf of ${owner}`;
+    }
+    prompt += `"\n`;
+    prompt += `2. Clearly state the purpose of your call\n`;
+    prompt += `3. Be respectful of their time\n\n`;
+    prompt += `If you reach voicemail, leave a clear message with who you are and how to reach back.`;
+
+    return prompt;
+  }
+
+  /**
+   * Regenerate both prompts from identity fields
+   */
+  regeneratePrompts() {
+    const inboundPrompt = this.generateInboundPrompt();
+    const outboundPrompt = this.generateOutboundPrompt();
+
+    // Update local state
+    this.agent.system_prompt = inboundPrompt;
+    this.agent.outbound_system_prompt = outboundPrompt;
+
+    // Update UI if on prompt tab
+    const systemPromptEl = document.getElementById('system-prompt');
+    const outboundPromptEl = document.getElementById('outbound-prompt');
+    if (systemPromptEl) systemPromptEl.value = inboundPrompt;
+    if (outboundPromptEl) outboundPromptEl.value = outboundPrompt;
+
+    // Save to database
+    this.scheduleAutoSave({
+      system_prompt: inboundPrompt,
+      outbound_system_prompt: outboundPrompt
+    });
+  }
+
+  /**
+   * Called when identity fields change - optionally auto-regenerate prompts
+   */
+  onIdentityFieldChange(field, value) {
+    // Update local state and save
+    this.agent[field] = value;
+    this.scheduleAutoSave({ [field]: value });
+
+    // If prompts are empty or user hasn't customized them much, auto-regenerate
+    const hasCustomPrompt = this.agent.system_prompt && this.agent.system_prompt.length > 100;
+    if (!hasCustomPrompt) {
+      this.regeneratePrompts();
+    }
+  }
+
   addStyles() {
     if (document.getElementById('agent-detail-styles')) return;
 
     const styles = document.createElement('style');
     styles.id = 'agent-detail-styles';
     styles.textContent = `
+      .agent-back-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 1rem;
+      }
+
+      .mobile-toggle.agent-status-toggle {
+        display: none;
+      }
+
+      .desktop-toggle.agent-detail-actions {
+        display: block;
+      }
+
+      /* Small toggle for mobile */
+      .toggle-switch-sm {
+        position: relative;
+        display: inline-block;
+        width: 36px;
+        height: 20px;
+        flex-shrink: 0;
+      }
+
+      .toggle-switch-sm input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+      }
+
+      .toggle-slider-sm {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: var(--border-color);
+        transition: 0.3s;
+        border-radius: 20px;
+      }
+
+      .toggle-slider-sm:before {
+        position: absolute;
+        content: "";
+        height: 14px;
+        width: 14px;
+        left: 3px;
+        bottom: 3px;
+        background-color: white;
+        transition: 0.3s;
+        border-radius: 50%;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+      }
+
+      .toggle-switch-sm input:checked + .toggle-slider-sm {
+        background-color: var(--primary-color);
+      }
+
+      .toggle-switch-sm input:checked + .toggle-slider-sm:before {
+        transform: translateX(16px);
+      }
+
+      .mobile-toggle .status-label {
+        font-size: 0.75rem;
+      }
+
       .agent-detail-header {
         display: flex;
         align-items: center;
+        justify-content: space-between;
         gap: 1rem;
         margin-bottom: 1.5rem;
         flex-wrap: wrap;
@@ -1411,6 +2050,25 @@ export default class AgentDetailPage {
 
       .back-btn:hover {
         color: var(--primary-color);
+      }
+
+      .agent-status-toggle {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+      }
+
+      .agent-status-toggle .status-label {
+        font-size: 0.875rem;
+        font-weight: 500;
+      }
+
+      .agent-status-toggle .status-label.active {
+        color: var(--success-color, #22c55e);
+      }
+
+      .agent-status-toggle .status-label.inactive {
+        color: var(--text-secondary);
       }
 
       .agent-detail-title {
@@ -1489,13 +2147,45 @@ export default class AgentDetailPage {
         text-transform: uppercase;
       }
 
+      .agent-tabs-container {
+        position: relative;
+        margin-bottom: 1.5rem;
+      }
+
       .agent-tabs {
         display: flex;
         gap: 0.25rem;
-        border-bottom: 1px solid var(--border-color);
-        margin-bottom: 1.5rem;
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+      }
+
+      .agent-tabs::-webkit-scrollbar {
+        display: none;
+      }
+
+      .tabs-scroll-indicator {
+        display: none;
+        position: absolute;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        width: 40px;
+        background: linear-gradient(to right, transparent, white 50%);
+        align-items: center;
+        justify-content: flex-end;
+        color: var(--text-secondary);
+        z-index: 5;
+        cursor: default;
+      }
+
+      .tabs-scroll-indicator svg {
+        pointer-events: none;
+      }
+
+      .tabs-scroll-indicator.visible {
+        display: flex;
       }
 
       .agent-tab {
@@ -1542,6 +2232,129 @@ export default class AgentDetailPage {
         color: var(--text-secondary);
         font-size: 0.875rem;
         margin: 0 0 1.25rem 0;
+      }
+
+      .variables-reference {
+        background: linear-gradient(135deg, rgba(99, 102, 241, 0.05), rgba(139, 92, 246, 0.05));
+        border: 1px solid rgba(99, 102, 241, 0.2);
+        border-radius: var(--radius-md);
+        padding: 1rem;
+        margin-bottom: 1.5rem;
+      }
+
+      .variables-reference h4 {
+        margin: 0 0 0.5rem 0;
+        font-size: 0.9rem;
+        color: var(--primary-color);
+      }
+
+      .variables-reference p {
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+        margin: 0 0 0.75rem 0;
+      }
+
+      .variables-reference ul {
+        list-style: none;
+        padding: 0;
+        margin: 0 0 0.75rem 0;
+      }
+
+      .variables-reference li {
+        font-size: 0.85rem;
+        padding: 0.25rem 0;
+        color: var(--text-primary);
+      }
+
+      .variables-reference code {
+        background: rgba(99, 102, 241, 0.1);
+        color: var(--primary-color);
+        padding: 0.15rem 0.4rem;
+        border-radius: var(--radius-sm);
+        font-family: 'SF Mono', Monaco, Consolas, monospace;
+        font-size: 0.8rem;
+      }
+
+      .variables-reference .example {
+        font-style: italic;
+        font-size: 0.8rem;
+        color: var(--text-tertiary);
+        margin: 0;
+      }
+
+      /* Identity Summary in Prompt Tab */
+      .identity-summary {
+        background: linear-gradient(135deg, rgba(34, 197, 94, 0.05), rgba(16, 185, 129, 0.05));
+        border: 1px solid rgba(34, 197, 94, 0.2);
+        border-radius: var(--radius-md);
+        padding: 1rem;
+        margin-bottom: 1.5rem;
+      }
+
+      .identity-summary-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.75rem;
+      }
+
+      .identity-summary-header h4 {
+        margin: 0;
+        font-size: 0.9rem;
+        color: #16a34a;
+      }
+
+      .identity-summary-header .btn {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+      }
+
+      .identity-role {
+        font-size: 0.9rem;
+        color: var(--text-primary);
+        margin: 0 0 0.75rem 0;
+        padding: 0.75rem;
+        background: white;
+        border-radius: var(--radius-sm);
+        border-left: 3px solid #22c55e;
+      }
+
+      .identity-details {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+      }
+
+      .identity-details span {
+        white-space: nowrap;
+      }
+
+      .identity-details strong {
+        color: var(--text-primary);
+      }
+
+      .identity-empty {
+        background: var(--bg-secondary);
+        border: 1px dashed var(--border-color);
+        border-radius: var(--radius-md);
+        padding: 1.5rem;
+        text-align: center;
+        margin-bottom: 1.5rem;
+      }
+
+      .identity-empty p {
+        margin: 0;
+        font-size: 0.9rem;
+        color: var(--text-secondary);
+      }
+
+      .identity-empty-hint {
+        margin-top: 0.5rem !important;
+        font-size: 0.8rem !important;
+        color: var(--text-tertiary) !important;
       }
 
       .agent-type-selector {
@@ -1813,13 +2626,22 @@ export default class AgentDetailPage {
         margin-top: 0.35rem;
       }
 
+      .form-help code {
+        background: rgba(99, 102, 241, 0.1);
+        color: var(--primary-color);
+        padding: 0.1rem 0.3rem;
+        border-radius: var(--radius-sm);
+        font-family: 'SF Mono', Monaco, Consolas, monospace;
+        font-size: 0.75rem;
+      }
+
       .toggle-row {
         display: flex;
         justify-content: space-between;
         align-items: center;
       }
 
-      .toggle {
+      .agent-toggle {
         position: relative;
         display: inline-block;
         width: 44px;
@@ -1827,13 +2649,13 @@ export default class AgentDetailPage {
         flex-shrink: 0;
       }
 
-      .toggle input {
+      .agent-toggle input {
         opacity: 0;
         width: 0;
         height: 0;
       }
 
-      .toggle-slider {
+      .agent-toggle-slider {
         position: absolute;
         cursor: pointer;
         top: 0;
@@ -1845,7 +2667,7 @@ export default class AgentDetailPage {
         border-radius: 24px;
       }
 
-      .toggle-slider:before {
+      .agent-toggle-slider:before {
         position: absolute;
         content: "";
         height: 18px;
@@ -1858,11 +2680,11 @@ export default class AgentDetailPage {
         box-shadow: 0 1px 3px rgba(0,0,0,0.2);
       }
 
-      .toggle input:checked + .toggle-slider {
+      .agent-toggle input:checked + .agent-toggle-slider {
         background-color: var(--primary-color);
       }
 
-      .toggle input:checked + .toggle-slider:before {
+      .agent-toggle input:checked + .agent-toggle-slider:before {
         transform: translateX(20px);
       }
 
@@ -2130,6 +2952,14 @@ export default class AgentDetailPage {
       }
 
       @media (max-width: 600px) {
+        .mobile-toggle.agent-status-toggle {
+          display: flex;
+        }
+
+        .desktop-toggle.agent-detail-actions {
+          display: none;
+        }
+
         .agent-detail-header {
           flex-direction: column;
           align-items: flex-start;
@@ -2143,11 +2973,18 @@ export default class AgentDetailPage {
           width: 100%;
         }
 
-        .agent-tabs {
+        .agent-tabs-container {
           margin-left: -1rem;
           margin-right: -1rem;
+        }
+
+        .agent-tabs {
           padding-left: 1rem;
-          padding-right: 1rem;
+          padding-right: 2rem;
+        }
+
+        .tabs-scroll-indicator {
+          right: 0;
         }
 
         .agent-tab {

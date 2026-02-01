@@ -142,19 +142,13 @@ export default class AgentsPage {
       const card = createAgentCard(agent, {
         onOpen: (agentId) => this.openAgent(agentId),
         onDelete: (agentId) => this.deleteAgent(agentId),
+        onToggleActive: (agentId, isActive) => this.toggleAgentActive(agentId, isActive),
       });
       grid.appendChild(card);
     });
 
-    // Add "Create New Agent" card
-    const newCard = document.createElement('div');
-    newCard.className = 'agent-card agent-card-new';
-    newCard.innerHTML = `
-      <div class="agent-card-new-icon">+</div>
-      <span class="agent-card-new-text">Create New Agent</span>
-    `;
-    newCard.addEventListener('click', () => this.createNewAgent());
-    grid.appendChild(newCard);
+    // Note: "Create New Agent" tile removed - use "+ New Agent" button in header instead
+    // Empty state already shows "Create Your First Agent" when no agents exist
   }
 
   attachEventListeners() {
@@ -219,6 +213,29 @@ export default class AgentsPage {
     } catch (err) {
       console.error('Error deleting agent:', err);
       alert('Failed to delete agent. Please try again.');
+    }
+  }
+
+  async toggleAgentActive(agentId, isActive) {
+    try {
+      const { error } = await AgentConfig.updateById(agentId, { is_active: isActive });
+
+      if (error) {
+        console.error('Error updating agent:', error);
+        // Revert the toggle in UI
+        this.renderAgentCards();
+        return;
+      }
+
+      // Update local state
+      const agent = this.agents.find(a => a.id === agentId);
+      if (agent) {
+        agent.is_active = isActive;
+      }
+    } catch (err) {
+      console.error('Error updating agent:', err);
+      // Revert the toggle in UI
+      this.renderAgentCards();
     }
   }
 

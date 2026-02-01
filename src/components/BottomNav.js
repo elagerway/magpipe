@@ -8,6 +8,7 @@ import { supabase, getCurrentUser } from '../lib/supabase.js';
 // Global unread count
 let unreadCount = 0;
 let unreadSubscription = null;
+let inboxManagedCount = false; // When true, inbox.js is managing the count - don't override
 
 // Cached user data for nav (avoids refetching on every page)
 let cachedUserData = null;
@@ -17,6 +18,9 @@ let userDataFetchPromise = null;
 export async function initUnreadTracking() {
   const { user } = await getCurrentUser();
   if (!user) return;
+
+  // If inbox.js is managing the count, don't override with database query
+  if (inboxManagedCount) return;
 
   // Get initial unread count
   await updateUnreadCount(user.id);
@@ -46,28 +50,55 @@ export async function initUnreadTracking() {
 }
 
 async function updateUnreadCount(userId) {
-  // Get last viewed timestamp from localStorage
-  const lastViewed = localStorage.getItem('inbox_last_viewed');
+  // Use per-conversation tracking (same logic as inbox.js)
+  // This ensures the badge matches what inbox.js shows
+  try {
+    // Load viewed conversations from localStorage
+    const savedViewed = localStorage.getItem('inbox_viewed_conversations');
+    const viewedConversations = savedViewed ? new Set(JSON.parse(savedViewed)) : new Set();
 
-  if (lastViewed) {
-    // Count only messages received after last view
-    const { count } = await supabase
+    // Get recent inbound messages (last 30 days for performance)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const { data: messages } = await supabase
       .from('sms_messages')
-      .select('*', { count: 'exact', head: true })
+      .select('sender_number, sent_at, created_at')
       .eq('user_id', userId)
       .eq('direction', 'inbound')
-      .gt('created_at', lastViewed);
+      .gte('created_at', thirtyDaysAgo.toISOString())
+      .order('created_at', { ascending: false });
 
-    unreadCount = count || 0;
-  } else {
-    // First time - count all inbound messages
-    const { count } = await supabase
-      .from('sms_messages')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('direction', 'inbound');
+    if (!messages || messages.length === 0) {
+      unreadCount = 0;
+      return;
+    }
 
-    unreadCount = count || 0;
+    // Count unread per conversation (same logic as inbox.js)
+    const unreadByPhone = {};
+    messages.forEach(msg => {
+      const phone = msg.sender_number;
+
+      // Skip if already viewed in this session
+      if (viewedConversations.has(phone)) {
+        return;
+      }
+
+      // Check per-conversation last viewed timestamp
+      const lastViewedKey = `conversation_last_viewed_sms_${phone}`;
+      const lastViewed = localStorage.getItem(lastViewedKey);
+      const msgDate = new Date(msg.sent_at || msg.created_at || Date.now());
+
+      if (!lastViewed || msgDate > new Date(lastViewed)) {
+        unreadByPhone[phone] = (unreadByPhone[phone] || 0) + 1;
+      }
+    });
+
+    // Sum up unread from all conversations
+    unreadCount = Object.values(unreadByPhone).reduce((sum, count) => sum + count, 0);
+  } catch (error) {
+    console.error('Error updating unread count:', error);
+    unreadCount = 0;
   }
 }
 
@@ -92,8 +123,14 @@ export function clearUnreadBadge() {
 
 // Set unread count directly (called from inbox.js with actual conversation counts)
 export function setUnreadBadgeCount(count) {
+  inboxManagedCount = true; // Inbox is now managing the count
   unreadCount = count;
   updateBadge();
+}
+
+// Reset the inbox managed flag (called when leaving inbox page)
+export function resetInboxManagedCount() {
+  inboxManagedCount = false;
 }
 
 // Clear cached user data (call after profile updates)
@@ -282,6 +319,12 @@ export function renderBottomNav(currentPath = '/agent') {
       label: 'Contacts'
     },
     {
+      path: '/settings',
+      icon: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>`,
+      label: 'Settings',
+      mobileOnly: true
+    },
+    {
       path: '/apps',
       icon: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>`,
       label: 'Apps',
@@ -324,13 +367,14 @@ export function renderBottomNav(currentPath = '/agent') {
         ${navItems.map(item => `
           <button
             id="${item.isPhone ? 'phone-nav-btn' : ''}"
-            class="bottom-nav-item ${currentPath === item.path ? 'active' : ''}${item.desktopOnly ? ' desktop-only' : ''}"
+            class="bottom-nav-item ${currentPath === item.path ? 'active' : ''}${item.desktopOnly ? ' desktop-only' : ''}${item.mobileOnly ? ' mobile-only' : ''}"
             onclick="navigateTo('${item.path}')"
-            style="position: relative;"
           >
-            ${item.icon}
+            <span class="nav-icon-wrapper">
+              ${item.icon}
+              ${item.badge ? `<span id="inbox-badge" class="nav-badge" style="display: none;">0</span>` : ''}
+            </span>
             <span>${item.label}</span>
-            ${item.badge ? `<span id="inbox-badge" class="nav-badge" style="display: none;">0</span>` : ''}
           </button>
         `).join('')}
       </div>
@@ -389,7 +433,7 @@ export function renderBottomNav(currentPath = '/agent') {
 
         <div class="nav-modal-divider"></div>
 
-        <button class="nav-modal-item" onclick="navigateTo('/settings'); closeUserModal();">
+        <button class="nav-modal-item" onclick="navigateTo('/team'); closeUserModal();">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
             <circle cx="9" cy="7" r="4"></circle>

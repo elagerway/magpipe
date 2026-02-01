@@ -185,7 +185,7 @@ class SIPClient {
         },
       };
 
-      const options = {
+      const callOptions = {
         eventHandlers,
         mediaConstraints: {
           audio: true,
@@ -212,10 +212,10 @@ class SIPClient {
 
       // Add display name for CNAM (caller name)
       if (displayName) {
-        options.fromDisplayName = displayName;
+        callOptions.fromDisplayName = displayName;
       }
 
-      this.currentSession = this.userAgent.call(cleanNumber, options);
+      this.currentSession = this.userAgent.call(cleanNumber, callOptions);
 
       return this.currentSession;
     } catch (error) {

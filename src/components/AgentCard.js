@@ -46,9 +46,10 @@ function formatRelativeTime(date) {
  * @param {object} agent - Agent config data
  * @param {function} onOpen - Callback when Open button clicked
  * @param {function} onDelete - Callback when Delete button clicked
+ * @param {function} onToggleActive - Callback when active toggle changed
  * @returns {HTMLElement}
  */
-export function createAgentCard(agent, { onOpen, onDelete }) {
+export function createAgentCard(agent, { onOpen, onDelete, onToggleActive }) {
   const card = document.createElement('div');
   card.className = 'agent-card';
   card.dataset.agentId = agent.id;
@@ -56,6 +57,7 @@ export function createAgentCard(agent, { onOpen, onDelete }) {
   const typeColors = TYPE_COLORS[agent.agent_type] || TYPE_COLORS.inbound;
   const initials = getAgentInitials(agent.name);
   const lastEdited = formatRelativeTime(agent.updated_at);
+  const isActive = agent.is_active !== false;
 
   card.innerHTML = `
     <div class="agent-card-header">
@@ -65,7 +67,13 @@ export function createAgentCard(agent, { onOpen, onDelete }) {
           : `<span>${initials}</span>`
         }
       </div>
-      ${agent.is_default ? `<span class="agent-default-badge">Default</span>` : ''}
+      <div class="agent-card-toggle">
+        <span class="agent-card-status ${isActive ? 'active' : 'inactive'}">${isActive ? 'Active' : 'Inactive'}</span>
+        <label class="agent-card-switch">
+          <input type="checkbox" class="agent-active-checkbox" ${isActive ? 'checked' : ''} />
+          <span class="agent-card-slider"></span>
+        </label>
+      </div>
     </div>
     <div class="agent-card-body">
       <h3 class="agent-name">${agent.name || 'Unnamed Agent'}</h3>
@@ -87,6 +95,7 @@ export function createAgentCard(agent, { onOpen, onDelete }) {
   // Attach event listeners
   const openBtn = card.querySelector('.agent-open-btn');
   const deleteBtn = card.querySelector('.agent-delete-btn');
+  const activeCheckbox = card.querySelector('.agent-active-checkbox');
 
   if (openBtn && onOpen) {
     openBtn.addEventListener('click', (e) => {
@@ -105,6 +114,25 @@ export function createAgentCard(agent, { onOpen, onDelete }) {
       if (confirm(`Are you sure you want to delete "${agent.name}"? This cannot be undone.`)) {
         deleteBtn.disabled = true;
         onDelete(agent.id);
+      }
+    });
+  }
+
+  if (activeCheckbox) {
+    activeCheckbox.addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
+    activeCheckbox.addEventListener('change', (e) => {
+      e.stopPropagation();
+      const newIsActive = e.target.checked;
+      const statusLabel = card.querySelector('.agent-card-status');
+      if (statusLabel) {
+        statusLabel.textContent = newIsActive ? 'Active' : 'Inactive';
+        statusLabel.classList.toggle('active', newIsActive);
+        statusLabel.classList.toggle('inactive', !newIsActive);
+      }
+      if (onToggleActive) {
+        onToggleActive(agent.id, newIsActive);
       }
     });
   }
@@ -175,15 +203,70 @@ export function addAgentCardStyles() {
       object-fit: cover;
     }
 
-    .agent-default-badge {
-      background: var(--primary-color);
-      color: white;
-      font-size: 0.65rem;
-      font-weight: 600;
-      padding: 0.2rem 0.5rem;
-      border-radius: var(--radius-sm);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
+    .agent-card-toggle {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .agent-card-status {
+      font-size: 0.7rem;
+      font-weight: 500;
+    }
+
+    .agent-card-status.active {
+      color: var(--success-color, #22c55e);
+    }
+
+    .agent-card-status.inactive {
+      color: var(--text-tertiary);
+    }
+
+    .agent-card-switch {
+      position: relative;
+      display: inline-block;
+      width: 32px;
+      height: 18px;
+      flex-shrink: 0;
+    }
+
+    .agent-card-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .agent-card-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: var(--border-color);
+      transition: 0.3s;
+      border-radius: 18px;
+    }
+
+    .agent-card-slider:before {
+      position: absolute;
+      content: "";
+      height: 12px;
+      width: 12px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: 0.3s;
+      border-radius: 50%;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+    }
+
+    .agent-card-switch input:checked + .agent-card-slider {
+      background-color: var(--primary-color);
+    }
+
+    .agent-card-switch input:checked + .agent-card-slider:before {
+      transform: translateX(14px);
     }
 
     .agent-card-body {

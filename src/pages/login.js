@@ -3,6 +3,7 @@
  */
 
 import { User } from '../models/User.js';
+import { supabase } from '../lib/supabase.js';
 
 export default class LoginPage {
   async render() {
@@ -194,6 +195,9 @@ export default class LoginPage {
         if (!profile) {
           await User.createProfile(user.id, email, user.user_metadata?.name || 'User');
           navigateTo('/verify-phone');
+        } else if (profile.must_change_password) {
+          // Redirect to password change flow for invited users
+          this.showPasswordChangeModal(user.id);
         } else if (!profile.phone_verified) {
           navigateTo('/verify-phone');
         } else {
@@ -207,6 +211,141 @@ export default class LoginPage {
         // Re-enable form
         submitBtn.disabled = false;
         submitBtn.textContent = 'Sign In';
+      }
+    });
+  }
+
+  showPasswordChangeModal(userId) {
+    // Create modal overlay
+    const modalHtml = `
+      <div id="password-change-modal" style="
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        padding: 1rem;
+      ">
+        <div style="
+          background: var(--bg-primary, white);
+          border-radius: 12px;
+          padding: 2rem;
+          max-width: 400px;
+          width: 100%;
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        ">
+          <h2 style="margin: 0 0 0.5rem 0;">Change Your Password</h2>
+          <p style="color: var(--text-secondary); margin: 0 0 1.5rem 0;">
+            You're using a temporary password. Please set a new password to continue.
+          </p>
+
+          <div id="password-change-error" class="hidden" style="margin-bottom: 1rem;"></div>
+
+          <form id="password-change-form">
+            <div class="form-group">
+              <label class="form-label" for="new-password">New Password</label>
+              <input
+                type="password"
+                id="new-password"
+                class="form-input"
+                placeholder="Enter new password"
+                required
+                minlength="8"
+                autocomplete="new-password"
+              />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="confirm-password">Confirm Password</label>
+              <input
+                type="password"
+                id="confirm-password"
+                class="form-input"
+                placeholder="Confirm new password"
+                required
+                minlength="8"
+                autocomplete="new-password"
+              />
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-full" id="change-password-btn">
+              Set New Password
+            </button>
+          </form>
+        </div>
+      </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    const form = document.getElementById('password-change-form');
+    const changeBtn = document.getElementById('change-password-btn');
+    const errorMessage = document.getElementById('password-change-error');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const newPassword = document.getElementById('new-password').value;
+      const confirmPassword = document.getElementById('confirm-password').value;
+
+      // Validate passwords match
+      if (newPassword !== confirmPassword) {
+        errorMessage.className = 'alert alert-error';
+        errorMessage.textContent = 'Passwords do not match';
+        errorMessage.classList.remove('hidden');
+        return;
+      }
+
+      // Validate password length
+      if (newPassword.length < 8) {
+        errorMessage.className = 'alert alert-error';
+        errorMessage.textContent = 'Password must be at least 8 characters';
+        errorMessage.classList.remove('hidden');
+        return;
+      }
+
+      changeBtn.disabled = true;
+      changeBtn.textContent = 'Updating...';
+      errorMessage.classList.add('hidden');
+
+      try {
+        // Update password in Supabase Auth
+        const { error: authError } = await User.updatePassword(newPassword);
+        if (authError) throw authError;
+
+        // Clear the must_change_password flag
+        const { error: updateError } = await supabase
+          .from('users')
+          .update({
+            must_change_password: false,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', userId);
+
+        if (updateError) throw updateError;
+
+        // Remove modal
+        document.getElementById('password-change-modal').remove();
+
+        // Redirect to agent or verify phone
+        const { profile } = await User.getProfile(userId);
+        if (!profile?.phone_verified) {
+          navigateTo('/verify-phone');
+        } else {
+          navigateTo('/agent');
+        }
+      } catch (error) {
+        console.error('Password change error:', error);
+        errorMessage.className = 'alert alert-error';
+        errorMessage.textContent = error.message || 'Failed to update password. Please try again.';
+        errorMessage.classList.remove('hidden');
+        changeBtn.disabled = false;
+        changeBtn.textContent = 'Set New Password';
       }
     });
   }

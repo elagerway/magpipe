@@ -31,14 +31,19 @@ serve(async (req) => {
       )
     }
 
-    // Send SMS via SignalWire
-    const signalwireProjectId = Deno.env.get('SIGNALWIRE_PROJECT_ID')!
-    const signalwireApiToken = Deno.env.get('SIGNALWIRE_API_TOKEN')!
-    const signalwireSpaceUrl = Deno.env.get('SIGNALWIRE_SPACE_URL')!
-
     // Always use the service number the user selected
     // This ensures conversation continuity and proper campaign compliance
     const fromNumber = serviceNumber
+
+    // Check if this is an external SIP trunk number (Twilio)
+    const { data: externalNumber } = await supabase
+      .from('external_sip_numbers')
+      .select('id, trunk_id, external_sip_trunks!inner(id, name)')
+      .eq('phone_number', fromNumber)
+      .eq('is_active', true)
+      .single()
+
+    const isExternalTrunk = !!externalNumber
 
     // Check if we're sending FROM a US number (USA SMS compliance)
     const fromIsUSNumber = await isUSNumber(fromNumber, supabase)
@@ -57,40 +62,92 @@ serve(async (req) => {
     // Add opt-out instructions (USA SMS compliance) only when sending FROM a US number
     const messageBody = fromIsUSNumber ? `${message}\n\nSTOP to opt out` : message
 
-    // Build status callback URL for delivery receipts
-    const statusCallbackUrl = `${supabaseUrl}/functions/v1/webhook-sms-status`;
+    let messageSid: string
 
-    const smsData = new URLSearchParams({
-      From: fromNumber,
-      To: contactPhone,
-      Body: messageBody,
-      StatusCallback: statusCallbackUrl,
-    })
+    if (isExternalTrunk) {
+      // Send via Twilio for external trunk numbers
+      const accountSid = Deno.env.get('TWILIO_ACCOUNT_SID')
+      const apiKeySid = Deno.env.get('TWILIO_API_KEY_SID')
+      const apiKeySecret = Deno.env.get('TWILIO_API_KEY_SECRET')
 
-    const auth = btoa(`${signalwireProjectId}:${signalwireApiToken}`)
-    const smsResponse = await fetch(
-      `https://${signalwireSpaceUrl}/api/laml/2010-04-01/Accounts/${signalwireProjectId}/Messages`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Basic ${auth}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: smsData.toString(),
+      if (!accountSid || !apiKeySid || !apiKeySecret) {
+        console.error('Twilio credentials not configured')
+        return new Response(
+          JSON.stringify({ error: 'Twilio not configured for external numbers' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
       }
-    )
 
-    if (!smsResponse.ok) {
-      const errorText = await smsResponse.text()
-      console.error('SignalWire SMS send error:', errorText)
-      return new Response(
-        JSON.stringify({ error: 'Failed to send message' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      const auth = btoa(`${apiKeySid}:${apiKeySecret}`)
+      const smsResponse = await fetch(
+        `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Basic ${auth}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({
+            From: fromNumber,
+            To: contactPhone,
+            Body: messageBody,
+          }),
+        }
       )
-    }
 
-    const smsResult = await smsResponse.json()
-    const messageSid = smsResult.sid;
+      if (!smsResponse.ok) {
+        const errorText = await smsResponse.text()
+        console.error('Twilio SMS send error:', errorText)
+        return new Response(
+          JSON.stringify({ error: 'Failed to send message via Twilio' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      const smsResult = await smsResponse.json()
+      messageSid = smsResult.sid
+      console.log('Sent SMS via Twilio:', { from: fromNumber, to: contactPhone, sid: messageSid })
+    } else {
+      // Send via SignalWire for regular service numbers
+      const signalwireProjectId = Deno.env.get('SIGNALWIRE_PROJECT_ID')!
+      const signalwireApiToken = Deno.env.get('SIGNALWIRE_API_TOKEN')!
+      const signalwireSpaceUrl = Deno.env.get('SIGNALWIRE_SPACE_URL')!
+
+      // Build status callback URL for delivery receipts
+      const statusCallbackUrl = `${supabaseUrl}/functions/v1/webhook-sms-status`
+
+      const smsData = new URLSearchParams({
+        From: fromNumber,
+        To: contactPhone,
+        Body: messageBody,
+        StatusCallback: statusCallbackUrl,
+      })
+
+      const auth = btoa(`${signalwireProjectId}:${signalwireApiToken}`)
+      const smsResponse = await fetch(
+        `https://${signalwireSpaceUrl}/api/laml/2010-04-01/Accounts/${signalwireProjectId}/Messages`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Basic ${auth}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: smsData.toString(),
+        }
+      )
+
+      if (!smsResponse.ok) {
+        const errorText = await smsResponse.text()
+        console.error('SignalWire SMS send error:', errorText)
+        return new Response(
+          JSON.stringify({ error: 'Failed to send message' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      const smsResult = await smsResponse.json()
+      messageSid = smsResult.sid
+    }
 
     // Log the outbound SMS with message_sid for delivery tracking
     await supabase
