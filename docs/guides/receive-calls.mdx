@@ -1,0 +1,105 @@
+---
+title: Receive Inbound Calls
+description: "How your AI agent handles incoming calls"
+---
+
+## Overview
+
+When someone calls your Solo Mobile number, your AI agent automatically answers and handles the conversation.
+
+## How It Works
+
+<Steps>
+  <Step title="Caller Dials Your Number">
+    Someone calls the phone number you've provisioned in Solo Mobile.
+  </Step>
+  <Step title="Agent Answers">
+    Your AI agent picks up and delivers the greeting message you configured.
+  </Step>
+  <Step title="Conversation">
+    The agent responds naturally based on its system prompt and knowledge base.
+  </Step>
+  <Step title="Call Ends">
+    When the conversation finishes, the call is recorded and transcribed.
+  </Step>
+  <Step title="Inbox">
+    The call appears in your Inbox with the full recording and transcript.
+  </Step>
+</Steps>
+
+## Agent Capabilities
+
+During a call, your agent can:
+
+### Answer Questions
+Using its system prompt and knowledge base to provide accurate information.
+
+### Book Appointments
+If Google Calendar is connected, the agent can check availability and schedule appointments.
+
+### Take Messages
+Collect information from callers to pass along to you.
+
+### Transfer Calls
+Hand off to a human when needed (requires transfer number configuration).
+
+### Provide Information
+Share business hours, location, pricing, and other details from its training.
+
+## Call Recording
+
+All calls are recorded by default:
+- **Audio recording** - Full call audio
+- **Transcript** - AI-generated text transcript
+- **Duration** - Call length
+- **Timestamp** - When the call occurred
+
+Access recordings in the **Inbox** by clicking on any call.
+
+## Voicemail
+
+If your agent is unavailable (outside business hours or system issue), callers can leave a voicemail:
+
+1. Caller reaches voicemail greeting
+2. Message is recorded
+3. Recording appears in your Inbox
+4. You're notified of new voicemail
+
+## Agent Schedule
+
+Set business hours for your agent:
+
+1. Open the agent settings
+2. Go to **Schedule** tab
+3. Configure available hours for each day
+4. Set timezone
+
+Outside scheduled hours:
+- Calls go to voicemail
+- Custom after-hours message plays
+
+## Monitoring Calls
+
+View all incoming calls in the **Inbox**:
+
+- Filter by "Calls" to see only voice calls
+- Click any call to view transcript and play recording
+- See caller ID and call duration
+- Check if call was answered or went to voicemail
+
+## Tips
+
+<AccordionGroup>
+  <Accordion title="Keep greetings short">
+    Callers want to speak, not listen. Keep your greeting under 10 seconds.
+  </Accordion>
+  <Accordion title="Include key info in system prompt">
+    Common questions (hours, location, pricing) should be in the system prompt for quick answers.
+  </Accordion>
+  <Accordion title="Review transcripts regularly">
+    Check transcripts to see what callers are asking, then improve your agent's knowledge.
+  </Accordion>
+  <Accordion title="Add knowledge sources">
+    Link your FAQ and website pages so the agent has more context.
+  </Accordion>
+</AccordionGroup>

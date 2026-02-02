@@ -1,0 +1,96 @@
+---
+title: Chat Widget
+description: "Embed an AI chat assistant on your website"
+---
+
+## Overview
+
+The Chat Widget lets website visitors chat with your AI agent in real-time. It appears as a floating bubble that expands into a full chat interface.
+
+## Setting Up the Widget
+
+<Steps>
+  <Step title="Go to Agent Settings">
+    Open the agent you want to deploy and go to the **Deploy** tab.
+  </Step>
+  <Step title="Create Widget">
+    Under "Web Chat Widget", click **Create Widget**.
+  </Step>
+  <Step title="Customize">
+    Configure the widget appearance and behavior.
+  </Step>
+  <Step title="Get Embed Code">
+    Click **Get Embed Code** and copy the JavaScript snippet.
+  </Step>
+  <Step title="Add to Website">
+    Paste the code before the closing `</body>` tag on your website.
+  </Step>
+</Steps>
+
+## Embed Code
+
+Add this snippet to your website:
+
+```html
+<script>
+  (function(w,d,s,o,f,js,fjs){
+    w['PatWidget']=o;w[o]=w[o]||function(){(w[o].q=w[o].q||[]).push(arguments)};
+    js=d.createElement(s);fjs=d.getElementsByTagName(s)[0];
+    js.id=o;js.src=f;js.async=1;fjs.parentNode.insertBefore(js,fjs);
+  }(window,document,'script','PatChat','https://solomobile.ai/widget/pat-chat.js'));
+  PatChat('init', { widgetKey: 'YOUR_WIDGET_KEY' });
+</script>
+```
+
+Replace `YOUR_WIDGET_KEY` with your actual widget key from the dashboard.
+
+## Customization
+
+### Appearance
+
+| Setting | Description |
+|---------|-------------|
+| **Primary Color** | Widget accent color (button, header) |
+| **Position** | Bottom-right or bottom-left |
+| **Agent Name** | Name shown in chat header |
+
+### Messages
+
+| Setting | Description |
+|---------|-------------|
+| **Welcome Message** | First message shown when chat opens |
+| **Offline Message** | Shown outside business hours |
+
+### Visitor Info
+
+Optionally collect visitor information:
+- Name (optional)
+- Email (optional)
+
+## How It Works
+
+1. **Visitor opens chat** - Clicks the floating bubble
+2. **Welcome message** - Agent sends greeting
+3. **Conversation** - Real-time AI responses
+4. **Session saved** - Conversation appears in your Inbox
+
+## Viewing Chat Conversations
+
+All chat sessions appear in your **Inbox**:
+- Filter by "Chat" to see only widget conversations
+- View full conversation thread
+- Reply manually to take over from AI
+
+## Human Handoff
+
+When you reply to a chat from the Inbox:
+1. Your message is sent to the visitor
+2. AI pauses for that conversation
+3. Visitor sees seamless responses (doesn't know it's human)
+4. AI resumes after inactivity
+
+## Domain Restrictions
+
+For security, you can limit which domains can use your widget:
+- Leave empty to allow all domains
+- Add specific domains to restrict (e.g., `mysite.com`)

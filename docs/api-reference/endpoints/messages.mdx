@@ -1,0 +1,130 @@
+---
+title: Messages
+description: "API endpoints for SMS messaging"
+---
+
+## Send SMS
+
+Send an SMS message.
+
+<ParamField body="to" type="string" required>
+  Recipient phone number (E.164 format)
+</ParamField>
+
+<ParamField body="from" type="string" required>
+  Your Solo Mobile phone number
+</ParamField>
+
+<ParamField body="body" type="string" required>
+  Message content
+</ParamField>
+
+```bash
+curl -X POST "https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/send-sms" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to": "+14155551234",
+    "from": "+16045551234",
+    "body": "Hello! This is a test message."
+  }'
+```
+
+### Response
+
+```json
+{
+  "success": true,
+  "message_id": "msg-uuid",
+  "status": "sent"
+}
+```
+
+---
+
+## Get Conversation
+
+Get all messages in a conversation thread.
+
+<ParamField path="thread_id" type="string" required>
+  Conversation thread UUID
+</ParamField>
+
+```bash
+curl -X GET "https://mtxbiyilvgwhbdptysex.supabase.co/rest/v1/sms_messages?thread_id=eq.THREAD_ID&select=*&order=created_at.asc" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "apikey: YOUR_ANON_KEY"
+```
+
+### Response
+
+```json
+[
+  {
+    "id": "msg-uuid",
+    "thread_id": "thread-uuid",
+    "from_number": "+14155551234",
+    "to_number": "+16045551234",
+    "body": "Hi, what are your hours?",
+    "direction": "inbound",
+    "is_ai_generated": false,
+    "created_at": "2024-01-15T10:00:00Z"
+  },
+  {
+    "id": "msg-uuid-2",
+    "thread_id": "thread-uuid",
+    "from_number": "+16045551234",
+    "to_number": "+14155551234",
+    "body": "We're open Monday-Friday, 9am-5pm!",
+    "direction": "outbound",
+    "is_ai_generated": true,
+    "created_at": "2024-01-15T10:00:05Z"
+  }
+]
+```
+
+---
+
+## List Conversations
+
+Get all SMS conversations.
+
+<ParamField query="limit" type="integer">
+  Number of results (default: 50)
+</ParamField>
+
+```bash
+curl -X GET "https://mtxbiyilvgwhbdptysex.supabase.co/rest/v1/sms_threads?select=*,last_message:sms_messages(body,created_at)&order=updated_at.desc&limit=50" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "apikey: YOUR_ANON_KEY"
+```
+
+### Response
+
+```json
+[
+  {
+    "id": "thread-uuid",
+    "contact_number": "+14155551234",
+    "our_number": "+16045551234",
+    "message_count": 5,
+    "updated_at": "2024-01-15T10:00:00Z",
+    "last_message": {
+      "body": "Thanks for your help!",
+      "created_at": "2024-01-15T10:00:00Z"
+    }
+  }
+]
+```
+
+---
+
+## Message Statuses
+
+| Status | Description |
+|--------|-------------|
+| `queued` | Message is queued for sending |
+| `sent` | Message sent to carrier |
+| `delivered` | Confirmed delivered |
+| `failed` | Failed to send |
+| `received` | Inbound message received |
