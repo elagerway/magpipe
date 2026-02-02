@@ -285,33 +285,40 @@ export default class SelectNumberPage {
           const { user } = await getCurrentUser();
           await User.setServiceNumber(user.id, this.selectedNumber);
 
-          // Check if this is their first number AND they don't have push enabled
-          const { data: existingNumbers } = await supabase
-            .from('service_numbers')
-            .select('id')
-            .eq('user_id', user.id);
+          successMessage.className = 'alert alert-success';
+          successMessage.textContent = 'Number added successfully! Redirecting...';
 
-          const { data: notifPrefs } = await supabase
-            .from('notification_preferences')
-            .select('push_enabled')
-            .eq('user_id', user.id)
-            .single();
+          // For first-time users, request push notification permission
+          // The system will show the native prompt - user can accept or decline
+          if (isPushSupported()) {
+            const { data: notifPrefs } = await supabase
+              .from('notification_preferences')
+              .select('push_enabled')
+              .eq('user_id', user.id)
+              .single();
 
-          const isFirstNumber = !existingNumbers || existingNumbers.length <= 1;
-          const pushAlreadyEnabled = notifPrefs?.push_enabled === true;
-
-          if (isFirstNumber && !pushAlreadyEnabled) {
-            // First number and no push - show notification prompt
-            this.showNotificationPrompt(this.selectedNumber);
-          } else {
-            // Not first number or already has push - just redirect
-            successMessage.className = 'alert alert-success';
-            successMessage.textContent = 'Number added successfully! Redirecting...';
-            setTimeout(() => {
-              const destination = window.innerWidth > 768 ? '/phone' : '/manage-numbers';
-              navigateTo(destination);
-            }, 1500);
+            if (!notifPrefs?.push_enabled) {
+              // Try to subscribe - will trigger native permission prompt
+              const pushResult = await subscribeToPush();
+              if (pushResult.success) {
+                // Save preference if they accepted
+                await supabase
+                  .from('notification_preferences')
+                  .upsert({
+                    user_id: user.id,
+                    push_enabled: true,
+                    push_inbound_calls: true,
+                    push_inbound_messages: true,
+                  }, { onConflict: 'user_id' });
+              }
+              // If declined, no problem - they can enable later in settings
+            }
           }
+
+          setTimeout(() => {
+            const destination = window.innerWidth > 768 ? '/phone' : '/manage-numbers';
+            navigateTo(destination);
+          }, 1500);
         } catch (error) {
           console.error('Provision error:', error);
           errorMessage.className = 'alert alert-error';
@@ -387,109 +394,4 @@ export default class SelectNumberPage {
     return await response.json();
   }
 
-  /**
-   * Show notification prompt after successful number provisioning
-   */
-  showNotificationPrompt(phoneNumber) {
-    const card = document.querySelector('.card');
-    const destination = window.innerWidth > 768 ? '/phone' : '/manage-numbers';
-
-    // Check if push notifications are supported
-    if (!isPushSupported()) {
-      // Not supported, just redirect
-      card.innerHTML = `
-        <div style="text-align: center; padding: 2rem 0;">
-          <div style="width: 64px; height: 64px; background: rgba(34, 197, 94, 0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem;">
-            <svg width="32" height="32" fill="none" stroke="rgb(34, 197, 94)" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-            </svg>
-          </div>
-          <h2 style="margin: 0 0 0.5rem;">You're all set!</h2>
-          <p class="text-muted" style="margin-bottom: 1.5rem;">Your number ${this.formatPhoneNumber(phoneNumber)} is ready.</p>
-          <p class="text-muted">Redirecting...</p>
-        </div>
-      `;
-      setTimeout(() => navigateTo(destination), 1500);
-      return;
-    }
-
-    // Show notification prompt
-    card.innerHTML = `
-      <div style="text-align: center; padding: 1rem 0;">
-        <div style="width: 64px; height: 64px; background: rgba(34, 197, 94, 0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem;">
-          <svg width="32" height="32" fill="none" stroke="rgb(34, 197, 94)" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-          </svg>
-        </div>
-        <h2 style="margin: 0 0 0.5rem;">Your number is ready!</h2>
-        <p class="text-muted" style="margin-bottom: 2rem;">${this.formatPhoneNumber(phoneNumber)}</p>
-
-        <div style="background: var(--bg-secondary); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 1.5rem;">
-          <div style="width: 48px; height: 48px; background: rgba(99, 102, 241, 0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem;">
-            <svg width="24" height="24" fill="none" stroke="var(--primary-color)" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
-            </svg>
-          </div>
-          <h3 style="margin: 0 0 0.5rem; font-size: 1.125rem;">Enable Notifications</h3>
-          <p class="text-muted" style="margin: 0; font-size: 0.875rem;">
-            Get instant alerts when you receive calls and messages on your new number.
-          </p>
-        </div>
-
-        <button class="btn btn-primary btn-full" id="enable-notifications-btn" style="margin-bottom: 0.75rem;">
-          Enable Notifications
-        </button>
-        <button class="btn btn-secondary btn-full" id="skip-notifications-btn" style="background: transparent; border: none; color: var(--text-secondary);">
-          Skip for now
-        </button>
-      </div>
-    `;
-
-    // Handle enable button
-    document.getElementById('enable-notifications-btn').addEventListener('click', async () => {
-      const enableBtn = document.getElementById('enable-notifications-btn');
-      enableBtn.disabled = true;
-      enableBtn.textContent = 'Enabling...';
-
-      try {
-        const result = await subscribeToPush();
-
-        if (result.success) {
-          // Save push_enabled preference
-          const { user } = await getCurrentUser();
-          await supabase
-            .from('notification_preferences')
-            .upsert({
-              user_id: user.id,
-              push_enabled: true,
-              push_inbound_calls: true,
-              push_inbound_messages: true,
-            }, { onConflict: 'user_id' });
-
-          enableBtn.textContent = 'Enabled!';
-          enableBtn.style.background = 'rgb(34, 197, 94)';
-
-          setTimeout(() => navigateTo(destination), 1000);
-        } else {
-          // Failed - might need permission, show error but still allow continue
-          enableBtn.textContent = 'Enable Notifications';
-          enableBtn.disabled = false;
-
-          const errorDiv = document.createElement('p');
-          errorDiv.style.cssText = 'color: var(--error-color); font-size: 0.875rem; margin-top: 0.75rem;';
-          errorDiv.textContent = result.error || 'Could not enable notifications. You can try again in Settings.';
-          enableBtn.parentNode.insertBefore(errorDiv, document.getElementById('skip-notifications-btn'));
-        }
-      } catch (error) {
-        console.error('Push notification error:', error);
-        enableBtn.textContent = 'Enable Notifications';
-        enableBtn.disabled = false;
-      }
-    });
-
-    // Handle skip button
-    document.getElementById('skip-notifications-btn').addEventListener('click', () => {
-      navigateTo(destination);
-    });
-  }
 }
