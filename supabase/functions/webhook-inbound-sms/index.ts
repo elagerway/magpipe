@@ -90,29 +90,16 @@ serve(async (req) => {
     const agentId = agentConfig?.id || null
     console.log('Using agent for SMS:', agentId, agentConfig?.name || 'None')
 
-    // Analyze sentiment of the incoming message (fire and forget to not slow down response)
+    // Analyze sentiment of the incoming message
     let messageSentiment: string | null = null
-    analyzeSentiment(body)
-      .then(sentiment => {
-        messageSentiment = sentiment
-        console.log(`SMS sentiment: ${sentiment}`)
-        // Update the message with sentiment after insert
-        supabase
-          .from('sms_messages')
-          .update({ sentiment })
-          .eq('user_id', serviceNumber.user_id)
-          .eq('sender_number', from)
-          .eq('content', body)
-          .eq('direction', 'inbound')
-          .order('sent_at', { ascending: false })
-          .limit(1)
-          .then(({ error }) => {
-            if (error) console.error('Failed to update SMS sentiment:', error)
-          })
-      })
-      .catch(err => console.error('Sentiment analysis failed:', err))
+    try {
+      messageSentiment = await analyzeSentiment(body)
+      console.log(`SMS sentiment: ${messageSentiment}`)
+    } catch (err) {
+      console.error('Sentiment analysis failed:', err)
+    }
 
-    // Log the message to database with agent_id
+    // Log the message to database with agent_id and sentiment
     const { error: insertError } = await supabase
       .from('sms_messages')
       .insert({
@@ -124,6 +111,7 @@ serve(async (req) => {
         content: body,
         status: 'sent',
         sent_at: new Date().toISOString(),
+        sentiment: messageSentiment,
       })
 
     if (insertError) {

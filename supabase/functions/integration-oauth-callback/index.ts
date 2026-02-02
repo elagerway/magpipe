@@ -151,6 +151,23 @@ Deno.serve(async (req) => {
       // Slack returns team info and authed_user in token response
       externalUserId = tokens.authed_user?.id || null;
       externalWorkspaceId = tokens.team?.id || null;
+    } else if (provider === 'hubspot') {
+      // HubSpot returns hub_id in the token response
+      externalWorkspaceId = tokens.hub_id?.toString() || null;
+
+      // Fetch user info to get user ID
+      if (tokens.access_token) {
+        try {
+          const userInfoResponse = await fetch('https://api.hubapi.com/oauth/v1/access-tokens/' + tokens.access_token);
+          if (userInfoResponse.ok) {
+            const userInfo = await userInfoResponse.json();
+            externalUserId = userInfo.user_id?.toString() || null;
+            externalWorkspaceId = userInfo.hub_id?.toString() || externalWorkspaceId;
+          }
+        } catch (e) {
+          console.error('Failed to fetch HubSpot user info:', e);
+        }
+      }
     }
 
     // Store tokens in user_integrations table
