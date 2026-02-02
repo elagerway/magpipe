@@ -56,6 +56,39 @@ serve(async (req) => {
         callStatus.toLowerCase(),
         durationSeconds
       ).catch(err => console.error('Failed to send Slack call notification:', err))
+
+      // Send email/SMS/push notifications for terminal call states
+      const isMissed = callStatus === 'failed' || callStatus === 'busy' || callStatus === 'no-answer'
+      const notificationType = isMissed ? 'missed_call' : 'completed_call'
+      const notificationData = {
+        userId: callRecord.user_id,
+        type: notificationType,
+        data: {
+          callerNumber: phoneNumber,
+          timestamp: new Date().toISOString(),
+          duration: durationSeconds,
+          successful: callStatus === 'completed',
+        }
+      }
+
+      // Fire and forget notifications
+      fetch(`${supabaseUrl}/functions/v1/send-notification-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseKey}` },
+        body: JSON.stringify(notificationData)
+      }).catch(err => console.error('Failed to send email notification:', err))
+
+      fetch(`${supabaseUrl}/functions/v1/send-notification-sms`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseKey}` },
+        body: JSON.stringify(notificationData)
+      }).catch(err => console.error('Failed to send SMS notification:', err))
+
+      fetch(`${supabaseUrl}/functions/v1/send-notification-push`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseKey}` },
+        body: JSON.stringify(notificationData)
+      }).catch(err => console.error('Failed to send push notification:', err))
     }
 
     return new Response('OK', { status: 200 })

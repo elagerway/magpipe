@@ -822,6 +822,29 @@ You have access to HubSpot CRM. When the visitor provides their contact informat
       console.error('Failed to store AI response:', aiMsgError)
     }
 
+    // Send push notification for new chat messages (fire and forget)
+    // Only for actual visitor messages, not greeting requests
+    if (message && !requestGreeting) {
+      const notificationData = {
+        userId: widget.user_id,
+        type: 'new_chat',
+        title: 'Website Chat',
+        body: `${session.visitor_name || 'Visitor'}: ${message.substring(0, 100)}${message.length > 100 ? '...' : ''}`,
+        data: {
+          url: `/inbox?chat=${session.id}`,
+          content: message,
+          sessionId: session.id,
+          timestamp: new Date().toISOString(),
+        }
+      }
+
+      fetch(`${supabaseUrl}/functions/v1/send-notification-push`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseKey}` },
+        body: JSON.stringify(notificationData)
+      }).catch(err => console.error('Failed to send push notification for chat:', err))
+    }
+
     // Log chat exchange to HubSpot as a note (if connected and we have visitor email)
     if (session.visitor_email && message && !requestGreeting) {
       try {

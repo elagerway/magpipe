@@ -8,6 +8,14 @@ import { renderBottomNav, clearNavUserCache } from '../components/BottomNav.js';
 import { createAccessCodeSettings, addAccessCodeSettingsStyles } from '../components/AccessCodeSettings.js';
 import { createKnowledgeSourceManager, addKnowledgeSourceManagerStyles } from '../components/KnowledgeSourceManager.js';
 import { createExternalTrunkSettings, addExternalTrunkSettingsStyles } from '../components/ExternalTrunkSettings.js';
+import {
+  isPushSupported,
+  getPermissionStatus,
+  subscribeToPush,
+  unsubscribeFromPush,
+  isSubscribed,
+  showTestNotification
+} from '../services/pushNotifications.js';
 
 export default class SettingsPage {
   constructor() {
@@ -505,6 +513,46 @@ export default class SettingsPage {
                 <input type="checkbox" id="sms-all-messages" ${notifPrefs?.sms_all_messages ? 'checked' : ''} />
                 <span>All messages</span>
               </label>
+            </div>
+          </div>
+
+          <!-- Push Notifications -->
+          <div style="border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+              <div>
+                <h3 style="margin: 0; font-size: 1rem;">Push Notifications</h3>
+                <p class="text-muted" style="margin: 0.25rem 0 0 0; font-size: 0.875rem;">Get instant alerts on this device</p>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="push-enabled" ${notifPrefs?.push_enabled ? 'checked' : ''} />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div id="push-status" style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
+              Checking push notification support...
+            </div>
+            <div id="push-options" style="display: ${notifPrefs?.push_enabled ? 'block' : 'none'};">
+              <div style="display: flex; flex-direction: column; gap: 0.5rem; padding-left: 0.5rem;">
+                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
+                  <input type="checkbox" id="push-inbound-calls" ${notifPrefs?.push_inbound_calls !== false ? 'checked' : ''} />
+                  <span>Inbound calls</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
+                  <input type="checkbox" id="push-all-calls" ${notifPrefs?.push_all_calls ? 'checked' : ''} />
+                  <span>All calls</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
+                  <input type="checkbox" id="push-inbound-messages" ${notifPrefs?.push_inbound_messages !== false ? 'checked' : ''} />
+                  <span>Inbound messages</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
+                  <input type="checkbox" id="push-all-messages" ${notifPrefs?.push_all_messages ? 'checked' : ''} />
+                  <span>All messages</span>
+                </label>
+              </div>
+              <button class="btn btn-sm btn-secondary" id="test-push-btn" style="margin-top: 0.75rem;">
+                Send Test Notification
+              </button>
             </div>
           </div>
 
@@ -1384,6 +1432,9 @@ export default class SettingsPage {
       }
     });
 
+    // Push notifications setup
+    this.initPushNotificationUI();
+
     // Save notifications
     saveNotificationsBtn.addEventListener('click', async () => {
       saveNotificationsBtn.disabled = true;
@@ -1408,6 +1459,11 @@ export default class SettingsPage {
           sms_all_calls: document.getElementById('sms-all-calls').checked,
           sms_inbound_messages: document.getElementById('sms-inbound-messages').checked,
           sms_all_messages: document.getElementById('sms-all-messages').checked,
+          push_enabled: document.getElementById('push-enabled').checked,
+          push_inbound_calls: document.getElementById('push-inbound-calls').checked,
+          push_all_calls: document.getElementById('push-all-calls').checked,
+          push_inbound_messages: document.getElementById('push-inbound-messages').checked,
+          push_all_messages: document.getElementById('push-all-messages').checked,
           updated_at: new Date().toISOString()
         };
 
@@ -1463,6 +1519,99 @@ export default class SettingsPage {
 
         deleteAccountBtn.disabled = false;
         deleteAccountBtn.textContent = 'Delete Account';
+      }
+    });
+  }
+
+  /**
+   * Initialize push notification UI and event handlers
+   */
+  async initPushNotificationUI() {
+    const pushStatus = document.getElementById('push-status');
+    const pushEnabled = document.getElementById('push-enabled');
+    const pushOptions = document.getElementById('push-options');
+    const testPushBtn = document.getElementById('test-push-btn');
+    const errorMessage = document.getElementById('error-message');
+    const successMessage = document.getElementById('success-message');
+
+    // Check if push is supported
+    if (!isPushSupported()) {
+      pushStatus.textContent = 'Push notifications are not supported on this device/browser.';
+      pushEnabled.disabled = true;
+      return;
+    }
+
+    // Check permission status
+    const permission = getPermissionStatus();
+    const subscribed = await isSubscribed();
+
+    if (permission === 'denied') {
+      pushStatus.innerHTML = 'Push notifications are blocked. <a href="javascript:void(0)" onclick="alert(\'Open your browser settings and allow notifications for this site.\')">Learn how to enable</a>';
+      pushEnabled.disabled = true;
+    } else if (subscribed) {
+      pushStatus.textContent = 'Push notifications are active on this device.';
+    } else if (permission === 'granted') {
+      pushStatus.textContent = 'Push notifications are available. Enable above to receive alerts.';
+    } else {
+      pushStatus.textContent = 'Enable push notifications to receive instant alerts on this device.';
+    }
+
+    // Handle push toggle change
+    pushEnabled.addEventListener('change', async () => {
+      const isEnabled = pushEnabled.checked;
+      pushOptions.style.display = isEnabled ? 'block' : 'none';
+
+      if (isEnabled) {
+        // Try to subscribe
+        pushStatus.textContent = 'Setting up push notifications...';
+        const result = await subscribeToPush();
+
+        if (result.success) {
+          pushStatus.textContent = 'Push notifications are now active on this device.';
+          successMessage.className = 'alert alert-success';
+          successMessage.textContent = 'Push notifications enabled successfully!';
+          successMessage.classList.remove('hidden');
+          setTimeout(() => successMessage.classList.add('hidden'), 3000);
+        } else {
+          pushStatus.textContent = result.error || 'Failed to enable push notifications.';
+          pushEnabled.checked = false;
+          pushOptions.style.display = 'none';
+          errorMessage.className = 'alert alert-error';
+          errorMessage.textContent = result.error || 'Failed to enable push notifications.';
+          errorMessage.classList.remove('hidden');
+        }
+      } else {
+        // Unsubscribe
+        pushStatus.textContent = 'Disabling push notifications...';
+        const result = await unsubscribeFromPush();
+
+        if (result.success) {
+          pushStatus.textContent = 'Push notifications disabled.';
+        } else {
+          pushStatus.textContent = result.error || 'Failed to disable push notifications.';
+        }
+      }
+    });
+
+    // Handle test notification button
+    testPushBtn.addEventListener('click', async () => {
+      testPushBtn.disabled = true;
+      testPushBtn.textContent = 'Sending...';
+
+      try {
+        await showTestNotification();
+        successMessage.className = 'alert alert-success';
+        successMessage.textContent = 'Test notification sent!';
+        successMessage.classList.remove('hidden');
+        setTimeout(() => successMessage.classList.add('hidden'), 3000);
+      } catch (error) {
+        console.error('Test notification error:', error);
+        errorMessage.className = 'alert alert-error';
+        errorMessage.textContent = error.message || 'Failed to send test notification.';
+        errorMessage.classList.remove('hidden');
+      } finally {
+        testPushBtn.disabled = false;
+        testPushBtn.textContent = 'Send Test Notification';
       }
     });
   }

@@ -3,7 +3,7 @@
  * Handles caching, offline support, and background sync
  */
 
-const CACHE_NAME = 'pat-v9';
+const CACHE_NAME = 'pat-v10';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -145,7 +145,21 @@ self.addEventListener('notificationclick', (event) => {
 
   event.notification.close();
 
+  const urlPath = event.notification.data?.url || '/inbox';
+  const fullUrl = new URL(urlPath, self.location.origin).href;
+
   event.waitUntil(
-    clients.openWindow(event.notification.data?.url || '/')
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      // Check if there's already a window open for our app
+      for (const client of clientList) {
+        // Check if it's our app (same origin)
+        if (client.url.startsWith(self.location.origin) && 'focus' in client) {
+          // Navigate to the target URL and focus
+          return client.navigate(fullUrl).then(() => client.focus());
+        }
+      }
+      // No existing window, open a new one
+      return clients.openWindow(fullUrl);
+    })
   );
 });

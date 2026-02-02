@@ -191,6 +191,16 @@ serve(async (req) => {
         body: JSON.stringify(notificationData)
       }).catch(err => console.error('Failed to send SMS notification:', err))
 
+      // Send push notification
+      fetch(`${supabaseUrl}/functions/v1/send-notification-push`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseKey}`
+        },
+        body: JSON.stringify(notificationData)
+      }).catch(err => console.error('Failed to send push notification:', err))
+
       // Send Slack notification (fire and forget)
       sendSlackNotification(serviceNumber.user_id, from, body, supabase)
         .catch(err => console.error('Failed to send Slack notification:', err))

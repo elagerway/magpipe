@@ -6,6 +6,7 @@
 import { supabase, getCurrentUser } from './lib/supabase.js';
 import { Router } from './router.js';
 import { ChatWidget } from './models/ChatWidget.js';
+import { initPushNotifications } from './services/pushNotifications.js';
 
 class App {
   constructor() {
@@ -48,10 +49,9 @@ class App {
     };
 
     // Register service worker for PWA
-    // Temporarily disabled to avoid Chrome extension errors
-    // if ('serviceWorker' in navigator) {
-    //   this.registerServiceWorker();
-    // }
+    if ('serviceWorker' in navigator) {
+      this.registerServiceWorker();
+    }
   }
 
   async checkAuth() {
@@ -127,6 +127,9 @@ class App {
 
       // Load portal widget if configured
       this.loadPortalWidget(session.user.id);
+
+      // Initialize push notifications (only if user has them enabled)
+      initPushNotifications().catch(err => console.error('Push init error:', err));
     } else if (event === 'SIGNED_OUT') {
       this.currentUser = null;
       this.removePortalWidget();
