@@ -86,12 +86,31 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseKey)
 
-    // Get user from token
+    // Get user from token or from x-user-id header (for service-to-service calls)
     const token = authHeader.replace('Bearer ', '')
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+    let userId: string | null = null
 
-    if (authError || !user) {
-      return new Response(JSON.stringify({ error: 'Invalid authorization' }), {
+    // Check if this is a service role call with x-user-id header
+    const xUserId = req.headers.get('x-user-id')
+    if (xUserId && token === supabaseKey) {
+      // Service role call - trust the x-user-id header
+      userId = xUserId
+      console.log('Service role call for user:', userId)
+    } else {
+      // Regular user call - verify the token
+      const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+
+      if (authError || !user) {
+        return new Response(JSON.stringify({ error: 'Invalid authorization' }), {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+      userId = user.id
+    }
+
+    if (!userId) {
+      return new Response(JSON.stringify({ error: 'User not identified' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
@@ -119,7 +138,7 @@ serve(async (req) => {
         .from('user_mcp_servers')
         .select('*')
         .eq('id', server_id)
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .single()
 
       if (serverError || !server) {
@@ -142,7 +161,7 @@ serve(async (req) => {
           catalog:mcp_server_catalog(*)
         `)
         .eq('id', server_id)
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .single()
 
       if (connError || !connection || !connection.catalog) {
