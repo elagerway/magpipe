@@ -75,6 +75,27 @@ export default class ChatWidgetSettingsPage {
         <p style="margin: 0 0 1.5rem 0; color: var(--text-secondary); font-size: 0.875rem;">${widget.name || 'Website Chat'}</p>
 
         <form id="widget-settings-form">
+          <!-- Support Agent Mode -->
+          <div class="settings-section" style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1)); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 12px; padding: 1.25rem;">
+            <div class="form-group" style="margin-bottom: 0;">
+              <div class="toggle-row" style="margin-bottom: 0.5rem;">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--primary-color)" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                  </svg>
+                  <span style="font-weight: 600;">Solo Mobile Support Agent</span>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="widget-support-agent" ${widget.is_support_agent ? 'checked' : ''} />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <p class="form-help" style="margin: 0;">Enable this to make the agent an expert on Solo Mobile - it will know how to help users with calls, SMS, phone numbers, MCP servers, integrations, and all app features.</p>
+            </div>
+          </div>
+
           <!-- Basic Settings -->
           <div class="settings-section">
             <h3 class="settings-section-title">Basic Settings</h3>
@@ -83,6 +104,12 @@ export default class ChatWidgetSettingsPage {
               <label class="form-label">Widget Name</label>
               <input type="text" id="widget-name" class="form-input" value="${widget.name || ''}" placeholder="Website Chat" />
               <p class="form-help">Internal name to identify this widget</p>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Agent Name</label>
+              <input type="text" id="widget-agent-name" class="form-input" value="${widget.agent_name || ''}" placeholder="${widget.agent_configs?.name || 'Assistant'}" />
+              <p class="form-help">The name the agent uses to introduce itself (defaults to "${widget.agent_configs?.name || 'the assigned agent name'}")</p>
             </div>
 
             <div class="form-group">
@@ -496,7 +523,9 @@ export default class ChatWidgetSettingsPage {
 
     const updates = {
       name: document.getElementById('widget-name').value.trim() || 'Website Chat',
+      agent_name: document.getElementById('widget-agent-name').value.trim() || null,
       is_active: document.getElementById('widget-active').checked,
+      is_support_agent: document.getElementById('widget-support-agent').checked,
       primary_color: document.getElementById('widget-color').value,
       position: document.querySelector('input[name="widget-position"]:checked')?.value || 'bottom-right',
       offset_x: parseInt(document.getElementById('offset-x').value, 10) || 20,

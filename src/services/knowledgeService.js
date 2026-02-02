@@ -9,9 +9,10 @@ import { supabase } from '../lib/supabase.js';
  * Add a new knowledge source from URL
  * @param {string} url - The URL to fetch knowledge from
  * @param {string} syncPeriod - How often to sync: '24h', '7d', '1mo', '3mo'
+ * @param {Object} authHeaders - Optional auth headers for protected pages (e.g., { Authorization: 'Bearer ...' })
  * @returns {Promise<{id: string, url: string, title: string, status: string, chunk_count: number}>}
  */
-export async function addSource(url, syncPeriod = '7d') {
+export async function addSource(url, syncPeriod = '7d', authHeaders = null) {
   if (!url || typeof url !== 'string') {
     throw new Error('URL is required');
   }
@@ -40,11 +41,18 @@ export async function addSource(url, syncPeriod = '7d') {
     }
 
     // Call Edge Function
+    const requestBody = {
+      url,
+      sync_period: syncPeriod,
+    };
+
+    // Include auth headers if provided
+    if (authHeaders && typeof authHeaders === 'object') {
+      requestBody.auth_headers = authHeaders;
+    }
+
     const { data, error } = await supabase.functions.invoke('knowledge-source-add', {
-      body: {
-        url,
-        sync_period: syncPeriod,
-      },
+      body: requestBody,
     });
 
     if (error) {

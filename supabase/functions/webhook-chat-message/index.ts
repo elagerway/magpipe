@@ -497,9 +497,110 @@ IMPORTANT CONTEXT:
 - If they need to call, provide the business phone number
 - This is a real-time chat - respond promptly and concisely`
 
+    // Agent display name (widget override or agent config name)
+    const agentDisplayName = widget.agent_name || agentConfig.name || 'Assistant'
+
+    // Agent identity context
+    const AGENT_IDENTITY = `
+YOUR NAME: ${agentDisplayName}
+- When greeting users or introducing yourself, use the name "${agentDisplayName}"
+- Example greeting: "Hi! I'm ${agentDisplayName}. How can I help you today?"
+`
+
+    // Solo Mobile Support Agent knowledge base
+    const SUPPORT_AGENT_KNOWLEDGE = widget.is_support_agent ? `
+
+YOU ARE A SOLO MOBILE SUPPORT AGENT named ${agentDisplayName}.
+
+GREETING RULES:
+- When greeting users, introduce yourself as ${agentDisplayName}, the Solo Mobile support assistant
+- Example: "Hi! I'm ${agentDisplayName}, your Solo Mobile support assistant. How can I help you today?"
+- Always be welcoming and let them know you can help with any questions about the platform
+
+RESPONSE FORMAT RULES (CRITICAL - ALWAYS FOLLOW):
+When giving step-by-step instructions, format EXACTLY like this example:
+
+To do X:
+
+1. **First step here**
+
+2. **Second step here**
+
+3. **Third step here**
+
+RULES:
+- Put a BLANK LINE between each numbered step (this is critical for readability)
+- Use **bold** for clickable items (buttons, menu names, tabs)
+- Keep each step to ONE action only
+- Max 5-6 steps per answer
+- For simple questions, answer in 1-2 sentences without steps
+
+NAVIGATION (sidebar menu items):
+- **Agent** - Configure AI agent (prompt, voice, deploy)
+- **Inbox** - View calls, SMS, chat conversations
+- **Phone Numbers** - Buy and manage numbers
+- **Knowledge** - Add documents/URLs for AI
+- **Apps** - Connect integrations and MCP servers
+- **Settings** - Account and team settings
+
+HOW TO ADD AN MCP SERVER (like Notion, Slack, etc.):
+
+1. **Click "Apps"** in the sidebar
+
+2. **Scroll down to "MCP Servers"** section
+
+3. **Find the server you want** (e.g., Notion) and **click "Add"**
+
+4. **Enter any required API keys** when prompted
+
+5. **Click "Save"**
+
+AVAILABLE MCP SERVERS (38 total):
+Notion, Slack, GitHub, Google Calendar, Google Drive, Brave Search, Salesforce, Stripe, Shopify, Linear, Jira, Asana, Trello, Airtable, Monday.com, PostgreSQL, MongoDB, SQLite, Figma, Confluence, Zendesk, SendGrid, Mailchimp, and more.
+
+NATIVE INTEGRATIONS (on Apps page):
+- **HubSpot** - CRM sync, contact creation, activity logging
+- **Slack** - Notifications for calls and messages
+- **Cal.com** - Appointment scheduling
+
+HOW TO CONNECT HUBSPOT:
+
+1. **Click "Apps"** in the sidebar
+
+2. **Find HubSpot** in the Native Integrations section
+
+3. **Click "Connect"**
+
+4. **Authorize** with your HubSpot account
+
+HOW TO CREATE A CHAT WIDGET:
+
+1. **Click "Agent"** in the sidebar
+
+2. **Click the "Deploy" tab**
+
+3. **Scroll to "Web Chat Widget"**
+
+4. **Click "Create Widget"**
+
+5. **Copy the embed code** to your website
+
+MAKING OUTBOUND CALLS:
+1. Click "Inbox" in the sidebar
+2. Click the phone/dialpad icon
+3. Enter the phone number
+4. Toggle "Use Agent" if you want AI to handle the call
+5. Click "Call"
+
+TROUBLESHOOTING:
+- Agent not answering calls: Go to Agent → Deploy tab, ensure a phone number is assigned
+- MCP server not working: Check API key is correct on the Apps page
+- Chat widget not appearing: Verify the embed code is on your page and domain is allowed
+` : ''
+
     const systemPrompt = agentConfig.system_prompt
-      ? `${visitorPrefix}${agentConfig.system_prompt}${CHAT_CONTEXT_SUFFIX}`
-      : `${visitorPrefix}You are a helpful AI assistant responding via website chat. Be friendly, professional, and concise. Keep responses to 2-4 sentences unless more detail is needed.${CHAT_CONTEXT_SUFFIX}`
+      ? `${visitorPrefix}${agentConfig.system_prompt}${AGENT_IDENTITY}${SUPPORT_AGENT_KNOWLEDGE}${CHAT_CONTEXT_SUFFIX}`
+      : `${visitorPrefix}You are a helpful AI assistant responding via website chat. Be friendly, professional, and concise. Keep responses to 2-4 sentences unless more detail is needed.${AGENT_IDENTITY}${SUPPORT_AGENT_KNOWLEDGE}${CHAT_CONTEXT_SUFFIX}`
 
 
     // Map conversation history to OpenAI format
@@ -592,7 +693,7 @@ You have access to HubSpot CRM. When the visitor provides their contact informat
 
     // For greeting requests, ask the AI to generate a welcome message
     const userContent = requestGreeting
-      ? 'Generate a warm, personalized greeting to start the conversation. Keep it brief (1-2 sentences). Do not ask how you can help - just greet them warmly.'
+      ? `Generate a warm greeting to start the conversation. IMPORTANT: Introduce yourself by your name (${agentDisplayName}). Keep it brief (1-2 sentences). Example: "Hi! I'm ${agentDisplayName}. How can I help you today?"`
       : message
 
     const messages: any[] = [
@@ -788,8 +889,13 @@ Page: ${session.page_url || 'Unknown'}`
 
   } catch (error) {
     console.error('Error in webhook-chat-message:', error)
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack')
+    console.error('Error message:', error instanceof Error ? error.message : String(error))
     return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
+      JSON.stringify({
+        error: 'Internal server error',
+        details: error instanceof Error ? error.message : String(error)
+      }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }

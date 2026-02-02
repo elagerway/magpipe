@@ -242,6 +242,126 @@ export function createKnowledgeSourceManager(container) {
     periodLabel.appendChild(periodSelect);
     form.appendChild(periodLabel);
 
+    // Auth section for protected pages
+    const authContainer = document.createElement('div');
+    authContainer.className = 'auth-section';
+    authContainer.style.cssText = 'margin-bottom: 16px;';
+
+    const authCheckboxLabel = document.createElement('label');
+    authCheckboxLabel.style.cssText = 'display: flex; align-items: center; gap: 8px; cursor: pointer;';
+
+    const authCheckbox = document.createElement('input');
+    authCheckbox.type = 'checkbox';
+    authCheckbox.name = 'use_auth';
+    authCheckbox.id = 'use_auth';
+    authCheckbox.style.cssText = 'width: auto; margin: 0;';
+
+    const authLabelText = document.createElement('span');
+    authLabelText.textContent = 'Requires authentication';
+    authLabelText.style.fontWeight = '500';
+
+    authCheckboxLabel.appendChild(authCheckbox);
+    authCheckboxLabel.appendChild(authLabelText);
+    authContainer.appendChild(authCheckboxLabel);
+
+    // Auth input fields (hidden by default)
+    const authFields = document.createElement('div');
+    authFields.className = 'auth-fields';
+    authFields.style.cssText = 'display: none; margin-top: 12px; padding: 12px; background: #f9fafb; border-radius: 6px;';
+
+    // Auth type selector
+    const authTypeLabel = document.createElement('label');
+    authTypeLabel.textContent = 'Auth Type:';
+    authTypeLabel.style.cssText = 'display: block; margin-bottom: 4px; font-weight: 500;';
+
+    const authTypeSelect = document.createElement('select');
+    authTypeSelect.name = 'auth_type';
+    authTypeSelect.style.cssText = 'width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; margin-bottom: 12px;';
+    authTypeSelect.innerHTML = `
+      <option value="bearer">Bearer Token / API Key</option>
+      <option value="basic">Basic Auth (Username & Password)</option>
+    `;
+
+    authFields.appendChild(authTypeLabel);
+    authFields.appendChild(authTypeSelect);
+
+    // Bearer token fields
+    const bearerFields = document.createElement('div');
+    bearerFields.className = 'bearer-fields';
+
+    const authHeaderLabel = document.createElement('label');
+    authHeaderLabel.textContent = 'Authorization Header:';
+    authHeaderLabel.style.cssText = 'display: block; margin-bottom: 4px; font-weight: 500;';
+
+    const authHeaderInput = document.createElement('input');
+    authHeaderInput.type = 'text';
+    authHeaderInput.name = 'auth_header';
+    authHeaderInput.placeholder = 'Bearer your-api-token-here';
+    authHeaderInput.style.cssText = 'width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; font-family: monospace;';
+
+    const authHeaderHelp = document.createElement('p');
+    authHeaderHelp.style.cssText = 'color: #6b7280; font-size: 12px; margin: 6px 0 0 0;';
+    authHeaderHelp.textContent = 'Enter your API key or bearer token';
+
+    bearerFields.appendChild(authHeaderLabel);
+    bearerFields.appendChild(authHeaderInput);
+    bearerFields.appendChild(authHeaderHelp);
+    authFields.appendChild(bearerFields);
+
+    // Basic auth fields (hidden by default)
+    const basicFields = document.createElement('div');
+    basicFields.className = 'basic-fields';
+    basicFields.style.display = 'none';
+
+    const usernameLabel = document.createElement('label');
+    usernameLabel.textContent = 'Username:';
+    usernameLabel.style.cssText = 'display: block; margin-bottom: 4px; font-weight: 500;';
+
+    const usernameInput = document.createElement('input');
+    usernameInput.type = 'text';
+    usernameInput.name = 'username';
+    usernameInput.placeholder = 'username';
+    usernameInput.style.cssText = 'width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; margin-bottom: 12px;';
+
+    const passwordLabel = document.createElement('label');
+    passwordLabel.textContent = 'Password:';
+    passwordLabel.style.cssText = 'display: block; margin-bottom: 4px; font-weight: 500;';
+
+    const passwordInput = document.createElement('input');
+    passwordInput.type = 'password';
+    passwordInput.name = 'password';
+    passwordInput.placeholder = 'password';
+    passwordInput.style.cssText = 'width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;';
+
+    basicFields.appendChild(usernameLabel);
+    basicFields.appendChild(usernameInput);
+    basicFields.appendChild(passwordLabel);
+    basicFields.appendChild(passwordInput);
+    authFields.appendChild(basicFields);
+
+    // Toggle between auth types
+    authTypeSelect.addEventListener('change', () => {
+      if (authTypeSelect.value === 'bearer') {
+        bearerFields.style.display = 'block';
+        basicFields.style.display = 'none';
+      } else {
+        bearerFields.style.display = 'none';
+        basicFields.style.display = 'block';
+      }
+    });
+
+    authContainer.appendChild(authFields);
+
+    // Toggle auth fields visibility
+    authCheckbox.addEventListener('change', () => {
+      authFields.style.display = authCheckbox.checked ? 'block' : 'none';
+      if (authCheckbox.checked) {
+        authHeaderInput.focus();
+      }
+    });
+
+    form.appendChild(authContainer);
+
     // Buttons
     const buttonContainer = document.createElement('div');
     buttonContainer.className = 'modal-buttons';
@@ -267,12 +387,33 @@ export function createKnowledgeSourceManager(container) {
 
       const url = urlInput.value.trim();
       const syncPeriod = periodSelect.value;
+      const useAuth = authCheckbox.checked;
+      const authType = authTypeSelect.value;
+      const authHeaderValue = authHeaderInput.value.trim();
+      const username = usernameInput.value.trim();
+      const password = passwordInput.value;
 
       try {
         submitBtn.disabled = true;
         submitBtn.textContent = 'Adding...';
 
-        await addSource(url, syncPeriod);
+        // Build auth headers based on auth type
+        let authHeaders = null;
+        if (useAuth) {
+          if (authType === 'bearer' && authHeaderValue) {
+            authHeaders = {
+              'Authorization': authHeaderValue
+            };
+          } else if (authType === 'basic' && username && password) {
+            // Encode username:password as base64 for Basic auth
+            const credentials = btoa(`${username}:${password}`);
+            authHeaders = {
+              'Authorization': `Basic ${credentials}`
+            };
+          }
+        }
+
+        await addSource(url, syncPeriod, authHeaders);
 
         modal.remove();
         await loadSources();

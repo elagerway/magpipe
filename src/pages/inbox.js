@@ -569,9 +569,13 @@ export default class InboxPage {
     conv.lastMessageRole = chatMessage.role;
     conv.lastActivity = new Date(chatMessage.created_at);
 
-    // If visitor message, increment unread
+    // If visitor message, increment unread and update badge
     if (chatMessage.role === 'visitor') {
       conv.unreadCount = (conv.unreadCount || 0) + 1;
+
+      // Update the nav badge with total unread count
+      const totalUnread = this.conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
+      setUnreadBadgeCount(totalUnread);
     }
 
     // Update conversation list
