@@ -101,6 +101,14 @@ navItems.push({ path: '/new', label: 'New' });
 - **Phone**: `+16044182180` (Erik's cell for outbound tests)
 - **API tests**: Use `SUPABASE_SERVICE_ROLE_KEY` from `.env`
 
+### iOS PWA Testing
+- Erik has the app installed as a PWA on his iPhone (added to Home Screen)
+- **iOS Push Notifications require**:
+  - iOS 16.4 or later
+  - App MUST be installed to Home Screen (not regular Safari)
+  - User must grant permission when prompted
+- To test on iPhone: Deploy to production (Vercel), open PWA from Home Screen
+
 ### Playwright Login (Preferred Method)
 For Playwright tests, use email/password login instead of OTP:
 ```javascript
