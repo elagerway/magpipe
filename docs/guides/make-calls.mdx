@@ -1,0 +1,105 @@
+---
+title: Make Outbound Calls
+description: "How to initiate calls with your AI agent"
+---
+
+## Overview
+
+Solo Mobile supports two types of outbound calls:
+
+1. **Agent Call** - AI agent speaks to the recipient
+2. **Callback Call** - You speak to the recipient (bridged through Solo Mobile)
+
+## Making an Agent Call
+
+Use this when you want your AI agent to call someone on your behalf.
+
+<Steps>
+  <Step title="Open Dialer">
+    From the **Home** screen, you'll see the dialpad. Or tap the phone icon in the navigation.
+  </Step>
+  <Step title="Enter Number">
+    Type or paste the phone number you want to call.
+  </Step>
+  <Step title="Select Agent">
+    Choose which agent should make the call from the dropdown.
+  </Step>
+  <Step title="Start Call">
+    Tap the **Call** button. The agent will call the number and handle the conversation.
+  </Step>
+  <Step title="Monitor">
+    Watch the call status. The call will appear in your Inbox when complete.
+  </Step>
+</Steps>
+
+### Agent Call Flow
+
+1. Solo Mobile initiates call to recipient
+2. Recipient answers
+3. Your AI agent delivers its greeting
+4. Agent handles the conversation
+5. Call is recorded and transcribed
+6. Call appears in Inbox
+
+## Making a Callback Call
+
+Use this when you want to speak to someone yourself, using your Solo Mobile number as caller ID.
+
+<Steps>
+  <Step title="Open Dialer">
+    From the **Home** screen, access the dialpad.
+  </Step>
+  <Step title="Enter Number">
+    Type the phone number you want to call.
+  </Step>
+  <Step title="Disable Agent">
+    Toggle off "Use Agent" or select "No Agent".
+  </Step>
+  <Step title="Start Call">
+    Tap the **Call** button.
+  </Step>
+  <Step title="Answer Your Phone">
+    Solo Mobile calls YOUR phone first. Answer it.
+  </Step>
+  <Step title="Connected">
+    Once you answer, Solo Mobile bridges you to the recipient.
+  </Step>
+</Steps>
+
+### Callback Call Flow
+
+1. Solo Mobile calls your registered phone
+2. You answer
+3. Solo Mobile then calls the recipient
+4. When they answer, you're connected
+5. Your Solo Mobile number shows as caller ID
+
+## Call Settings
+
+### From Number
+Choose which of your Solo Mobile numbers to call from. This affects:
+- Caller ID shown to recipient
+- Which agent is used (for agent calls)
+
+### Recording
+Calls are recorded by default. Recordings and transcripts appear in the Inbox.
+
+## Tips
+
+<AccordionGroup>
+  <Accordion title="Test with yourself first">
+    Before calling customers, test by calling your own cell phone to verify the experience.
+  </Accordion>
+  <Accordion title="Set context in the prompt">
+    For agent calls, you can customize the agent's goal: "You are calling to confirm their appointment tomorrow at 2pm."
+  </Accordion>
+  <Accordion title="Check your call history">
+    All outbound calls appear in the Inbox with full transcripts and recordings.
+  </Accordion>
+</AccordionGroup>
+
+## Limitations
+
+- Outbound calls require a provisioned phone number
+- Some regions may have restrictions on automated calls
+- Always comply with local telemarketing regulations

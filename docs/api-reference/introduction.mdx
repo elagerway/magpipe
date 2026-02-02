@@ -1,0 +1,94 @@
+---
+title: API Introduction
+description: "Overview of the Solo Mobile API"
+---
+
+## Overview
+
+The Solo Mobile API allows you to programmatically manage agents, phone numbers, and communications.
+
+<Note>
+The API is currently in beta. Some endpoints may change.
+</Note>
+
+## Base URL
+
+All API requests are made to:
+
+```
+https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1
+```
+
+## Authentication
+
+All API requests require authentication via Bearer token.
+
+```bash
+curl -X GET "https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/your-endpoint" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json"
+```
+
+See [Authentication](/api-reference/authentication) for details on obtaining tokens.
+
+## Response Format
+
+All responses are JSON:
+
+```json
+{
+  "data": { ... },
+  "error": null
+}
+```
+
+Or on error:
+
+```json
+{
+  "data": null,
+  "error": {
+    "message": "Error description",
+    "code": "ERROR_CODE"
+  }
+}
+```
+
+## HTTP Status Codes
+
+| Code | Description |
+|------|-------------|
+| 200 | Success |
+| 201 | Created |
+| 400 | Bad Request - Invalid parameters |
+| 401 | Unauthorized - Invalid or missing token |
+| 404 | Not Found |
+| 429 | Rate Limited |
+| 500 | Server Error |
+
+## Rate Limiting
+
+API requests are rate limited to:
+- 100 requests per minute per user
+- 1000 requests per hour per user
+
+Rate limit headers are included in responses:
+```
+X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 95
+X-RateLimit-Reset: 1234567890
+```
+
+## Available Endpoints
+
+<CardGroup cols={2}>
+  <Card title="Agents" icon="robot" href="/api-reference/endpoints/agents">
+    Create and manage AI agents
+  </Card>
+  <Card title="Calls" icon="phone" href="/api-reference/endpoints/calls">
+    Initiate and manage phone calls
+  </Card>
+  <Card title="Messages" icon="message" href="/api-reference/endpoints/messages">
+    Send and retrieve SMS messages
+  </Card>
+</CardGroup>

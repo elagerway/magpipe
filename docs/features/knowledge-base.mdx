@@ -1,0 +1,101 @@
+---
+title: Knowledge Base
+description: "Add context and information to make your agents smarter"
+---
+
+## Overview
+
+The Knowledge Base stores information that your AI agents can reference when answering questions. Add websites, documents, and custom content to give agents context about your business.
+
+## Adding Knowledge Sources
+
+### From URL
+
+Add content from any public webpage:
+
+<Steps>
+  <Step title="Go to Knowledge">
+    Navigate to **Knowledge** from the main menu.
+  </Step>
+  <Step title="Add Source">
+    Click **+ Add Source**.
+  </Step>
+  <Step title="Enter URL">
+    Paste the URL of the webpage to import.
+  </Step>
+  <Step title="Configure Sync">
+    Choose how often to re-sync the content:
+    - Every 24 hours
+    - Every 7 days
+    - Every month
+    - Every 3 months
+  </Step>
+  <Step title="Authentication (Optional)">
+    If the page requires login:
+    - Check "Requires authentication"
+    - Choose auth type (Bearer Token or Basic Auth)
+    - Enter credentials
+  </Step>
+</Steps>
+
+### Protected Pages
+
+For pages that require authentication:
+
+**Bearer Token / API Key:**
+```
+Bearer your-api-token-here
+```
+
+**Basic Auth:**
+- Enter username and password
+- Credentials are encoded automatically
+
+## How It Works
+
+1. **Fetch** - Solo Mobile retrieves the webpage content
+2. **Extract** - Text is extracted and cleaned
+3. **Chunk** - Content is split into smaller pieces
+4. **Embed** - AI embeddings are generated for semantic search
+5. **Store** - Chunks are saved to your knowledge base
+
+When an agent needs information:
+1. The question is converted to an embedding
+2. Relevant chunks are found via similarity search
+3. Context is provided to the agent for answering
+
+## Managing Sources
+
+Each knowledge source shows:
+- **Title** - Page title or custom name
+- **URL** - Source location
+- **Status** - Syncing, completed, or failed
+- **Chunks** - Number of content pieces
+- **Last Synced** - When content was last updated
+
+### Deleting Sources
+
+Click a source to expand details, then click **Delete** to remove it and all associated content.
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Add your FAQ page">
+    Your FAQ or help center is a great first source - it contains answers to common questions.
+  </Accordion>
+  <Accordion title="Include product/service pages">
+    Add pages that describe what you offer so agents can answer "what do you do?" questions.
+  </Accordion>
+  <Accordion title="Add location and hours">
+    Include your contact page with address, hours, and directions.
+  </Accordion>
+  <Accordion title="Keep content focused">
+    Add specific, relevant pages rather than entire websites. Quality over quantity.
+  </Accordion>
+</AccordionGroup>
+
+## Limits
+
+- Maximum 50 knowledge sources per account
+- Maximum 1MB per page
+- Content is automatically chunked for optimal retrieval

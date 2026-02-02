@@ -1,0 +1,93 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "name": "Solo Mobile",
+  "logo": {
+    "dark": "/logo/dark.svg",
+    "light": "/logo/light.svg"
+  },
+  "favicon": "/favicon.svg",
+  "colors": {
+    "primary": "#6366f1",
+    "light": "#818cf8",
+    "dark": "#4f46e5",
+    "anchors": {
+      "from": "#6366f1",
+      "to": "#8b5cf6"
+    }
+  },
+  "topbarLinks": [
+    {
+      "name": "Support",
+      "url": "mailto:support@solomobile.ai"
+    }
+  ],
+  "topbarCtaButton": {
+    "name": "Dashboard",
+    "url": "https://solomobile.ai"
+  },
+  "tabs": [
+    {
+      "name": "API Reference",
+      "url": "api-reference"
+    }
+  ],
+  "anchors": [
+    {
+      "name": "Dashboard",
+      "icon": "browser",
+      "url": "https://solomobile.ai"
+    },
+    {
+      "name": "Contact Us",
+      "icon": "envelope",
+      "url": "mailto:support@solomobile.ai"
+    }
+  ],
+  "navigation": [
+    {
+      "group": "Get Started",
+      "pages": [
+        "introduction",
+        "quickstart"
+      ]
+    },
+    {
+      "group": "Features",
+      "pages": [
+        "features/agents",
+        "features/phone-numbers",
+        "features/inbox",
+        "features/knowledge-base",
+        "features/chat-widget",
+        "features/integrations"
+      ]
+    },
+    {
+      "group": "Guides",
+      "pages": [
+        "guides/create-agent",
+        "guides/make-calls",
+        "guides/receive-calls",
+        "guides/sms"
+      ]
+    },
+    {
+      "group": "API Reference",
+      "pages": [
+        "api-reference/introduction",
+        "api-reference/authentication"
+      ]
+    },
+    {
+      "group": "Endpoints",
+      "pages": [
+        "api-reference/endpoints/agents",
+        "api-reference/endpoints/calls",
+        "api-reference/endpoints/messages"
+      ]
+    }
+  ],
+  "footerSocials": {
+    "website": "https://solomobile.ai"
+  }
+}

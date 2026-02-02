@@ -1,0 +1,97 @@
+---
+title: SMS Messaging
+description: "Send and receive text messages with your AI agent"
+---
+
+## Overview
+
+Your Solo Mobile phone numbers can send and receive SMS text messages. Your AI agent handles incoming texts automatically.
+
+## Receiving SMS
+
+When someone texts your Solo Mobile number:
+
+1. **Message received** - Text arrives at your number
+2. **Agent responds** - AI generates a contextual response
+3. **Reply sent** - Response is sent to the sender
+4. **Inbox updated** - Conversation appears in your Inbox
+
+The agent uses the same system prompt and knowledge as phone calls, adapted for text format.
+
+## Sending SMS
+
+### From the Inbox
+
+1. Open an existing conversation
+2. Type your message in the reply box
+3. Tap **Send**
+
+### New Conversation
+
+1. Go to **Inbox**
+2. Tap the compose button
+3. Enter the recipient's phone number
+4. Type your message
+5. Tap **Send**
+
+## AI vs Manual Messages
+
+### AI Messages
+- Generated automatically when someone texts your number
+- Based on agent's system prompt and knowledge
+- Marked with "AI" indicator in the conversation
+
+### Manual Messages
+- You type and send yourself
+- AI pauses for that conversation
+- Resume AI by letting it respond to the next inbound message
+
+## Conversation Context
+
+The AI maintains context across messages:
+
+```
+Visitor: What are your hours?
+Agent: We're open Monday-Friday, 9am to 5pm.
+
+Visitor: Are you open Saturday?
+Agent: We're closed on weekends, but you can leave a message and we'll respond Monday morning.
+
+Visitor: Ok thanks
+Agent: You're welcome! Have a great day.
+```
+
+The agent remembers the conversation flow and responds appropriately.
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Keep responses concise">
+    SMS has character limits. Agent responses are automatically kept brief.
+  </Accordion>
+  <Accordion title="Set expectations in your prompt">
+    Tell the agent it's responding via text: "Keep responses under 160 characters when possible."
+  </Accordion>
+  <Accordion title="Monitor the Inbox">
+    Check your Inbox regularly for conversations that might need human follow-up.
+  </Accordion>
+  <Accordion title="Use for confirmations">
+    SMS is great for appointment confirmations, reminders, and quick updates.
+  </Accordion>
+</AccordionGroup>
+
+## Limitations
+
+- SMS is text-only (no images or media in agent responses)
+- Some carriers may filter automated messages
+- International SMS may have additional costs
+- Message length affects segment count (and cost)
+
+## Compliance
+
+When using SMS for business:
+
+- Honor opt-out requests ("STOP" messages)
+- Don't send unsolicited marketing messages
+- Include business identification
+- Follow local regulations (TCPA, CASL, etc.)

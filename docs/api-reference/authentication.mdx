@@ -1,0 +1,102 @@
+---
+title: Authentication
+description: "How to authenticate with the Solo Mobile API"
+---
+
+## Overview
+
+Solo Mobile uses Bearer token authentication. You'll need to include your access token in the `Authorization` header of all API requests.
+
+## Getting Your Access Token
+
+### From the Dashboard
+
+1. Log in to [solomobile.ai](https://solomobile.ai)
+2. Go to **Settings** → **API**
+3. Click **Generate Token**
+4. Copy and securely store your token
+
+<Warning>
+Treat your API token like a password. Never share it or commit it to source control.
+</Warning>
+
+### Programmatically
+
+You can also authenticate using email/password to get a session token:
+
+```bash
+curl -X POST "https://mtxbiyilvgwhbdptysex.supabase.co/auth/v1/token?grant_type=password" \
+  -H "apikey: YOUR_ANON_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "your@email.com",
+    "password": "your-password"
+  }'
+```
+
+Response:
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer",
+  "expires_in": 3600,
+  "refresh_token": "..."
+}
+```
+
+## Using the Token
+
+Include the token in the `Authorization` header:
+
+```bash
+curl -X GET "https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/endpoint" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json"
+```
+
+## Token Expiration
+
+- Access tokens expire after 1 hour
+- Use the refresh token to get a new access token
+- API tokens from the dashboard don't expire (until revoked)
+
+### Refreshing Tokens
+
+```bash
+curl -X POST "https://mtxbiyilvgwhbdptysex.supabase.co/auth/v1/token?grant_type=refresh_token" \
+  -H "apikey: YOUR_ANON_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "refresh_token": "YOUR_REFRESH_TOKEN"
+  }'
+```
+
+## Revoking Tokens
+
+To revoke an API token:
+
+1. Go to **Settings** → **API** in the dashboard
+2. Find the token you want to revoke
+3. Click **Revoke**
+
+The token will immediately stop working.
+
+## Security Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use environment variables">
+    Store tokens in environment variables, not in code.
+    ```bash
+    export SOLO_API_TOKEN="your-token"
+    ```
+  </Accordion>
+  <Accordion title="Rotate tokens regularly">
+    Generate new tokens periodically and revoke old ones.
+  </Accordion>
+  <Accordion title="Use minimal permissions">
+    Request only the permissions your application needs.
+  </Accordion>
+  <Accordion title="Monitor for abuse">
+    Check your API usage in the dashboard for unexpected activity.
+  </Accordion>
+</AccordionGroup>
