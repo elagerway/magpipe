@@ -50,4 +50,5 @@ test-bridged-call.sh
 
 # Screenshots
 *.png
+!docs/images/*.png
 tests/screenshots/
