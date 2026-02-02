@@ -1,251 +1,216 @@
 ---
 title: White Labeling
-description: "Remove Solo Mobile branding and customize with your own brand"
+description: "Customize your portal with your own logo and favicon"
 ---
 
 ## Overview
 
-White labeling lets you present Solo Mobile as your own product. Replace our branding with yours - your logo, your colors, your domain. Perfect for agencies, resellers, and businesses that want a seamless branded experience for their clients.
+White labeling lets you personalize your Solo Mobile portal with your own branding. Upload your company logo and favicon to make the dashboard feel like your own product. This is perfect for agencies presenting the platform to clients or businesses that want a cohesive branded experience.
 
-<Note>
-White labeling is included by default on all plans. No additional setup required.
-</Note>
+## What You Can Customize
 
-## What Can Be Customized
+### Logo
 
-### Visual Branding
+Your logo appears in the sidebar navigation of the portal.
 
-| Element | Customization |
-|---------|---------------|
-| **Logo** | Your logo in header and login |
-| **Favicon** | Browser tab icon |
-| **Primary Color** | Buttons, links, accents |
-| **Secondary Color** | Supporting UI elements |
-| **Background** | Dashboard background |
+**Specifications:**
+- **Recommended size**: 200x50 pixels
+- **Formats**: PNG, SVG, or JPEG
+- **Max file size**: 2MB
+- **Background**: Transparent recommended
 
-### Text & Messaging
+### Favicon
 
-| Element | Customization |
-|---------|---------------|
-| **Product Name** | Replace "Solo Mobile" with your name |
-| **Support Email** | Your support contact |
-| **Terms URL** | Link to your terms of service |
-| **Privacy URL** | Link to your privacy policy |
+Your favicon appears in the browser tab when using the portal.
 
-### Custom Domain
+**Specifications:**
+- **Recommended size**: 32x32 or 64x64 pixels
+- **Formats**: PNG or ICO
+- **Max file size**: 500KB
 
-Use your own domain instead of solomobile.ai:
-- `app.yourbrand.com`
-- `dashboard.youragency.com`
-- `clients.yourcompany.io`
+## Setting Up Your Brand
 
-## Setting Up White Label
-
-### 1. Upload Your Logo
+### Uploading Your Logo
 
 <Steps>
   <Step title="Go to Settings">
-    Navigate to **Settings** → **Branding**.
+    Navigate to **Settings** from the main navigation.
+  </Step>
+  <Step title="Find Brand Section">
+    Scroll down to the **Brand** section.
   </Step>
   <Step title="Upload Logo">
-    Click **Upload Logo** and select your image.
-    - Recommended: SVG or PNG
-    - Size: 200x50px minimum
-    - Transparent background recommended
+    Click **Upload Logo** and select your image file.
   </Step>
-  <Step title="Upload Favicon">
-    Click **Upload Favicon** for browser tab icon.
-    - Size: 32x32px or 16x16px
-    - ICO or PNG format
-  </Step>
-  <Step title="Save Changes">
-    Click **Save**. Changes apply immediately.
+  <Step title="Verify">
+    Your logo appears in the preview. It will now show in the sidebar.
   </Step>
 </Steps>
 
-### 2. Set Brand Colors
+### Changing Your Logo
 
-1. Go to **Settings** → **Branding**
-2. Click the color picker for **Primary Color**
-3. Enter your brand's hex code (e.g., `#FF5722`)
-4. Repeat for **Secondary Color** if desired
-5. Preview the changes
-6. Save
+If you already have a logo uploaded:
+1. Go to **Settings** → **Brand**
+2. Click **Change Logo**
+3. Select your new image
+4. The old logo is replaced immediately
 
-**Color Applications:**
-- Primary: Buttons, active states, links
-- Secondary: Borders, backgrounds, hover states
+### Removing Your Logo
 
-### 3. Customize Product Name
+To remove your logo and return to the default:
+1. Go to **Settings** → **Brand**
+2. Click **Remove** under the logo preview
+3. The sidebar returns to showing "Solo Mobile" text
 
-1. Go to **Settings** → **Branding**
-2. Find **Product Name** field
-3. Enter your product name (e.g., "ClientCom")
-4. Save
-
-This name appears:
-- In the browser tab title
-- In email notifications
-- In the dashboard header
-
-### 4. Set Support Contact
-
-1. Go to **Settings** → **Branding**
-2. Enter your **Support Email**
-3. Enter your **Support URL** (optional - link to help center)
-4. Save
-
-Your contact info appears:
-- In the Help section
-- In error messages
-- In footer links
-
-### 5. Custom Domain (Optional)
-
-For the most complete white label experience:
+### Uploading Your Favicon
 
 <Steps>
-  <Step title="Choose Your Domain">
-    Decide on your subdomain:
-    - `app.yourbrand.com`
-    - `phone.youragency.com`
+  <Step title="Go to Settings">
+    Navigate to **Settings** from the main navigation.
   </Step>
-  <Step title="Add DNS Record">
-    Add a CNAME record pointing to `custom.solomobile.ai`:
-    ```
-    app.yourbrand.com CNAME custom.solomobile.ai
-    ```
+  <Step title="Find Brand Section">
+    Scroll down to the **Brand** section.
   </Step>
-  <Step title="Request Setup">
-    Contact support@solomobile.ai with:
-    - Your domain name
-    - Your account email
-    - Confirmation DNS is configured
+  <Step title="Upload Favicon">
+    Click **Upload Favicon** and select your icon file.
   </Step>
-  <Step title="SSL Certificate">
-    We provision an SSL certificate automatically.
-    Your domain will be live within 24 hours.
+  <Step title="Verify">
+    Check your browser tab - your favicon should appear immediately.
   </Step>
 </Steps>
 
-## White Label for Agencies
+### Changing Your Favicon
 
-### Client Experience
+1. Go to **Settings** → **Brand**
+2. Click **Change Favicon**
+3. Select your new icon
+4. The browser tab updates immediately
 
-When you white label, your clients see:
-- Your logo on login page
-- Your colors throughout
-- Your product name in browser
-- Your support email for help
-- No mention of "Solo Mobile"
+### Removing Your Favicon
 
-### Per-Client Customization
+1. Go to **Settings** → **Brand**
+2. Click **Remove** under the favicon preview
+3. The default Solo Mobile favicon returns
 
-Create unique experiences for each client:
+## Where Your Branding Appears
 
-**Option 1: Shared Branding**
-- All clients see your agency branding
-- Single white label configuration
-- Simplest setup
+### Logo Locations
 
-**Option 2: Client-Specific Branding**
-- Each client organization has its own branding
-- Separate logos and colors per client
-- Requires separate organization per client
+Your uploaded logo displays in:
+- **Sidebar navigation** - Top of the left sidebar
+- **Login page** - When you sign in (if configured)
 
-### Reseller Setup
+### Favicon Locations
 
-For true resale:
-1. Create organization for each client
-2. Apply their branding to their organization
-3. Invite them with Member or Admin role
-4. They never see your agency branding
-
-## What Cannot Be Customized
-
-Some elements remain standard:
-
-- **API domain**: Always `mtxbiyilvgwhbdptysex.supabase.co`
-- **Widget domain**: Always `solomobile.ai/widget`
-- **Email sender**: Transactional emails from Supabase
-- **Mobile app**: Not available for white labeling
+Your uploaded favicon displays in:
+- **Browser tab** - The small icon next to the page title
+- **Bookmarks** - When users bookmark the page
+- **Mobile home screen** - If added as a web app
 
 ## Best Practices
 
-### Brand Consistency
+### Logo Design Tips
 
-1. **Use vector logos** - SVG scales better than PNG
-2. **Match exact colors** - Use your brand style guide
-3. **Test on mobile** - Verify branding on small screens
-4. **Check dark/light** - Logos should work on both backgrounds
+1. **Use a horizontal layout** - The sidebar space is wide, not tall
+2. **Keep it simple** - Detailed logos may be hard to read at small sizes
+3. **Use transparent background** - Works better with light and dark themes
+4. **Test both themes** - Verify your logo is visible in light and dark mode
+5. **Use vector format** - SVG scales better than PNG
 
-### For Agencies
+### Favicon Design Tips
 
-1. **Create demo account** - Show prospects your branded version
-2. **Document for clients** - Explain it's "your" platform
-3. **Custom training** - Create guides with your branding
-4. **Consistent support** - Route support through your team first
+1. **Keep it recognizable** - Very simple icon that's clear at 16x16px
+2. **Use your brand mark** - Just the icon/symbol, not full logo
+3. **High contrast** - Make sure it's visible against browser chrome
+4. **Square format** - Favicons are always square
 
-### Domain Setup
+### File Optimization
 
-1. **Use a subdomain** - `app.yourbrand.com` not `yourbrand.com`
-2. **Keep DNS updated** - Don't let the CNAME expire
-3. **Plan for email** - Set up SPF/DKIM if sending from your domain
+**For logos:**
+- Compress PNG files to reduce load time
+- SVG is ideal for crisp rendering at any size
+- Avoid files over 500KB even though 2MB is allowed
 
-## Verifying White Label
+**For favicons:**
+- 32x32px is the sweet spot for most browsers
+- PNG with transparency works well
+- ICO format if you need legacy browser support
 
-### Checklist
+## Use Cases
 
-After setup, verify:
+### Agencies
 
-- [ ] Logo appears on login page
-- [ ] Logo appears in dashboard header
-- [ ] Favicon shows in browser tab
-- [ ] Primary color applied to buttons
-- [ ] Product name in browser title
-- [ ] Support email in help section
-- [ ] No "Solo Mobile" text visible
-- [ ] Custom domain works (if configured)
+Present Solo Mobile as your own platform to clients:
+1. Upload your agency logo
+2. Upload your agency favicon
+3. Clients see your branding when using the portal
 
-### Testing as Client
+### Businesses
 
-1. Open incognito/private window
-2. Visit your login URL
-3. Sign in with a test account
-4. Navigate through all sections
-5. Verify branding throughout
+Create a cohesive experience for your team:
+1. Use your company logo
+2. Match your other internal tools
+3. Reinforce your brand identity
+
+### Resellers
+
+Offer a branded experience to customers:
+1. Each customer can set their own logo
+2. Their team members see their company branding
+3. No mention of Solo Mobile in the interface
 
 ## Troubleshooting
 
-### Logo Not Showing
+### Logo Not Appearing
 
-1. Check file format (SVG or PNG)
-2. Verify file size (<5MB)
-3. Clear browser cache
-4. Try a different browser
+1. **Check file size** - Must be under 2MB
+2. **Verify format** - PNG, SVG, or JPEG only
+3. **Clear browser cache** - Hard refresh with Ctrl/Cmd + Shift + R
+4. **Try different browser** - Rule out browser-specific issues
 
-### Colors Not Applying
+### Logo Looks Blurry
 
-1. Ensure valid hex code (e.g., `#FF5722`)
-2. Hard refresh the page (Ctrl/Cmd + Shift + R)
-3. Check for browser extensions affecting CSS
+1. **Use higher resolution** - At least 400x100px for retina displays
+2. **Try SVG format** - Vector graphics never get blurry
+3. **Check original file** - Ensure source image is high quality
 
-### Custom Domain Not Working
+### Favicon Not Updating
 
-1. Verify DNS CNAME record is set
-2. Wait for DNS propagation (up to 48 hours)
-3. Check SSL certificate status with support
-4. Ensure no conflicting A records
+1. **Clear browser cache** - Favicons are heavily cached
+2. **Close and reopen tab** - Sometimes required for update
+3. **Check file format** - PNG or ICO only
+4. **Verify file size** - Must be under 500KB
 
-### Widget Still Shows Solo Mobile
+### Logo Too Large/Small
 
-The chat widget always loads from `solomobile.ai`. This is required for security and reliability. The widget itself can be styled to match your brand colors.
+The logo container is fixed at 160x40px. If your logo appears:
+- **Too small**: Use a logo designed for horizontal space
+- **Cut off**: Ensure your logo fits within 200x50px recommended size
+- **Stretched**: Maintain original aspect ratio in your source file
+
+## Frequently Asked Questions
+
+### Can I customize colors?
+
+Currently, logo and favicon are the customizable brand elements. The portal uses Solo Mobile's color scheme.
+
+### Does my branding show to callers?
+
+No, branding is only for the web portal. Callers interact with your AI agent, which uses your agent's configured name and personality.
+
+### Is there a custom domain option?
+
+Custom domains are not currently available. Your portal is accessed at solomobile.ai.
+
+### Do team members see my branding?
+
+Yes, all team members in your organization see the same logo and favicon that you've uploaded.
 
 <CardGroup cols={2}>
-  <Card title="Team Management" icon="users" href="/features/team-management">
-    Set up client organizations
+  <Card title="Settings" icon="gear" href="/features/settings">
+    All settings options
   </Card>
-  <Card title="Chat Widget" icon="comments" href="/features/chat-widget">
-    Brand your chat widget
+  <Card title="Team Management" icon="users" href="/features/team-management">
+    Manage your team
   </Card>
 </CardGroup>
