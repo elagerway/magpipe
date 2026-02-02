@@ -1663,6 +1663,19 @@ p {
   stroke: white;
 }
 
+/* Chat Avatar */
+.chat-avatar {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chat-avatar svg {
+  stroke: white;
+}
+
 .call-status-indicator {
   display: inline-flex;
   align-items: center;
@@ -2068,6 +2081,76 @@ p {
 .toggle-switch input:disabled + .toggle-slider {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Settings Section Styles */
+.settings-section {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.settings-section-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 1rem 0;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.toggle-row > div {
+  flex: 1;
+}
+
+/* Position Selector */
+.position-option {
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: var(--bg-primary);
+}
+
+.position-option:hover {
+  border-color: var(--primary-color);
+  background: var(--bg-secondary);
+}
+
+.position-option.selected {
+  border-color: var(--primary-color);
+  background: rgba(99, 102, 241, 0.1);
+}
+
+.position-option input[type="radio"] {
+  display: none;
+}
+
+.position-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+
+.position-option.selected .position-label {
+  color: var(--primary-color);
+  font-weight: 500;
 }
 
 /* Swipe-to-delete styles (iOS style) */
