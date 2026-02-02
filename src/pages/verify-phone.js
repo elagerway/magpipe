@@ -4,6 +4,7 @@
 
 import { User } from '../models/User.js';
 import { getCurrentUser, supabase } from '../lib/supabase.js';
+import { isPushSupported, subscribeToPush } from '../services/pushNotifications.js';
 
 export default class VerifyPhonePage {
   constructor() {
@@ -217,6 +218,28 @@ export default class VerifyPhonePage {
 
         successMessage.className = 'alert alert-success';
         successMessage.textContent = 'Phone verified successfully!';
+
+        // Request push notification permission (native prompt)
+        // User can accept or decline - if declined they can enable later in Settings
+        if (isPushSupported()) {
+          try {
+            const pushResult = await subscribeToPush();
+            if (pushResult.success) {
+              // Save preference if they accepted
+              await supabase
+                .from('notification_preferences')
+                .upsert({
+                  user_id: user.id,
+                  push_enabled: true,
+                  push_inbound_calls: true,
+                  push_inbound_messages: true,
+                }, { onConflict: 'user_id' });
+            }
+          } catch (e) {
+            // Ignore push errors - not critical
+            console.log('Push notification setup skipped:', e.message);
+          }
+        }
 
         // Wait a moment to ensure database update propagates
         await new Promise(resolve => setTimeout(resolve, 500));
