@@ -1,0 +1,282 @@
+---
+title: "Create Agent"
+api: "POST https://mtxbiyilvgwhbdptysex.supabase.co/rest/v1/agent_configs"
+description: "Create a new AI agent with custom configuration"
+---
+
+## Overview
+
+Creates a new AI agent that can handle phone calls, SMS messages, and chat conversations. Agents are fully customizable with their own personality, voice, and capabilities.
+
+## Request
+
+### Headers
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token for authentication.
+</ParamField>
+
+<ParamField header="apikey" type="string" required>
+  Your Supabase anon key.
+</ParamField>
+
+<ParamField header="Content-Type" type="string" required>
+  Must be `application/json`
+</ParamField>
+
+<ParamField header="Prefer" type="string">
+  Set to `return=representation` to get the created agent in the response.
+</ParamField>
+
+### Body Parameters
+
+<ParamField body="name" type="string" required>
+  Display name for the agent.
+
+  **Example:** `"Reception Agent"`
+
+  **Constraints:**
+  - 1-100 characters
+  - Must be unique within your account
+</ParamField>
+
+<ParamField body="greeting" type="string">
+  The message the agent says when answering a call.
+
+  **Example:** `"Hello, thanks for calling Acme Corp. How can I help you today?"`
+
+  **Constraints:**
+  - Maximum 500 characters
+  - Should be under 15 seconds when spoken
+</ParamField>
+
+<ParamField body="system_prompt" type="string" required>
+  Instructions that define the agent's personality, knowledge, and behavior. This is the most important setting for customizing agent responses.
+
+  **Example:**
+  ```
+  You are Sarah, a friendly receptionist for Acme Corp.
+
+  Your responsibilities:
+  - Answer questions about our services
+  - Help callers schedule appointments
+  - Take messages when needed
+
+  Business hours: Monday-Friday, 9am-5pm
+  Location: 123 Main St, Vancouver BC
+
+  Always be professional and helpful.
+  ```
+
+  **Constraints:**
+  - Maximum 10,000 characters
+  - Supports markdown formatting
+</ParamField>
+
+<ParamField body="voice_id" type="string">
+  ID of the voice to use for phone calls.
+
+  **Available voices:**
+  | Voice ID | Description |
+  |----------|-------------|
+  | `alloy` | Neutral, professional |
+  | `echo` | Warm, friendly |
+  | `fable` | Expressive, dynamic |
+  | `onyx` | Deep, authoritative |
+  | `nova` | Bright, energetic |
+  | `shimmer` | Soft, calm |
+
+  **Default:** `alloy`
+</ParamField>
+
+<ParamField body="voice_speed" type="number">
+  Speech rate multiplier.
+
+  **Range:** 0.5 to 2.0
+
+  **Default:** 1.0
+</ParamField>
+
+<ParamField body="language" type="string">
+  Primary language for the agent.
+
+  **Default:** `en-US`
+
+  **Supported:** `en-US`, `en-GB`, `es-ES`, `fr-FR`, `de-DE`
+</ParamField>
+
+<ParamField body="max_call_duration" type="integer">
+  Maximum call duration in seconds. Call ends automatically after this time.
+
+  **Default:** 1800 (30 minutes)
+
+  **Range:** 60 to 3600
+</ParamField>
+
+<ParamField body="end_call_phrases" type="array">
+  Phrases that trigger automatic call termination.
+
+  **Example:** `["goodbye", "thank you bye", "that's all"]`
+
+  **Default:** `["goodbye", "bye", "have a good day"]`
+</ParamField>
+
+<ParamField body="transfer_number" type="string">
+  Phone number to transfer calls to when requested.
+
+  **Example:** `"+14155551234"`
+</ParamField>
+
+<ParamField body="is_active" type="boolean">
+  Whether the agent is active and can receive calls.
+
+  **Default:** `true`
+</ParamField>
+
+## Response
+
+<ResponseField name="id" type="string">
+  Unique identifier (UUID) for the agent.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Agent display name.
+</ResponseField>
+
+<ResponseField name="greeting" type="string">
+  Call greeting message.
+</ResponseField>
+
+<ResponseField name="system_prompt" type="string">
+  Agent instructions.
+</ResponseField>
+
+<ResponseField name="voice_id" type="string">
+  Selected voice ID.
+</ResponseField>
+
+<ResponseField name="is_active" type="boolean">
+  Active status.
+</ResponseField>
+
+<ResponseField name="created_at" type="string">
+  ISO 8601 creation timestamp.
+</ResponseField>
+
+<ResponseField name="updated_at" type="string">
+  ISO 8601 last update timestamp.
+</ResponseField>
+
+## Example Request
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST "https://mtxbiyilvgwhbdptysex.supabase.co/rest/v1/agent_configs" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "apikey: YOUR_ANON_KEY" \
+  -H "Content-Type: application/json" \
+  -H "Prefer: return=representation" \
+  -d '{
+    "name": "Reception Agent",
+    "greeting": "Hello, thanks for calling! How can I help you today?",
+    "system_prompt": "You are a friendly receptionist. Be helpful and professional.",
+    "voice_id": "nova"
+  }'
+```
+
+```javascript JavaScript
+const { createClient } = require('@supabase/supabase-js');
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const { data, error } = await supabase
+  .from('agent_configs')
+  .insert({
+    name: 'Reception Agent',
+    greeting: 'Hello, thanks for calling! How can I help you today?',
+    system_prompt: 'You are a friendly receptionist. Be helpful and professional.',
+    voice_id: 'nova',
+  })
+  .select()
+  .single();
+
+console.log(data);
+```
+
+```python Python
+from supabase import create_client
+
+supabase = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+
+result = supabase.table('agent_configs').insert({
+    'name': 'Reception Agent',
+    'greeting': 'Hello, thanks for calling! How can I help you today?',
+    'system_prompt': 'You are a friendly receptionist. Be helpful and professional.',
+    'voice_id': 'nova',
+}).execute()
+
+print(result.data)
+```
+
+</CodeGroup>
+
+## Example Response
+
+```json
+{
+  "id": "c72ea2b8-1234-5678-9abc-def012345678",
+  "name": "Reception Agent",
+  "greeting": "Hello, thanks for calling! How can I help you today?",
+  "system_prompt": "You are a friendly receptionist. Be helpful and professional.",
+  "voice_id": "nova",
+  "voice_speed": 1.0,
+  "language": "en-US",
+  "max_call_duration": 1800,
+  "is_active": true,
+  "created_at": "2024-01-15T10:00:00.000Z",
+  "updated_at": "2024-01-15T10:00:00.000Z"
+}
+```
+
+## Error Responses
+
+<ResponseExample>
+```json 400 Bad Request
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "name is required"
+  }
+}
+```
+</ResponseExample>
+
+<ResponseExample>
+```json 401 Unauthorized
+{
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Invalid or expired access token"
+  }
+}
+```
+</ResponseExample>
+
+<ResponseExample>
+```json 409 Conflict
+{
+  "error": {
+    "code": "DUPLICATE_NAME",
+    "message": "An agent with this name already exists"
+  }
+}
+```
+</ResponseExample>
+
+## Related Endpoints
+
+- [List Agents](/api-reference/endpoints/list-agents) - Get all agents
+- [Get Agent](/api-reference/endpoints/get-agent) - Get agent details
+- [Update Agent](/api-reference/endpoints/update-agent) - Modify an agent
+- [Delete Agent](/api-reference/endpoints/delete-agent) - Remove an agent

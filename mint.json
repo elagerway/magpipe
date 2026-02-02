@@ -2,10 +2,10 @@
   "$schema": "https://mintlify.com/schema.json",
   "name": "Solo Mobile",
   "logo": {
-    "dark": "/logo/dark.svg",
-    "light": "/logo/light.svg"
+    "dark": "/docs/logo/dark.svg",
+    "light": "/docs/logo/light.svg"
   },
-  "favicon": "/favicon.svg",
+  "favicon": "/docs/favicon.svg",
   "colors": {
     "primary": "#6366f1",
     "light": "#818cf8",
@@ -28,7 +28,7 @@
   "tabs": [
     {
       "name": "API Reference",
-      "url": "api-reference"
+      "url": "docs/api-reference"
     }
   ],
   "anchors": [
@@ -47,56 +47,56 @@
     {
       "group": "Get Started",
       "pages": [
-        "introduction",
-        "quickstart"
+        "docs/introduction",
+        "docs/quickstart"
       ]
     },
     {
       "group": "Features",
       "pages": [
-        "features/agents",
-        "features/phone-numbers",
-        "features/inbox",
-        "features/knowledge-base",
-        "features/chat-widget",
-        "features/integrations"
+        "docs/features/agents",
+        "docs/features/phone-numbers",
+        "docs/features/inbox",
+        "docs/features/knowledge-base",
+        "docs/features/chat-widget",
+        "docs/features/integrations"
       ]
     },
     {
       "group": "Guides",
       "pages": [
-        "guides/create-agent",
-        "guides/make-calls",
-        "guides/receive-calls",
-        "guides/sms"
+        "docs/guides/create-agent",
+        "docs/guides/make-calls",
+        "docs/guides/receive-calls",
+        "docs/guides/sms"
       ]
     },
     {
       "group": "API Reference",
       "pages": [
-        "api-reference/introduction",
-        "api-reference/authentication"
+        "docs/api-reference/introduction",
+        "docs/api-reference/authentication"
       ]
     },
     {
       "group": "Agents",
       "pages": [
-        "api-reference/endpoints/create-agent",
-        "api-reference/endpoints/agents"
+        "docs/api-reference/endpoints/create-agent",
+        "docs/api-reference/endpoints/agents"
       ]
     },
     {
       "group": "Calls",
       "pages": [
-        "api-reference/endpoints/create-call",
-        "api-reference/endpoints/calls"
+        "docs/api-reference/endpoints/create-call",
+        "docs/api-reference/endpoints/calls"
       ]
     },
     {
       "group": "Messages",
       "pages": [
-        "api-reference/endpoints/send-sms",
-        "api-reference/endpoints/messages"
+        "docs/api-reference/endpoints/send-sms",
+        "docs/api-reference/endpoints/messages"
       ]
     }
   ],
