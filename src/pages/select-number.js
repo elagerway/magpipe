@@ -6,7 +6,6 @@ import { User } from '../models/User.js';
 import { getCurrentUser, supabase } from '../lib/supabase.js';
 import { canAddPhoneNumber } from '../services/planService.js';
 import { renderBottomNav } from '../components/BottomNav.js';
-import { isPushSupported, subscribeToPush } from '../services/pushNotifications.js';
 
 export default class SelectNumberPage {
   constructor() {
@@ -287,33 +286,6 @@ export default class SelectNumberPage {
 
           successMessage.className = 'alert alert-success';
           successMessage.textContent = 'Number added successfully! Redirecting...';
-
-          // For first-time users, request push notification permission
-          // The system will show the native prompt - user can accept or decline
-          if (isPushSupported()) {
-            const { data: notifPrefs } = await supabase
-              .from('notification_preferences')
-              .select('push_enabled')
-              .eq('user_id', user.id)
-              .single();
-
-            if (!notifPrefs?.push_enabled) {
-              // Try to subscribe - will trigger native permission prompt
-              const pushResult = await subscribeToPush();
-              if (pushResult.success) {
-                // Save preference if they accepted
-                await supabase
-                  .from('notification_preferences')
-                  .upsert({
-                    user_id: user.id,
-                    push_enabled: true,
-                    push_inbound_calls: true,
-                    push_inbound_messages: true,
-                  }, { onConflict: 'user_id' });
-              }
-              // If declined, no problem - they can enable later in settings
-            }
-          }
 
           setTimeout(() => {
             const destination = window.innerWidth > 768 ? '/phone' : '/manage-numbers';
