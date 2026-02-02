@@ -26,16 +26,40 @@ async function takeScreenshots() {
     console.log('Logged in successfully');
     await page.waitForTimeout(1500);
 
+    // Helper function to hide sensitive info before screenshots
+    async function hideSensitiveInfo() {
+      await page.evaluate(() => {
+        // Replace email addresses with placeholder
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        while (walker.nextNode()) {
+          const node = walker.currentNode;
+          if (node.nodeValue && node.nodeValue.includes('@')) {
+            node.nodeValue = node.nodeValue.replace(/[\w.-]+@[\w.-]+\.\w+/g, 'user@example.com');
+          }
+        }
+        // Replace name "Erik" with "User"
+        const nameWalker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        while (nameWalker.nextNode()) {
+          const node = nameWalker.currentNode;
+          if (node.nodeValue && node.nodeValue === 'Erik') {
+            node.nodeValue = 'Demo User';
+          }
+        }
+      });
+    }
+
     // Phone/Dialpad
     console.log('Taking screenshot: phone/dialpad');
     await page.goto(`${BASE_URL}/phone`);
     await page.waitForTimeout(1500);
+    await hideSensitiveInfo();
     await page.screenshot({ path: `${SCREENSHOTS_DIR}/phone-dialpad.png` });
 
     // Agents list
     console.log('Taking screenshot: agents');
     await page.goto(`${BASE_URL}/agents`);
     await page.waitForTimeout(1500);
+    await hideSensitiveInfo();
     await page.screenshot({ path: `${SCREENSHOTS_DIR}/agents-list.png` });
 
     // Agent detail - click the Open button
@@ -44,6 +68,7 @@ async function takeScreenshots() {
     if (openBtn) {
       await openBtn.click();
       await page.waitForTimeout(1500);
+      await hideSensitiveInfo();
       await page.screenshot({ path: `${SCREENSHOTS_DIR}/agent-detail.png` });
 
       // Deploy tab
@@ -51,6 +76,7 @@ async function takeScreenshots() {
       if (deployTab) {
         await deployTab.click();
         await page.waitForTimeout(1000);
+        await hideSensitiveInfo();
         console.log('Taking screenshot: agent deploy');
         await page.screenshot({ path: `${SCREENSHOTS_DIR}/agent-deploy.png` });
       }
@@ -60,6 +86,7 @@ async function takeScreenshots() {
       if (integrationsTab) {
         await integrationsTab.click();
         await page.waitForTimeout(1000);
+        await hideSensitiveInfo();
         console.log('Taking screenshot: agent integrations');
         await page.screenshot({ path: `${SCREENSHOTS_DIR}/agent-integrations.png` });
       }
@@ -69,6 +96,7 @@ async function takeScreenshots() {
     console.log('Taking screenshot: inbox');
     await page.goto(`${BASE_URL}/inbox`);
     await page.waitForTimeout(1500);
+    await hideSensitiveInfo();
     await page.screenshot({ path: `${SCREENSHOTS_DIR}/inbox.png` });
 
     // Click first conversation
@@ -76,6 +104,7 @@ async function takeScreenshots() {
     if (firstConvo) {
       await firstConvo.click();
       await page.waitForTimeout(1500);
+      await hideSensitiveInfo();
       console.log('Taking screenshot: inbox conversation detail');
       await page.screenshot({ path: `${SCREENSHOTS_DIR}/inbox-conversation.png` });
     }
@@ -84,30 +113,35 @@ async function takeScreenshots() {
     console.log('Taking screenshot: numbers');
     await page.goto(`${BASE_URL}/numbers`);
     await page.waitForTimeout(1500);
+    await hideSensitiveInfo();
     await page.screenshot({ path: `${SCREENSHOTS_DIR}/phone-numbers.png` });
 
     // Knowledge
     console.log('Taking screenshot: knowledge');
     await page.goto(`${BASE_URL}/knowledge`);
     await page.waitForTimeout(1500);
+    await hideSensitiveInfo();
     await page.screenshot({ path: `${SCREENSHOTS_DIR}/knowledge-base.png` });
 
     // Apps/Integrations
     console.log('Taking screenshot: apps');
     await page.goto(`${BASE_URL}/apps`);
     await page.waitForTimeout(1500);
+    await hideSensitiveInfo();
     await page.screenshot({ path: `${SCREENSHOTS_DIR}/apps-integrations.png` });
 
     // Settings
     console.log('Taking screenshot: settings');
     await page.goto(`${BASE_URL}/settings`);
     await page.waitForTimeout(1500);
+    await hideSensitiveInfo();
     await page.screenshot({ path: `${SCREENSHOTS_DIR}/settings.png` });
 
     // Contacts
     console.log('Taking screenshot: contacts');
     await page.goto(`${BASE_URL}/contacts`);
     await page.waitForTimeout(1500);
+    await hideSensitiveInfo();
     await page.screenshot({ path: `${SCREENSHOTS_DIR}/contacts.png` });
 
     console.log('All screenshots taken!');
