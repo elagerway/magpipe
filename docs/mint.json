@@ -6,6 +6,16 @@
     "light": "/logo/light.svg"
   },
   "favicon": "/favicon.svg",
+  "openapi": "openapi.json",
+  "api": {
+    "baseUrl": "https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1",
+    "auth": {
+      "method": "bearer"
+    },
+    "playground": {
+      "mode": "simple"
+    }
+  },
   "colors": {
     "primary": "#6366f1",
     "light": "#818cf8",

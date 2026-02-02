@@ -1,0 +1,436 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Solo Mobile API",
+    "description": "API for managing AI phone agents, calls, and messages",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1",
+      "description": "Production"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Your Solo Mobile access token"
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "Agent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Unique identifier"
+          },
+          "name": {
+            "type": "string",
+            "description": "Agent display name"
+          },
+          "greeting": {
+            "type": "string",
+            "description": "Call greeting message"
+          },
+          "system_prompt": {
+            "type": "string",
+            "description": "Agent instructions"
+          },
+          "voice_id": {
+            "type": "string",
+            "enum": ["alloy", "echo", "fable", "onyx", "nova", "shimmer"],
+            "description": "Voice ID for calls"
+          },
+          "is_active": {
+            "type": "boolean",
+            "description": "Whether agent is active"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Call": {
+        "type": "object",
+        "properties": {
+          "call_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["initiated", "ringing", "in-progress", "completed", "busy", "no-answer", "failed"]
+          },
+          "from_number": {
+            "type": "string"
+          },
+          "to_number": {
+            "type": "string"
+          },
+          "agent_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "duration": {
+            "type": "integer",
+            "description": "Call duration in seconds"
+          },
+          "recording_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "transcript": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Message": {
+        "type": "object",
+        "properties": {
+          "message_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["queued", "sent", "delivered", "undelivered", "failed"]
+          },
+          "from_number": {
+            "type": "string"
+          },
+          "to_number": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "segments": {
+            "type": "integer"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/initiate-bridged-call": {
+      "post": {
+        "operationId": "createCall",
+        "summary": "Create Phone Call",
+        "description": "Initiate an outbound phone call with an AI agent",
+        "tags": ["Calls"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["to", "from", "agent_id"],
+                "properties": {
+                  "to": {
+                    "type": "string",
+                    "description": "Recipient phone number (E.164 format)",
+                    "example": "+14155551234"
+                  },
+                  "from": {
+                    "type": "string",
+                    "description": "Your Solo Mobile number",
+                    "example": "+16045551234"
+                  },
+                  "agent_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Agent to handle the call",
+                    "example": "c72ea2b8-1234-5678-9abc-def012345678"
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "description": "Custom metadata for the call",
+                    "additionalProperties": true
+                  },
+                  "webhook_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "URL to receive call status webhooks"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Call initiated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "call_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "status": {
+                      "type": "string",
+                      "example": "initiated"
+                    },
+                    "from_number": {
+                      "type": "string"
+                    },
+                    "to_number": {
+                      "type": "string"
+                    },
+                    "created_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/send-sms": {
+      "post": {
+        "operationId": "sendSms",
+        "summary": "Send SMS",
+        "description": "Send an SMS message from your Solo Mobile number",
+        "tags": ["Messages"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["to", "from", "body"],
+                "properties": {
+                  "to": {
+                    "type": "string",
+                    "description": "Recipient phone number (E.164 format)",
+                    "example": "+14155551234"
+                  },
+                  "from": {
+                    "type": "string",
+                    "description": "Your Solo Mobile number",
+                    "example": "+16045551234"
+                  },
+                  "body": {
+                    "type": "string",
+                    "description": "Message content",
+                    "example": "Your appointment is confirmed for tomorrow at 2pm.",
+                    "maxLength": 1600
+                  },
+                  "media_urls": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "description": "MMS media attachments",
+                    "maxItems": 10
+                  },
+                  "scheduled_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Schedule message for later"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Message sent successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "status": {
+                      "type": "string",
+                      "example": "sent"
+                    },
+                    "segments": {
+                      "type": "integer",
+                      "example": 1
+                    },
+                    "created_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/webhook-chat-message": {
+      "post": {
+        "operationId": "sendChatMessage",
+        "summary": "Send Chat Message",
+        "description": "Send a message to a chat widget session",
+        "tags": ["Chat"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["widget_key", "message"],
+                "properties": {
+                  "widget_key": {
+                    "type": "string",
+                    "description": "Chat widget key"
+                  },
+                  "session_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Existing session ID (optional)"
+                  },
+                  "visitor_id": {
+                    "type": "string",
+                    "description": "Visitor identifier"
+                  },
+                  "message": {
+                    "type": "string",
+                    "description": "Message content"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Message sent, AI response returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "session_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "aiResponse": {
+                      "type": "string"
+                    },
+                    "aiMessageId": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Calls",
+      "description": "Phone call operations"
+    },
+    {
+      "name": "Messages",
+      "description": "SMS messaging operations"
+    },
+    {
+      "name": "Chat",
+      "description": "Chat widget operations"
+    }
+  ]
+}
