@@ -1,0 +1,251 @@
+---
+title: White Labeling
+description: "Remove Solo Mobile branding and customize with your own brand"
+---
+
+## Overview
+
+White labeling lets you present Solo Mobile as your own product. Replace our branding with yours - your logo, your colors, your domain. Perfect for agencies, resellers, and businesses that want a seamless branded experience for their clients.
+
+<Note>
+White labeling is included by default on all plans. No additional setup required.
+</Note>
+
+## What Can Be Customized
+
+### Visual Branding
+
+| Element | Customization |
+|---------|---------------|
+| **Logo** | Your logo in header and login |
+| **Favicon** | Browser tab icon |
+| **Primary Color** | Buttons, links, accents |
+| **Secondary Color** | Supporting UI elements |
+| **Background** | Dashboard background |
+
+### Text & Messaging
+
+| Element | Customization |
+|---------|---------------|
+| **Product Name** | Replace "Solo Mobile" with your name |
+| **Support Email** | Your support contact |
+| **Terms URL** | Link to your terms of service |
+| **Privacy URL** | Link to your privacy policy |
+
+### Custom Domain
+
+Use your own domain instead of solomobile.ai:
+- `app.yourbrand.com`
+- `dashboard.youragency.com`
+- `clients.yourcompany.io`
+
+## Setting Up White Label
+
+### 1. Upload Your Logo
+
+<Steps>
+  <Step title="Go to Settings">
+    Navigate to **Settings** → **Branding**.
+  </Step>
+  <Step title="Upload Logo">
+    Click **Upload Logo** and select your image.
+    - Recommended: SVG or PNG
+    - Size: 200x50px minimum
+    - Transparent background recommended
+  </Step>
+  <Step title="Upload Favicon">
+    Click **Upload Favicon** for browser tab icon.
+    - Size: 32x32px or 16x16px
+    - ICO or PNG format
+  </Step>
+  <Step title="Save Changes">
+    Click **Save**. Changes apply immediately.
+  </Step>
+</Steps>
+
+### 2. Set Brand Colors
+
+1. Go to **Settings** → **Branding**
+2. Click the color picker for **Primary Color**
+3. Enter your brand's hex code (e.g., `#FF5722`)
+4. Repeat for **Secondary Color** if desired
+5. Preview the changes
+6. Save
+
+**Color Applications:**
+- Primary: Buttons, active states, links
+- Secondary: Borders, backgrounds, hover states
+
+### 3. Customize Product Name
+
+1. Go to **Settings** → **Branding**
+2. Find **Product Name** field
+3. Enter your product name (e.g., "ClientCom")
+4. Save
+
+This name appears:
+- In the browser tab title
+- In email notifications
+- In the dashboard header
+
+### 4. Set Support Contact
+
+1. Go to **Settings** → **Branding**
+2. Enter your **Support Email**
+3. Enter your **Support URL** (optional - link to help center)
+4. Save
+
+Your contact info appears:
+- In the Help section
+- In error messages
+- In footer links
+
+### 5. Custom Domain (Optional)
+
+For the most complete white label experience:
+
+<Steps>
+  <Step title="Choose Your Domain">
+    Decide on your subdomain:
+    - `app.yourbrand.com`
+    - `phone.youragency.com`
+  </Step>
+  <Step title="Add DNS Record">
+    Add a CNAME record pointing to `custom.solomobile.ai`:
+    ```
+    app.yourbrand.com CNAME custom.solomobile.ai
+    ```
+  </Step>
+  <Step title="Request Setup">
+    Contact support@solomobile.ai with:
+    - Your domain name
+    - Your account email
+    - Confirmation DNS is configured
+  </Step>
+  <Step title="SSL Certificate">
+    We provision an SSL certificate automatically.
+    Your domain will be live within 24 hours.
+  </Step>
+</Steps>
+
+## White Label for Agencies
+
+### Client Experience
+
+When you white label, your clients see:
+- Your logo on login page
+- Your colors throughout
+- Your product name in browser
+- Your support email for help
+- No mention of "Solo Mobile"
+
+### Per-Client Customization
+
+Create unique experiences for each client:
+
+**Option 1: Shared Branding**
+- All clients see your agency branding
+- Single white label configuration
+- Simplest setup
+
+**Option 2: Client-Specific Branding**
+- Each client organization has its own branding
+- Separate logos and colors per client
+- Requires separate organization per client
+
+### Reseller Setup
+
+For true resale:
+1. Create organization for each client
+2. Apply their branding to their organization
+3. Invite them with Member or Admin role
+4. They never see your agency branding
+
+## What Cannot Be Customized
+
+Some elements remain standard:
+
+- **API domain**: Always `mtxbiyilvgwhbdptysex.supabase.co`
+- **Widget domain**: Always `solomobile.ai/widget`
+- **Email sender**: Transactional emails from Supabase
+- **Mobile app**: Not available for white labeling
+
+## Best Practices
+
+### Brand Consistency
+
+1. **Use vector logos** - SVG scales better than PNG
+2. **Match exact colors** - Use your brand style guide
+3. **Test on mobile** - Verify branding on small screens
+4. **Check dark/light** - Logos should work on both backgrounds
+
+### For Agencies
+
+1. **Create demo account** - Show prospects your branded version
+2. **Document for clients** - Explain it's "your" platform
+3. **Custom training** - Create guides with your branding
+4. **Consistent support** - Route support through your team first
+
+### Domain Setup
+
+1. **Use a subdomain** - `app.yourbrand.com` not `yourbrand.com`
+2. **Keep DNS updated** - Don't let the CNAME expire
+3. **Plan for email** - Set up SPF/DKIM if sending from your domain
+
+## Verifying White Label
+
+### Checklist
+
+After setup, verify:
+
+- [ ] Logo appears on login page
+- [ ] Logo appears in dashboard header
+- [ ] Favicon shows in browser tab
+- [ ] Primary color applied to buttons
+- [ ] Product name in browser title
+- [ ] Support email in help section
+- [ ] No "Solo Mobile" text visible
+- [ ] Custom domain works (if configured)
+
+### Testing as Client
+
+1. Open incognito/private window
+2. Visit your login URL
+3. Sign in with a test account
+4. Navigate through all sections
+5. Verify branding throughout
+
+## Troubleshooting
+
+### Logo Not Showing
+
+1. Check file format (SVG or PNG)
+2. Verify file size (<5MB)
+3. Clear browser cache
+4. Try a different browser
+
+### Colors Not Applying
+
+1. Ensure valid hex code (e.g., `#FF5722`)
+2. Hard refresh the page (Ctrl/Cmd + Shift + R)
+3. Check for browser extensions affecting CSS
+
+### Custom Domain Not Working
+
+1. Verify DNS CNAME record is set
+2. Wait for DNS propagation (up to 48 hours)
+3. Check SSL certificate status with support
+4. Ensure no conflicting A records
+
+### Widget Still Shows Solo Mobile
+
+The chat widget always loads from `solomobile.ai`. This is required for security and reliability. The widget itself can be styled to match your brand colors.
+
+<CardGroup cols={2}>
+  <Card title="Team Management" icon="users" href="/features/team-management">
+    Set up client organizations
+  </Card>
+  <Card title="Chat Widget" icon="comments" href="/features/chat-widget">
+    Brand your chat widget
+  </Card>
+</CardGroup>
