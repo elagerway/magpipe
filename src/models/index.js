@@ -11,3 +11,5 @@ export { AgentConfig } from './AgentConfig.js';
 export { ConversationContext } from './ConversationContext.js';
 export { Organization } from './Organization.js';
 export { OrganizationMember } from './OrganizationMember.js';
+export { ChatWidget } from './ChatWidget.js';
+export { ChatSession } from './ChatSession.js';

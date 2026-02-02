@@ -4,7 +4,7 @@
 
 import { getCurrentUser, supabase } from '../lib/supabase.js';
 import { renderBottomNav, clearUnreadBadge, setPhoneNavActive, setUnreadBadgeCount, resetInboxManagedCount } from '../components/BottomNav.js';
-import { User } from '../models/index.js';
+import { User, ChatSession } from '../models/index.js';
 
 // Lazy load heavy libraries only when needed for calls
 let sipClient = null;
@@ -43,6 +43,7 @@ export default class InboxPage {
     this.selectedContact = null;
     this.selectedServiceNumber = null; // Which of our numbers the conversation is on
     this.selectedCallId = null;
+    this.selectedChatSessionId = null; // For chat conversations
     this.subscription = null;
     this.userId = null;
     this.dropdownListenersAttached = false;
@@ -365,6 +366,7 @@ export default class InboxPage {
               <button class="inbox-filter-btn ${this.typeFilter === 'all' && this.directionFilter === 'all' && !this.missedFilter && this.sentimentFilter === 'all' ? 'active' : ''}" data-filter-type="all" data-filter-reset="true">All</button>
               <button class="inbox-filter-btn ${this.typeFilter === 'calls' ? 'active' : ''}" data-filter-type="calls">Calls</button>
               <button class="inbox-filter-btn ${this.typeFilter === 'texts' ? 'active' : ''}" data-filter-type="texts">Texts</button>
+              <button class="inbox-filter-btn ${this.typeFilter === 'chat' ? 'active' : ''}" data-filter-type="chat">Chat</button>
               <button class="inbox-filter-btn ${this.directionFilter === 'inbound' ? 'active' : ''}" data-filter-direction="inbound">In</button>
               <button class="inbox-filter-btn ${this.directionFilter === 'outbound' ? 'active' : ''}" data-filter-direction="outbound">Out</button>
               <button class="inbox-filter-btn ${this.missedFilter ? 'active' : ''}" data-filter-missed="true">Missed</button>
@@ -384,7 +386,7 @@ export default class InboxPage {
 
         <!-- Message Thread -->
         <div class="message-thread" id="message-thread">
-          ${(this.selectedContact || this.selectedCallId) ? this.renderMessageThread() : this.renderEmptyState()}
+          ${(this.selectedContact || this.selectedCallId || this.selectedChatSessionId) ? this.renderMessageThread() : this.renderEmptyState()}
         </div>
       </div>
       ${renderBottomNav('/inbox')}
@@ -533,9 +535,55 @@ export default class InboxPage {
         console.log('📨 SMS status updated:', payload);
         this.handleSmsUpdate(payload.new);
       })
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'chat_messages'
+      }, (payload) => {
+        console.log('💬 New chat message received:', payload);
+        this.handleNewChatMessage(payload.new);
+      })
       .subscribe((status) => {
         console.log('Inbox subscription status:', status);
       });
+  }
+
+  async handleNewChatMessage(chatMessage) {
+    // Find the session this message belongs to
+    const conv = this.conversations.find(c =>
+      c.type === 'chat' && c.session?.id === chatMessage.session_id
+    );
+
+    if (!conv) {
+      // New session, reload conversations
+      await this.loadConversations(this.userId);
+      const conversationsEl = document.getElementById('conversations');
+      if (conversationsEl) {
+        conversationsEl.innerHTML = this.renderConversationList();
+      }
+      return;
+    }
+
+    // Update conversation preview
+    conv.lastMessage = chatMessage.content;
+    conv.lastMessageRole = chatMessage.role;
+    conv.lastActivity = new Date(chatMessage.created_at);
+
+    // If visitor message, increment unread
+    if (chatMessage.role === 'visitor') {
+      conv.unreadCount = (conv.unreadCount || 0) + 1;
+    }
+
+    // Update conversation list
+    const conversationsEl = document.getElementById('conversations');
+    if (conversationsEl) {
+      conversationsEl.innerHTML = this.renderConversationList();
+    }
+
+    // If this chat is currently selected, reload messages
+    if (this.selectedChatSessionId === chatMessage.session_id) {
+      await this.loadChatMessages(this.selectedChatSessionId);
+    }
   }
 
   async handleNewMessage(message) {
@@ -845,16 +893,18 @@ export default class InboxPage {
 
   async loadConversations(userId) {
     // Load all data in parallel for speed
-    const [messagesResult, callsResult, contactsResult] = await Promise.all([
+    const [messagesResult, callsResult, contactsResult, chatSessionsResult] = await Promise.all([
       supabase.from('sms_messages').select('*').eq('user_id', userId).order('sent_at', { ascending: false }),
       supabase.from('call_records').select('*').eq('user_id', userId).order('started_at', { ascending: false }),
-      supabase.from('contacts').select('*').eq('user_id', userId)
+      supabase.from('contacts').select('*').eq('user_id', userId),
+      ChatSession.getRecentWithPreview(userId, 50)
     ]);
 
     const messages = messagesResult.data;
     const calls = callsResult.data;
     const contacts = contactsResult.data;
-    console.log('Inbox loaded:', messages?.length || 0, 'messages,', calls?.length || 0, 'calls');
+    const chatSessions = chatSessionsResult.sessions || [];
+    console.log('Inbox loaded:', messages?.length || 0, 'messages,', calls?.length || 0, 'calls,', chatSessions.length, 'chats');
 
     // Create a map of phone number to contact for quick lookup
     this.contactsMap = {};
@@ -946,6 +996,36 @@ export default class InboxPage {
       });
     });
 
+    // Add chat sessions to list
+    chatSessions?.forEach(session => {
+      const convKey = `chat_${session.id}`;
+      const lastViewedKey = `conversation_last_viewed_chat_${session.id}`;
+      const lastViewed = localStorage.getItem(lastViewedKey);
+      const lastMessageDate = new Date(session.lastMessageAt || session.last_message_at || Date.now());
+
+      // Count as unread if there's a visitor message we haven't seen
+      let unreadCount = 0;
+      if (session.lastMessageRole === 'visitor' && !this.viewedConversations.has(convKey)) {
+        if (!lastViewed || lastMessageDate > new Date(lastViewed)) {
+          unreadCount = 1;
+        }
+      }
+
+      conversationsList.push({
+        type: 'chat',
+        chatSessionId: session.id,
+        session: session,
+        visitorName: session.visitor_name || 'Website Visitor',
+        visitorEmail: session.visitor_email,
+        widgetName: session.chat_widgets?.name || 'Web Chat',
+        lastActivity: lastMessageDate,
+        lastMessage: session.lastMessage || 'New chat session',
+        lastMessageRole: session.lastMessageRole,
+        unreadCount: unreadCount,
+        aiPaused: session.ai_paused_until && new Date(session.ai_paused_until) > new Date(),
+      });
+    });
+
     // Sort all conversations by last activity
     this.conversations = conversationsList.sort((a, b) => b.lastActivity - a.lastActivity);
 
@@ -954,7 +1034,7 @@ export default class InboxPage {
     // Check for any recent inbound messages (within last 24 hours) in hidden conversations
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     this.conversations.forEach(conv => {
-      const convKey = conv.type === 'call' ? `call_${conv.callId}` : `sms_${conv.phone}_${conv.serviceNumber}`;
+      const convKey = this.getConversationKey(conv);
       if (this.hiddenConversations.has(convKey)) {
         // Check if there are any recent inbound messages
         const hasRecentInbound = conv.type === 'sms' && conv.messages?.some(m =>
@@ -963,8 +1043,12 @@ export default class InboxPage {
         // For calls, check if the call was recent
         const isRecentCall = conv.type === 'call' &&
           new Date(conv.lastActivity) > twentyFourHoursAgo;
+        // For chat, check if there's recent visitor activity
+        const hasRecentChat = conv.type === 'chat' &&
+          conv.lastMessageRole === 'visitor' &&
+          new Date(conv.lastActivity) > twentyFourHoursAgo;
 
-        if (hasRecentInbound || isRecentCall) {
+        if (hasRecentInbound || isRecentCall || hasRecentChat) {
           console.log('Auto-unhiding conversation with recent activity:', convKey);
           this.unhideConversation(convKey);
         }
@@ -976,26 +1060,38 @@ export default class InboxPage {
     setUnreadBadgeCount(totalUnread);
   }
 
+  // Helper to get consistent conversation key
+  getConversationKey(conv) {
+    if (conv.type === 'call') return `call_${conv.callId}`;
+    if (conv.type === 'chat') return `chat_${conv.chatSessionId}`;
+    return `sms_${conv.phone}_${conv.serviceNumber}`;
+  }
+
   renderConversationList() {
     // Filter out hidden conversations
     let visibleConversations = this.conversations.filter(conv => {
-      const convKey = conv.type === 'call' ? `call_${conv.callId}` : `sms_${conv.phone}_${conv.serviceNumber}`;
+      const convKey = this.getConversationKey(conv);
       return !this.hiddenConversations.has(convKey);
     });
 
-    // Apply type filter (calls/texts)
+    // Apply type filter (calls/texts/chat)
     if (this.typeFilter !== 'all') {
       visibleConversations = visibleConversations.filter(conv => {
         if (this.typeFilter === 'calls') return conv.type === 'call';
         if (this.typeFilter === 'texts') return conv.type === 'sms';
+        if (this.typeFilter === 'chat') return conv.type === 'chat';
         return true;
       });
     }
 
     // Apply direction filter (in/out) - based on how the conversation started
+    // Note: Chat doesn't have direction, so it's always included when filter is active
     if (this.directionFilter !== 'all') {
       visibleConversations = visibleConversations.filter(conv => {
-        if (conv.type === 'call') {
+        if (conv.type === 'chat') {
+          // Chat is always considered "inbound" since visitors initiate
+          return this.directionFilter === 'inbound';
+        } else if (conv.type === 'call') {
           return conv.call?.direction === this.directionFilter;
         } else {
           // For SMS, check direction of first message (how conversation started)
@@ -1090,10 +1186,46 @@ export default class InboxPage {
     }
 
     return visibleConversations.map(conv => {
-      const isSelected = (conv.type === 'sms' && this.selectedContact === conv.phone && this.selectedServiceNumber === conv.serviceNumber && !this.selectedCallId) ||
-                        (conv.type === 'call' && this.selectedCallId === conv.callId);
+      const isSelected = (conv.type === 'sms' && this.selectedContact === conv.phone && this.selectedServiceNumber === conv.serviceNumber && !this.selectedCallId && !this.selectedChatSessionId) ||
+                        (conv.type === 'call' && this.selectedCallId === conv.callId) ||
+                        (conv.type === 'chat' && this.selectedChatSessionId === conv.chatSessionId);
 
-      if (conv.type === 'call') {
+      if (conv.type === 'chat') {
+        // Chat conversation rendering
+        const chatIcon = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+        </svg>`;
+
+        return `
+          <div class="swipe-container" data-conv-key="chat_${conv.chatSessionId}">
+            <div class="swipe-delete-btn" data-conv-key="chat_${conv.chatSessionId}">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+              <span>Delete</span>
+            </div>
+            <div class="conversation-item swipe-content ${isSelected ? 'selected' : ''} ${conv.unreadCount > 0 ? 'unread' : ''}" data-chat-session-id="${conv.chatSessionId}" data-type="chat" style="display: flex !important; flex-direction: row !important; gap: 0.75rem;">
+              <div class="conversation-avatar chat-avatar" style="flex-shrink: 0; background: linear-gradient(135deg, #6366f1, #8b5cf6);">
+                ${chatIcon}
+              </div>
+              <div class="conversation-content" style="flex: 1 !important; min-width: 0;">
+                <div class="conversation-header" style="display: flex !important; justify-content: space-between !important; align-items: baseline; width: 100%;">
+                  <span class="conversation-name">${conv.visitorName}${conv.aiPaused ? ' <span style="font-size: 0.65rem; background: #fef3c7; color: #92400e; padding: 0.125rem 0.375rem; border-radius: 0.25rem; margin-left: 0.25rem;">Human</span>' : ''}</span>
+                  <div style="display: flex; align-items: center; gap: 0.5rem; margin-left: 0.5rem;">
+                    ${conv.unreadCount > 0 ? `<span class="conversation-unread-badge">${conv.unreadCount > 99 ? '99+' : conv.unreadCount}</span>` : ''}
+                    <span class="conversation-time" style="white-space: nowrap;">${this.formatTimestamp(conv.lastActivity)}</span>
+                  </div>
+                </div>
+                <div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 2px;">${conv.widgetName}</div>
+                <div class="conversation-preview" style="display: flex; align-items: center;">
+                  <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${conv.lastMessage}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      } else if (conv.type === 'call') {
         // Determine icon based on direction - using Feather icons
         const isOutbound = conv.call.direction === 'outbound';
         const iconSvg = isOutbound
@@ -1203,6 +1335,13 @@ export default class InboxPage {
       const conv = this.conversations.find(c => c.type === 'call' && c.callId === this.selectedCallId);
       if (!conv) return this.renderEmptyState();
       return this.renderCallDetailView(conv.call);
+    }
+
+    // Check if we're viewing a chat conversation
+    if (this.selectedChatSessionId) {
+      const conv = this.conversations.find(c => c.type === 'chat' && c.chatSessionId === this.selectedChatSessionId);
+      if (!conv) return this.renderEmptyState();
+      return this.renderChatThreadView(conv);
     }
 
     const conv = this.conversations.find(c => c.type === 'sms' && c.phone === this.selectedContact && c.serviceNumber === this.selectedServiceNumber);
@@ -1665,6 +1804,84 @@ export default class InboxPage {
         <p style="margin: 0; color: var(--text-secondary); font-size: 0.875rem;">
           Choose a conversation from the list to view messages
         </p>
+      </div>
+    `;
+  }
+
+  /**
+   * Render chat thread view for web chat conversations
+   */
+  renderChatThreadView(conv) {
+    // Deactivate phone nav when showing chat thread
+    setPhoneNavActive(false);
+
+    // Reactivate inbox button
+    const inboxBtn = document.querySelector('.bottom-nav-item[onclick*="inbox"]');
+    if (inboxBtn) {
+      inboxBtn.classList.add('active');
+    }
+
+    const aiPaused = conv.session?.ai_paused_until && new Date(conv.session.ai_paused_until) > new Date();
+
+    return `
+      <div class="thread-header" style="display: flex; align-items: flex-start; gap: 0.75rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border-color);">
+        <button class="back-button" id="back-button" style="
+          display: none;
+          background: none;
+          border: none;
+          font-size: 1.5rem;
+          cursor: pointer;
+          padding: 0;
+          margin: 0;
+          color: var(--primary-color);
+          line-height: 1;
+        ">←</button>
+        <div class="conversation-avatar chat-avatar" style="width: 40px; height: 40px; background: linear-gradient(135deg, #6366f1, #8b5cf6); border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+            <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+          </svg>
+        </div>
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 0.25rem;">
+          <div style="display: flex; align-items: center; gap: 0.75rem; justify-content: space-between;">
+            <h2 style="margin: 0; font-size: calc(1.125rem - 5px); font-weight: 600; line-height: 1;">
+              ${conv.visitorName}
+            </h2>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              ${aiPaused ? `
+                <span style="font-size: 0.7rem; background: #fef3c7; color: #92400e; padding: 0.25rem 0.5rem; border-radius: 0.25rem;">
+                  AI Paused
+                </span>
+                <button id="resume-ai-btn" class="btn btn-sm btn-secondary" style="font-size: 0.7rem; padding: 0.25rem 0.5rem;">Resume AI</button>
+              ` : ''}
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.75rem; color: var(--text-secondary);">
+            <span>${conv.widgetName}</span>
+            ${conv.visitorEmail ? `<span>• ${conv.visitorEmail}</span>` : ''}
+          </div>
+        </div>
+      </div>
+
+      <div class="thread-messages" id="thread-messages">
+        <div style="text-align: center; padding: 2rem; color: var(--text-secondary);">
+          Loading messages...
+        </div>
+      </div>
+
+      <div class="message-input-container">
+        <textarea
+          id="message-input"
+          class="message-input"
+          placeholder="Type a reply... (will pause AI for 5 min)"
+          rows="1"
+          style="resize: none;"
+        ></textarea>
+        <button class="send-button" id="send-chat-btn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
+        </button>
       </div>
     `;
   }
@@ -4588,21 +4805,57 @@ Examples:
         this.selectedCallId = item.dataset.callId;
         this.selectedContact = null;
         this.selectedServiceNumber = null;
+        this.selectedChatSessionId = null;
 
         // Save as last selected for next page load
         localStorage.setItem('inbox_last_selected_call', this.selectedCallId);
         localStorage.removeItem('inbox_last_selected_contact');
         localStorage.removeItem('inbox_last_selected_service_number');
+        localStorage.removeItem('inbox_last_selected_chat');
+      } else if (type === 'chat') {
+        // Handle chat conversation click
+        this.selectedChatSessionId = item.dataset.chatSessionId;
+        this.selectedContact = null;
+        this.selectedServiceNumber = null;
+        this.selectedCallId = null;
+
+        // Save as last selected for next page load
+        localStorage.setItem('inbox_last_selected_chat', this.selectedChatSessionId);
+        localStorage.removeItem('inbox_last_selected_contact');
+        localStorage.removeItem('inbox_last_selected_service_number');
+        localStorage.removeItem('inbox_last_selected_call');
+
+        // Mark this conversation as viewed
+        const convKey = `chat_${this.selectedChatSessionId}`;
+        const lastViewedKey = `conversation_last_viewed_chat_${this.selectedChatSessionId}`;
+        localStorage.setItem(lastViewedKey, new Date().toISOString());
+        this.viewedConversations.add(convKey);
+        localStorage.setItem('inbox_viewed_conversations', JSON.stringify([...this.viewedConversations]));
+
+        // Clear unread count for this conversation
+        const conv = this.conversations.find(c => c.type === 'chat' && c.chatSessionId === this.selectedChatSessionId);
+        if (conv) {
+          conv.unreadCount = 0;
+        }
+
+        // Update the nav badge with new total unread count
+        const totalUnread = this.conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
+        setUnreadBadgeCount(totalUnread);
+
+        // Mark messages as read in database
+        ChatSession.markAsRead(this.selectedChatSessionId);
       } else {
         // Handle SMS conversation click
         this.selectedContact = item.dataset.phone;
         this.selectedServiceNumber = item.dataset.serviceNumber;
         this.selectedCallId = null;
+        this.selectedChatSessionId = null;
 
         // Save as last selected for next page load
         localStorage.setItem('inbox_last_selected_contact', this.selectedContact);
         localStorage.setItem('inbox_last_selected_service_number', this.selectedServiceNumber);
         localStorage.removeItem('inbox_last_selected_call');
+        localStorage.removeItem('inbox_last_selected_chat');
 
         // Mark this conversation as viewed (both localStorage and in-memory)
         const convKey = `${this.selectedContact}_${this.selectedServiceNumber}`;
@@ -4634,8 +4887,8 @@ Examples:
         threadElement.innerHTML = this.renderMessageThread();
       }
 
-      // Attach input listeners only for SMS threads
-      if (type === 'sms') {
+      // Attach input listeners for SMS and chat threads
+      if (type === 'sms' || type === 'chat') {
         this.attachMessageInputListeners();
       }
 
@@ -4897,8 +5150,60 @@ Examples:
   attachMessageInputListeners() {
     const input = document.getElementById('message-input');
     const sendButton = document.getElementById('send-button');
+    const sendChatBtn = document.getElementById('send-chat-btn');
 
-    console.log('Attaching message input listeners', { input, sendButton });
+    console.log('Attaching message input listeners', { input, sendButton, sendChatBtn });
+
+    // For SMS, we need input and sendButton
+    // For Chat, we need input and sendChatBtn
+    // Handle chat-specific listeners first if this is a chat thread
+    if (sendChatBtn && this.selectedChatSessionId) {
+      // Load chat messages
+      this.loadChatMessages(this.selectedChatSessionId);
+
+      // Send button listener
+      sendChatBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.sendChatMessage();
+      });
+
+      // Enter to send for chat
+      if (input) {
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            this.sendChatMessage();
+          }
+        });
+
+        // Auto-resize textarea for chat
+        input.addEventListener('input', () => {
+          input.style.height = 'auto';
+          input.style.height = input.scrollHeight + 'px';
+        });
+      }
+
+      // Resume AI button
+      const resumeAiBtn = document.getElementById('resume-ai-btn');
+      if (resumeAiBtn) {
+        resumeAiBtn.addEventListener('click', async () => {
+          await ChatSession.resumeAI(this.selectedChatSessionId);
+          // Reload to reflect the change
+          const threadElement = document.getElementById('message-thread');
+          if (threadElement) {
+            const conv = this.conversations.find(c => c.type === 'chat' && c.chatSessionId === this.selectedChatSessionId);
+            if (conv) {
+              conv.aiPaused = false;
+              conv.session.ai_paused_until = null;
+              threadElement.innerHTML = this.renderChatThreadView(conv);
+              this.attachMessageInputListeners();
+            }
+          }
+        });
+      }
+
+      return; // Chat listeners attached, don't continue to SMS logic
+    }
 
     if (!input || !sendButton) {
       console.error('Message input or send button not found');
@@ -4983,6 +5288,118 @@ Examples:
           this.toggleVoiceInput('voice-reply-btn', 'voice-reply-status', 'agent-reply-prompt');
         });
       }
+    }
+
+  }
+
+  async loadChatMessages(sessionId) {
+    const container = document.getElementById('thread-messages');
+    if (!container) return;
+
+    try {
+      const { messages, error } = await ChatSession.getMessages(sessionId);
+
+      if (error) {
+        container.innerHTML = `<div style="text-align: center; padding: 2rem; color: var(--text-secondary);">Error loading messages</div>`;
+        return;
+      }
+
+      if (!messages || messages.length === 0) {
+        container.innerHTML = `<div style="text-align: center; padding: 2rem; color: var(--text-secondary);">No messages yet</div>`;
+        return;
+      }
+
+      // Use same styling as SMS messages
+      container.innerHTML = messages.map(msg => {
+        const isVisitor = msg.role === 'visitor';
+        const isAI = msg.is_ai_generated === true;
+        const timestamp = new Date(msg.created_at);
+
+        return `
+          <div class="message-bubble ${isVisitor ? 'inbound' : 'outbound'} ${isAI ? 'ai-message' : ''}" data-message-id="${msg.id}">
+            ${isAI ? `
+              <div class="ai-badge">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="11" width="18" height="10" rx="2"></rect>
+                  <circle cx="8" cy="16" r="1"></circle>
+                  <circle cx="16" cy="16" r="1"></circle>
+                  <path d="M9 7h6"></path>
+                  <path d="M12 7v4"></path>
+                </svg>
+              </div>
+            ` : ''}
+            <div class="message-content">${this.escapeHtml(msg.content)}</div>
+            <div class="message-time">
+              ${this.formatTime(timestamp)}
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      // Scroll to bottom
+      container.scrollTop = container.scrollHeight;
+    } catch (err) {
+      console.error('Error loading chat messages:', err);
+      container.innerHTML = `<div style="text-align: center; padding: 2rem; color: var(--text-secondary);">Error loading messages</div>`;
+    }
+  }
+
+  escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  async sendChatMessage() {
+    const input = document.getElementById('message-input');
+    const message = input?.value?.trim();
+
+    if (!message || !this.selectedChatSessionId) return;
+
+    // Disable input while sending
+    input.disabled = true;
+    input.value = '';
+
+    try {
+      // Add message and pause AI
+      const { message: savedMsg, error } = await ChatSession.addMessage(this.selectedChatSessionId, message, false);
+
+      if (error) {
+        console.error('Error sending chat message:', error);
+        alert('Failed to send message. Please try again.');
+        input.value = message;
+        input.disabled = false;
+        return;
+      }
+
+      // Pause AI for 5 minutes
+      await ChatSession.pauseAI(this.selectedChatSessionId, 5);
+
+      // Update conversation in list
+      const conv = this.conversations.find(c => c.type === 'chat' && c.chatSessionId === this.selectedChatSessionId);
+      if (conv) {
+        conv.aiPaused = true;
+        conv.lastMessage = message;
+        conv.lastMessageRole = 'agent';
+        conv.lastActivity = new Date();
+      }
+
+      // Reload messages
+      await this.loadChatMessages(this.selectedChatSessionId);
+
+      // Update the header to show AI paused
+      const threadElement = document.getElementById('message-thread');
+      if (threadElement && conv) {
+        threadElement.innerHTML = this.renderChatThreadView(conv);
+        this.attachMessageInputListeners();
+      }
+    } catch (err) {
+      console.error('Error sending chat message:', err);
+      alert('Failed to send message. Please try again.');
+      input.value = message;
+    } finally {
+      input.disabled = false;
+      input.focus();
     }
   }
 

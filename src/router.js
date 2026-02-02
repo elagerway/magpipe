@@ -51,6 +51,9 @@ export class Router {
     // Agents routes (multi-agent support)
     this.addRoute('/agents', () => import('./pages/agents.js'), true);
     this.addDynamicRoute('/agents/:id', () => import('./pages/agent-detail.js'), true);
+
+    // Chat widget settings
+    this.addDynamicRoute('/chat-widget/:id', () => import('./pages/chat-widget-settings.js'), true);
   }
 
   addRoute(path, loader, requiresAuth = false, requiredRoles = null) {

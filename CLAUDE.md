@@ -148,7 +148,7 @@ const sessionResult = await page.evaluate(async ({ email, otp }) => {
 
 ## UI Guidelines
 - **Never expose vendor names** (Retell, SignalWire, OpenAI) in user-facing messages
-- Use product-centric language: "Pat AI assistant", "your number"
+- **NEVER use "Pat" or "Pat AI"** - this product name is deprecated. Use generic language like "AI assistant", "your assistant", or "the agent"
 - **Be mindful of mobile vs desktop styling differences**:
   - Back buttons: typically only needed on mobile (desktop has persistent sidebar nav)
   - Use `mobile-only` class to show elements only on mobile
@@ -228,6 +228,12 @@ Agent dispatch rules are configured in **LiveKit Cloud dashboard**, NOT via code
 ## Retell Custom Tools
 - **Naming**: `{user_id_no_dashes}_{function_name}` (max 63 chars)
 - Example: `abc123def4567890abcdef12345678_transfer`
+
+## HubSpot Integration
+- **NOT MCP-based**: HubSpot uses direct API calls via `executeNativeTool()`, not MCP servers
+- **Tools live in**: `supabase/functions/mcp-execute/index.ts` (handleHubSpotTool, handleHubSpotCreateContact, etc.)
+- **Available tools**: `hubspot_create_contact`, `hubspot_search_contacts`, `hubspot_get_contact`, `hubspot_create_note`
+- **OAuth tokens**: Stored in `user_integrations` table, auto-refreshed when expired
 
 ## Media Files
 Always open media files (.png, .jpg, .mov, etc.) immediately without asking permission.
