@@ -285,8 +285,33 @@ export default class SelectNumberPage {
           const { user } = await getCurrentUser();
           await User.setServiceNumber(user.id, this.selectedNumber);
 
-          // Show notification prompt instead of immediate redirect
-          this.showNotificationPrompt(this.selectedNumber);
+          // Check if this is their first number AND they don't have push enabled
+          const { data: existingNumbers } = await supabase
+            .from('service_numbers')
+            .select('id')
+            .eq('user_id', user.id);
+
+          const { data: notifPrefs } = await supabase
+            .from('notification_preferences')
+            .select('push_enabled')
+            .eq('user_id', user.id)
+            .single();
+
+          const isFirstNumber = !existingNumbers || existingNumbers.length <= 1;
+          const pushAlreadyEnabled = notifPrefs?.push_enabled === true;
+
+          if (isFirstNumber && !pushAlreadyEnabled) {
+            // First number and no push - show notification prompt
+            this.showNotificationPrompt(this.selectedNumber);
+          } else {
+            // Not first number or already has push - just redirect
+            successMessage.className = 'alert alert-success';
+            successMessage.textContent = 'Number added successfully! Redirecting...';
+            setTimeout(() => {
+              const destination = window.innerWidth > 768 ? '/phone' : '/manage-numbers';
+              navigateTo(destination);
+            }, 1500);
+          }
         } catch (error) {
           console.error('Provision error:', error);
           errorMessage.className = 'alert alert-error';
