@@ -1,37 +1,51 @@
 ---
 title: Chat Widget
-description: "Embed an AI chat assistant on your website"
+description: "Embed an AI-powered chat assistant on your website"
 ---
-
-<Frame>
-  <img src="/images/agent-deploy.png" alt="Chat Widget Configuration" />
-</Frame>
 
 ## Overview
 
-The Chat Widget lets website visitors chat with your AI agent in real-time. It appears as a floating bubble that expands into a full chat interface.
+The Chat Widget brings your AI agent to your website. Visitors see a floating chat bubble that expands into a full conversation interface. They can ask questions, get instant AI responses, and seamlessly hand off to a human when needed - all without leaving your site.
 
-## Setting Up the Widget
+## Widget Features
+
+### For Visitors
+
+- **Instant responses** - AI replies in seconds, 24/7
+- **Persistent conversations** - Return visits continue the thread
+- **Mobile-friendly** - Responsive design on all devices
+- **No account required** - Just click and chat
+
+### For You
+
+- **Zero code deployment** - Copy/paste embed snippet
+- **Customizable appearance** - Match your brand colors
+- **Real-time monitoring** - See chats in your inbox
+- **Human takeover** - Jump in anytime to help
+
+## Setting Up a Widget
+
+### From Agent Deploy Tab
 
 <Steps>
-  <Step title="Go to Agent Settings">
-    Open the agent you want to deploy and go to the **Deploy** tab.
+  <Step title="Open Agent Detail">
+    Go to your agent and click the **Deploy** tab.
   </Step>
   <Step title="Create Widget">
-    Under "Web Chat Widget", click **Create Widget**.
+    In the "Web Chat Widget" section, click **Create Widget**.
   </Step>
-  <Step title="Customize">
-    Configure the widget appearance and behavior.
+  <Step title="Customize Appearance">
+    Set your brand color, position, and messages.
   </Step>
   <Step title="Get Embed Code">
-    Click **Get Embed Code** and copy the JavaScript snippet.
+    Click **Get Embed Code** to copy the JavaScript snippet.
   </Step>
   <Step title="Add to Website">
-    Paste the code before the closing `</body>` tag on your website.
+    Paste the code before the closing `</body>` tag on your pages.
   </Step>
 </Steps>
 
-## Embed Code
+### Embed Code
 
 Add this snippet to your website:
 
@@ -48,53 +62,355 @@ Add this snippet to your website:
 
 Replace `YOUR_WIDGET_KEY` with your actual widget key from the dashboard.
 
-## Customization
+### WordPress Installation
 
-### Appearance
+1. Go to **Appearance** → **Theme Editor** (or use a plugin like "Insert Headers and Footers")
+2. Edit `footer.php` or use the plugin's footer section
+3. Paste the embed code before `</body>`
+4. Save changes
 
-| Setting | Description |
-|---------|-------------|
-| **Primary Color** | Widget accent color (button, header) |
-| **Position** | Bottom-right or bottom-left |
-| **Agent Name** | Name shown in chat header |
+### Shopify Installation
+
+1. Go to **Online Store** → **Themes** → **Edit Code**
+2. Open `theme.liquid`
+3. Paste the embed code before `</body>`
+4. Save
+
+### Wix Installation
+
+1. Go to your site editor
+2. Click **Add** → **Embed** → **Custom Code**
+3. Paste the embed code
+4. Set to load on "Body - end"
+5. Publish
+
+### Squarespace Installation
+
+1. Go to **Settings** → **Advanced** → **Code Injection**
+2. Paste in the "Footer" section
+3. Save
+
+## Customization Options
+
+### Appearance Settings
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| **Primary Color** | Button and header color | `#6366f1` (indigo) |
+| **Position** | Screen corner placement | Bottom-right |
+| **Button Size** | Chat bubble dimensions | 60px |
+
+### Position Options
+
+- **Bottom-right** - Standard, doesn't interfere with navigation
+- **Bottom-left** - Alternative for right-heavy layouts
 
 ### Messages
 
 | Setting | Description |
 |---------|-------------|
-| **Welcome Message** | First message shown when chat opens |
+| **Welcome Message** | First message when chat opens |
 | **Offline Message** | Shown outside business hours |
+| **Placeholder Text** | Input field placeholder |
 
-### Visitor Info
+**Example Welcome Message:**
+```
+Hi there! 👋 I'm the AI assistant for Acme Corp.
+How can I help you today?
+```
 
-Optionally collect visitor information:
-- Name (optional)
-- Email (optional)
+**Example Offline Message:**
+```
+Thanks for reaching out! We're currently closed.
+Leave a message and we'll get back to you during business hours.
+```
 
-## How It Works
+### Visitor Information Collection
 
-1. **Visitor opens chat** - Clicks the floating bubble
-2. **Welcome message** - Agent sends greeting
-3. **Conversation** - Real-time AI responses
-4. **Session saved** - Conversation appears in your Inbox
+Optionally collect visitor details:
+
+| Field | Optional/Required | Description |
+|-------|-------------------|-------------|
+| **Name** | Optional | Visitor's name |
+| **Email** | Optional | For follow-up |
+
+When enabled, visitors see a form before chatting. This information is saved with the conversation.
+
+## Widget Behavior
+
+### Conversation Flow
+
+```
+1. Visitor clicks chat bubble
+        ↓
+2. Widget expands with welcome message
+        ↓
+3. Visitor types question
+        ↓
+4. AI generates response (using agent prompt + knowledge)
+        ↓
+5. Conversation continues
+        ↓
+6. Session saved to Inbox
+```
+
+### Session Persistence
+
+- **Visitor ID** stored in browser localStorage
+- Returning visitors see their conversation history
+- Sessions expire after 30 days of inactivity
+- Clearing browser data resets the session
+
+### Business Hours
+
+If your agent has a schedule configured:
+- **During hours**: AI responds normally
+- **Outside hours**: Shows offline message, still accepts messages
+
+Messages received outside hours appear in your Inbox for follow-up.
 
 ## Viewing Chat Conversations
 
-All chat sessions appear in your **Inbox**:
-- Filter by "Chat" to see only widget conversations
-- View full conversation thread
-- Reply manually to take over from AI
+### In the Inbox
+
+All chat conversations appear in your Inbox:
+
+1. Go to **Inbox**
+2. Click **Chat** filter to show only widget conversations
+3. Click a conversation to view the full thread
+4. Reply to take over from the AI
+
+### Conversation Details
+
+Each chat session shows:
+- **Visitor info** (name, email if provided)
+- **Page URL** where they started chatting
+- **Browser/device** information
+- **Full message thread** with timestamps
+- **AI indicator** on AI-generated messages
 
 ## Human Handoff
 
-When you reply to a chat from the Inbox:
-1. Your message is sent to the visitor
-2. AI pauses for that conversation
-3. Visitor sees seamless responses (doesn't know it's human)
-4. AI resumes after inactivity
+### Taking Over a Chat
+
+When you want to respond personally:
+
+1. Open the chat conversation in Inbox
+2. Type your message in the reply box
+3. Click **Send**
+
+Your message is delivered instantly to the visitor.
+
+### AI Pause Behavior
+
+When you send a manual reply:
+- AI immediately pauses for this conversation
+- Your messages appear without the AI indicator
+- AI resumes after 5 minutes of your inactivity
+
+### Handoff Indicators
+
+- **🤖** = AI-generated response
+- **No indicator** = Human response
+
+Visitors see a seamless conversation - they don't know when AI vs human is responding.
+
+## Widget API
+
+### JavaScript Commands
+
+Control the widget programmatically:
+
+```javascript
+// Open the chat widget
+PatChat('open');
+
+// Close the chat widget
+PatChat('close');
+
+// Toggle the widget
+PatChat('toggle');
+
+// Send a message programmatically
+PatChat('sendMessage', 'Hello, I have a question about pricing');
+
+// Set visitor info
+PatChat('setVisitor', {
+  name: 'John Doe',
+  email: 'john@example.com'
+});
+
+// Destroy the widget (remove from page)
+PatChat('destroy');
+```
+
+### Event Callbacks
+
+Listen for widget events:
+
+```javascript
+PatChat('init', {
+  widgetKey: 'YOUR_WIDGET_KEY',
+  onOpen: function() {
+    console.log('Chat opened');
+  },
+  onClose: function() {
+    console.log('Chat closed');
+  },
+  onMessage: function(message) {
+    console.log('New message:', message);
+  }
+});
+```
+
+### Pre-filled Messages
+
+Start a conversation with context:
+
+```javascript
+// Link on your page
+<a href="#" onclick="PatChat('open'); PatChat('sendMessage', 'I want to learn about your enterprise plan');">
+  Contact Sales
+</a>
+```
 
 ## Domain Restrictions
 
-For security, you can limit which domains can use your widget:
-- Leave empty to allow all domains
-- Add specific domains to restrict (e.g., `mysite.com`)
+### Why Restrict Domains
+
+Prevent unauthorized use of your widget:
+- Someone could embed your widget on their site
+- They'd use your AI credits
+- Conversations would appear in your inbox
+
+### Setting Allowed Domains
+
+1. Go to widget settings
+2. Enter allowed domains (one per line):
+   ```
+   yoursite.com
+   www.yoursite.com
+   shop.yoursite.com
+   ```
+3. Save settings
+
+**Leave empty** to allow the widget on any domain (not recommended for production).
+
+### Localhost for Testing
+
+During development, add:
+```
+localhost
+127.0.0.1
+```
+
+Remember to remove these before going live.
+
+## Styling and Theming
+
+### CSS Customization
+
+The widget creates an iframe, but you can style the launcher button:
+
+```css
+/* Custom bubble position */
+#pat-chat-widget {
+  bottom: 100px !important;
+  right: 20px !important;
+}
+
+/* Hide on specific pages */
+.no-chat #pat-chat-widget {
+  display: none;
+}
+```
+
+### Z-Index
+
+The widget uses `z-index: 9999`. If it appears behind other elements, increase z-index of the widget or decrease z-index of conflicting elements.
+
+## Analytics
+
+### Widget Metrics
+
+Track in the dashboard:
+- Total chat sessions
+- Messages per session (average)
+- Response time (AI)
+- Handoff rate (AI to human)
+- Visitor satisfaction (if collected)
+
+### Google Analytics Integration
+
+Track widget events in GA:
+
+```javascript
+PatChat('init', {
+  widgetKey: 'YOUR_WIDGET_KEY',
+  onOpen: function() {
+    gtag('event', 'chat_opened', { event_category: 'engagement' });
+  },
+  onMessage: function(msg) {
+    gtag('event', 'chat_message', { event_category: 'engagement' });
+  }
+});
+```
+
+## Troubleshooting
+
+### Widget Not Appearing
+
+1. **Check the embed code** - Ensure it's before `</body>`
+2. **Verify widget key** - Must match exactly
+3. **Check domain restrictions** - Your domain must be allowed
+4. **Check browser console** - Look for JavaScript errors
+5. **Check for conflicts** - Other scripts might interfere
+
+### Widget Behind Other Elements
+
+Increase z-index or check for `overflow: hidden` on parent containers.
+
+### Messages Not Sending
+
+1. Check network tab for API errors
+2. Verify agent is active
+3. Check agent has permission for chat
+
+### Slow Responses
+
+AI response time depends on:
+- OpenAI API latency (~1-3 seconds)
+- Knowledge base retrieval (adds ~500ms)
+- Network conditions
+
+## Best Practices
+
+### Placement
+
+- **Bottom-right** is conventional and expected
+- Don't overlap with other floating elements
+- Ensure mobile-friendly on all devices
+
+### Welcome Message
+
+- Keep it short (1-2 sentences)
+- Be welcoming but professional
+- Set expectations ("I'm an AI assistant...")
+- Offer help immediately
+
+### Agent Configuration
+
+For chat, optimize your agent's system prompt:
+- Mention it's a website chat (not phone)
+- Keep responses concise (2-3 sentences)
+- Allow markdown formatting
+- Include escalation path ("Would you like me to have someone call you?")
+
+<CardGroup cols={2}>
+  <Card title="Create Widget API" icon="plus" href="/api-reference/endpoints/create-chat-widget">
+    Create widgets programmatically
+  </Card>
+  <Card title="List Chat Sessions" icon="messages" href="/api-reference/endpoints/list-chat-sessions">
+    Retrieve chat conversations
+  </Card>
+</CardGroup>

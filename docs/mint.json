@@ -69,7 +69,11 @@
         "features/inbox",
         "features/knowledge-base",
         "features/chat-widget",
-        "features/integrations"
+        "features/integrations",
+        "features/contacts",
+        "features/team-management",
+        "features/white-labeling",
+        "features/settings"
       ]
     },
     {

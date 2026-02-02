@@ -1,0 +1,285 @@
+---
+title: Team Management
+description: "Collaborate with your team using organizations and role-based permissions"
+---
+
+## Overview
+
+Team Management lets you collaborate with others on your AI phone system. Create an organization, invite team members, and assign roles to control who can do what. Perfect for agencies managing multiple clients, businesses with support teams, or anyone who needs multiple people accessing the dashboard.
+
+## Organizations
+
+### What is an Organization?
+
+An organization is a shared workspace where multiple users can collaborate:
+- Share agents across the team
+- Share phone numbers
+- View shared inbox
+- Access shared contacts
+- Collaborate on knowledge base
+
+### Creating an Organization
+
+<Steps>
+  <Step title="Go to Settings">
+    Navigate to **Settings** from the main menu.
+  </Step>
+  <Step title="Find Team Section">
+    Scroll to the **Team** section.
+  </Step>
+  <Step title="Create Organization">
+    Click **Create Organization**.
+  </Step>
+  <Step title="Enter Details">
+    - **Name**: Your organization name (e.g., "Acme Corp")
+    - **Description** (optional): What this organization is for
+  </Step>
+  <Step title="Confirm">
+    Click **Create**. You're now the Owner.
+  </Step>
+</Steps>
+
+### Organization Settings
+
+As an Owner or Admin, you can configure:
+
+| Setting | Description |
+|---------|-------------|
+| **Name** | Organization display name |
+| **Description** | Internal notes about the org |
+| **Logo** | Custom logo for branding |
+| **Default Agent** | Which agent handles unassigned numbers |
+
+## Team Roles
+
+### Role Hierarchy
+
+Solo Mobile uses three roles with different permission levels:
+
+| Role | Description |
+|------|-------------|
+| **Owner** | Full control. Can delete org, manage billing, transfer ownership. |
+| **Admin** | Can manage team members, agents, and all resources. |
+| **Member** | Can view and use resources but cannot change settings. |
+
+### Permission Matrix
+
+| Permission | Owner | Admin | Member |
+|------------|:-----:|:-----:|:------:|
+| View agents | ✓ | ✓ | ✓ |
+| Create/edit agents | ✓ | ✓ | ✗ |
+| Delete agents | ✓ | ✓ | ✗ |
+| View inbox | ✓ | ✓ | ✓ |
+| Reply to messages | ✓ | ✓ | ✓ |
+| View phone numbers | ✓ | ✓ | ✓ |
+| Provision numbers | ✓ | ✓ | ✗ |
+| Release numbers | ✓ | ✓ | ✗ |
+| Manage knowledge base | ✓ | ✓ | ✗ |
+| View contacts | ✓ | ✓ | ✓ |
+| Edit contacts | ✓ | ✓ | ✓ |
+| View integrations | ✓ | ✓ | ✓ |
+| Configure integrations | ✓ | ✓ | ✗ |
+| Invite team members | ✓ | ✓ | ✗ |
+| Remove team members | ✓ | ✓ | ✗ |
+| Change member roles | ✓ | ✓ | ✗ |
+| Manage billing | ✓ | ✗ | ✗ |
+| Delete organization | ✓ | ✗ | ✗ |
+| Transfer ownership | ✓ | ✗ | ✗ |
+
+## Inviting Team Members
+
+### Sending Invitations
+
+<Steps>
+  <Step title="Go to Team Settings">
+    Navigate to **Settings** → **Team**.
+  </Step>
+  <Step title="Click Invite">
+    Click **Invite Team Member**.
+  </Step>
+  <Step title="Enter Email">
+    Enter the person's email address.
+  </Step>
+  <Step title="Select Role">
+    Choose **Admin** or **Member**.
+  </Step>
+  <Step title="Send Invitation">
+    Click **Send Invite**.
+  </Step>
+</Steps>
+
+### Invitation Process
+
+1. **Email sent**: Recipient gets an email with invitation link
+2. **Link clicked**: They're directed to sign up or log in
+3. **Auto-joined**: They're automatically added to your organization
+4. **Access granted**: They can immediately access shared resources
+
+### Invitation Expiry
+
+- Invitations expire after **7 days**
+- Expired invitations can be resent
+- Pending invitations show in the team list
+
+### Resending Invitations
+
+If someone didn't receive or lost their invitation:
+1. Go to **Settings** → **Team**
+2. Find the pending invitation
+3. Click **Resend**
+
+## Managing Team Members
+
+### Viewing the Team
+
+Go to **Settings** → **Team** to see:
+- All organization members
+- Their roles
+- Join date
+- Last active
+
+### Changing Roles
+
+To change someone's role:
+1. Find them in the team list
+2. Click their current role
+3. Select the new role
+4. Confirm the change
+
+<Note>
+Only Owners can promote someone to Admin or demote an Admin.
+</Note>
+
+### Removing Members
+
+To remove someone from the organization:
+1. Find them in the team list
+2. Click **Remove**
+3. Confirm removal
+
+**What happens when removed:**
+- Immediate loss of access
+- Their personal account remains
+- Data they created stays in the org
+- They can be re-invited later
+
+## Ownership
+
+### Transferring Ownership
+
+As an Owner, you can transfer ownership to another member:
+
+1. Go to **Settings** → **Team**
+2. Find the member
+3. Click **Transfer Ownership**
+4. Confirm the transfer
+
+**After transfer:**
+- You become an Admin
+- They become the new Owner
+- All Owner permissions transfer
+
+<Warning>
+Ownership transfer is immediate and cannot be undone except by the new Owner.
+</Warning>
+
+### Leaving an Organization
+
+**As a Member or Admin:**
+1. Go to **Settings** → **Team**
+2. Click **Leave Organization**
+3. Confirm
+
+**As an Owner:**
+You must transfer ownership before leaving. The organization cannot exist without an Owner.
+
+## Agency & Reseller Use Cases
+
+### Managing Multiple Clients
+
+For agencies managing multiple businesses:
+
+**Option 1: Separate Organizations**
+- Create one organization per client
+- Invite client as Member (view only) or Admin
+- You maintain Owner access for management
+
+**Option 2: Single Organization**
+- One organization with multiple agents
+- Each agent represents a client's business
+- Team members see all agents
+
+### Client Access Levels
+
+Recommended role assignments:
+
+| Client Type | Recommended Role |
+|-------------|------------------|
+| Hands-off client | No access (you manage everything) |
+| View-only client | Member |
+| Self-service client | Admin |
+| Full control client | Owner (you become Admin) |
+
+### White Label + Teams
+
+Combine with [White Labeling](/features/white-labeling) for a complete agency setup:
+- Custom branding on their login
+- Your logo and colors
+- Client sees their own dashboard
+- No "Solo Mobile" branding
+
+## Best Practices
+
+### Security
+
+1. **Use least privilege**: Give members only the access they need
+2. **Regular audits**: Review team members quarterly
+3. **Remove promptly**: Remove access when someone leaves
+4. **Protect Owner account**: Use strong password and 2FA
+
+### Organization Structure
+
+1. **One org per business**: Don't mix unrelated businesses
+2. **Clear naming**: Use descriptive organization names
+3. **Document roles**: Keep internal notes on who does what
+4. **Single Owner**: Have one clear Owner for accountability
+
+### Onboarding New Members
+
+1. **Send invitation** with context about the role
+2. **Provide documentation** on how to use the system
+3. **Start with limited access** (Member role)
+4. **Upgrade as needed** based on responsibilities
+
+## Troubleshooting
+
+### Invitation Not Received
+
+1. Check spam/junk folder
+2. Verify email address is correct
+3. Resend the invitation
+4. Try a different email address
+
+### Cannot Access Resources
+
+If a team member cannot access expected resources:
+1. Verify they accepted the invitation
+2. Check their assigned role
+3. Confirm they're in the correct organization
+4. Check if the resource exists (agent, number, etc.)
+
+### Multiple Organizations
+
+Users can belong to multiple organizations:
+- Switch between orgs in the account menu
+- Each org has separate resources
+- Roles are independent per organization
+
+<CardGroup cols={2}>
+  <Card title="White Labeling" icon="palette" href="/features/white-labeling">
+    Custom branding for agencies
+  </Card>
+  <Card title="Settings" icon="gear" href="/features/settings">
+    Account and organization settings
+  </Card>
+</CardGroup>

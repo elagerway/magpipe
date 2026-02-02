@@ -1,0 +1,368 @@
+---
+title: Contacts
+description: "Manage your contact database and customer information"
+---
+
+## Overview
+
+Contacts stores information about people who call, text, or chat with your AI agents. Build a database of customers with names, emails, notes, and conversation history. Contacts are created automatically from incoming communications or manually for outbound campaigns.
+
+## Contact Features
+
+### Automatic Creation
+
+When someone new contacts you:
+- A contact is automatically created
+- Phone number is saved
+- Name added if mentioned during conversation
+- All communications linked to this contact
+
+### Contact Information
+
+Each contact can include:
+
+| Field | Description | Auto-Populated |
+|-------|-------------|:--------------:|
+| **Phone Number** | Primary phone (E.164 format) | ✓ |
+| **Name** | First and last name | Sometimes |
+| **Email** | Email address | ✗ |
+| **Company** | Organization name | ✗ |
+| **Notes** | Free-form notes | ✗ |
+| **Tags** | Labels for organization | ✗ |
+| **Created** | When contact was added | ✓ |
+| **Last Contact** | Most recent communication | ✓ |
+
+### Conversation History
+
+Every contact shows their complete communication history:
+- All phone calls (with recordings)
+- All SMS/MMS messages
+- All chat conversations
+- Timestamps and duration
+- AI summaries
+
+## Managing Contacts
+
+### Viewing Contacts
+
+1. Go to **Contacts** from the main navigation
+2. See all contacts in a list view
+3. Search by name, phone, or email
+4. Filter by tags or date
+
+### Contact List View
+
+Each contact row shows:
+- Avatar (auto-generated or uploaded)
+- Name (or phone number if no name)
+- Phone number
+- Last contact date
+- Tags (if any)
+
+### Contact Detail View
+
+Click a contact to see:
+- All contact information
+- Complete conversation history
+- Quick actions (call, text, edit)
+- Timeline of interactions
+
+## Creating Contacts
+
+### Automatic Creation
+
+Contacts are created automatically when:
+- Someone calls your agent for the first time
+- Someone texts your number for the first time
+- Someone starts a chat session
+
+The AI agent may capture additional info:
+- Name (if caller provides it)
+- Email (if collected in conversation)
+- Other details mentioned
+
+### Manual Creation
+
+Create contacts manually for:
+- Importing existing customer lists
+- Preparing outbound call campaigns
+- Adding leads from other sources
+
+<Steps>
+  <Step title="Go to Contacts">
+    Navigate to **Contacts** from main nav.
+  </Step>
+  <Step title="Click Add Contact">
+    Click the **+ Add Contact** button.
+  </Step>
+  <Step title="Enter Information">
+    Fill in the contact details:
+    - Phone number (required)
+    - Name
+    - Email
+    - Company
+    - Notes
+  </Step>
+  <Step title="Save">
+    Click **Save Contact**.
+  </Step>
+</Steps>
+
+### Bulk Import
+
+Import multiple contacts at once:
+
+1. Go to **Contacts**
+2. Click **Import**
+3. Upload a CSV file
+4. Map columns to fields
+5. Review and confirm
+
+**CSV Format:**
+```csv
+phone,name,email,company,notes
++16045551234,John Smith,john@example.com,Acme Corp,VIP customer
++16045555678,Jane Doe,jane@example.com,,Interested in premium
+```
+
+**Required columns:**
+- `phone` - Phone number (E.164 or local format)
+
+**Optional columns:**
+- `name` - Full name or first name
+- `email` - Email address
+- `company` - Company name
+- `notes` - Any notes
+- `tags` - Comma-separated tags
+
+## Editing Contacts
+
+### Update Contact Info
+
+1. Open the contact
+2. Click **Edit**
+3. Modify any fields
+4. Save changes
+
+### Adding Notes
+
+Keep track of important information:
+1. Open the contact
+2. Scroll to Notes section
+3. Add or edit notes
+4. Notes are saved automatically
+
+**Example notes:**
+```
+- Prefers morning appointments
+- Referred by John S.
+- Interested in premium plan
+- Follow up next week
+```
+
+### Adding Tags
+
+Organize contacts with tags:
+1. Open the contact
+2. Click in the Tags field
+3. Type a tag name
+4. Press Enter to add
+5. Click X to remove tags
+
+**Common tags:**
+- `VIP`
+- `Lead`
+- `Customer`
+- `Do Not Call`
+- `Prospect`
+- `Callback`
+
+## Searching and Filtering
+
+### Quick Search
+
+Use the search bar to find contacts by:
+- Phone number (full or partial)
+- Name
+- Email
+- Company name
+- Notes content
+
+### Advanced Filters
+
+Filter the contact list by:
+
+| Filter | Options |
+|--------|---------|
+| **Tags** | Select one or more tags |
+| **Created Date** | Date range |
+| **Last Contact** | Date range |
+| **Has Email** | Yes/No |
+| **Call Count** | Number range |
+
+### Saved Filters
+
+Save frequently used filter combinations:
+1. Apply your filters
+2. Click **Save Filter**
+3. Name the filter
+4. Access from dropdown
+
+## Contact Actions
+
+### From Contact List
+
+Hover over a contact to see quick actions:
+- **Call** - Start an outbound call
+- **Text** - Open SMS composer
+- **View** - Open contact detail
+
+### From Contact Detail
+
+Available actions:
+- **Call** - Initiate outbound call with AI agent
+- **Text** - Send SMS message
+- **Edit** - Modify contact info
+- **Delete** - Remove contact permanently
+- **View History** - Jump to conversation history
+
+## Integration with Other Features
+
+### Inbox
+
+When viewing a conversation:
+- Click the contact name to view full profile
+- Contact info shown in conversation header
+- Add notes directly from inbox
+
+### Outbound Calls
+
+Use contacts for outbound campaigns:
+1. Create or import contacts
+2. Go to **Phone** → **Make a Call**
+3. Select from contacts or enter number
+4. AI agent calls with contact context
+
+### Call Context
+
+When a known contact calls:
+- Agent sees their name
+- Agent has access to conversation history
+- Previous notes available for context
+- Personalized greeting possible
+
+## CRM Integration
+
+### HubSpot Sync
+
+With HubSpot connected:
+- Contacts sync bidirectionally
+- New contacts created in HubSpot automatically
+- Updates flow in both directions
+- Call logs added to contact timeline
+
+### Other CRMs
+
+Via MCP integrations:
+- Salesforce
+- Pipedrive
+- Zoho CRM
+- Custom CRMs via API
+
+## Data Management
+
+### Merging Duplicates
+
+If you have duplicate contacts:
+1. Identify duplicates (same phone/email)
+2. Open one contact
+3. Click **Merge**
+4. Select the duplicate to merge
+5. Review combined data
+6. Confirm merge
+
+### Deleting Contacts
+
+<Warning>
+Deleting a contact removes all their information but preserves conversation history (calls, texts) for compliance.
+</Warning>
+
+To delete:
+1. Open the contact
+2. Click **Delete**
+3. Confirm deletion
+
+### Export Contacts
+
+Export your contact database:
+1. Go to **Contacts**
+2. Apply any filters (or select all)
+3. Click **Export**
+4. Choose format (CSV)
+5. Download file
+
+## Privacy & Compliance
+
+### Data Retention
+
+- Contact records retained until manually deleted
+- Conversation history retained per retention policy
+- Export available for data portability
+
+### Opt-Out Handling
+
+When someone texts "STOP":
+- Contact is automatically tagged `opt-out`
+- No further automated messages sent
+- Manual messaging still possible (with caution)
+
+### Do Not Call
+
+Mark contacts who shouldn't be called:
+1. Open the contact
+2. Add tag `Do Not Call`
+3. Agent will not make outbound calls
+
+## API Access
+
+### List Contacts
+
+```bash
+curl -X GET "https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/list-contacts" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+### Create Contact
+
+```bash
+curl -X POST "https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/create-contact" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "phone": "+16045551234",
+    "name": "John Smith",
+    "email": "john@example.com"
+  }'
+```
+
+### Update Contact
+
+```bash
+curl -X POST "https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/update-contact" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "contact_id": "uuid-here",
+    "name": "John Smith Jr.",
+    "tags": ["VIP", "Customer"]
+  }'
+```
+
+<CardGroup cols={2}>
+  <Card title="Contacts API" icon="code" href="/api-reference/endpoints/list-contacts">
+    Full API documentation
+  </Card>
+  <Card title="Inbox" icon="inbox" href="/features/inbox">
+    View contact conversations
+  </Card>
+</CardGroup>

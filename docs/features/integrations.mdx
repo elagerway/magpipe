@@ -1,95 +1,390 @@
 ---
 title: Integrations
-description: "Connect Solo Mobile to your favorite tools"
+description: "Connect Solo Mobile to 40+ external services via MCP"
 ---
-
-<Frame>
-  <img src="/images/apps-integrations.png" alt="Apps and Integrations" />
-</Frame>
 
 ## Overview
 
-Integrations let your AI agents work with external services. Sync contacts, book appointments, and automate workflows.
+Integrations extend what your AI agents can do. Connect to your CRM, calendar, helpdesk, and more. When a caller asks to book an appointment, your agent checks your actual calendar. When a lead calls, their info is logged directly to your CRM.
 
-## Available Integrations
+Solo Mobile uses MCP (Model Context Protocol) for integrations, giving you access to 40+ pre-built connections plus the ability to add custom integrations.
 
-### HubSpot
+## How Integrations Work
 
-Sync contacts and companies with HubSpot CRM.
+### Tool-Based Architecture
+
+Each integration provides "tools" that agents can use:
+
+```
+Caller: "I'd like to book an appointment for next Tuesday at 2 PM"
+          ↓
+Agent uses calendar_check_availability tool
+          ↓
+Cal.com returns: Tuesday 2 PM is available
+          ↓
+Agent uses calendar_create_booking tool
+          ↓
+Cal.com creates the appointment
+          ↓
+Agent: "I've booked you for Tuesday at 2 PM. You'll receive a confirmation email."
+```
+
+### Automatic Tool Selection
+
+Agents automatically choose the right tool based on context. You don't need to configure when to use each tool - the AI determines this naturally from the conversation.
+
+## Native Integrations
+
+### Cal.com (Calendar)
+
+Book appointments and check availability.
+
+**Features:**
+- Check real-time calendar availability
+- Book appointments during calls
+- Send calendar invites automatically
+- Respect busy times and working hours
+- Cancel or reschedule bookings
+
+**Setup:**
+1. Go to **Apps** → **Cal.com**
+2. Click **Connect**
+3. Sign in with your Cal.com account
+4. Grant calendar access
+5. Select which event types to use
+
+**Agent Capabilities:**
+```
+"Book an appointment" → Creates booking
+"When are you available?" → Checks calendar
+"Cancel my appointment" → Cancels booking
+"Reschedule to Thursday" → Reschedules
+```
+
+### HubSpot (CRM)
+
+Sync contacts and log interactions.
 
 **Features:**
 - Import contacts from HubSpot
-- Create new contacts when unknown callers call
-- Log calls and messages to contact timeline
+- Auto-create contacts for new callers
+- Log calls to contact timeline
 - Sync company information
+- Update contact properties
 
 **Setup:**
-1. Go to **Apps** in the main navigation
-2. Find HubSpot and click **Connect**
-3. Authorize Solo Mobile in HubSpot
-4. Select which data to sync
+1. Go to **Apps** → **HubSpot**
+2. Click **Connect**
+3. Authorize in HubSpot
+4. Select data to sync
 
-### Slack
+**Agent Capabilities:**
+```
+"Look up John Smith" → Searches contacts
+"Add this as a new lead" → Creates contact
+"Note that they're interested in Plan A" → Updates properties
+```
 
-Send messages and interact with your Slack workspace.
+### Slack (Team Chat)
+
+Send notifications and interact with your team.
 
 **Features:**
-- Send notifications to Slack channels
-- Receive alerts for calls and messages
-- Integrate with your team workflows
+- Send messages to channels
+- Receive notifications for calls/messages
+- Post call summaries
+- Alert team to urgent calls
 
 **Setup:**
-1. Go to **Apps** in the main navigation
-2. Find Slack and click **Connect**
+1. Go to **Apps** → **Slack**
+2. Click **Connect**
 3. Authorize Solo Mobile in Slack
-4. Select which channels to use
+4. Select notification channels
 
-### Cal.com
+**Agent Capabilities:**
+```
+"Alert the sales team" → Posts to #sales channel
+Automatic: Call summary posted after each call
+Automatic: New lead notifications
+```
 
-Calendar scheduling and appointment booking.
+### Notion (Documentation)
 
-**Features:**
-- Check your calendar for availability
-- Book appointments during calls
-- Send calendar invites to callers
-- Respect busy times and working hours
-
-**Setup:**
-1. Go to **Apps** in the main navigation
-2. Find Cal.com and click **Connect**
-3. Sign in with your Cal.com account
-4. Grant calendar access
-
-### MCP Servers (Advanced)
-
-Connect to Model Context Protocol servers for custom tool access.
+Access and search your Notion workspace.
 
 **Features:**
-- Add custom tools for your agents
-- Connect to internal APIs
-- Extend agent capabilities
+- Search pages and databases
+- Retrieve document content
+- Use as knowledge source
+- Create new pages
 
 **Setup:**
+1. Go to **Apps** → **Notion**
+2. Click **Connect**
+3. Select pages to share with Solo Mobile
+
+### Linear (Project Management)
+
+Create and manage issues.
+
+**Features:**
+- Create new issues from calls
+- Search existing issues
+- Update issue status
+- Link conversations to issues
+
+**Setup:**
+1. Go to **Apps** → **Linear**
+2. Click **Connect**
+3. Select workspace and projects
+
+### Airtable (Database)
+
+Read and write to Airtable bases.
+
+**Features:**
+- Search records
+- Create new records
+- Update existing records
+- Use as dynamic knowledge source
+
+**Setup:**
+1. Go to **Apps** → **Airtable**
+2. Click **Connect**
+3. Enter API key
+4. Select bases to access
+
+## MCP Server Integrations
+
+### What is MCP?
+
+Model Context Protocol (MCP) is an open standard for connecting AI to external tools. Solo Mobile supports any MCP-compatible server.
+
+### Available MCP Servers
+
+Solo Mobile includes 40+ pre-configured MCP servers:
+
+<AccordionGroup>
+  <Accordion title="Productivity" icon="briefcase">
+    - **Google Drive** - Search and access files
+    - **Google Docs** - Read and create documents
+    - **Google Sheets** - Read and write spreadsheets
+    - **Dropbox** - File storage access
+    - **OneDrive** - Microsoft file access
+    - **Evernote** - Note access
+  </Accordion>
+
+  <Accordion title="Communication" icon="comments">
+    - **Gmail** - Read and send emails
+    - **Outlook** - Microsoft email
+    - **Discord** - Server messaging
+    - **Microsoft Teams** - Team chat
+    - **Telegram** - Bot messaging
+    - **WhatsApp Business** - Messaging
+  </Accordion>
+
+  <Accordion title="CRM & Sales" icon="handshake">
+    - **Salesforce** - Full CRM access
+    - **Pipedrive** - Deal management
+    - **Zoho CRM** - Contact management
+    - **Close** - Sales CRM
+    - **Copper** - Google-integrated CRM
+    - **Freshsales** - Sales automation
+  </Accordion>
+
+  <Accordion title="Support & Helpdesk" icon="headset">
+    - **Zendesk** - Ticket management
+    - **Freshdesk** - Support tickets
+    - **Intercom** - Customer messaging
+    - **Help Scout** - Email support
+    - **Front** - Shared inbox
+  </Accordion>
+
+  <Accordion title="Project Management" icon="diagram-project">
+    - **Asana** - Task management
+    - **Monday.com** - Work OS
+    - **Trello** - Kanban boards
+    - **Jira** - Issue tracking
+    - **ClickUp** - Productivity platform
+    - **Basecamp** - Project collaboration
+  </Accordion>
+
+  <Accordion title="E-commerce" icon="cart-shopping">
+    - **Shopify** - Store management
+    - **WooCommerce** - WordPress commerce
+    - **Stripe** - Payment data
+    - **Square** - Point of sale
+    - **BigCommerce** - Online store
+  </Accordion>
+
+  <Accordion title="Marketing" icon="bullhorn">
+    - **Mailchimp** - Email marketing
+    - **ActiveCampaign** - Marketing automation
+    - **Klaviyo** - E-commerce email
+    - **Constant Contact** - Email campaigns
+    - **SendGrid** - Transactional email
+  </Accordion>
+
+  <Accordion title="Analytics" icon="chart-line">
+    - **Google Analytics** - Web analytics
+    - **Mixpanel** - Product analytics
+    - **Amplitude** - Behavioral analytics
+    - **Segment** - Customer data
+  </Accordion>
+
+  <Accordion title="Development" icon="code">
+    - **GitHub** - Repository access
+    - **GitLab** - DevOps platform
+    - **Sentry** - Error tracking
+    - **PagerDuty** - Incident management
+    - **Datadog** - Monitoring
+  </Accordion>
+
+  <Accordion title="Databases" icon="database">
+    - **PostgreSQL** - Query databases
+    - **MySQL** - Query databases
+    - **MongoDB** - Document database
+    - **Redis** - Cache access
+    - **Supabase** - Backend as a service
+  </Accordion>
+
+  <Accordion title="Other" icon="plug">
+    - **Weather** - Current conditions
+    - **News** - Headlines and articles
+    - **Wikipedia** - Encyclopedia search
+    - **Web Search** - General search
+    - **Calculator** - Math operations
+  </Accordion>
+</AccordionGroup>
+
+### Adding an MCP Server
+
 1. Go to **Apps** in the main navigation
-2. Click **Add MCP Server**
-3. Enter the server URL
-4. Configure available tools
+2. Click **+ Add MCP Server**
+3. Enter server details:
+   - **Name** - Display name
+   - **URL** - Server endpoint
+   - **Authentication** - API key or OAuth
+4. Click **Test Connection**
+5. Save if successful
 
-<Note>
-MCP servers require technical setup. See the [MCP documentation](https://modelcontextprotocol.io) for details.
-</Note>
+### Custom MCP Servers
 
-## Integration Settings
+Build your own MCP server for custom integrations:
 
-Each integration can be configured per-agent:
+1. Implement the MCP specification
+2. Host your server (cloud function, VPS, etc.)
+3. Add the URL to Solo Mobile
+4. Your tools become available to agents
+
+See [MCP Documentation](https://modelcontextprotocol.io) for implementation details.
+
+## Per-Agent Configuration
+
+### Enabling Integrations
+
+Not all agents need all integrations. Configure per-agent:
 
 1. Open the agent you want to configure
-2. Go to the **Integrations** tab
-3. Enable/disable specific integrations
-4. Configure integration-specific settings
+2. Go to **Settings** tab
+3. Find the **Integrations** section
+4. Toggle integrations on/off
 
-## Data Privacy
+### Tool Permissions
 
-- Solo Mobile only accesses data you explicitly authorize
-- You can disconnect integrations at any time
-- Disconnecting removes Solo Mobile's access to that service
+Control which tools each agent can use:
+
+- **Calendar**: Read-only vs. Read/Write
+- **CRM**: Search only vs. Create/Update
+- **Communication**: Notify only vs. Send messages
+
+### Prompt Guidance
+
+Help agents use integrations effectively by adding instructions to your system prompt:
+
+```
+INTEGRATION INSTRUCTIONS:
+- When a caller wants to book, use Cal.com to check availability
+- Always offer at least 3 available time slots
+- Log all new callers to HubSpot as leads
+- For urgent issues, alert the team in #support Slack channel
+```
+
+## Data & Privacy
+
+### What Data is Shared
+
+When you connect an integration:
+- Solo Mobile receives OAuth tokens or API keys
+- Agents can access data within granted scopes
+- Call context may be sent to integrations (e.g., contact lookup)
+
+### What Data is NOT Shared
+
+- Call recordings are not sent to integrations
+- Full transcripts are not shared
+- Personal notes are kept private
+
+### Disconnecting
+
+To revoke access:
+1. Go to **Apps**
+2. Find the integration
+3. Click **Disconnect**
+4. Confirm
+
+This immediately revokes Solo Mobile's access. You may also want to revoke in the third-party service's settings.
+
+## Troubleshooting
+
+### Integration Not Working
+
+1. **Check connection status** - Go to Apps, verify "Connected"
+2. **Check permissions** - Ensure sufficient scopes granted
+3. **Check agent settings** - Verify integration enabled for agent
+4. **Check tool usage** - Review call transcript for tool calls
+
+### Authentication Errors
+
+- OAuth tokens can expire - reconnect the integration
+- API keys may be revoked - check in third-party service
+- Scopes may have changed - re-authorize with updated permissions
+
+### Slow Responses
+
+Integration calls add latency:
+- Simple lookups: +200-500ms
+- Complex queries: +1-2 seconds
+- Database writes: +500ms-1s
+
+Consider this when multiple integrations are active.
+
+## Best Practices
+
+### Start Simple
+
+1. Begin with 1-2 key integrations
+2. Test thoroughly with real calls
+3. Add more as needed
+
+### Security
+
+- Only connect integrations you actively need
+- Use least-privilege permissions
+- Regularly audit connected apps
+- Disconnect unused integrations
+
+### Agent Instructions
+
+- Be explicit about when to use integrations
+- Provide fallback instructions if integration fails
+- Set expectations ("I'll check the calendar...")
+
+<CardGroup cols={2}>
+  <Card title="MCP Documentation" icon="book" href="https://modelcontextprotocol.io">
+    Learn about Model Context Protocol
+  </Card>
+  <Card title="Build Custom Integration" icon="wrench" href="/guides/custom-mcp">
+    Create your own MCP server
+  </Card>
+</CardGroup>

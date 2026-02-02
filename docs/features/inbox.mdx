@@ -1,76 +1,311 @@
 ---
 title: Inbox
-description: "View and manage all calls, texts, and chat conversations"
+description: "Unified communication hub for all calls, texts, and chat conversations"
 ---
-
-<Frame>
-  <img src="/images/inbox.png" alt="Inbox" />
-</Frame>
 
 ## Overview
 
-The Inbox is your unified view of all communications. See calls, SMS messages, and chat conversations in one place.
+The Inbox is your unified communication center where all customer interactions converge. Whether someone calls your AI agent, sends a text message, or chats on your website, every conversation appears here in real-time. Monitor, respond, and take over conversations when needed - all from a single interface.
 
-## Conversation List
+## Conversation Types
 
-The inbox shows all conversations sorted by most recent activity:
+### Voice Calls
 
-- **Phone icon** - Voice calls
-- **Message icon** - SMS conversations
-- **Chat icon** - Website chat sessions
+Phone calls handled by your AI agents:
 
-Each conversation shows:
-- Contact name or phone number
-- Preview of last message
-- Time of last activity
-- Unread indicator (blue dot)
+| Status | Description |
+|--------|-------------|
+| **Completed** | Call finished normally |
+| **Missed** | Caller hung up before agent answered |
+| **Voicemail** | Caller left a voice message |
+| **Transferred** | Call was transferred to a human |
+| **In Progress** | Call currently active |
 
-## Filtering
+Each call includes:
+- Full audio recording (downloadable)
+- AI-generated transcript
+- Call duration and timestamp
+- Caller ID information
+- AI summary of the conversation
+- Sentiment analysis (positive/neutral/negative)
 
-Filter conversations by type:
+### SMS Messages
 
-| Filter | Shows |
-|--------|-------|
-| **All** | All conversation types |
-| **Calls** | Voice calls only |
-| **Texts** | SMS conversations only |
-| **Chat** | Website chat sessions only |
+Text message conversations:
 
-## Conversation Detail
+- Two-way SMS threads
+- MMS with image support
+- AI-generated responses clearly marked
+- Manual replies from team members
+- Delivery status indicators
+- Opt-out handling
 
-Click a conversation to see the full thread:
+### Website Chat
 
-### For Calls
-- **Recording player** - Listen to the call audio
-- **Transcript** - Full AI-generated transcript
-- **Duration** - Call length
-- **Status** - Answered, missed, voicemail
+Conversations from your embedded chat widget:
 
-### For SMS/Chat
-- **Message thread** - Full conversation history
-- **Reply box** - Send a manual response
-- **AI indicator** - Shows which messages were AI-generated
+- Real-time message threads
+- Visitor information (name, email if collected)
+- Page URL where chat started
+- Browser/device information
+- AI responses marked with indicator
 
-## Replying Manually
+## Inbox Features
 
-You can take over any conversation:
+### Real-Time Updates
 
-1. Open the conversation
-2. Type your message in the reply box
-3. Send your response
+The inbox updates automatically:
+- New conversations appear instantly
+- Messages arrive in real-time via WebSocket
+- No need to refresh the page
+- Desktop notifications for new messages (if enabled)
 
-When you reply manually:
-- The AI agent pauses for that conversation
-- Your message is sent immediately
-- AI resumes after a period of inactivity
+### Unread Indicators
 
-## Unread Badges
+Never miss a conversation:
+- **Blue dot** on unread conversations
+- **Badge count** on inbox icon
+- Conversations marked read when opened
+- Mark as unread option for follow-up
 
-The inbox icon shows a count of unread conversations. A conversation is marked as read when you open it.
+### Conversation List
 
-## Search
+Each conversation shows at a glance:
+- **Contact name** or phone number
+- **Avatar** (from contacts or generated)
+- **Last message preview** (truncated)
+- **Timestamp** (relative: "2m ago", "Yesterday")
+- **Type icon** (phone, message, or chat bubble)
+- **Sentiment indicator** (colored dot)
 
-Use the search bar to find conversations by:
+### Filtering and Search
+
+Find conversations quickly:
+
+**Filter by Type:**
+- All conversations
+- Calls only
+- Texts only
+- Chat only
+
+**Filter by Status:**
+- Unread
+- Needs response
+- Archived
+
+**Filter by Sentiment:**
+- Positive
+- Neutral
+- Negative
+
+**Search Options:**
 - Phone number
 - Contact name
 - Message content
+- Date range
+
+### Sorting Options
+
+- Most recent first (default)
+- Oldest first
+- By sentiment (negative first for priority)
+- By contact name
+
+## Conversation Detail View
+
+### Call Details
+
+When viewing a call conversation:
+
+```
+┌─────────────────────────────────────────────────────┐
+│ +1 (604) 555-1234                    Jan 15, 2:34 PM│
+│ John Smith                                          │
+├─────────────────────────────────────────────────────┤
+│ ▶ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 3:24        │
+│ [Download]                                          │
+├─────────────────────────────────────────────────────┤
+│ AI Summary                                          │
+│ Customer called to schedule an appointment for next │
+│ Tuesday. Confirmed availability at 2 PM.            │
+├─────────────────────────────────────────────────────┤
+│ Transcript                                          │
+│ Agent: Thank you for calling. How can I help?       │
+│ Caller: Hi, I'd like to make an appointment...      │
+│ Agent: Of course! When were you thinking?           │
+│ ...                                                 │
+├─────────────────────────────────────────────────────┤
+│ Duration: 3:24  │  Sentiment: Positive  │  Calls: 1 │
+└─────────────────────────────────────────────────────┘
+```
+
+**Audio Player Features:**
+- Play/pause control
+- Seek within recording
+- Playback speed control (0.5x - 2x)
+- Download recording (MP3)
+- Waveform visualization
+
+**Transcript Features:**
+- Speaker identification (Agent vs Caller)
+- Timestamps for each turn
+- Search within transcript
+- Copy transcript text
+
+### SMS/Chat Details
+
+When viewing a message conversation:
+
+```
+┌─────────────────────────────────────────────────────┐
+│ +1 (604) 555-1234                                   │
+│ John Smith                                          │
+├─────────────────────────────────────────────────────┤
+│                                    Hi, are you open?│
+│                                           2:30 PM   │
+│ Yes! We're open Mon-Fri 9-5. How     🤖            │
+│ can I help you today?                               │
+│ 2:30 PM                                             │
+│                          I need to reschedule my    │
+│                          appointment tomorrow.      │
+│                                           2:31 PM   │
+│ I can help with that. Let me         🤖            │
+│ check the calendar...                               │
+│ 2:31 PM                                             │
+├─────────────────────────────────────────────────────┤
+│ [Type a message...                        ] [Send]  │
+└─────────────────────────────────────────────────────┘
+```
+
+**Message Indicators:**
+- 🤖 Robot icon = AI-generated response
+- No icon = Manual response from team
+- Delivery checkmarks (sent, delivered)
+- Timestamps on each message
+
+## Human Handoff
+
+### Taking Over a Conversation
+
+You can intervene in any conversation at any time:
+
+1. **Open the conversation** from the inbox
+2. **Type your message** in the reply box
+3. **Click Send** to deliver your response
+
+### What Happens During Handoff
+
+When you send a manual reply:
+- Your message is delivered immediately
+- AI agent pauses for this conversation
+- The 🤖 indicator does NOT appear on your messages
+- Customer sees a seamless conversation
+
+### AI Resume Behavior
+
+The AI resumes responding after:
+- **5 minutes** of your inactivity in the thread
+- Or when you explicitly re-enable AI (toggle)
+
+This prevents the AI from interrupting while you're actively helping.
+
+### Handoff Best Practices
+
+1. **Introduce yourself** (optional): "Hi, this is Sarah taking over..."
+2. **Review the transcript** before responding
+3. **Check AI summary** for quick context
+4. **Resolve the issue** before stepping away
+5. **Let AI handle routine follow-ups** after resolution
+
+## Contacts Integration
+
+### Auto-Created Contacts
+
+When someone new calls or texts:
+- A contact is automatically created
+- Phone number is saved
+- Name added if provided during call
+
+### Linked Contacts
+
+If a contact already exists:
+- Conversation shows contact name
+- Click name to view contact details
+- All conversations linked to that contact
+- Contact card shows conversation history
+
+### Adding Contact Info
+
+From any conversation:
+1. Click the contact name/number
+2. Click **Edit Contact**
+3. Add name, email, notes
+4. Save changes
+
+## Bulk Actions
+
+### Selecting Multiple Conversations
+
+- Click checkbox on conversations
+- Or use "Select All" for current filter
+
+### Available Bulk Actions
+
+- **Mark as Read** - Clear unread status
+- **Mark as Unread** - Flag for follow-up
+- **Archive** - Hide from main inbox
+- **Delete** - Permanently remove
+
+## Notifications
+
+### Desktop Notifications
+
+Enable browser notifications to get alerts:
+- New incoming calls
+- New SMS messages
+- New chat messages
+
+Configure in **Settings** → **Notifications**.
+
+### In-App Notifications
+
+The inbox icon shows:
+- Total unread count
+- Updates in real-time
+- Clears when you view conversations
+
+## Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `↑` / `↓` | Navigate conversation list |
+| `Enter` | Open selected conversation |
+| `Escape` | Close conversation detail |
+| `r` | Mark as read/unread |
+| `/` | Focus search box |
+
+## Mobile Experience
+
+On mobile devices:
+- Swipe left/right between list and detail
+- Pull down to refresh
+- Tap and hold for quick actions
+- Optimized touch targets
+
+## Data Retention
+
+- **Call recordings**: Stored for 90 days (configurable)
+- **Transcripts**: Retained with recordings
+- **SMS messages**: Retained indefinitely
+- **Chat messages**: Retained indefinitely
+
+Configure retention in **Settings** → **Data**.
+
+<CardGroup cols={2}>
+  <Card title="Calls API" icon="phone" href="/api-reference/endpoints/list-calls">
+    Retrieve calls programmatically
+  </Card>
+  <Card title="Messages API" icon="message" href="/api-reference/endpoints/list-messages">
+    Access message history via API
+  </Card>
+</CardGroup>

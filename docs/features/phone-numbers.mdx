@@ -1,83 +1,267 @@
 ---
 title: Phone Numbers
-description: "Provision and manage phone numbers for your AI agents"
+description: "Provision, manage, and configure phone numbers for your AI agents"
 ---
-
-<Frame>
-  <img src="/images/phone-dialpad.png" alt="Phone Numbers and Dialpad" />
-</Frame>
 
 ## Overview
 
-Phone numbers are how your AI agents connect to the real world. Provision local or toll-free numbers and assign them to agents to handle calls and SMS.
-
-## Getting a Number
-
-<Steps>
-  <Step title="Navigate to Numbers">
-    Go to **Numbers** from the main navigation.
-  </Step>
-  <Step title="Search for Numbers">
-    Click **Add Number** and search by:
-    - Area code (e.g., 604, 415)
-    - City name (e.g., Vancouver, San Francisco)
-  </Step>
-  <Step title="Select a Number">
-    Browse available numbers and click **Get This Number**.
-  </Step>
-  <Step title="Assign an Agent">
-    Choose which agent should handle calls to this number.
-  </Step>
-</Steps>
+Phone numbers are the gateway for your AI agents to communicate with the world. Solo Mobile supports provisioning new numbers, bringing your own carrier via SIP trunks, and managing multiple numbers across your organization.
 
 ## Number Types
 
 ### Local Numbers
-- Standard geographic phone numbers
-- Familiar area codes for your region
-- Best for local business presence
+- Area code specific to a region
+- Lower per-minute costs
+- Familiar to local callers
+- Available in US and Canada
 
 ### Toll-Free Numbers
 - 800, 888, 877, 866, 855, 844 prefixes
 - Free for callers to dial
-- Professional nationwide presence
+- Professional appearance
+- Higher per-minute costs
 
-## Number Settings
+## Provisioning Numbers
 
-| Setting | Description |
-|---------|-------------|
-| **Friendly Name** | A label for the number (e.g., "Main Line") |
-| **Assigned Agent** | The AI agent that handles calls |
-| **Call Recording** | Enable/disable call recording |
-| **Voicemail** | Configure voicemail when agent is unavailable |
+### Search for Numbers
 
-## Call Handling
+1. Go to **Phone** → **Get a Number**
+2. Select country (US or Canada)
+3. Enter area code or city
+4. Browse available numbers
+5. Click to provision
 
-When someone calls your number:
+#### Search Options
+- **Area Code**: Search by 3-digit area code (e.g., 604, 415)
+- **Contains**: Find vanity numbers containing specific digits
+- **City/Region**: Search by location name
 
-1. **Agent Answers** - Your AI agent picks up and delivers the greeting
-2. **Conversation** - Agent responds naturally based on its system prompt
-3. **Actions** - Agent can transfer calls, book appointments, or take messages
-4. **Recording** - Call is recorded and transcribed (if enabled)
-5. **Inbox** - Call appears in your inbox with transcript
+### Provision a Number
 
-## SMS Handling
+1. Select a number from search results
+2. Optionally set a friendly name (e.g., "Main Line")
+3. Assign to an agent immediately or later
+4. Number is active within seconds
 
-Numbers can also receive and send SMS:
+### Number Capabilities
 
-- Inbound texts are handled by the assigned agent
-- Agent responds based on conversation context
-- View all message threads in the Inbox
+Each number has specific capabilities:
+
+| Capability | Description |
+|------------|-------------|
+| **Voice** | Make and receive phone calls |
+| **SMS** | Send and receive text messages |
+| **MMS** | Send and receive picture messages |
+
+<Note>
+Most US/Canada numbers support all three capabilities. Some toll-free numbers may have limited MMS support.
+</Note>
+
+## Number Management
+
+### Assigning Agents
+
+Each phone number can have one assigned agent:
+
+1. Go to **Phone** or **Agent Detail** → **Deploy**
+2. Click **Assign** next to the number
+3. Select an agent from the dropdown
+4. Agent immediately starts handling calls
+
+To change agents:
+1. Click the current agent name
+2. Select a different agent
+3. Or click **Detach** to remove assignment
+
+### Friendly Names
+
+Give numbers meaningful names:
+- "Main Office"
+- "Sales Line"
+- "Support Hotline"
+- "After Hours"
+
+### Active/Inactive Status
+
+Temporarily disable a number without releasing it:
+- **Active**: Calls and SMS are handled
+- **Inactive**: Calls go to busy signal, SMS rejected
+
+### Releasing Numbers
+
+Permanently release a number:
+
+<Warning>
+Releasing a number is permanent. The number returns to the public pool and you may not be able to get it back.
+</Warning>
+
+1. Go to **Phone** → **Your Numbers**
+2. Click the menu on the number
+3. Select **Release Number**
+4. Confirm the release
 
 ## External SIP Trunks
 
-For advanced users, you can connect your own SIP trunk:
+Bring your own carrier for more control and potentially lower costs.
 
-1. Go to **Numbers** → **External Trunk**
-2. Enter your SIP server details
-3. Configure authentication
-4. Route calls through your existing telephony
+### What is a SIP Trunk?
 
-<Note>
-External SIP trunks require technical knowledge of SIP/VoIP configuration.
-</Note>
+A SIP trunk connects your existing phone carrier to Solo Mobile, allowing:
+- Use your existing phone numbers
+- Keep your current carrier rates
+- Maintain existing phone infrastructure
+- Route calls through Solo Mobile AI
+
+### Supported Carriers
+
+Any SIP-compatible carrier works, including:
+- Twilio
+- Bandwidth
+- Telnyx
+- Vonage
+- Plivo
+- Your own PBX
+
+### Configuration
+
+#### Inbound Trunk (Receiving Calls)
+
+Configure your carrier to send calls to Solo Mobile:
+
+**IP-Based Authentication:**
+1. Whitelist Solo Mobile's IP addresses in your carrier
+2. Point your carrier's SIP destination to Solo Mobile
+3. Add your phone numbers in Solo Mobile
+
+**Registration-Based Authentication:**
+1. Get SIP credentials from your carrier
+2. Enter in Solo Mobile: username, password, domain
+3. Solo Mobile registers with your carrier
+
+#### Outbound Trunk (Making Calls)
+
+Configure Solo Mobile to send calls through your carrier:
+
+1. Enter your carrier's SIP URI
+2. Add authentication credentials
+3. Specify which numbers use this trunk
+
+### Adding External Numbers
+
+1. Go to **Phone** → **External Numbers**
+2. Click **Add Number**
+3. Enter the phone number in E.164 format
+4. Select or create a SIP trunk configuration
+5. Assign to an agent
+
+## Call Routing
+
+### Inbound Call Flow
+
+```
+Caller dials your number
+        ↓
+Solo Mobile receives call
+        ↓
+Check if number has assigned agent
+        ↓
+[Yes] → Agent answers call
+[No]  → Play "number not in service" or route to default agent
+        ↓
+AI handles conversation
+        ↓
+Call ends or transfers
+```
+
+### Transfer Destinations
+
+Configure where calls transfer:
+
+1. Go to **Agent** → **Settings**
+2. Set **Transfer Number**
+3. Optionally set **Transfer Passcode**
+
+When callers request transfer:
+- Agent says "I'll transfer you now"
+- Call connects to transfer number
+- If passcode set, transferred party enters it
+
+### After-Hours Handling
+
+When calls arrive outside business hours:
+
+1. **Voicemail**: Play message, record voicemail
+2. **Forward**: Route to after-hours number
+3. **AI Response**: Agent answers with limited scope
+4. **Closed Message**: Play recording and hang up
+
+Configure in **Agent** → **Schedule**.
+
+## Call Features
+
+### Call Recording
+
+All calls recorded by default:
+- Secure cloud storage
+- Available in inbox
+- Downloadable via dashboard or API
+- Configurable retention period
+
+To disable recording:
+1. Go to **Settings** → **Preferences**
+2. Toggle off **Record Calls**
+
+### Caller ID
+
+Outbound calls show your Solo Mobile number:
+- Number must be verified
+- Consistent caller ID for callbacks
+- Multiple numbers = choose which to show
+
+### Call Transcription
+
+Every call is transcribed:
+- Real-time during call
+- Full transcript after call ends
+- Speaker identification (agent vs caller)
+- Timestamps for each segment
+
+### Call Analytics
+
+Track metrics per number:
+- Total calls (inbound/outbound)
+- Average duration
+- Sentiment distribution
+- Busiest times
+- Transfer rate
+
+## Best Practices
+
+### Number Selection
+
+1. **Local presence**: Use area codes matching your customers
+2. **Vanity numbers**: Easy-to-remember patterns for marketing
+3. **Multiple numbers**: Different numbers for different purposes
+
+### Capacity Planning
+
+- Each number handles unlimited concurrent calls
+- No per-number concurrency limits
+- Plan for peak call volumes
+
+### Number Portability
+
+Currently, number porting (bringing existing numbers) is handled via:
+1. External SIP trunk setup
+2. Forward existing number to Solo Mobile number
+
+Direct number porting coming soon.
+
+<CardGroup cols={2}>
+  <Card title="Search Numbers API" icon="magnifying-glass" href="/api-reference/endpoints/search-numbers">
+    Find available numbers programmatically
+  </Card>
+  <Card title="Provision Number API" icon="phone-plus" href="/api-reference/endpoints/provision-number">
+    Provision numbers via API
+  </Card>
+</CardGroup>

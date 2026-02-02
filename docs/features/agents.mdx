@@ -1,81 +1,300 @@
 ---
 title: AI Agents
-description: "Create and manage intelligent AI agents for calls, texts, and chat"
+description: "Create intelligent AI agents that handle calls, texts, and chat conversations"
 ---
-
-<Frame>
-  <img src="/images/agents-list.png" alt="Agents List" />
-</Frame>
 
 ## Overview
 
-AI Agents are the core of Solo Mobile. Each agent is a customizable AI assistant that can:
+AI Agents are the core of Solo Mobile. Each agent is a fully customizable AI assistant with its own personality, voice, knowledge, and behavior. Agents can handle multiple communication channels simultaneously - answering phone calls, responding to SMS messages, and chatting with website visitors.
 
-- Answer and make phone calls
-- Respond to SMS messages
-- Chat with website visitors
-- Book appointments
-- Transfer calls to humans
+## Agent Capabilities
 
-## Agent Settings
+### Inbound Calls
+- Answer calls with a natural greeting
+- Engage in human-like conversation
+- Answer questions using knowledge base
+- Book appointments via calendar integration
+- Transfer calls to humans when needed
+- Take messages and send follow-up SMS
+- Handle multiple concurrent calls
 
-<Frame>
-  <img src="/images/agent-detail.png" alt="Agent Configuration" />
-</Frame>
+### Outbound Calls
+- Make AI-powered outbound calls
+- Appointment reminders and confirmations
+- Follow-up calls with leads
+- Sales and marketing campaigns
+- Custom call scripts and goals
+- Bulk calling with contact lists
 
-### Basic Information
+### SMS Messaging
+- Respond to inbound SMS intelligently
+- Send AI-generated replies with context
+- Handle opt-out requests automatically
+- Support MMS with images
+- Schedule messages for later
+- Bulk SMS campaigns
+
+### Website Chat
+- Real-time chat widget
+- AI-powered responses
+- Human handoff capability
+- Visitor information collection
+- Custom welcome messages
+
+## Agent Configuration
+
+### Basic Settings
 
 | Setting | Description |
 |---------|-------------|
-| **Name** | The agent's display name (e.g., "Sarah - Reception") |
-| **Greeting** | What the agent says when answering a call |
-| **Voice** | The AI voice used for phone calls |
+| **Name** | Display name shown in dashboard and to team members |
+| **Avatar** | Upload a custom avatar image for the agent |
+| **Organization** | Business name the agent represents |
+| **Owner Name** | Person's name the agent acts on behalf of |
+| **Role** | Agent's job title (e.g., "Receptionist", "Sales Rep") |
 
-### System Prompt
+### Voice Settings
 
-The system prompt defines your agent's personality, knowledge, and behavior. This is the most important setting for customizing how your agent responds.
+#### Voice Selection
+Choose from 25+ AI voices across two providers:
 
-**Example system prompt:**
+**OpenAI Voices** (6 options):
+- Alloy - Neutral, professional
+- Echo - Warm, friendly
+- Fable - Expressive, dynamic
+- Onyx - Deep, authoritative
+- Nova - Bright, energetic
+- Shimmer - Soft, calm
+
+**ElevenLabs Voices** (20+ options):
+- Professional male and female voices
+- Various accents (American, British, Australian)
+- Different tones and personalities
+
+#### Voice Cloning
+Create a custom voice clone from audio samples:
+1. Upload 1-3 minutes of clean audio
+2. System generates a voice model
+3. Preview the cloned voice
+4. Use for your agent's calls
+
+<Note>
+Voice cloning requires the Pro plan and uses ElevenLabs technology.
+</Note>
+
+#### Voice Speed
+Adjust speech rate from 0.5x to 2.0x (default: 1.0x)
+
+### System Prompts
+
+The system prompt defines your agent's personality, knowledge, and behavior. This is the most critical configuration for customizing how your agent responds.
+
+#### Inbound Prompt
+Used when answering incoming calls:
+
 ```
 You are Sarah, a friendly receptionist for Acme Dental Clinic.
 
-Your responsibilities:
-- Answer questions about our services (cleanings, fillings, crowns, whitening)
-- Help callers book appointments
-- Provide office hours: Monday-Friday 9am-5pm
-- Give directions to our location: 123 Main St, Suite 100
+ABOUT THE BUSINESS:
+- Full-service dental clinic offering cleanings, fillings, crowns, implants, and whitening
+- Located at 123 Main Street, Suite 100, Vancouver BC
+- Open Monday-Friday 9am-5pm, Saturday 9am-1pm
+- Dr. Smith (general dentistry) and Dr. Johnson (cosmetic dentistry)
 
-Always be warm and professional. If you don't know something, offer to have someone call them back.
+YOUR RESPONSIBILITIES:
+- Answer questions about services and pricing
+- Help callers schedule appointments
+- Provide directions and parking information
+- Take messages for callbacks
+- Transfer urgent calls to the office manager
+
+BEHAVIOR GUIDELINES:
+- Always be warm, professional, and helpful
+- If you don't know something, offer to have someone call them back
+- For emergencies, advise calling 911 or going to urgent care
+- Confirm caller's name and phone number before ending calls
 ```
 
-### Voice Selection
+#### Outbound Prompt
+Used when making outbound calls:
 
-Choose from multiple AI voices with different characteristics:
-- Male/Female options
-- Various accents and tones
-- Professional or casual styles
+```
+You are Sarah calling from Acme Dental to confirm appointments.
+
+YOUR TASK:
+- Confirm the caller's appointment date and time
+- Ask if they have any questions before their visit
+- Remind them of what to bring (ID, insurance card)
+- Offer to reschedule if needed
+
+CONVERSATION FLOW:
+1. Introduce yourself and the clinic
+2. State the appointment details
+3. Ask for confirmation
+4. Provide any reminders
+5. Thank them and end the call
+
+IMPORTANT:
+- Be brief and respectful of their time
+- If no answer, leave a voicemail
+- If they want to reschedule, offer available times
+```
+
+### Call Handling
+
+#### Greeting
+The first thing your agent says when answering:
+```
+Hello, thank you for calling Acme Dental. This is Sarah, how can I help you today?
+```
+
+#### End Call Phrases
+Phrases that trigger automatic call termination:
+- "goodbye"
+- "bye bye"
+- "have a nice day"
+- "talk to you later"
+
+#### Max Call Duration
+Set a maximum call length (60 seconds to 60 minutes). Calls automatically end after this duration with a polite message.
+
+#### Transfer Number
+Phone number for transferring calls to a human:
+- Caller requests transfer
+- Agent can't help with request
+- Emergency situations
+
+### Schedule
+
+Configure when your agent is available:
+
+#### Call Schedule
+Set business hours for phone calls:
+- Monday: 9:00 AM - 5:00 PM
+- Tuesday: 9:00 AM - 5:00 PM
+- etc.
+
+Outside scheduled hours:
+- Calls can go to voicemail
+- Play a custom closed message
+- Forward to an after-hours number
+
+#### SMS Schedule
+Set hours for SMS responses:
+- Same as call schedule or different
+- Outside hours, messages queue for later
+- Or respond 24/7
+
+#### Timezone
+Select your business timezone for accurate scheduling.
 
 ## Deployment
 
-<Frame>
-  <img src="/images/agent-deploy.png" alt="Agent Deployment" />
-</Frame>
-
-Agents can be deployed to:
-
 ### Phone Numbers
-Assign an agent to one or more phone numbers. The agent will automatically answer inbound calls and can make outbound calls.
+Assign your agent to one or more phone numbers:
+
+1. Go to **Agent Detail** → **Deploy** tab
+2. Click **Assign Number**
+3. Select from your provisioned numbers
+4. Agent immediately starts handling calls
+
+One agent can be assigned to multiple numbers. Each number can only have one agent.
 
 ### Chat Widget
-Deploy an agent to a website chat widget. Visitors can chat with your agent in real-time.
+Deploy your agent to a website chat widget:
 
-## Agent Schedule
+1. Go to **Agent Detail** → **Deploy** tab
+2. Click **Create Widget** in the Web Chat section
+3. Customize appearance (color, position, messages)
+4. Copy the embed code
+5. Paste into your website before `</body>`
 
-Set business hours for your agent. Outside of scheduled hours:
-- Calls go to voicemail or a custom message
-- Chat widget shows an offline message
-- SMS can still be handled or queued
+See [Chat Widget](/features/chat-widget) for detailed configuration.
 
-<Card title="Create Your First Agent" icon="plus" href="/guides/create-agent">
-  Step-by-step guide to creating and configuring an agent
-</Card>
+## Multiple Agents
+
+Create multiple agents for different purposes:
+
+### Use Cases
+- **Receptionist Agent**: General inquiries and routing
+- **Sales Agent**: Lead qualification and demos
+- **Support Agent**: Technical help and troubleshooting
+- **Appointment Agent**: Scheduling specialist
+
+### Default Agent
+Mark one agent as default. This agent handles:
+- Calls to numbers without assigned agents
+- Fallback when primary agent unavailable
+
+### Agent-Specific Numbers
+Assign different phone numbers to different agents:
+- Main line → Receptionist Agent
+- Sales line → Sales Agent
+- Support line → Support Agent
+
+## Advanced Features
+
+### Knowledge Base Integration
+Connect your agent to knowledge sources for accurate answers:
+- Add website URLs
+- Upload documents
+- Custom content
+
+The agent automatically searches relevant knowledge during conversations.
+
+See [Knowledge Base](/features/knowledge-base) for details.
+
+### Calendar Integration
+Let your agent book appointments:
+1. Connect Cal.com in Settings → Integrations
+2. Agent can check availability
+3. Agent books appointments for callers
+4. Confirmations sent automatically
+
+### Call Recording
+All calls are recorded by default:
+- Recordings stored securely
+- Available in inbox and via API
+- Transcripts generated automatically
+- Can be disabled per agent
+
+### Sentiment Analysis
+AI analyzes each conversation:
+- **Positive**: Happy, satisfied caller
+- **Neutral**: Standard interaction
+- **Negative**: Frustrated or upset caller
+
+Use sentiment to prioritize follow-ups.
+
+### Call Summaries
+AI generates summaries after each call:
+- Key points discussed
+- Action items identified
+- Caller intent and outcome
+
+## Best Practices
+
+### System Prompts
+1. **Be specific**: Include exact business details
+2. **Set boundaries**: Define what agent can/cannot do
+3. **Include examples**: Show desired conversation patterns
+4. **Test thoroughly**: Make test calls before going live
+
+### Voice Selection
+1. **Match your brand**: Professional business = professional voice
+2. **Consider audience**: Age, industry, expectations
+3. **Test with users**: Get feedback on voice choice
+
+### Scheduling
+1. **Set realistic hours**: Match actual availability
+2. **Handle after-hours**: Configure voicemail or forwarding
+3. **Update for holidays**: Adjust schedule as needed
+
+<CardGroup cols={2}>
+  <Card title="Create Your First Agent" icon="plus" href="/guides/create-agent">
+    Step-by-step setup guide
+  </Card>
+  <Card title="Voice Cloning" icon="microphone" href="/api-reference/endpoints/clone-voice">
+    Create custom voice clones
+  </Card>
+</CardGroup>

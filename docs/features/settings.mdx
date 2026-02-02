@@ -1,0 +1,423 @@
+---
+title: Settings
+description: "Configure your account, organization, and preferences"
+---
+
+## Overview
+
+Settings is your control center for configuring Solo Mobile. Manage your account, organization, team members, branding, notifications, and more. Access Settings from the main navigation menu.
+
+## Account Settings
+
+### Profile
+
+Your personal account information:
+
+| Setting | Description |
+|---------|-------------|
+| **Name** | Your display name |
+| **Email** | Account email (login) |
+| **Phone** | Your phone number (for transfers) |
+| **Avatar** | Profile picture |
+| **Timezone** | Your local timezone |
+
+### Changing Email
+
+1. Go to **Settings** → **Account**
+2. Click **Change Email**
+3. Enter new email address
+4. Verify via email link
+5. New email becomes your login
+
+### Password
+
+1. Go to **Settings** → **Account**
+2. Click **Change Password**
+3. Enter current password
+4. Enter new password (twice)
+5. Save
+
+**Password requirements:**
+- Minimum 8 characters
+- At least one uppercase letter
+- At least one number
+
+### Two-Factor Authentication
+
+Add extra security with 2FA:
+
+<Steps>
+  <Step title="Enable 2FA">
+    Go to **Settings** → **Security** → **Enable 2FA**.
+  </Step>
+  <Step title="Scan QR Code">
+    Use an authenticator app (Google Authenticator, Authy, etc.).
+  </Step>
+  <Step title="Enter Code">
+    Enter the 6-digit code from your app.
+  </Step>
+  <Step title="Save Backup Codes">
+    Save the backup codes in a secure location.
+  </Step>
+</Steps>
+
+### Delete Account
+
+<Warning>
+Deleting your account is permanent. All data including agents, calls, and contacts will be lost.
+</Warning>
+
+1. Go to **Settings** → **Account**
+2. Scroll to **Danger Zone**
+3. Click **Delete Account**
+4. Type your email to confirm
+5. Click **Permanently Delete**
+
+## Organization Settings
+
+### General
+
+Configure your organization:
+
+| Setting | Description |
+|---------|-------------|
+| **Name** | Organization display name |
+| **Description** | Internal description |
+| **Logo** | Organization logo |
+| **Website** | Your website URL |
+
+### Default Agent
+
+Set a fallback agent for calls to numbers without an assigned agent:
+
+1. Go to **Settings** → **Organization**
+2. Find **Default Agent**
+3. Select an agent from dropdown
+4. Save
+
+### Timezone
+
+Set the organization timezone for:
+- Call scheduling
+- Agent business hours
+- Report date ranges
+
+## Team Settings
+
+### Viewing Team Members
+
+Go to **Settings** → **Team** to see:
+- All organization members
+- Their roles (Owner, Admin, Member)
+- Invitation status (pending/accepted)
+- Last active date
+
+### Inviting Members
+
+1. Click **Invite Team Member**
+2. Enter email address
+3. Select role (Admin or Member)
+4. Send invitation
+
+See [Team Management](/features/team-management) for full details.
+
+### Changing Roles
+
+1. Find the team member
+2. Click their role
+3. Select new role
+4. Confirm change
+
+### Removing Members
+
+1. Find the team member
+2. Click **Remove**
+3. Confirm removal
+
+## Branding Settings
+
+### Logo
+
+Upload your logo for white labeling:
+
+1. Go to **Settings** → **Branding**
+2. Click **Upload Logo**
+3. Select image file (SVG or PNG)
+4. Preview and save
+
+### Colors
+
+Customize your brand colors:
+
+| Setting | Usage |
+|---------|-------|
+| **Primary Color** | Buttons, links, accents |
+| **Secondary Color** | Borders, backgrounds |
+
+Enter hex codes (e.g., `#6366f1`) or use the color picker.
+
+### Product Name
+
+Replace "Solo Mobile" with your brand:
+
+1. Enter your product name
+2. Save changes
+3. Name appears in browser title and UI
+
+### Custom Domain
+
+Set up your own domain for the dashboard. See [White Labeling](/features/white-labeling) for instructions.
+
+## Notification Settings
+
+### Email Notifications
+
+Control which emails you receive:
+
+| Notification | Description | Default |
+|--------------|-------------|:-------:|
+| **New Call** | Email when call received | Off |
+| **Missed Call** | Email for missed/voicemail | On |
+| **New Message** | Email for SMS/chat messages | Off |
+| **Daily Digest** | Summary of daily activity | On |
+| **Weekly Report** | Weekly analytics summary | On |
+| **System Updates** | Product updates and news | On |
+
+### In-App Notifications
+
+Configure desktop notifications:
+
+1. Go to **Settings** → **Notifications**
+2. Enable **Desktop Notifications**
+3. Allow browser permission when prompted
+4. Select which events trigger notifications
+
+### Notification Sound
+
+- Enable/disable notification sounds
+- Choose from preset sounds
+- Adjust volume
+
+## Phone Settings
+
+### Transfer Number
+
+Set the default number for call transfers:
+
+1. Go to **Settings** → **Phone**
+2. Enter your **Transfer Number**
+3. Optionally set a **Transfer Passcode**
+4. Save
+
+When an agent transfers a call, it goes to this number.
+
+### Caller ID
+
+Configure outbound caller ID:
+- Calls show your Solo Mobile number
+- Choose which number to display
+- Verified numbers only
+
+### Call Recording
+
+Toggle call recording on/off:
+
+1. Go to **Settings** → **Phone**
+2. Toggle **Record Calls**
+3. Save
+
+<Note>
+Check local laws regarding call recording and consent requirements.
+</Note>
+
+### Recording Retention
+
+Set how long recordings are kept:
+
+| Option | Description |
+|--------|-------------|
+| **30 days** | Minimum retention |
+| **90 days** | Default |
+| **1 year** | Extended retention |
+| **Forever** | Never delete |
+
+## Data & Privacy
+
+### Data Export
+
+Download all your data:
+
+1. Go to **Settings** → **Data**
+2. Click **Export All Data**
+3. Wait for export to process
+4. Download ZIP file
+
+Export includes:
+- Contacts (CSV)
+- Call history (CSV)
+- Messages (CSV)
+- Agent configurations (JSON)
+- Knowledge base content (JSON)
+
+### Data Retention
+
+Configure automatic data cleanup:
+
+| Data Type | Options |
+|-----------|---------|
+| **Call Recordings** | 30d / 90d / 1yr / Forever |
+| **Transcripts** | Match recordings |
+| **Chat Sessions** | 90d / 1yr / Forever |
+| **Analytics** | 1yr / Forever |
+
+### GDPR Requests
+
+Handle data subject requests:
+- **Access Request**: Use Data Export
+- **Deletion Request**: Delete contact + associated data
+- **Portability**: Export in standard formats
+
+## API Settings
+
+### API Keys
+
+Manage API access:
+
+1. Go to **Settings** → **API**
+2. View existing keys
+3. Click **Generate New Key**
+4. Copy and save the key securely
+
+**Key types:**
+- **Full Access**: All API operations
+- **Read Only**: GET operations only
+
+### Webhook URLs
+
+Configure webhooks for real-time events:
+
+1. Go to **Settings** → **API** → **Webhooks**
+2. Click **Add Webhook**
+3. Enter your endpoint URL
+4. Select events to receive
+5. Save
+
+**Available events:**
+- `call.started`
+- `call.ended`
+- `message.received`
+- `message.sent`
+- `chat.message`
+- `contact.created`
+
+### Rate Limits
+
+View your API rate limits:
+
+| Plan | Requests/minute |
+|------|-----------------|
+| Free | 60 |
+| Pro | 300 |
+| Enterprise | Custom |
+
+## Billing Settings
+
+### Current Plan
+
+View your subscription:
+- Plan name and features
+- Billing cycle
+- Usage this period
+- Next billing date
+
+### Usage
+
+Monitor your usage:
+- Minutes used (voice)
+- SMS sent/received
+- API calls made
+- Storage used
+
+### Payment Method
+
+Manage payment:
+1. Go to **Settings** → **Billing**
+2. Click **Payment Method**
+3. Add or update card
+4. Set as default
+
+### Invoices
+
+View and download invoices:
+- All past invoices available
+- Download PDF
+- Auto-emailed monthly
+
+### Cancel Subscription
+
+1. Go to **Settings** → **Billing**
+2. Click **Cancel Plan**
+3. Select reason (optional)
+4. Confirm cancellation
+
+<Warning>
+Cancellation takes effect at end of billing period. Data is retained for 30 days after cancellation.
+</Warning>
+
+## Preferences
+
+### Language
+
+Select your interface language:
+- English (default)
+- More coming soon
+
+### Date Format
+
+Choose date display format:
+- MM/DD/YYYY (US)
+- DD/MM/YYYY (International)
+- YYYY-MM-DD (ISO)
+
+### Theme
+
+Select UI theme:
+- Light (default)
+- Dark
+- System (match OS)
+
+### Keyboard Shortcuts
+
+View and customize keyboard shortcuts. Enable/disable globally or customize specific shortcuts.
+
+## Troubleshooting
+
+### Settings Not Saving
+
+1. Check internet connection
+2. Refresh the page
+3. Try a different browser
+4. Clear browser cache
+
+### Permission Denied
+
+If you can't access certain settings:
+- Verify your role (some settings require Admin/Owner)
+- Check organization permissions
+- Contact your organization Owner
+
+### Missing Features
+
+Some settings require specific plans:
+- White labeling: All plans
+- Custom domain: Contact support
+- Extended retention: Pro and above
+
+<CardGroup cols={2}>
+  <Card title="Team Management" icon="users" href="/features/team-management">
+    Manage team members
+  </Card>
+  <Card title="White Labeling" icon="palette" href="/features/white-labeling">
+    Customize branding
+  </Card>
+</CardGroup>
