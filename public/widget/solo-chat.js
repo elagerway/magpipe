@@ -466,12 +466,16 @@
       const data = await response.json();
       if (data.success && data.aiResponse) {
         sessionId = data.sessionId;
-        messages.push({
-          id: data.aiMessageId || 'greeting_' + Date.now(),
-          role: 'agent',
-          content: data.aiResponse,
-          created_at: new Date().toISOString()
-        });
+        const greetingId = data.aiMessageId || 'greeting_' + Date.now();
+        const exists = messages.some(m => m.id === greetingId);
+        if (!exists) {
+          messages.push({
+            id: greetingId,
+            role: 'agent',
+            content: data.aiResponse,
+            created_at: new Date().toISOString()
+          });
+        }
         saveHistory();
         renderMessages();
         subscribeToMessages();
@@ -624,7 +628,7 @@
       const data = await response.json();
 
       if (data.error) {
-        console.error('Solo Chat: API error:', data.error);
+        console.error('Solo Chat: API error:', data.error, data.details);
         // Show error message
         messages.push({
           id: 'error_' + Date.now(),
@@ -643,14 +647,18 @@
         // Update visitor message ID with real one
         visitorMsg.id = data.messageId;
 
-        // Add AI response if present
+        // Add AI response if present (check for duplicates from realtime)
         if (data.aiResponse) {
-          messages.push({
-            id: data.aiMessageId || 'ai_' + Date.now(),
-            role: 'agent',
-            content: data.aiResponse,
-            created_at: new Date().toISOString()
-          });
+          const aiMsgId = data.aiMessageId || 'ai_' + Date.now();
+          const exists = messages.some(m => m.id === aiMsgId);
+          if (!exists) {
+            messages.push({
+              id: aiMsgId,
+              role: 'agent',
+              content: data.aiResponse,
+              created_at: new Date().toISOString()
+            });
+          }
         }
       }
 

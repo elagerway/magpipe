@@ -8,6 +8,7 @@ import { supabase, getCurrentUser } from '../lib/supabase.js';
 // Global unread count
 let unreadCount = 0;
 let unreadSubscription = null;
+let chatSubscription = null;
 let inboxManagedCount = false; // When true, inbox.js is managing the count - don't override
 
 // Cached user data for nav (avoids refetching on every page)
@@ -35,12 +36,15 @@ export async function initUnreadTracking() {
   await updateUnreadCount(user.id);
   updateBadge();
 
-  // Clean up existing subscription
+  // Clean up existing subscriptions
   if (unreadSubscription) {
     unreadSubscription.unsubscribe();
   }
+  if (chatSubscription) {
+    chatSubscription.unsubscribe();
+  }
 
-  // Subscribe to new messages
+  // Subscribe to new SMS messages
   unreadSubscription = supabase
     .channel('unread-messages')
     .on('postgres_changes', {
@@ -49,59 +53,127 @@ export async function initUnreadTracking() {
       table: 'sms_messages',
       filter: `user_id=eq.${user.id}`
     }, async (payload) => {
-      console.log('New message notification:', payload);
+      console.log('New SMS message notification:', payload);
       await updateUnreadCount(user.id);
       updateBadge();
     })
     .subscribe((status) => {
-      console.log('Unread tracking subscription status:', status);
+      console.log('Unread SMS tracking subscription status:', status);
+    });
+
+  // Subscribe to new chat messages (visitor messages trigger unread)
+  chatSubscription = supabase
+    .channel('unread-chat-messages')
+    .on('postgres_changes', {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'chat_messages'
+    }, async (payload) => {
+      // Only count visitor messages as unread
+      if (payload.new?.role === 'visitor') {
+        console.log('New chat message notification:', payload);
+        await updateUnreadCount(user.id);
+        updateBadge();
+      }
+    })
+    .subscribe((status) => {
+      console.log('Unread chat tracking subscription status:', status);
     });
 }
 
 async function updateUnreadCount(userId) {
   // Count unread messages using same logic as inbox.js
   try {
-    // Load viewed conversations from localStorage
+    // Load viewed conversations from localStorage (includes both SMS and chat)
     const savedViewed = localStorage.getItem('inbox_viewed_conversations');
     const viewedConversations = savedViewed ? new Set(JSON.parse(savedViewed)) : new Set();
 
-    // Get all inbound messages (same as inbox.js - no date filter)
-    const { data: messages } = await supabase
-      .from('sms_messages')
-      .select('sender_number, recipient_number, sent_at, created_at')
-      .eq('user_id', userId)
-      .eq('direction', 'inbound')
-      .order('created_at', { ascending: false });
+    let totalUnread = 0;
 
-    if (!messages || messages.length === 0) {
-      unreadCount = 0;
-      return;
+    // Count SMS unread messages
+    try {
+      const { data: messages } = await supabase
+        .from('sms_messages')
+        .select('sender_number, recipient_number, sent_at, created_at')
+        .eq('user_id', userId)
+        .eq('direction', 'inbound')
+        .order('created_at', { ascending: false });
+
+      if (messages && messages.length > 0) {
+        const unreadByConv = {};
+
+        messages.forEach(msg => {
+          const phone = msg.sender_number;
+          const serviceNumber = msg.recipient_number;
+          const convKey = `${phone}_${serviceNumber}`;
+
+          if (viewedConversations.has(convKey)) return;
+
+          const lastViewedKey = `conversation_last_viewed_sms_${convKey}`;
+          const lastViewed = localStorage.getItem(lastViewedKey);
+          const msgDate = new Date(msg.sent_at || msg.created_at || Date.now());
+
+          if (!lastViewed || msgDate > new Date(lastViewed)) {
+            unreadByConv[convKey] = (unreadByConv[convKey] || 0) + 1;
+          }
+        });
+
+        totalUnread += Object.values(unreadByConv).reduce((sum, count) => sum + count, 0);
+      }
+    } catch (smsError) {
+      console.error('Error counting SMS unread:', smsError);
     }
 
-    // Count unread per conversation using same key format as inbox.js
-    const unreadByConv = {};
+    // Count chat unread sessions
+    try {
+      const { data: chatSessions } = await supabase
+        .from('chat_sessions')
+        .select('id, last_message_at')
+        .eq('user_id', userId)
+        .order('last_message_at', { ascending: false })
+        .limit(50);
 
-    messages.forEach(msg => {
-      const phone = msg.sender_number;
-      const serviceNumber = msg.recipient_number;
-      // Use same key format as inbox.js: phone_serviceNumber
-      const convKey = `${phone}_${serviceNumber}`;
+      if (chatSessions && chatSessions.length > 0) {
+        // Get last message for each session to check role
+        const sessionIds = chatSessions.map(s => s.id);
+        const { data: allMessages } = await supabase
+          .from('chat_messages')
+          .select('session_id, role, created_at')
+          .in('session_id', sessionIds)
+          .order('created_at', { ascending: false });
 
-      // Skip if already viewed in this session
-      if (viewedConversations.has(convKey)) return;
+        // Group by session to get last message
+        const sessionLastMessage = {};
+        (allMessages || []).forEach(msg => {
+          if (!sessionLastMessage[msg.session_id]) {
+            sessionLastMessage[msg.session_id] = msg;
+          }
+        });
 
-      // Check per-conversation last viewed timestamp (same key format as inbox.js)
-      const lastViewedKey = `conversation_last_viewed_sms_${convKey}`;
-      const lastViewed = localStorage.getItem(lastViewedKey);
-      const msgDate = new Date(msg.sent_at || msg.created_at || Date.now());
+        // Count unread chat sessions (same logic as inbox.js)
+        for (const session of chatSessions) {
+          const lastMsg = sessionLastMessage[session.id];
 
-      if (!lastViewed || msgDate > new Date(lastViewed)) {
-        unreadByConv[convKey] = (unreadByConv[convKey] || 0) + 1;
+          // Only count as unread if last message was from visitor
+          if (!lastMsg || lastMsg.role !== 'visitor') continue;
+
+          const convKey = `chat_${session.id}`;
+          if (viewedConversations.has(convKey)) continue;
+
+          const lastViewedKey = `conversation_last_viewed_chat_${session.id}`;
+          const lastViewed = localStorage.getItem(lastViewedKey);
+          const msgDate = new Date(lastMsg.created_at);
+
+          if (!lastViewed || msgDate > new Date(lastViewed)) {
+            totalUnread += 1;
+          }
+        }
       }
-    });
+    } catch (chatError) {
+      console.error('Error counting chat unread:', chatError);
+    }
 
-    // Sum up unread from all conversations
-    unreadCount = Object.values(unreadByConv).reduce((sum, count) => sum + count, 0);
+    unreadCount = totalUnread;
   } catch (error) {
     console.error('Error updating unread count:', error);
     unreadCount = 0;

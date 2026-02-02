@@ -10,6 +10,7 @@ const corsHeaders = {
 interface AddSourceRequest {
   url: string;
   sync_period?: '24h' | '7d' | '1mo' | '3mo';
+  auth_headers?: Record<string, string>;  // Optional auth headers for protected pages
 }
 
 // Simple text chunking (500-1000 tokens ~= 2000-4000 characters)
@@ -160,10 +161,18 @@ serve(async (req) => {
     // Fetch URL
     let htmlContent: string;
     try {
+      // Build headers - include any custom auth headers if provided
+      const fetchHeaders: Record<string, string> = {
+        'User-Agent': 'Mozilla/5.0 (compatible; PatAI/1.0)',
+      };
+
+      if (body.auth_headers && typeof body.auth_headers === 'object') {
+        // Merge custom auth headers (e.g., Authorization, Cookie)
+        Object.assign(fetchHeaders, body.auth_headers);
+      }
+
       const fetchResponse = await fetch(body.url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; PatAI/1.0)',
-        },
+        headers: fetchHeaders,
         signal: AbortSignal.timeout(10000), // 10 second timeout
       });
 
