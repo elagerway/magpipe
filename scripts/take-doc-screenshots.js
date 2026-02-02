@@ -29,6 +29,26 @@ async function takeScreenshots() {
     // Helper function to hide sensitive info before screenshots
     async function hideSensitiveInfo() {
       await page.evaluate(() => {
+        // Hide/blur the logo
+        const logo = document.querySelector('[class*="logo"], .sidebar-header img, .sidebar-header svg, header img, header svg');
+        if (logo) {
+          logo.style.filter = 'blur(8px)';
+        }
+        // Also try to find logo by checking for conveyr text or image
+        document.querySelectorAll('img, svg').forEach(el => {
+          const parent = el.closest('a, div');
+          if (parent && (parent.className.includes('logo') || parent.href === '/' || parent.href?.endsWith('/home'))) {
+            el.style.filter = 'blur(8px)';
+          }
+        });
+        // Hide any text that says "conveyr"
+        const allElements = document.querySelectorAll('*');
+        allElements.forEach(el => {
+          if (el.children.length === 0 && el.innerText && el.innerText.toLowerCase().includes('conveyr')) {
+            el.style.filter = 'blur(8px)';
+          }
+        });
+
         // Replace email addresses with placeholder
         const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
         while (walker.nextNode()) {
