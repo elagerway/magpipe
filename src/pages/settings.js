@@ -561,6 +561,26 @@ export default class SettingsPage {
           </button>
         </div>
 
+        <!-- Push Notifications Help Modal -->
+        <div id="push-help-modal" class="modal-overlay hidden">
+          <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+              <h2 style="margin: 0;">Enable Push Notifications</h2>
+              <button class="modal-close-btn" id="close-push-help-modal">
+                <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+            <div id="push-help-content">
+              <!-- Content populated by JS based on platform -->
+            </div>
+            <div style="margin-top: 1.5rem;">
+              <button class="btn btn-primary" id="push-help-done-btn" style="width: 100%;">Got it</button>
+            </div>
+          </div>
+        </div>
+
         <!-- Phone Admin Access Code -->
         <div class="card">
           <div id="access-code-container"></div>
@@ -1576,9 +1596,14 @@ export default class SettingsPage {
           pushStatus.textContent = result.error || 'Failed to enable push notifications.';
           pushEnabled.checked = false;
           pushOptions.style.display = 'none';
-          errorMessage.className = 'alert alert-error';
-          errorMessage.textContent = result.error || 'Failed to enable push notifications.';
-          errorMessage.classList.remove('hidden');
+          // Show help modal for permission errors
+          if (result.error?.includes('permission') || result.error?.includes('blocked')) {
+            this.showPushHelpModal();
+          } else {
+            errorMessage.className = 'alert alert-error';
+            errorMessage.textContent = result.error || 'Failed to enable push notifications.';
+            errorMessage.classList.remove('hidden');
+          }
         }
       } else {
         // Unsubscribe
@@ -1606,13 +1631,132 @@ export default class SettingsPage {
         setTimeout(() => successMessage.classList.add('hidden'), 3000);
       } catch (error) {
         console.error('Test notification error:', error);
-        errorMessage.className = 'alert alert-error';
-        errorMessage.textContent = error.message || 'Failed to send test notification.';
-        errorMessage.classList.remove('hidden');
+        // Show help modal for permission errors
+        if (error.message?.includes('permission') || error.message?.includes('blocked')) {
+          this.showPushHelpModal();
+        } else {
+          errorMessage.className = 'alert alert-error';
+          errorMessage.textContent = error.message || 'Failed to send test notification.';
+          errorMessage.classList.remove('hidden');
+        }
       } finally {
         testPushBtn.disabled = false;
         testPushBtn.textContent = 'Send Test Notification';
       }
     });
+
+    // Setup push help modal
+    this.setupPushHelpModal();
+  }
+
+  /**
+   * Setup push help modal event listeners
+   */
+  setupPushHelpModal() {
+    const modal = document.getElementById('push-help-modal');
+    const closeBtn = document.getElementById('close-push-help-modal');
+    const doneBtn = document.getElementById('push-help-done-btn');
+
+    const closeModal = () => modal.classList.add('hidden');
+
+    closeBtn?.addEventListener('click', closeModal);
+    doneBtn?.addEventListener('click', closeModal);
+    modal?.addEventListener('click', (e) => {
+      if (e.target === modal) closeModal();
+    });
+  }
+
+  /**
+   * Show the push notifications help modal with platform-specific instructions
+   */
+  showPushHelpModal() {
+    const modal = document.getElementById('push-help-modal');
+    const content = document.getElementById('push-help-content');
+
+    if (!modal || !content) return;
+
+    // Detect platform
+    const ua = navigator.userAgent;
+    const isIOS = /iPhone|iPad|iPod/.test(ua);
+    const isAndroid = /Android/.test(ua);
+    const isMac = /Macintosh/.test(ua);
+    const isWindows = /Windows/.test(ua);
+    const isSafari = /Safari/.test(ua) && !/Chrome/.test(ua);
+    const isChrome = /Chrome/.test(ua);
+    const isFirefox = /Firefox/.test(ua);
+
+    let instructions = '';
+
+    if (isIOS) {
+      instructions = `
+        <p style="margin-bottom: 1rem;">To enable push notifications on iOS:</p>
+        <ol style="margin: 0; padding-left: 1.25rem; line-height: 1.8;">
+          <li>Open <strong>Settings</strong> on your iPhone/iPad</li>
+          <li>Scroll down and tap <strong>Safari</strong> (or your browser)</li>
+          <li>Tap <strong>Notifications</strong></li>
+          <li>Enable <strong>Allow Notifications</strong></li>
+          <li>Return here and try again</li>
+        </ol>
+        <p style="margin-top: 1rem; color: var(--text-secondary); font-size: 0.875rem;">
+          Note: iOS requires Safari 16.4+ or the app installed to Home Screen for push notifications.
+        </p>
+      `;
+    } else if (isAndroid) {
+      instructions = `
+        <p style="margin-bottom: 1rem;">To enable push notifications on Android:</p>
+        <ol style="margin: 0; padding-left: 1.25rem; line-height: 1.8;">
+          <li>Tap the <strong>lock icon</strong> in the address bar</li>
+          <li>Tap <strong>Permissions</strong> or <strong>Site settings</strong></li>
+          <li>Find <strong>Notifications</strong> and set to <strong>Allow</strong></li>
+          <li>Return here and try again</li>
+        </ol>
+        <p style="margin-top: 1rem; color: var(--text-secondary); font-size: 0.875rem;">
+          You may also need to check your phone's Settings > Apps > ${isChrome ? 'Chrome' : 'Browser'} > Notifications.
+        </p>
+      `;
+    } else if (isMac) {
+      const browser = isSafari ? 'Safari' : isChrome ? 'Chrome' : isFirefox ? 'Firefox' : 'your browser';
+      instructions = `
+        <p style="margin-bottom: 1rem;">To enable push notifications on Mac:</p>
+        <ol style="margin: 0; padding-left: 1.25rem; line-height: 1.8;">
+          <li>Open <strong>System Settings</strong> (Apple menu)</li>
+          <li>Click <strong>Notifications</strong></li>
+          <li>Find <strong>${browser}</strong> in the list</li>
+          <li>Enable <strong>Allow Notifications</strong></li>
+          <li>Set alert style to <strong>Banners</strong> or <strong>Alerts</strong></li>
+          <li>Return here and try again</li>
+        </ol>
+        <p style="margin-top: 1rem; color: var(--text-secondary); font-size: 0.875rem;">
+          Also check the lock icon in the address bar to ensure this site can send notifications.
+        </p>
+      `;
+    } else if (isWindows) {
+      instructions = `
+        <p style="margin-bottom: 1rem;">To enable push notifications on Windows:</p>
+        <ol style="margin: 0; padding-left: 1.25rem; line-height: 1.8;">
+          <li>Click the <strong>lock icon</strong> in the address bar</li>
+          <li>Find <strong>Notifications</strong> and set to <strong>Allow</strong></li>
+          <li>If blocked, go to browser settings and reset permissions for this site</li>
+          <li>Return here and try again</li>
+        </ol>
+        <p style="margin-top: 1rem; color: var(--text-secondary); font-size: 0.875rem;">
+          Also check Windows Settings > System > Notifications to ensure browser notifications are enabled.
+        </p>
+      `;
+    } else {
+      instructions = `
+        <p style="margin-bottom: 1rem;">To enable push notifications:</p>
+        <ol style="margin: 0; padding-left: 1.25rem; line-height: 1.8;">
+          <li>Click the <strong>lock icon</strong> in your browser's address bar</li>
+          <li>Find <strong>Notifications</strong> in the permissions</li>
+          <li>Change it from "Block" to <strong>Allow</strong></li>
+          <li>Check your device's system notification settings</li>
+          <li>Return here and try again</li>
+        </ol>
+      `;
+    }
+
+    content.innerHTML = instructions;
+    modal.classList.remove('hidden');
   }
 }
