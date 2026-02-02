@@ -220,11 +220,12 @@ export default class VerifyPhonePage {
         successMessage.textContent = 'Phone verified successfully!';
 
         // Request push notification permission (native prompt)
-        // User can accept or decline - if declined they can enable later in Settings
+        let pushEnabled = false;
         if (isPushSupported()) {
           try {
             const pushResult = await subscribeToPush();
             if (pushResult.success) {
+              pushEnabled = true;
               // Save preference if they accepted
               await supabase
                 .from('notification_preferences')
@@ -236,9 +237,18 @@ export default class VerifyPhonePage {
                 }, { onConflict: 'user_id' });
             }
           } catch (e) {
-            // Ignore push errors - not critical
             console.log('Push notification setup skipped:', e.message);
           }
+        }
+
+        // If push was declined, show explanation modal
+        if (isPushSupported() && !pushEnabled) {
+          const destination = (serviceNumbers && serviceNumbers.length > 0)
+            ? '/settings'
+            : '/select-number';
+
+          await this.showPushDeclinedModal(user.id, destination, serviceNumbers?.length > 0);
+          return; // Modal handles redirect
         }
 
         // Wait a moment to ensure database update propagates
@@ -472,5 +482,96 @@ Example SMS Reply:
     }
 
     return await response.json();
+  }
+
+  /**
+   * Show modal when user declines push notifications
+   */
+  async showPushDeclinedModal(userId, destination, isExistingUser) {
+    const appElement = document.getElementById('app');
+
+    appElement.innerHTML = `
+      <div class="container" style="max-width: 400px; margin-top: 4rem;">
+        <div class="card" style="text-align: center;">
+          <div style="width: 64px; height: 64px; background: rgba(239, 68, 68, 0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem;">
+            <svg width="32" height="32" fill="none" stroke="rgb(239, 68, 68)" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+              <line x1="4" y1="4" x2="20" y2="20" stroke="rgb(239, 68, 68)" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </div>
+
+          <h2 style="margin: 0 0 1rem;">Notifications Disabled</h2>
+
+          <p style="color: var(--text-secondary); margin-bottom: 1.5rem; line-height: 1.6;">
+            You won't receive any notifications for incoming calls, SMS messages, or chat conversations.
+          </p>
+
+          <button class="btn btn-primary btn-full" id="enable-push-btn" style="margin-bottom: 1rem;">
+            Enable Notifications
+          </button>
+
+          <a href="#" id="continue-without-btn" style="color: var(--text-secondary); font-size: 0.875rem; text-decoration: none;">
+            Continue without notifications
+          </a>
+        </div>
+      </div>
+    `;
+
+    const enableBtn = document.getElementById('enable-push-btn');
+    const continueBtn = document.getElementById('continue-without-btn');
+
+    enableBtn.addEventListener('click', async () => {
+      enableBtn.disabled = true;
+      enableBtn.textContent = 'Enabling...';
+
+      try {
+        const pushResult = await subscribeToPush();
+
+        if (pushResult.success) {
+          // Save preference
+          await supabase
+            .from('notification_preferences')
+            .upsert({
+              user_id: userId,
+              push_enabled: true,
+              push_inbound_calls: true,
+              push_inbound_messages: true,
+            }, { onConflict: 'user_id' });
+
+          enableBtn.textContent = 'Enabled!';
+          enableBtn.style.background = 'rgb(34, 197, 94)';
+
+          setTimeout(() => {
+            if (isExistingUser) {
+              window.location.href = destination;
+            } else {
+              navigateTo(destination);
+            }
+          }, 1000);
+        } else {
+          // Still failed - maybe blocked at OS level
+          enableBtn.textContent = 'Enable Notifications';
+          enableBtn.disabled = false;
+
+          const errorMsg = document.createElement('p');
+          errorMsg.style.cssText = 'color: var(--error-color); font-size: 0.875rem; margin-top: 1rem;';
+          errorMsg.textContent = 'Notifications are blocked. Please enable them in your device settings.';
+          enableBtn.parentNode.insertBefore(errorMsg, continueBtn);
+        }
+      } catch (e) {
+        console.error('Enable push error:', e);
+        enableBtn.textContent = 'Enable Notifications';
+        enableBtn.disabled = false;
+      }
+    });
+
+    continueBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (isExistingUser) {
+        window.location.href = destination;
+      } else {
+        navigateTo(destination);
+      }
+    });
   }
 }
