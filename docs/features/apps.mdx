@@ -1,39 +1,19 @@
 ---
-title: Integrations
-description: "Connect Solo Mobile to 40+ external services via MCP"
+title: Apps
+description: "Connect external services and enable agent functions"
 ---
 
 ## Overview
 
-Integrations extend what your AI agents can do. Connect to your CRM, calendar, helpdesk, and more. When a caller asks to book an appointment, your agent checks your actual calendar. When a lead calls, their info is logged directly to your CRM.
+Apps extend what your AI agents can do. Connect to your CRM, calendar, helpdesk, and more. When a caller asks to book an appointment, your agent checks your actual calendar. When a lead calls, their info is logged directly to your CRM.
 
-Solo Mobile uses MCP (Model Context Protocol) for integrations, giving you access to 40+ pre-built connections plus the ability to add custom integrations.
+Solo Mobile has two levels of app configuration:
+- **Apps** (global) - Connect external services like Cal.com, HubSpot, and Slack
+- **Functions** (per-agent) - Enable built-in capabilities like SMS, transfers, and booking
 
-## How Integrations Work
+## Connected Apps
 
-### Tool-Based Architecture
-
-Each integration provides "tools" that agents can use:
-
-```
-Caller: "I'd like to book an appointment for next Tuesday at 2 PM"
-          ↓
-Agent uses calendar_check_availability tool
-          ↓
-Cal.com returns: Tuesday 2 PM is available
-          ↓
-Agent uses calendar_create_booking tool
-          ↓
-Cal.com creates the appointment
-          ↓
-Agent: "I've booked you for Tuesday at 2 PM. You'll receive a confirmation email."
-```
-
-### Automatic Tool Selection
-
-Agents automatically choose the right tool based on context. You don't need to configure when to use each tool - the AI determines this naturally from the conversation.
-
-## Native Integrations
+Connected Apps are external services that your agents can use. Configure them once in the **Apps** section, then they're available to all your agents.
 
 ### Cal.com (Calendar)
 
@@ -47,13 +27,13 @@ Book appointments and check availability.
 - Cancel or reschedule bookings
 
 **Setup:**
-1. Go to **Apps** → **Cal.com**
-2. Click **Connect**
+1. Go to **Apps** from the main navigation
+2. Find Cal.com and click **Connect**
 3. Sign in with your Cal.com account
 4. Grant calendar access
 5. Select which event types to use
 
-**Agent Capabilities:**
+**What Agents Can Do:**
 ```
 "Book an appointment" → Creates booking
 "When are you available?" → Checks calendar
@@ -73,12 +53,13 @@ Sync contacts and log interactions.
 - Update contact properties
 
 **Setup:**
-1. Go to **Apps** → **HubSpot**
-2. Click **Connect**
-3. Authorize in HubSpot
-4. Select data to sync
+1. Go to **Apps** from the main navigation
+2. Find HubSpot and click **Connect**
+3. Create a Private App in HubSpot (Settings → Integrations → Private Apps)
+4. Enter your HubSpot API key
+5. Select data to sync
 
-**Agent Capabilities:**
+**What Agents Can Do:**
 ```
 "Look up John Smith" → Searches contacts
 "Add this as a new lead" → Creates contact
@@ -96,73 +77,87 @@ Send notifications and interact with your team.
 - Alert team to urgent calls
 
 **Setup:**
-1. Go to **Apps** → **Slack**
-2. Click **Connect**
+1. Go to **Apps** from the main navigation
+2. Find Slack and click **Connect**
 3. Authorize Solo Mobile in Slack
 4. Select notification channels
 
-**Agent Capabilities:**
+**What Agents Can Do:**
 ```
 "Alert the sales team" → Posts to #sales channel
 Automatic: Call summary posted after each call
 Automatic: New lead notifications
 ```
 
-### Notion (Documentation)
+### Disconnecting Apps
 
-Access and search your Notion workspace.
+To disconnect a connected app:
+1. Go to **Apps**
+2. Find the app
+3. Click **Disconnect**
+4. Confirm
 
-**Features:**
-- Search pages and databases
-- Retrieve document content
-- Use as knowledge source
-- Create new pages
+This immediately revokes Solo Mobile's access.
 
-**Setup:**
-1. Go to **Apps** → **Notion**
-2. Click **Connect**
-3. Select pages to share with Solo Mobile
+## Agent Functions
 
-### Linear (Project Management)
+Functions are built-in capabilities that you enable per-agent. Configure them in each agent's **Functions** tab.
 
-Create and manage issues.
+### Send SMS
 
-**Features:**
-- Create new issues from calls
-- Search existing issues
-- Update issue status
-- Link conversations to issues
+Allow your agent to send text messages during or after calls.
 
-**Setup:**
-1. Go to **Apps** → **Linear**
-2. Click **Connect**
-3. Select workspace and projects
+**Use cases:**
+- Send appointment confirmations
+- Share links or documents
+- Follow up after calls
+- Send directions or contact info
 
-### Airtable (Database)
+**Enable:**
+1. Go to your agent → **Functions** tab
+2. Toggle on **Send SMS**
 
-Read and write to Airtable bases.
+### Transfer Calls
 
-**Features:**
-- Search records
-- Create new records
-- Update existing records
-- Use as dynamic knowledge source
+Allow your agent to transfer calls to a human.
 
-**Setup:**
-1. Go to **Apps** → **Airtable**
-2. Click **Connect**
-3. Enter API key
-4. Select bases to access
+**Use cases:**
+- Escalate complex issues
+- Connect to sales team
+- Route to specific departments
+- Emergency transfers
 
-## MCP Server Integrations
+**Enable:**
+1. Go to your agent → **Functions** tab
+2. Toggle on **Transfer Calls**
+3. Set transfer number in **Settings** tab
+
+### Book Appointments
+
+Allow your agent to schedule appointments via Cal.com.
+
+**Requirements:**
+- Cal.com must be connected in Apps
+
+**Use cases:**
+- Schedule consultations
+- Book service appointments
+- Reserve meeting times
+
+**Enable:**
+1. First connect Cal.com in **Apps**
+2. Go to your agent → **Functions** tab
+3. Toggle on **Book Appointments**
+
+## MCP Servers
+
+MCP (Model Context Protocol) servers let you add custom tools beyond the built-in apps.
 
 ### What is MCP?
 
-Model Context Protocol (MCP) is an open standard for connecting AI to external tools. Solo Mobile supports any MCP-compatible server.
+Model Context Protocol is an open standard for connecting AI to external tools. Solo Mobile supports any MCP-compatible server, giving you access to 40+ pre-built servers plus the ability to create custom ones.
 
 ### Available MCP Servers
-
-Solo Mobile includes 40+ pre-configured MCP servers:
 
 <AccordionGroup>
   <Accordion title="Productivity" icon="briefcase">
@@ -260,50 +255,56 @@ Solo Mobile includes 40+ pre-configured MCP servers:
 ### Adding an MCP Server
 
 1. Go to **Apps** in the main navigation
-2. Click **+ Add MCP Server**
-3. Enter server details:
+2. Scroll to **MCP Servers** section
+3. Click **+ Add MCP Server**
+4. Enter server details:
    - **Name** - Display name
    - **URL** - Server endpoint
-   - **Authentication** - API key or OAuth
-4. Click **Test Connection**
-5. Save if successful
+   - **Authentication** - API key if required
+5. Click **Test Connection**
+6. Save if successful
 
 ### Custom MCP Servers
 
-Build your own MCP server for custom integrations:
+Build your own MCP server for custom tools:
 
 1. Implement the MCP specification
 2. Host your server (cloud function, VPS, etc.)
-3. Add the URL to Solo Mobile
+3. Add the URL in Solo Mobile
 4. Your tools become available to agents
 
 See [MCP Documentation](https://modelcontextprotocol.io) for implementation details.
 
-## Per-Agent Configuration
+## How Apps Work
 
-### Enabling Integrations
+### Tool-Based Architecture
 
-Not all agents need all integrations. Configure per-agent:
+Each connected app provides "tools" that agents can use:
 
-1. Open the agent you want to configure
-2. Go to **Settings** tab
-3. Find the **Integrations** section
-4. Toggle integrations on/off
+```
+Caller: "I'd like to book an appointment for next Tuesday at 2 PM"
+          ↓
+Agent uses calendar_check_availability tool
+          ↓
+Cal.com returns: Tuesday 2 PM is available
+          ↓
+Agent uses calendar_create_booking tool
+          ↓
+Cal.com creates the appointment
+          ↓
+Agent: "I've booked you for Tuesday at 2 PM. You'll receive a confirmation email."
+```
 
-### Tool Permissions
+### Automatic Tool Selection
 
-Control which tools each agent can use:
-
-- **Calendar**: Read-only vs. Read/Write
-- **CRM**: Search only vs. Create/Update
-- **Communication**: Notify only vs. Send messages
+Agents automatically choose the right tool based on context. You don't need to configure when to use each tool - the AI determines this naturally from the conversation.
 
 ### Prompt Guidance
 
-Help agents use integrations effectively by adding instructions to your system prompt:
+Help agents use apps effectively by adding instructions to your system prompt:
 
 ```
-INTEGRATION INSTRUCTIONS:
+APP INSTRUCTIONS:
 - When a caller wants to book, use Cal.com to check availability
 - Always offer at least 3 available time slots
 - Log all new callers to HubSpot as leads
@@ -314,77 +315,65 @@ INTEGRATION INSTRUCTIONS:
 
 ### What Data is Shared
 
-When you connect an integration:
+When you connect an app:
 - Solo Mobile receives OAuth tokens or API keys
 - Agents can access data within granted scopes
-- Call context may be sent to integrations (e.g., contact lookup)
+- Call context may be sent to apps (e.g., contact lookup)
 
 ### What Data is NOT Shared
 
-- Call recordings are not sent to integrations
+- Call recordings are not sent to connected apps
 - Full transcripts are not shared
 - Personal notes are kept private
 
-### Disconnecting
-
-To revoke access:
-1. Go to **Apps**
-2. Find the integration
-3. Click **Disconnect**
-4. Confirm
-
-This immediately revokes Solo Mobile's access. You may also want to revoke in the third-party service's settings.
-
 ## Troubleshooting
 
-### Integration Not Working
+### App Not Working
 
 1. **Check connection status** - Go to Apps, verify "Connected"
 2. **Check permissions** - Ensure sufficient scopes granted
-3. **Check agent settings** - Verify integration enabled for agent
+3. **Check agent functions** - Verify function enabled for agent
 4. **Check tool usage** - Review call transcript for tool calls
 
 ### Authentication Errors
 
-- OAuth tokens can expire - reconnect the integration
+- OAuth tokens can expire - reconnect the app
 - API keys may be revoked - check in third-party service
 - Scopes may have changed - re-authorize with updated permissions
 
 ### Slow Responses
 
-Integration calls add latency:
+App calls add latency:
 - Simple lookups: +200-500ms
 - Complex queries: +1-2 seconds
 - Database writes: +500ms-1s
-
-Consider this when multiple integrations are active.
 
 ## Best Practices
 
 ### Start Simple
 
-1. Begin with 1-2 key integrations
+1. Begin with 1-2 key apps
 2. Test thoroughly with real calls
 3. Add more as needed
 
 ### Security
 
-- Only connect integrations you actively need
+- Only connect apps you actively need
 - Use least-privilege permissions
 - Regularly audit connected apps
-- Disconnect unused integrations
+- Disconnect unused apps
 
 ### Agent Instructions
 
-- Be explicit about when to use integrations
-- Provide fallback instructions if integration fails
+- Be explicit about when to use apps
+- Provide fallback instructions if app fails
 - Set expectations ("I'll check the calendar...")
 
 <CardGroup cols={2}>
   <Card title="MCP Documentation" icon="book" href="https://modelcontextprotocol.io">
     Learn about Model Context Protocol
   </Card>
-  <Card title="Build Custom Integration" icon="wrench" href="/guides/custom-mcp">
-    Create your own MCP server
+  <Card title="AI Agents" icon="robot" href="/features/agents">
+    Configure agent functions
   </Card>
 </CardGroup>
