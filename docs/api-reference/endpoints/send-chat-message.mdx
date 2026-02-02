@@ -1,0 +1,143 @@
+---
+title: "Send Chat Message"
+api: "POST /webhook-chat-message"
+description: "Send a message to a chat widget session"
+---
+
+Send a visitor message to a chat session and receive an AI response. This endpoint is used by the embeddable chat widget.
+
+## Request Body
+
+<ParamField body="widget_key" type="string" required>
+  The public widget key from your dashboard.
+</ParamField>
+
+<ParamField body="message" type="string" required>
+  The visitor's message content.
+</ParamField>
+
+<ParamField body="session_id" type="string">
+  Existing chat session ID. Omit to create a new session.
+</ParamField>
+
+<ParamField body="visitor_id" type="string">
+  Unique visitor identifier (e.g., from localStorage UUID).
+</ParamField>
+
+<ParamField body="visitor_name" type="string">
+  Visitor's name (if collected).
+</ParamField>
+
+<ParamField body="visitor_email" type="string">
+  Visitor's email (if collected).
+</ParamField>
+
+<ParamField body="page_url" type="string">
+  The URL of the page where the chat was initiated.
+</ParamField>
+
+## Response
+
+<ResponseField name="session_id" type="string">
+  The chat session ID (use for subsequent messages).
+</ResponseField>
+
+<ResponseField name="aiResponse" type="string">
+  The AI agent's response message.
+</ResponseField>
+
+<ResponseField name="aiMessageId" type="string">
+  Unique identifier for the AI response message.
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl -X POST https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/webhook-chat-message \
+  -H "Content-Type: application/json" \
+  -d '{
+    "widget_key": "wgt_a1b2c3d4e5f6789012345678",
+    "message": "Hi, I have a question about your services",
+    "visitor_id": "v_abc123def456",
+    "page_url": "https://example.com/pricing"
+  }'
+```
+
+```javascript Node.js
+const response = await fetch(
+  'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/webhook-chat-message',
+  {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      widget_key: 'wgt_a1b2c3d4e5f6789012345678',
+      message: 'Hi, I have a question about your services',
+      visitor_id: 'v_abc123def456',
+      page_url: window.location.href
+    }),
+  }
+);
+
+const { session_id, aiResponse } = await response.json();
+console.log('AI:', aiResponse);
+
+// Use session_id for subsequent messages
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/webhook-chat-message',
+    headers={
+        'Content-Type': 'application/json',
+    },
+    json={
+        'widget_key': 'wgt_a1b2c3d4e5f6789012345678',
+        'message': 'Hi, I have a question about your services',
+        'visitor_id': 'v_abc123def456',
+        'page_url': 'https://example.com/pricing'
+    }
+)
+
+data = response.json()
+print(f"AI: {data['aiResponse']}")
+```
+</RequestExample>
+
+<ResponseExample>
+```json Success Response
+{
+  "session_id": "e5f6a7b8-c9d0-1e2f-3a4b-567890cdef12",
+  "aiResponse": "Hello! I'd be happy to help you learn about our services. What specific questions do you have?",
+  "aiMessageId": "f6a7b8c9-d0e1-2f3a-4b5c-678901def234"
+}
+```
+
+```json Error Response
+{
+  "error": {
+    "code": "widget_not_found",
+    "message": "Widget not found or inactive"
+  }
+}
+```
+</ResponseExample>
+
+## Real-time Updates
+
+Chat messages are delivered in real-time via Supabase Realtime. Subscribe to the `chat_messages` table for instant updates:
+
+```javascript
+const channel = supabase
+  .channel('chat_messages')
+  .on(
+    'postgres_changes',
+    { event: 'INSERT', schema: 'public', table: 'chat_messages' },
+    (payload) => {
+      console.log('New message:', payload.new);
+    }
+  )
+  .subscribe();
+```

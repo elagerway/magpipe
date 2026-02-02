@@ -1,0 +1,164 @@
+---
+title: "Add Knowledge Source"
+api: "POST /knowledge-source-add"
+description: "Add a URL as a knowledge source for your AI agents"
+---
+
+Add a webpage URL as a knowledge source. The content is scraped, processed into chunks, and embedded as vectors for RAG (Retrieval Augmented Generation). Your AI agents can then reference this knowledge when answering questions.
+
+## Request Body
+
+<ParamField body="url" type="string" required>
+  URL to scrape and add to knowledge base. Must be publicly accessible or include auth headers.
+
+  **Example:** `https://example.com/faq`
+</ParamField>
+
+<ParamField body="sync_period" type="string" default="7d">
+  How often to re-sync content from the URL.
+
+  **Options:** `24h`, `7d`, `1mo`, `3mo`
+</ParamField>
+
+<ParamField body="auth_headers" type="object">
+  Authentication headers for protected pages.
+
+  **Example (Bearer):**
+  ```json
+  {
+    "Authorization": "Bearer YOUR_TOKEN"
+  }
+  ```
+
+  **Example (Basic):**
+  ```json
+  {
+    "Authorization": "Basic dXNlcm5hbWU6cGFzc3dvcmQ="
+  }
+  ```
+</ParamField>
+
+## Response
+
+<ResponseField name="id" type="string">
+  Unique knowledge source identifier.
+</ResponseField>
+
+<ResponseField name="url" type="string">
+  The source URL.
+</ResponseField>
+
+<ResponseField name="title" type="string">
+  Extracted page title.
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  Extracted meta description.
+</ResponseField>
+
+<ResponseField name="sync_status" type="string">
+  Current sync status: `pending`, `syncing`, `completed`, `failed`.
+</ResponseField>
+
+<ResponseField name="chunk_count" type="integer">
+  Number of text chunks created from the content.
+</ResponseField>
+
+<ResponseField name="next_sync_at" type="string">
+  When the next automatic sync will occur.
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl -X POST https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/knowledge-source-add \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://example.com/help/faq",
+    "sync_period": "7d"
+  }'
+```
+
+```javascript Node.js
+const response = await fetch(
+  'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/knowledge-source-add',
+  {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer YOUR_API_TOKEN',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      url: 'https://example.com/help/faq',
+      sync_period: '7d'
+    }),
+  }
+);
+
+const source = await response.json();
+console.log('Added:', source.title);
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/knowledge-source-add',
+    headers={
+        'Authorization': 'Bearer YOUR_API_TOKEN',
+        'Content-Type': 'application/json',
+    },
+    json={
+        'url': 'https://example.com/help/faq',
+        'sync_period': '7d'
+    }
+)
+
+source = response.json()
+print(f"Added: {source['title']}")
+```
+</RequestExample>
+
+<ResponseExample>
+```json Success Response
+{
+  "id": "f7a8b9c0-d1e2-3f4a-5b6c-789012def345",
+  "url": "https://example.com/help/faq",
+  "title": "Frequently Asked Questions - Example Inc",
+  "description": "Find answers to common questions about our products and services.",
+  "sync_period": "7d",
+  "sync_status": "completed",
+  "chunk_count": 24,
+  "last_synced_at": "2024-01-15T10:35:00Z",
+  "next_sync_at": "2024-01-22T10:35:00Z",
+  "created_at": "2024-01-15T10:30:00Z"
+}
+```
+
+```json Error Response
+{
+  "error": {
+    "code": "scrape_failed",
+    "message": "Could not fetch content from URL. Make sure the page is publicly accessible."
+  }
+}
+```
+</ResponseExample>
+
+## How Knowledge Works
+
+1. **Scraping**: Content is extracted from the URL, removing navigation and boilerplate
+2. **Chunking**: Text is split into semantic chunks (~500 tokens each)
+3. **Embedding**: Each chunk is converted to a vector embedding
+4. **Storage**: Chunks are stored in a vector database (pgvector)
+5. **Retrieval**: During calls/chats, relevant chunks are retrieved and included in agent context
+
+## Supported Content
+
+- HTML pages (blogs, FAQs, documentation)
+- PDF files (product manuals, guides)
+- Plain text files
+
+<Note>
+Dynamic content loaded via JavaScript may not be captured. For SPAs, consider providing direct links to static content or using server-side rendered pages.
+</Note>

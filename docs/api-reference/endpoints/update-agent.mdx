@@ -1,0 +1,127 @@
+---
+title: "Update Agent"
+api: "POST /update-agent"
+description: "Update an existing AI agent's configuration"
+---
+
+Update any configuration fields for an existing AI agent. Only include fields you want to change.
+
+## Request Body
+
+<ParamField body="agent_id" type="string" required>
+  The unique identifier of the agent to update.
+</ParamField>
+
+<ParamField body="name" type="string">
+  Agent display name (max 100 characters).
+</ParamField>
+
+<ParamField body="greeting" type="string">
+  Message spoken when answering calls (max 500 characters).
+</ParamField>
+
+<ParamField body="system_prompt" type="string">
+  Instructions defining the agent's behavior (max 10,000 characters).
+</ParamField>
+
+<ParamField body="voice_id" type="string">
+  Voice identifier for text-to-speech.
+</ParamField>
+
+<ParamField body="voice_provider" type="string">
+  TTS provider: `openai` or `elevenlabs`.
+</ParamField>
+
+<ParamField body="voice_speed" type="number">
+  Speech speed multiplier (0.5 to 2.0).
+</ParamField>
+
+<ParamField body="language" type="string">
+  Language code (e.g., `en-US`, `es-ES`).
+</ParamField>
+
+<ParamField body="max_call_duration" type="integer">
+  Maximum call duration in seconds (60 to 3600).
+</ParamField>
+
+<ParamField body="end_call_phrases" type="array">
+  Phrases that trigger call termination.
+</ParamField>
+
+<ParamField body="transfer_number" type="string">
+  Phone number for call transfers.
+</ParamField>
+
+<ParamField body="is_active" type="boolean">
+  Enable or disable the agent.
+</ParamField>
+
+## Response
+
+Returns the updated agent object.
+
+<RequestExample>
+```bash cURL
+curl -X POST https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/update-agent \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_id": "550e8400-e29b-41d4-a716-446655440000",
+    "greeting": "Hi there! Thanks for calling Acme Dental. How can I help you?",
+    "voice_speed": 1.1
+  }'
+```
+
+```javascript Node.js
+const response = await fetch(
+  'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/update-agent',
+  {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer YOUR_API_TOKEN',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      agent_id: '550e8400-e29b-41d4-a716-446655440000',
+      greeting: 'Hi there! Thanks for calling Acme Dental. How can I help you?',
+      voice_speed: 1.1
+    }),
+  }
+);
+
+const agent = await response.json();
+console.log('Updated:', agent.updated_at);
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/update-agent',
+    headers={
+        'Authorization': 'Bearer YOUR_API_TOKEN',
+        'Content-Type': 'application/json',
+    },
+    json={
+        'agent_id': '550e8400-e29b-41d4-a716-446655440000',
+        'greeting': 'Hi there! Thanks for calling Acme Dental. How can I help you?',
+        'voice_speed': 1.1
+    }
+)
+
+agent = response.json()
+print(f"Updated: {agent['updated_at']}")
+```
+</RequestExample>
+
+<ResponseExample>
+```json Success Response
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "Sarah - Receptionist",
+  "greeting": "Hi there! Thanks for calling Acme Dental. How can I help you?",
+  "voice_speed": 1.1,
+  "updated_at": "2024-01-16T09:15:00Z"
+}
+```
+</ResponseExample>

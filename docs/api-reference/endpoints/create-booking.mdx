@@ -1,0 +1,169 @@
+---
+title: "Create Calendar Booking"
+api: "POST /cal-com-create-booking"
+description: "Book an appointment on your connected Cal.com calendar"
+---
+
+Create a new appointment booking through your connected Cal.com calendar. The booking will be added to your calendar and the attendee will receive a confirmation email.
+
+## Request Body
+
+<ParamField body="start_time" type="string" required>
+  Appointment start time in ISO 8601 format. Must be an available slot.
+
+  **Example:** `2024-01-15T14:00:00-08:00`
+</ParamField>
+
+<ParamField body="name" type="string" required>
+  Attendee's full name.
+
+  **Example:** `John Smith`
+</ParamField>
+
+<ParamField body="email" type="string" required>
+  Attendee's email address for confirmation.
+
+  **Example:** `john@example.com`
+</ParamField>
+
+<ParamField body="phone" type="string">
+  Attendee's phone number.
+
+  **Example:** `+14155551234`
+</ParamField>
+
+<ParamField body="notes" type="string">
+  Additional notes or reason for appointment.
+
+  **Example:** `Interested in dental cleaning`
+</ParamField>
+
+<ParamField body="event_type_id" type="integer">
+  Cal.com event type ID. Uses default if not specified.
+</ParamField>
+
+<ParamField body="timezone" type="string" default="America/Los_Angeles">
+  Attendee's timezone.
+</ParamField>
+
+## Response
+
+<ResponseField name="booking_id" type="integer">
+  Cal.com booking ID.
+</ResponseField>
+
+<ResponseField name="uid" type="string">
+  Unique booking identifier.
+</ResponseField>
+
+<ResponseField name="start_time" type="string">
+  Confirmed start time.
+</ResponseField>
+
+<ResponseField name="end_time" type="string">
+  Confirmed end time.
+</ResponseField>
+
+<ResponseField name="meeting_url" type="string">
+  Video meeting URL (if applicable).
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl -X POST https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/cal-com-create-booking \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "start_time": "2024-01-15T14:00:00-08:00",
+    "name": "John Smith",
+    "email": "john@example.com",
+    "phone": "+14155551234",
+    "notes": "Interested in dental cleaning"
+  }'
+```
+
+```javascript Node.js
+const response = await fetch(
+  'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/cal-com-create-booking',
+  {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer YOUR_API_TOKEN',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      start_time: '2024-01-15T14:00:00-08:00',
+      name: 'John Smith',
+      email: 'john@example.com',
+      phone: '+14155551234',
+      notes: 'Interested in dental cleaning'
+    }),
+  }
+);
+
+const booking = await response.json();
+console.log('Booked:', booking.uid);
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/cal-com-create-booking',
+    headers={
+        'Authorization': 'Bearer YOUR_API_TOKEN',
+        'Content-Type': 'application/json',
+    },
+    json={
+        'start_time': '2024-01-15T14:00:00-08:00',
+        'name': 'John Smith',
+        'email': 'john@example.com',
+        'phone': '+14155551234',
+        'notes': 'Interested in dental cleaning'
+    }
+)
+
+booking = response.json()
+print(f"Booked: {booking['uid']}")
+```
+</RequestExample>
+
+<ResponseExample>
+```json Success Response
+{
+  "booking_id": 123456,
+  "uid": "bkg_a1b2c3d4e5f6",
+  "start_time": "2024-01-15T14:00:00-08:00",
+  "end_time": "2024-01-15T15:00:00-08:00",
+  "attendee": {
+    "name": "John Smith",
+    "email": "john@example.com"
+  },
+  "status": "confirmed",
+  "meeting_url": null
+}
+```
+
+```json Error Response
+{
+  "error": {
+    "code": "slot_unavailable",
+    "message": "This time slot is no longer available"
+  }
+}
+```
+</ResponseExample>
+
+## AI Agent Booking Flow
+
+Your AI agent can book appointments automatically during calls:
+
+```
+Agent: "I have 2pm available on Monday. Should I book that for you?"
+Caller: "Yes, please"
+Agent: "Great! What's your email address so I can send you a confirmation?"
+Caller: "john@example.com"
+Agent: "Perfect. I've booked your appointment for Monday at 2pm.
+        You'll receive a confirmation email at john@example.com.
+        Is there anything else I can help you with?"
+```

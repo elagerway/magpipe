@@ -1,0 +1,127 @@
+---
+title: "List Voices"
+api: "POST /list-voices"
+description: "List all available voices including cloned voices"
+---
+
+Retrieve all voices available for your AI agents, including built-in voices and your custom cloned voices.
+
+## Request Body
+
+<ParamField body="provider" type="string">
+  Filter by provider: `openai` or `elevenlabs`.
+</ParamField>
+
+<ParamField body="include_builtin" type="boolean" default={true}>
+  Whether to include built-in voices in the response.
+</ParamField>
+
+## Response
+
+<ResponseField name="voices" type="array">
+  Array of voice objects.
+</ResponseField>
+
+### Voice Object
+
+<ResponseField name="id" type="string">
+  Voice identifier to use in agent configuration.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Voice display name.
+</ResponseField>
+
+<ResponseField name="provider" type="string">
+  Voice provider: `openai` or `elevenlabs`.
+</ResponseField>
+
+<ResponseField name="preview_url" type="string">
+  URL to preview the voice (if available).
+</ResponseField>
+
+<ResponseField name="is_custom" type="boolean">
+  Whether this is a custom cloned voice.
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl -X POST https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/list-voices \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+```javascript Node.js
+const response = await fetch(
+  'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/list-voices',
+  {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer YOUR_API_TOKEN',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({}),
+  }
+);
+
+const { voices } = await response.json();
+console.log('Available voices:', voices.length);
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/list-voices',
+    headers={
+        'Authorization': 'Bearer YOUR_API_TOKEN',
+        'Content-Type': 'application/json',
+    },
+    json={}
+)
+
+data = response.json()
+for voice in data['voices']:
+    print(f"{voice['name']} ({voice['provider']})")
+```
+</RequestExample>
+
+<ResponseExample>
+```json Success Response
+{
+  "voices": [
+    {
+      "id": "alloy",
+      "name": "Alloy",
+      "description": "Neutral, professional",
+      "provider": "openai",
+      "is_custom": false
+    },
+    {
+      "id": "nova",
+      "name": "Nova",
+      "description": "Bright, energetic",
+      "provider": "openai",
+      "is_custom": false
+    },
+    {
+      "id": "21m00Tcm4TlvDq8ikWAM",
+      "name": "Rachel",
+      "description": "Warm, conversational female voice",
+      "provider": "elevenlabs",
+      "preview_url": "https://api.elevenlabs.io/v1/voices/21m00Tcm4TlvDq8ikWAM/preview.mp3",
+      "is_custom": false
+    },
+    {
+      "id": "pNInz6obpgDQGcFmaJgB",
+      "name": "Dr. Smith",
+      "description": "Warm, professional male voice",
+      "provider": "elevenlabs",
+      "preview_url": "https://api.elevenlabs.io/v1/voices/pNInz6obpgDQGcFmaJgB/preview.mp3",
+      "is_custom": true
+    }
+  ]
+}
+```
+</ResponseExample>

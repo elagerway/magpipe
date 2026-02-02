@@ -1,0 +1,169 @@
+---
+title: "Create Chat Widget"
+api: "POST /create-chat-widget"
+description: "Create an embeddable chat widget for your website"
+---
+
+Create a new chat widget that can be embedded on your website. Visitors can chat with your AI agent in real-time through the widget.
+
+## Request Body
+
+<ParamField body="agent_id" type="string" required>
+  UUID of the agent to handle chat conversations.
+</ParamField>
+
+<ParamField body="name" type="string">
+  Display name for the widget (internal use).
+
+  **Default:** `Website Chat`
+</ParamField>
+
+<ParamField body="primary_color" type="string">
+  Hex color code for the widget theme.
+
+  **Default:** `#6366f1`
+</ParamField>
+
+<ParamField body="position" type="string">
+  Widget position on the page: `bottom-right` or `bottom-left`.
+
+  **Default:** `bottom-right`
+</ParamField>
+
+<ParamField body="welcome_message" type="string">
+  Message shown when visitor opens the chat.
+
+  **Default:** `Hi! How can I help you today?`
+</ParamField>
+
+<ParamField body="offline_message" type="string">
+  Message shown when no agent is available.
+
+  **Default:** `Leave a message and we'll get back to you.`
+</ParamField>
+
+<ParamField body="collect_visitor_name" type="boolean">
+  Whether to ask for visitor's name.
+
+  **Default:** `true`
+</ParamField>
+
+<ParamField body="collect_visitor_email" type="boolean">
+  Whether to ask for visitor's email.
+
+  **Default:** `false`
+</ParamField>
+
+<ParamField body="allowed_domains" type="array">
+  List of domains where the widget can be embedded. Empty means all domains allowed.
+
+  **Example:** `["example.com", "www.example.com"]`
+</ParamField>
+
+## Response
+
+<ResponseField name="id" type="string">
+  Unique widget identifier.
+</ResponseField>
+
+<ResponseField name="widget_key" type="string">
+  Public key for embedding the widget.
+</ResponseField>
+
+<ResponseField name="embed_code" type="string">
+  Ready-to-use HTML embed code.
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl -X POST https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/create-chat-widget \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_id": "550e8400-e29b-41d4-a716-446655440000",
+    "name": "Support Widget",
+    "primary_color": "#4f46e5",
+    "welcome_message": "Hi there! How can we help you today?",
+    "collect_visitor_email": true
+  }'
+```
+
+```javascript Node.js
+const response = await fetch(
+  'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/create-chat-widget',
+  {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer YOUR_API_TOKEN',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      agent_id: '550e8400-e29b-41d4-a716-446655440000',
+      name: 'Support Widget',
+      primary_color: '#4f46e5',
+      welcome_message: 'Hi there! How can we help you today?',
+      collect_visitor_email: true
+    }),
+  }
+);
+
+const widget = await response.json();
+console.log('Embed code:', widget.embed_code);
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/create-chat-widget',
+    headers={
+        'Authorization': 'Bearer YOUR_API_TOKEN',
+        'Content-Type': 'application/json',
+    },
+    json={
+        'agent_id': '550e8400-e29b-41d4-a716-446655440000',
+        'name': 'Support Widget',
+        'primary_color': '#4f46e5',
+        'welcome_message': 'Hi there! How can we help you today?',
+        'collect_visitor_email': True
+    }
+)
+
+widget = response.json()
+print(f"Widget key: {widget['widget_key']}")
+```
+</RequestExample>
+
+<ResponseExample>
+```json Success Response
+{
+  "id": "d4e5f6a7-b8c9-0d1e-2f3a-456789bcdef0",
+  "widget_key": "wgt_a1b2c3d4e5f6789012345678",
+  "agent_id": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "Support Widget",
+  "primary_color": "#4f46e5",
+  "position": "bottom-right",
+  "welcome_message": "Hi there! How can we help you today?",
+  "collect_visitor_name": true,
+  "collect_visitor_email": true,
+  "is_active": true,
+  "embed_code": "<script>(function(w,d,s,o,f,js,fjs){w['PatWidget']=o;w[o]=w[o]||function(){(w[o].q=w[o].q||[]).push(arguments)};js=d.createElement(s);fjs=d.getElementsByTagName(s)[0];js.id=o;js.src=f;js.async=1;fjs.parentNode.insertBefore(js,fjs);}(window,document,'script','PatChat','https://solomobile.ai/widget/pat-chat.js'));PatChat('init',{widgetKey:'wgt_a1b2c3d4e5f6789012345678'});</script>",
+  "created_at": "2024-01-15T10:30:00Z"
+}
+```
+</ResponseExample>
+
+## Embed Code
+
+Add the widget to your website by pasting this code before the closing `</body>` tag:
+
+```html
+<script>
+  (function(w,d,s,o,f,js,fjs){
+    w['PatWidget']=o;w[o]=w[o]||function(){(w[o].q=w[o].q||[]).push(arguments)};
+    js=d.createElement(s);fjs=d.getElementsByTagName(s)[0];
+    js.id=o;js.src=f;js.async=1;fjs.parentNode.insertBefore(js,fjs);
+  }(window,document,'script','PatChat','https://solomobile.ai/widget/pat-chat.js'));
+  PatChat('init', { widgetKey: 'YOUR_WIDGET_KEY' });
+</script>
+```

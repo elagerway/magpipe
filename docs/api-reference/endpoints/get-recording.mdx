@@ -1,0 +1,96 @@
+---
+title: "Get Recording URL"
+api: "POST /get-signed-recording-url"
+description: "Get a signed URL to access a call recording"
+---
+
+Retrieve a signed URL to download or stream a call recording. URLs are temporary and expire after the specified duration.
+
+## Request Body
+
+<ParamField body="call_id" type="string" required>
+  The unique identifier of the call to get the recording for.
+</ParamField>
+
+<ParamField body="expires_in" type="integer" default={3600}>
+  URL expiration time in seconds. Default: 3600 (1 hour). Max: 86400 (24 hours).
+</ParamField>
+
+## Response
+
+<ResponseField name="recording_url" type="string">
+  Signed URL to access the recording. Use this URL to download or stream the audio file.
+</ResponseField>
+
+<ResponseField name="expires_at" type="string">
+  ISO 8601 timestamp when the URL will expire.
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl -X POST https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/get-signed-recording-url \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "call_id": "7f3d8e00-a1b2-4c3d-9e4f-567890abcdef",
+    "expires_in": 7200
+  }'
+```
+
+```javascript Node.js
+const response = await fetch(
+  'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/get-signed-recording-url',
+  {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer YOUR_API_TOKEN',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      call_id: '7f3d8e00-a1b2-4c3d-9e4f-567890abcdef',
+      expires_in: 7200
+    }),
+  }
+);
+
+const { recording_url } = await response.json();
+// Use recording_url to download or embed audio
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/get-signed-recording-url',
+    headers={
+        'Authorization': 'Bearer YOUR_API_TOKEN',
+        'Content-Type': 'application/json',
+    },
+    json={
+        'call_id': '7f3d8e00-a1b2-4c3d-9e4f-567890abcdef',
+        'expires_in': 7200
+    }
+)
+
+data = response.json()
+print(f"Recording URL: {data['recording_url']}")
+```
+</RequestExample>
+
+<ResponseExample>
+```json Success Response
+{
+  "recording_url": "https://storage.example.com/recordings/abc123.wav?token=xyz789&expires=1705320000",
+  "expires_at": "2024-01-15T12:00:00Z"
+}
+```
+
+```json Error Response
+{
+  "error": {
+    "code": "no_recording",
+    "message": "No recording available for this call"
+  }
+}
+```
+</ResponseExample>
