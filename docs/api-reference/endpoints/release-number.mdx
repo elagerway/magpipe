@@ -1,0 +1,89 @@
+---
+title: "Release Phone Number"
+api: "POST /release-phone-number"
+description: "Release a phone number from your account"
+---
+
+Release a phone number from your account. The number will be returned to the available pool and can no longer be used for calls or messages.
+
+<Warning>
+This action is irreversible. The number will be immediately released and you may not be able to re-acquire the same number.
+</Warning>
+
+## Request Body
+
+<ParamField body="number_id" type="string" required>
+  The unique identifier of the phone number to release.
+</ParamField>
+
+## Response
+
+<ResponseField name="success" type="boolean">
+  Whether the number was released successfully.
+</ResponseField>
+
+<ResponseField name="phone_number" type="string">
+  The released phone number.
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl -X POST https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/release-phone-number \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"number_id": "a1b2c3d4-5678-9012-3456-789012345678"}'
+```
+
+```javascript Node.js
+const response = await fetch(
+  'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/release-phone-number',
+  {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer YOUR_API_TOKEN',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      number_id: 'a1b2c3d4-5678-9012-3456-789012345678'
+    }),
+  }
+);
+
+const result = await response.json();
+console.log('Released:', result.phone_number);
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/release-phone-number',
+    headers={
+        'Authorization': 'Bearer YOUR_API_TOKEN',
+        'Content-Type': 'application/json',
+    },
+    json={'number_id': 'a1b2c3d4-5678-9012-3456-789012345678'}
+)
+
+result = response.json()
+print(f"Released: {result['phone_number']}")
+```
+</RequestExample>
+
+<ResponseExample>
+```json Success Response
+{
+  "success": true,
+  "phone_number": "+16045551234"
+}
+```
+
+```json Error Response
+{
+  "error": {
+    "code": "number_not_found",
+    "message": "Phone number not found in your account"
+  }
+}
+```
+</ResponseExample>

@@ -1,0 +1,132 @@
+---
+title: "Get Available Calendar Slots"
+api: "POST /cal-com-get-slots"
+description: "Get available appointment slots from your connected Cal.com calendar"
+---
+
+Retrieve available time slots for booking appointments through your connected Cal.com calendar integration.
+
+## Request Body
+
+<ParamField body="date_from" type="string" required>
+  Start date for availability search (YYYY-MM-DD format).
+
+  **Example:** `2024-01-15`
+</ParamField>
+
+<ParamField body="date_to" type="string" required>
+  End date for availability search (YYYY-MM-DD format).
+
+  **Example:** `2024-01-22`
+</ParamField>
+
+<ParamField body="event_type_id" type="integer">
+  Cal.com event type ID. If not specified, uses your default event type.
+</ParamField>
+
+<ParamField body="timezone" type="string" default="America/Los_Angeles">
+  Timezone for the returned slots.
+
+  **Example:** `America/New_York`
+</ParamField>
+
+## Response
+
+<ResponseField name="slots" type="object">
+  Object with dates as keys, each containing an array of available times.
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl -X POST https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/cal-com-get-slots \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "date_from": "2024-01-15",
+    "date_to": "2024-01-22",
+    "timezone": "America/Los_Angeles"
+  }'
+```
+
+```javascript Node.js
+const response = await fetch(
+  'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/cal-com-get-slots',
+  {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer YOUR_API_TOKEN',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      date_from: '2024-01-15',
+      date_to: '2024-01-22',
+      timezone: 'America/Los_Angeles'
+    }),
+  }
+);
+
+const { slots } = await response.json();
+console.log('Available slots:', slots);
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/cal-com-get-slots',
+    headers={
+        'Authorization': 'Bearer YOUR_API_TOKEN',
+        'Content-Type': 'application/json',
+    },
+    json={
+        'date_from': '2024-01-15',
+        'date_to': '2024-01-22',
+        'timezone': 'America/Los_Angeles'
+    }
+)
+
+data = response.json()
+for date, times in data['slots'].items():
+    print(f"{date}: {len(times)} slots available")
+```
+</RequestExample>
+
+<ResponseExample>
+```json Success Response
+{
+  "slots": {
+    "2024-01-15": [
+      { "time": "2024-01-15T09:00:00-08:00" },
+      { "time": "2024-01-15T10:00:00-08:00" },
+      { "time": "2024-01-15T14:00:00-08:00" },
+      { "time": "2024-01-15T15:00:00-08:00" }
+    ],
+    "2024-01-16": [
+      { "time": "2024-01-16T09:00:00-08:00" },
+      { "time": "2024-01-16T11:00:00-08:00" }
+    ],
+    "2024-01-17": []
+  }
+}
+```
+
+```json No Calendar Connected
+{
+  "error": {
+    "code": "no_calendar",
+    "message": "No Cal.com calendar connected. Connect in Settings > Integrations."
+  }
+}
+```
+</ResponseExample>
+
+## AI Agent Integration
+
+Your AI agent can automatically check availability and offer times to callers:
+
+```
+Caller: "I'd like to schedule an appointment"
+Agent: "I'd be happy to help you schedule an appointment.
+        I have availability this week on Monday at 9am, 10am, 2pm, or 3pm,
+        and Tuesday at 9am or 11am. Which time works best for you?"
+```

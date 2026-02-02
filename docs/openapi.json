@@ -2,13 +2,16 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Solo Mobile API",
-    "description": "API for managing AI phone agents, calls, and messages",
-    "version": "1.0.0"
+    "description": "Complete API for AI phone agents, calls, SMS, and chat",
+    "version": "1.0.0",
+    "contact": {
+      "email": "support@solomobile.ai"
+    }
   },
   "servers": [
     {
       "url": "https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1",
-      "description": "Production"
+      "description": "Production API"
     }
   ],
   "security": [
@@ -22,7 +25,7 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "JWT",
-        "description": "Your Solo Mobile access token"
+        "description": "Your Solo Mobile access token from the dashboard"
       }
     },
     "schemas": {
@@ -32,12 +35,8 @@
           "error": {
             "type": "object",
             "properties": {
-              "code": {
-                "type": "string"
-              },
-              "message": {
-                "type": "string"
-              }
+              "code": { "type": "string", "description": "Error code for programmatic handling" },
+              "message": { "type": "string", "description": "Human-readable error message" }
             }
           }
         }
@@ -45,103 +44,178 @@
       "Agent": {
         "type": "object",
         "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "Unique identifier"
+          "id": { "type": "string", "format": "uuid", "description": "Unique agent identifier" },
+          "user_id": { "type": "string", "format": "uuid", "description": "Owner user ID" },
+          "name": { "type": "string", "description": "Agent display name", "maxLength": 100 },
+          "greeting": { "type": "string", "description": "Message spoken when answering calls", "maxLength": 500 },
+          "system_prompt": { "type": "string", "description": "Instructions defining agent behavior", "maxLength": 10000 },
+          "voice_id": { "type": "string", "description": "Voice identifier for TTS" },
+          "voice_provider": { "type": "string", "enum": ["openai", "elevenlabs"], "description": "TTS provider" },
+          "voice_speed": { "type": "number", "minimum": 0.5, "maximum": 2.0, "default": 1.0 },
+          "language": { "type": "string", "default": "en-US" },
+          "agent_type": { "type": "string", "enum": ["inbound", "outbound", "both"], "default": "inbound" },
+          "max_call_duration": { "type": "integer", "minimum": 60, "maximum": 3600, "default": 1800 },
+          "end_call_phrases": { "type": "array", "items": { "type": "string" } },
+          "transfer_number": { "type": "string", "description": "Number for call transfers" },
+          "is_active": { "type": "boolean", "default": true },
+          "is_default": { "type": "boolean", "default": false },
+          "organization_name": { "type": "string" },
+          "owner_name": { "type": "string" },
+          "agent_role": { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "PhoneNumber": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "user_id": { "type": "string", "format": "uuid" },
+          "phone_number": { "type": "string", "description": "E.164 format phone number" },
+          "friendly_name": { "type": "string" },
+          "agent_id": { "type": "string", "format": "uuid" },
+          "capabilities": {
+            "type": "object",
+            "properties": {
+              "voice": { "type": "boolean" },
+              "sms": { "type": "boolean" },
+              "mms": { "type": "boolean" }
+            }
           },
-          "name": {
-            "type": "string",
-            "description": "Agent display name"
-          },
-          "greeting": {
-            "type": "string",
-            "description": "Call greeting message"
-          },
-          "system_prompt": {
-            "type": "string",
-            "description": "Agent instructions"
-          },
-          "voice_id": {
-            "type": "string",
-            "enum": ["alloy", "echo", "fable", "onyx", "nova", "shimmer"],
-            "description": "Voice ID for calls"
-          },
-          "is_active": {
-            "type": "boolean",
-            "description": "Whether agent is active"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time"
-          }
+          "is_active": { "type": "boolean" },
+          "provider": { "type": "string", "enum": ["signalwire", "twilio"] },
+          "created_at": { "type": "string", "format": "date-time" }
         }
       },
       "Call": {
         "type": "object",
         "properties": {
-          "call_id": {
-            "type": "string",
-            "format": "uuid"
+          "id": { "type": "string", "format": "uuid" },
+          "user_id": { "type": "string", "format": "uuid" },
+          "agent_id": { "type": "string", "format": "uuid" },
+          "from_number": { "type": "string" },
+          "to_number": { "type": "string" },
+          "direction": { "type": "string", "enum": ["inbound", "outbound"] },
+          "status": { "type": "string", "enum": ["initiated", "ringing", "in-progress", "completed", "busy", "no-answer", "failed", "canceled"] },
+          "duration": { "type": "integer", "description": "Duration in seconds" },
+          "recording_url": { "type": "string", "format": "uri" },
+          "transcript": { "type": "string" },
+          "transcript_segments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "speaker": { "type": "string", "enum": ["agent", "caller"] },
+                "text": { "type": "string" },
+                "start_time": { "type": "number" },
+                "end_time": { "type": "number" }
+              }
+            }
           },
-          "status": {
-            "type": "string",
-            "enum": ["initiated", "ringing", "in-progress", "completed", "busy", "no-answer", "failed"]
-          },
-          "from_number": {
-            "type": "string"
-          },
-          "to_number": {
-            "type": "string"
-          },
-          "agent_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "duration": {
-            "type": "integer",
-            "description": "Call duration in seconds"
-          },
-          "recording_url": {
-            "type": "string",
-            "format": "uri"
-          },
-          "transcript": {
-            "type": "string"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time"
-          }
+          "sentiment": { "type": "string", "enum": ["positive", "neutral", "negative"] },
+          "call_summary": { "type": "string" },
+          "metadata": { "type": "object", "additionalProperties": true },
+          "started_at": { "type": "string", "format": "date-time" },
+          "ended_at": { "type": "string", "format": "date-time" },
+          "created_at": { "type": "string", "format": "date-time" }
         }
       },
       "Message": {
         "type": "object",
         "properties": {
-          "message_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "status": {
-            "type": "string",
-            "enum": ["queued", "sent", "delivered", "undelivered", "failed"]
-          },
-          "from_number": {
-            "type": "string"
-          },
-          "to_number": {
-            "type": "string"
-          },
-          "body": {
-            "type": "string"
-          },
-          "segments": {
-            "type": "integer"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time"
-          }
+          "id": { "type": "string", "format": "uuid" },
+          "thread_id": { "type": "string", "format": "uuid" },
+          "user_id": { "type": "string", "format": "uuid" },
+          "from_number": { "type": "string" },
+          "to_number": { "type": "string" },
+          "body": { "type": "string" },
+          "direction": { "type": "string", "enum": ["inbound", "outbound"] },
+          "status": { "type": "string", "enum": ["queued", "sent", "delivered", "undelivered", "failed"] },
+          "is_ai_generated": { "type": "boolean" },
+          "media_urls": { "type": "array", "items": { "type": "string", "format": "uri" } },
+          "segments": { "type": "integer" },
+          "error_code": { "type": "string" },
+          "error_message": { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "ChatSession": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "widget_id": { "type": "string", "format": "uuid" },
+          "visitor_id": { "type": "string" },
+          "visitor_name": { "type": "string" },
+          "visitor_email": { "type": "string", "format": "email" },
+          "status": { "type": "string", "enum": ["active", "closed"] },
+          "page_url": { "type": "string" },
+          "browser_info": { "type": "object" },
+          "last_message_at": { "type": "string", "format": "date-time" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "ChatWidget": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "user_id": { "type": "string", "format": "uuid" },
+          "agent_id": { "type": "string", "format": "uuid" },
+          "widget_key": { "type": "string" },
+          "name": { "type": "string" },
+          "agent_name": { "type": "string" },
+          "primary_color": { "type": "string" },
+          "position": { "type": "string", "enum": ["bottom-right", "bottom-left"] },
+          "welcome_message": { "type": "string" },
+          "offline_message": { "type": "string" },
+          "collect_visitor_name": { "type": "boolean" },
+          "collect_visitor_email": { "type": "boolean" },
+          "is_active": { "type": "boolean" },
+          "allowed_domains": { "type": "array", "items": { "type": "string" } },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "KnowledgeSource": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "user_id": { "type": "string", "format": "uuid" },
+          "url": { "type": "string", "format": "uri" },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "sync_period": { "type": "string", "enum": ["24h", "7d", "1mo", "3mo"] },
+          "sync_status": { "type": "string", "enum": ["pending", "syncing", "completed", "failed"] },
+          "chunk_count": { "type": "integer" },
+          "last_synced_at": { "type": "string", "format": "date-time" },
+          "next_sync_at": { "type": "string", "format": "date-time" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Contact": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "user_id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "phone_number": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
+          "company": { "type": "string" },
+          "notes": { "type": "string" },
+          "avatar_url": { "type": "string", "format": "uri" },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "metadata": { "type": "object", "additionalProperties": true },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "VoiceClone": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "preview_url": { "type": "string", "format": "uri" },
+          "provider": { "type": "string", "enum": ["elevenlabs"] },
+          "created_at": { "type": "string", "format": "date-time" }
         }
       }
     }
@@ -149,9 +223,9 @@
   "paths": {
     "/initiate-bridged-call": {
       "post": {
-        "operationId": "createCall",
+        "operationId": "createPhoneCall",
         "summary": "Create Phone Call",
-        "description": "Initiate an outbound phone call with an AI agent",
+        "description": "Initiate an outbound phone call with an AI agent. The agent will call the specified number and handle the conversation based on its configuration.",
         "tags": ["Calls"],
         "requestBody": {
           "required": true,
@@ -163,29 +237,42 @@
                 "properties": {
                   "to": {
                     "type": "string",
-                    "description": "Recipient phone number (E.164 format)",
-                    "example": "+14155551234"
+                    "description": "Destination phone number in E.164 format",
+                    "example": "+14155551234",
+                    "pattern": "^\\+[1-9]\\d{1,14}$"
                   },
                   "from": {
                     "type": "string",
-                    "description": "Your Solo Mobile number",
+                    "description": "Your Solo Mobile phone number (must be provisioned in your account)",
                     "example": "+16045551234"
                   },
                   "agent_id": {
                     "type": "string",
                     "format": "uuid",
-                    "description": "Agent to handle the call",
-                    "example": "c72ea2b8-1234-5678-9abc-def012345678"
+                    "description": "UUID of the agent to handle this call"
                   },
                   "metadata": {
                     "type": "object",
-                    "description": "Custom metadata for the call",
-                    "additionalProperties": true
+                    "description": "Custom key-value pairs attached to the call for your reference",
+                    "additionalProperties": true,
+                    "example": { "customer_id": "cust_123", "campaign": "follow_up" }
                   },
                   "webhook_url": {
                     "type": "string",
                     "format": "uri",
-                    "description": "URL to receive call status webhooks"
+                    "description": "URL to receive call status webhooks (overrides account default)"
+                  },
+                  "max_duration": {
+                    "type": "integer",
+                    "description": "Maximum call duration in seconds",
+                    "minimum": 60,
+                    "maximum": 3600,
+                    "default": 1800
+                  },
+                  "record": {
+                    "type": "boolean",
+                    "description": "Whether to record this call",
+                    "default": true
                   }
                 }
               }
@@ -200,61 +287,31 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "call_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "status": {
-                      "type": "string",
-                      "example": "initiated"
-                    },
-                    "from_number": {
-                      "type": "string"
-                    },
-                    "to_number": {
-                      "type": "string"
-                    },
-                    "created_at": {
-                      "type": "string",
-                      "format": "date-time"
-                    }
+                    "success": { "type": "boolean", "example": true },
+                    "call_id": { "type": "string", "format": "uuid" },
+                    "status": { "type": "string", "example": "initiated" },
+                    "from_number": { "type": "string" },
+                    "to_number": { "type": "string" },
+                    "agent_id": { "type": "string", "format": "uuid" },
+                    "created_at": { "type": "string", "format": "date-time" }
                   }
                 }
               }
             }
           },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
+          "400": { "description": "Invalid request parameters", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Unauthorized - invalid or missing token", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "402": { "description": "Insufficient balance", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Agent or number not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "422": { "description": "Number not owned by account", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }
       }
     },
     "/send-sms": {
       "post": {
         "operationId": "sendSms",
-        "summary": "Send SMS",
-        "description": "Send an SMS message from your Solo Mobile number",
+        "summary": "Send SMS Message",
+        "description": "Send an SMS message from your Solo Mobile number. Supports scheduling and MMS attachments.",
         "tags": ["Messages"],
         "requestBody": {
           "required": true,
@@ -266,33 +323,35 @@
                 "properties": {
                   "to": {
                     "type": "string",
-                    "description": "Recipient phone number (E.164 format)",
+                    "description": "Recipient phone number in E.164 format",
                     "example": "+14155551234"
                   },
                   "from": {
                     "type": "string",
-                    "description": "Your Solo Mobile number",
+                    "description": "Your SMS-enabled Solo Mobile number",
                     "example": "+16045551234"
                   },
                   "body": {
                     "type": "string",
-                    "description": "Message content",
-                    "example": "Your appointment is confirmed for tomorrow at 2pm.",
-                    "maxLength": 1600
+                    "description": "Message content (max 1600 characters)",
+                    "maxLength": 1600,
+                    "example": "Your appointment is confirmed for tomorrow at 2pm."
                   },
                   "media_urls": {
                     "type": "array",
-                    "items": {
-                      "type": "string",
-                      "format": "uri"
-                    },
-                    "description": "MMS media attachments",
+                    "description": "URLs for MMS attachments (images, PDFs)",
+                    "items": { "type": "string", "format": "uri" },
                     "maxItems": 10
                   },
                   "scheduled_at": {
                     "type": "string",
                     "format": "date-time",
-                    "description": "Schedule message for later"
+                    "description": "Schedule message for future delivery (max 7 days)"
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "description": "Custom data for your reference",
+                    "additionalProperties": true
                   }
                 }
               }
@@ -307,51 +366,21 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "message_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "status": {
-                      "type": "string",
-                      "example": "sent"
-                    },
-                    "segments": {
-                      "type": "integer",
-                      "example": 1
-                    },
-                    "created_at": {
-                      "type": "string",
-                      "format": "date-time"
-                    }
+                    "success": { "type": "boolean" },
+                    "message_id": { "type": "string", "format": "uuid" },
+                    "status": { "type": "string", "enum": ["queued", "sent", "scheduled"] },
+                    "segments": { "type": "integer" },
+                    "from_number": { "type": "string" },
+                    "to_number": { "type": "string" },
+                    "created_at": { "type": "string", "format": "date-time" }
                   }
                 }
               }
             }
           },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
+          "400": { "description": "Invalid request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "422": { "description": "Number not SMS-enabled", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }
       }
     },
@@ -359,7 +388,7 @@
       "post": {
         "operationId": "sendChatMessage",
         "summary": "Send Chat Message",
-        "description": "Send a message to a chat widget session",
+        "description": "Send a message to a chat widget session. Returns AI response.",
         "tags": ["Chat"],
         "requestBody": {
           "required": true,
@@ -371,20 +400,33 @@
                 "properties": {
                   "widget_key": {
                     "type": "string",
-                    "description": "Chat widget key"
+                    "description": "Chat widget key from your dashboard"
                   },
                   "session_id": {
                     "type": "string",
                     "format": "uuid",
-                    "description": "Existing session ID (optional)"
+                    "description": "Existing session ID (omit to create new session)"
                   },
                   "visitor_id": {
                     "type": "string",
-                    "description": "Visitor identifier"
+                    "description": "Unique visitor identifier (e.g., from localStorage)"
                   },
                   "message": {
                     "type": "string",
-                    "description": "Message content"
+                    "description": "Visitor's message content"
+                  },
+                  "visitor_name": {
+                    "type": "string",
+                    "description": "Visitor's name (optional)"
+                  },
+                  "visitor_email": {
+                    "type": "string",
+                    "format": "email",
+                    "description": "Visitor's email (optional)"
+                  },
+                  "page_url": {
+                    "type": "string",
+                    "description": "Current page URL for context"
                   }
                 }
               }
@@ -393,23 +435,484 @@
         },
         "responses": {
           "200": {
-            "description": "Message sent, AI response returned",
+            "description": "Message processed, AI response returned",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "session_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "aiResponse": {
-                      "type": "string"
-                    },
-                    "aiMessageId": {
-                      "type": "string",
-                      "format": "uuid"
+                    "session_id": { "type": "string", "format": "uuid" },
+                    "aiResponse": { "type": "string" },
+                    "aiMessageId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/search-phone-numbers": {
+      "post": {
+        "operationId": "searchPhoneNumbers",
+        "summary": "Search Available Numbers",
+        "description": "Search for available phone numbers to provision by area code or location.",
+        "tags": ["Phone Numbers"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "area_code": {
+                    "type": "string",
+                    "description": "3-digit area code to search",
+                    "example": "604"
+                  },
+                  "contains": {
+                    "type": "string",
+                    "description": "Pattern the number should contain"
+                  },
+                  "country": {
+                    "type": "string",
+                    "default": "US",
+                    "enum": ["US", "CA"]
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": ["local", "toll_free"],
+                    "default": "local"
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 50,
+                    "default": 10
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Available numbers found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "numbers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "phone_number": { "type": "string" },
+                          "friendly_name": { "type": "string" },
+                          "locality": { "type": "string" },
+                          "region": { "type": "string" },
+                          "capabilities": {
+                            "type": "object",
+                            "properties": {
+                              "voice": { "type": "boolean" },
+                              "sms": { "type": "boolean" },
+                              "mms": { "type": "boolean" }
+                            }
+                          },
+                          "monthly_cost": { "type": "number" }
+                        }
+                      }
                     }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/provision-phone-number": {
+      "post": {
+        "operationId": "provisionPhoneNumber",
+        "summary": "Provision Phone Number",
+        "description": "Purchase and provision a phone number for your account.",
+        "tags": ["Phone Numbers"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["phone_number"],
+                "properties": {
+                  "phone_number": {
+                    "type": "string",
+                    "description": "Phone number to provision (from search results)"
+                  },
+                  "friendly_name": {
+                    "type": "string",
+                    "description": "Display name for the number"
+                  },
+                  "agent_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Agent to assign immediately (optional)"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Number provisioned successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PhoneNumber" }
+              }
+            }
+          },
+          "402": { "description": "Number limit reached for plan", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/knowledge-source-add": {
+      "post": {
+        "operationId": "addKnowledgeSource",
+        "summary": "Add Knowledge Source",
+        "description": "Add a URL as a knowledge source. Content is scraped, chunked, and embedded for RAG.",
+        "tags": ["Knowledge Base"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["url"],
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "URL to scrape and add to knowledge base",
+                    "maxLength": 2048
+                  },
+                  "sync_period": {
+                    "type": "string",
+                    "enum": ["24h", "7d", "1mo", "3mo"],
+                    "default": "7d",
+                    "description": "How often to re-sync content"
+                  },
+                  "auth_headers": {
+                    "type": "object",
+                    "description": "Optional auth headers for protected pages",
+                    "additionalProperties": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Knowledge source added",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/KnowledgeSource" }
+              }
+            }
+          },
+          "422": { "description": "Could not fetch or parse URL", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/clone-voice": {
+      "post": {
+        "operationId": "cloneVoice",
+        "summary": "Clone Voice",
+        "description": "Create a custom voice clone from audio samples using ElevenLabs.",
+        "tags": ["Voice"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["name", "files"],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Name for the cloned voice"
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "Description of the voice"
+                  },
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "binary"
+                    },
+                    "description": "Audio files for voice cloning (WAV, MP3)"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Voice cloned successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/VoiceClone" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cal-com-get-slots": {
+      "post": {
+        "operationId": "getCalendarSlots",
+        "summary": "Get Available Calendar Slots",
+        "description": "Get available appointment slots from connected Cal.com calendar.",
+        "tags": ["Calendar"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["date_from", "date_to"],
+                "properties": {
+                  "date_from": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Start date for availability search"
+                  },
+                  "date_to": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "End date for availability search"
+                  },
+                  "event_type_id": {
+                    "type": "integer",
+                    "description": "Cal.com event type ID"
+                  },
+                  "timezone": {
+                    "type": "string",
+                    "default": "America/Los_Angeles",
+                    "description": "Timezone for slots"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Available slots returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "slots": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "time": { "type": "string", "format": "date-time" },
+                          "available": { "type": "boolean" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cal-com-create-booking": {
+      "post": {
+        "operationId": "createCalendarBooking",
+        "summary": "Create Calendar Booking",
+        "description": "Book an appointment on the connected Cal.com calendar.",
+        "tags": ["Calendar"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["start_time", "name", "email"],
+                "properties": {
+                  "event_type_id": { "type": "integer" },
+                  "start_time": { "type": "string", "format": "date-time" },
+                  "name": { "type": "string", "description": "Attendee name" },
+                  "email": { "type": "string", "format": "email" },
+                  "phone": { "type": "string" },
+                  "notes": { "type": "string" },
+                  "timezone": { "type": "string", "default": "America/Los_Angeles" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Booking created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "booking_id": { "type": "integer" },
+                    "uid": { "type": "string" },
+                    "start_time": { "type": "string", "format": "date-time" },
+                    "end_time": { "type": "string", "format": "date-time" },
+                    "meeting_url": { "type": "string", "format": "uri" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/transfer-call": {
+      "post": {
+        "operationId": "transferCall",
+        "summary": "Transfer Call",
+        "description": "Transfer an active call to another phone number.",
+        "tags": ["Calls"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["call_id", "transfer_to"],
+                "properties": {
+                  "call_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "ID of the active call to transfer"
+                  },
+                  "transfer_to": {
+                    "type": "string",
+                    "description": "Phone number to transfer to (E.164)"
+                  },
+                  "announce": {
+                    "type": "string",
+                    "description": "Message to play before transfer"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Transfer initiated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "transfer_call_id": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/terminate-call": {
+      "post": {
+        "operationId": "terminateCall",
+        "summary": "End Call",
+        "description": "Terminate an active call.",
+        "tags": ["Calls"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["call_id"],
+                "properties": {
+                  "call_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "ID of the call to terminate"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Call terminated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/get-signed-recording-url": {
+      "post": {
+        "operationId": "getRecordingUrl",
+        "summary": "Get Call Recording URL",
+        "description": "Get a signed URL to access a call recording.",
+        "tags": ["Calls"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["call_id"],
+                "properties": {
+                  "call_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "expires_in": {
+                    "type": "integer",
+                    "description": "URL expiration in seconds",
+                    "default": 3600
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Signed URL returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "recording_url": { "type": "string", "format": "uri" },
+                    "expires_at": { "type": "string", "format": "date-time" }
                   }
                 }
               }
@@ -420,17 +923,14 @@
     }
   },
   "tags": [
-    {
-      "name": "Calls",
-      "description": "Phone call operations"
-    },
-    {
-      "name": "Messages",
-      "description": "SMS messaging operations"
-    },
-    {
-      "name": "Chat",
-      "description": "Chat widget operations"
-    }
+    { "name": "Agents", "description": "AI agent configuration and management" },
+    { "name": "Calls", "description": "Phone call management" },
+    { "name": "Messages", "description": "SMS messaging" },
+    { "name": "Chat", "description": "Website chat widget" },
+    { "name": "Phone Numbers", "description": "Number provisioning and management" },
+    { "name": "Knowledge Base", "description": "AI knowledge sources" },
+    { "name": "Voice", "description": "Voice cloning and TTS" },
+    { "name": "Calendar", "description": "Cal.com integration" },
+    { "name": "Contacts", "description": "Contact management" }
   ]
 }

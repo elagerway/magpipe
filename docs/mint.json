@@ -2,10 +2,10 @@
   "$schema": "https://mintlify.com/schema.json",
   "name": "Solo Mobile",
   "logo": {
-    "dark": "/logo/dark.svg",
-    "light": "/logo/light.svg"
+    "dark": "logo/dark.svg",
+    "light": "logo/light.svg"
   },
-  "favicon": "/favicon.svg",
+  "favicon": "favicon.svg",
   "openapi": "openapi.json",
   "api": {
     "baseUrl": "https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1",
@@ -92,21 +92,80 @@
       "group": "Agents",
       "pages": [
         "api-reference/endpoints/create-agent",
-        "api-reference/endpoints/agents"
+        "api-reference/endpoints/get-agent",
+        "api-reference/endpoints/update-agent",
+        "api-reference/endpoints/list-agents",
+        "api-reference/endpoints/delete-agent"
       ]
     },
     {
       "group": "Calls",
       "pages": [
         "api-reference/endpoints/create-call",
-        "api-reference/endpoints/calls"
+        "api-reference/endpoints/get-call",
+        "api-reference/endpoints/list-calls",
+        "api-reference/endpoints/transfer-call",
+        "api-reference/endpoints/end-call",
+        "api-reference/endpoints/get-recording"
       ]
     },
     {
       "group": "Messages",
       "pages": [
         "api-reference/endpoints/send-sms",
-        "api-reference/endpoints/messages"
+        "api-reference/endpoints/get-message",
+        "api-reference/endpoints/list-messages"
+      ]
+    },
+    {
+      "group": "Phone Numbers",
+      "pages": [
+        "api-reference/endpoints/search-numbers",
+        "api-reference/endpoints/provision-number",
+        "api-reference/endpoints/list-numbers",
+        "api-reference/endpoints/release-number"
+      ]
+    },
+    {
+      "group": "Chat Widget",
+      "pages": [
+        "api-reference/endpoints/create-chat-widget",
+        "api-reference/endpoints/send-chat-message",
+        "api-reference/endpoints/list-chat-sessions"
+      ]
+    },
+    {
+      "group": "Knowledge Base",
+      "pages": [
+        "api-reference/endpoints/add-knowledge-source",
+        "api-reference/endpoints/list-knowledge-sources",
+        "api-reference/endpoints/delete-knowledge-source"
+      ]
+    },
+    {
+      "group": "Voice",
+      "pages": [
+        "api-reference/endpoints/clone-voice",
+        "api-reference/endpoints/list-voices",
+        "api-reference/endpoints/delete-voice"
+      ]
+    },
+    {
+      "group": "Calendar",
+      "pages": [
+        "api-reference/endpoints/get-calendar-slots",
+        "api-reference/endpoints/create-booking",
+        "api-reference/endpoints/cancel-booking"
+      ]
+    },
+    {
+      "group": "Contacts",
+      "pages": [
+        "api-reference/endpoints/create-contact",
+        "api-reference/endpoints/get-contact",
+        "api-reference/endpoints/list-contacts",
+        "api-reference/endpoints/update-contact",
+        "api-reference/endpoints/delete-contact"
       ]
     }
   ],

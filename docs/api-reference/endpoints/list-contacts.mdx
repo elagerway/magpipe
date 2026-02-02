@@ -1,0 +1,132 @@
+---
+title: "List Contacts"
+api: "POST /list-contacts"
+description: "List all contacts with filtering and pagination"
+---
+
+Retrieve contacts from your address book with filtering by tags, search, and pagination.
+
+## Request Body
+
+<ParamField body="limit" type="integer" default={50}>
+  Maximum contacts to return. Max: 100.
+</ParamField>
+
+<ParamField body="offset" type="integer" default={0}>
+  Number of records to skip for pagination.
+</ParamField>
+
+<ParamField body="search" type="string">
+  Search contacts by name, phone number, email, or company.
+</ParamField>
+
+<ParamField body="tags" type="array">
+  Filter by tags (contact must have all specified tags).
+
+  **Example:** `["customer"]`
+</ParamField>
+
+<ParamField body="sort_by" type="string" default="updated_at">
+  Sort field: `name`, `created_at`, or `updated_at`.
+</ParamField>
+
+<ParamField body="sort_order" type="string" default="desc">
+  Sort order: `asc` or `desc`.
+</ParamField>
+
+## Response
+
+<ResponseField name="contacts" type="array">
+  Array of contact objects.
+</ResponseField>
+
+<ResponseField name="total" type="integer">
+  Total number of contacts matching filters.
+</ResponseField>
+
+<ResponseField name="has_more" type="boolean">
+  Whether there are more contacts to paginate.
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl -X POST https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/list-contacts \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "limit": 20,
+    "search": "john",
+    "tags": ["customer"]
+  }'
+```
+
+```javascript Node.js
+const response = await fetch(
+  'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/list-contacts',
+  {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer YOUR_API_TOKEN',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      limit: 20,
+      search: 'john',
+      tags: ['customer']
+    }),
+  }
+);
+
+const { contacts, total } = await response.json();
+console.log(`Found ${total} contacts`);
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/list-contacts',
+    headers={
+        'Authorization': 'Bearer YOUR_API_TOKEN',
+        'Content-Type': 'application/json',
+    },
+    json={
+        'limit': 20,
+        'search': 'john',
+        'tags': ['customer']
+    }
+)
+
+data = response.json()
+print(f"Found {data['total']} contacts")
+```
+</RequestExample>
+
+<ResponseExample>
+```json Success Response
+{
+  "contacts": [
+    {
+      "id": "c1d2e3f4-5678-9abc-def0-123456789abc",
+      "phone_number": "+14155551234",
+      "name": "John Smith",
+      "email": "john@example.com",
+      "company": "Acme Corp",
+      "tags": ["customer", "vip"],
+      "updated_at": "2024-01-15T10:30:00Z"
+    },
+    {
+      "id": "d2e3f4a5-6789-bcde-f012-34567890abcd",
+      "phone_number": "+14155555678",
+      "name": "Johnny Doe",
+      "email": "johnny@example.com",
+      "company": null,
+      "tags": ["customer"],
+      "updated_at": "2024-01-14T15:00:00Z"
+    }
+  ],
+  "total": 2,
+  "has_more": false
+}
+```
+</ResponseExample>
