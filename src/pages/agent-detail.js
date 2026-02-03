@@ -1509,9 +1509,19 @@ export default class AgentDetailPage {
       this.scheduleAutoSave({ custom_instructions: customInstructions });
     };
 
-    [funcSms, funcTransfer, funcBooking].forEach(el => {
+    [funcSms, funcBooking].forEach(el => {
       if (el) el.addEventListener('change', updateCustomInstructions);
     });
+
+    // Transfer toggle - show modal when enabled
+    if (funcTransfer) {
+      funcTransfer.addEventListener('change', () => {
+        updateCustomInstructions();
+        if (funcTransfer.checked) {
+          this.showTransferModal();
+        }
+      });
+    }
 
     // Configure transfer button
     const configureTransferBtn = document.getElementById('configure-transfer-btn');
