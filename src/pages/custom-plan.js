@@ -4,6 +4,7 @@
 
 import { supabase } from '../lib/supabase.js';
 import { renderPublicFooter, getPublicFooterStyles } from '../components/PublicFooter.js';
+import { renderPublicHeader, getPublicHeaderStyles } from '../components/PublicHeader.js';
 
 export default class CustomPlanPage {
   constructor() {
@@ -15,21 +16,7 @@ export default class CustomPlanPage {
 
     appElement.innerHTML = `
       <div class="custom-plan-page">
-        <!-- Header Navigation -->
-        <header class="pricing-header">
-          <div class="pricing-header-content">
-            <a href="/" class="pricing-logo" onclick="event.preventDefault(); navigateTo('/');">
-              Solo Mobile
-            </a>
-            <nav class="pricing-nav">
-              <a href="/pricing" class="nav-link" onclick="event.preventDefault(); navigateTo('/pricing');">Pricing</a>
-              <a href="/custom-plan" class="nav-link nav-link-active" onclick="event.preventDefault(); navigateTo('/custom-plan');">Enterprise</a>
-              <a href="https://docs.solomobile.ai" class="nav-link" target="_blank" rel="noopener">Docs</a>
-              <a href="/login" class="btn btn-ghost" onclick="event.preventDefault(); navigateTo('/login');">Sign In</a>
-              <a href="/signup" class="btn btn-primary" onclick="event.preventDefault(); navigateTo('/signup');">Get Started</a>
-            </nav>
-          </div>
-        </header>
+        ${renderPublicHeader({ activePage: 'enterprise' })}
 
         <!-- Main Content -->
         <main class="custom-plan-main">
@@ -203,63 +190,8 @@ export default class CustomPlanPage {
           flex-direction: column;
         }
 
-        /* Reuse pricing header styles */
-        .pricing-header {
-          position: sticky;
-          top: 0;
-          background: var(--bg-primary);
-          border-bottom: 1px solid var(--border-color);
-          z-index: 100;
-          padding: 1rem 0;
-        }
-
-        .pricing-header-content {
-          max-width: 1200px;
-          margin: 0 auto;
-          padding: 0 1.5rem;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-
-        .pricing-logo {
-          font-size: 1.5rem;
-          font-weight: 700;
-          color: var(--text-primary);
-          text-decoration: none;
-        }
-
-        .pricing-nav {
-          display: flex;
-          gap: 0.5rem;
-          align-items: center;
-        }
-
-        .nav-link {
-          color: var(--text-secondary);
-          text-decoration: none;
-          font-weight: 500;
-          padding: 0.5rem 1rem;
-          transition: color 0.15s;
-        }
-
-        .nav-link:hover {
-          color: var(--primary-color);
-        }
-
-        .nav-link-active {
-          color: var(--primary-color);
-        }
-
-        .btn-ghost {
-          background: transparent;
-          color: var(--text-primary);
-          border: none;
-        }
-
-        .btn-ghost:hover {
-          background: var(--bg-secondary);
-        }
+        /* Header */
+        ${getPublicHeaderStyles()}
 
         /* Main content */
         .custom-plan-main {

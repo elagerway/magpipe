@@ -4,6 +4,7 @@
 
 import { User } from '../models/User.js';
 import { renderPublicFooter, getPublicFooterStyles } from '../components/PublicFooter.js';
+import { renderPublicHeader, getPublicHeaderStyles } from '../components/PublicHeader.js';
 
 export default class SignupPage {
   async render() {
@@ -11,20 +12,7 @@ export default class SignupPage {
 
     appElement.innerHTML = `
       <div class="signup-page">
-        <!-- Header Navigation -->
-        <header class="signup-header">
-          <div class="signup-header-content">
-            <a href="/" class="signup-logo" onclick="event.preventDefault(); navigateTo('/');">
-              Solo Mobile
-            </a>
-            <nav class="signup-nav">
-              <a href="/pricing" class="nav-link" onclick="event.preventDefault(); navigateTo('/pricing');">Pricing</a>
-              <a href="/custom-plan" class="nav-link" onclick="event.preventDefault(); navigateTo('/custom-plan');">Enterprise</a>
-              <a href="https://docs.solomobile.ai" class="nav-link" target="_blank" rel="noopener">Docs</a>
-              <a href="/login" class="btn btn-ghost" onclick="event.preventDefault(); navigateTo('/login');">Sign In</a>
-            </nav>
-          </div>
-        </header>
+        ${renderPublicHeader({ activePage: 'signup' })}
 
         <!-- Main Content -->
         <main class="signup-main">
@@ -182,62 +170,7 @@ export default class SignupPage {
         ${getPublicFooterStyles()}
 
         /* Header */
-        .signup-header {
-          position: sticky;
-          top: 0;
-          background: var(--bg-primary);
-          border-bottom: 1px solid var(--border-color);
-          z-index: 100;
-          padding: 0.75rem 0;
-        }
-
-        .signup-header-content {
-          max-width: 1200px;
-          margin: 0 auto;
-          padding: 0 1.5rem;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-
-        .signup-logo {
-          font-size: 1.5rem;
-          font-weight: 700;
-          color: var(--text-primary);
-          text-decoration: none;
-        }
-
-        .signup-nav {
-          display: flex;
-          gap: 0.5rem;
-          align-items: center;
-        }
-
-        .nav-link {
-          color: var(--text-secondary);
-          text-decoration: none;
-          font-weight: 500;
-          padding: 0.5rem 1rem;
-          transition: color 0.15s;
-        }
-
-        .nav-link:hover {
-          color: var(--primary-color);
-        }
-
-        .nav-link-active {
-          color: var(--primary-color);
-        }
-
-        .btn-ghost {
-          background: transparent;
-          color: var(--text-primary);
-          border: none;
-        }
-
-        .btn-ghost:hover {
-          background: var(--bg-secondary);
-        }
+        ${getPublicHeaderStyles()}
 
         /* Main Content */
         .signup-main {
@@ -510,11 +443,6 @@ export default class SignupPage {
           .signup-card {
             max-width: 100%;
           }
-
-          .signup-nav .nav-link {
-            padding: 0.375rem 0.625rem;
-            font-size: 0.875rem;
-          }
         }
 
         /* Mobile */
@@ -529,10 +457,6 @@ export default class SignupPage {
 
           .signup-card h1 {
             font-size: 1.5rem;
-          }
-
-          .signup-nav .nav-link {
-            display: none;
           }
 
           .sso-buttons {

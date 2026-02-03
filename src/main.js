@@ -98,14 +98,14 @@ class App {
     if (event === 'SIGNED_IN') {
       this.currentUser = session?.user || null;
 
-      // Don't redirect if user is already on a protected route
+      // Don't redirect if user is already on a protected route or browsing public pages
       // This prevents navigation during token refresh or tab focus
-      const publicRoutes = ['/', '/login', '/signup', '/verify-email', '/forgot-password', '/reset-password'];
+      const authRedirectRoutes = ['/login', '/signup']; // Only redirect from auth pages
       const currentPath = window.location.pathname;
 
-      if (!publicRoutes.includes(currentPath)) {
-        // User is already on a protected route, don't redirect
-        console.log('Auth refresh on protected route, staying on:', currentPath);
+      if (!authRedirectRoutes.includes(currentPath)) {
+        // User is on a protected route or public content page, don't redirect
+        console.log('Auth state change, staying on:', currentPath);
         return;
       }
 

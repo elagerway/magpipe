@@ -5,6 +5,7 @@
 import { User } from '../models/User.js';
 import { supabase } from '../lib/supabase.js';
 import { renderPublicFooter, getPublicFooterStyles } from '../components/PublicFooter.js';
+import { renderPublicHeader, getPublicHeaderStyles } from '../components/PublicHeader.js';
 
 export default class LoginPage {
   async render() {
@@ -12,20 +13,7 @@ export default class LoginPage {
 
     appElement.innerHTML = `
       <div class="login-page">
-        <!-- Header Navigation -->
-        <header class="login-header">
-          <div class="login-header-content">
-            <a href="/" class="login-logo" onclick="event.preventDefault(); navigateTo('/');">
-              Solo Mobile
-            </a>
-            <nav class="login-nav">
-              <a href="/pricing" class="nav-link" onclick="event.preventDefault(); navigateTo('/pricing');">Pricing</a>
-              <a href="/custom-plan" class="nav-link" onclick="event.preventDefault(); navigateTo('/custom-plan');">Enterprise</a>
-              <a href="https://docs.solomobile.ai" class="nav-link" target="_blank" rel="noopener">Docs</a>
-              <a href="/signup" class="btn btn-primary" onclick="event.preventDefault(); navigateTo('/signup');">Sign Up</a>
-            </nav>
-          </div>
-        </header>
+        ${renderPublicHeader({ activePage: 'login' })}
 
         <!-- Main Content -->
         <main class="login-main">
@@ -162,62 +150,7 @@ export default class LoginPage {
         ${getPublicFooterStyles()}
 
         /* Header */
-        .login-header {
-          position: sticky;
-          top: 0;
-          background: var(--bg-primary);
-          border-bottom: 1px solid var(--border-color);
-          z-index: 100;
-          padding: 0.75rem 0;
-        }
-
-        .login-header-content {
-          max-width: 1200px;
-          margin: 0 auto;
-          padding: 0 1.5rem;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-
-        .login-logo {
-          font-size: 1.5rem;
-          font-weight: 700;
-          color: var(--text-primary);
-          text-decoration: none;
-        }
-
-        .login-nav {
-          display: flex;
-          gap: 0.5rem;
-          align-items: center;
-        }
-
-        .nav-link {
-          color: var(--text-secondary);
-          text-decoration: none;
-          font-weight: 500;
-          padding: 0.5rem 1rem;
-          transition: color 0.15s;
-        }
-
-        .nav-link:hover {
-          color: var(--primary-color);
-        }
-
-        .nav-link-active {
-          color: var(--primary-color);
-        }
-
-        .btn-ghost {
-          background: transparent;
-          color: var(--text-primary);
-          border: none;
-        }
-
-        .btn-ghost:hover {
-          background: var(--bg-secondary);
-        }
+        ${getPublicHeaderStyles()}
 
         /* Main Content */
         .login-main {

@@ -12,7 +12,7 @@ export function renderPublicFooter() {
     <footer class="public-footer">
       <div class="footer-content">
         <div class="footer-brand">
-          <span class="footer-logo">Solo Mobile</span>
+          <span class="footer-logo">MAGPIPE</span>
           <p>AI-powered phone assistant for modern professionals.</p>
         </div>
         <div class="footer-links">
@@ -39,7 +39,7 @@ export function renderPublicFooter() {
         </div>
       </div>
       <div class="footer-bottom">
-        <p>&copy; ${new Date().getFullYear()} Solo Mobile. All rights reserved.</p>
+        <p>&copy; ${new Date().getFullYear()} MAGPIPE. All rights reserved.</p>
       </div>
     </footer>
   `;
