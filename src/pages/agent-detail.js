@@ -754,13 +754,18 @@ export default class AgentDetailPage {
             </div>
           </label>
 
-          <label class="function-toggle">
-            <input type="checkbox" id="func-transfer" ${this.agent.custom_instructions?.enable_transfer !== false ? 'checked' : ''} />
-            <div class="toggle-content">
-              <span class="toggle-label">Transfer Calls</span>
-              <span class="toggle-desc">Allow agent to transfer calls to another number</span>
-            </div>
-          </label>
+          <div class="function-toggle-row" style="display: flex; align-items: center; gap: 0.5rem;">
+            <label class="function-toggle" style="flex: 1;">
+              <input type="checkbox" id="func-transfer" ${this.agent.custom_instructions?.enable_transfer !== false ? 'checked' : ''} />
+              <div class="toggle-content">
+                <span class="toggle-label">Transfer Calls</span>
+                <span class="toggle-desc">Allow agent to transfer calls to another number</span>
+              </div>
+            </label>
+            <button id="configure-transfer-btn" class="btn btn-secondary btn-sm" style="white-space: nowrap; padding: 0.4rem 0.75rem; font-size: 0.8rem;">
+              Configure
+            </button>
+          </div>
 
           <label class="function-toggle">
             <input type="checkbox" id="func-booking" ${this.agent.custom_instructions?.enable_booking ? 'checked' : ''} />
@@ -1507,6 +1512,12 @@ export default class AgentDetailPage {
     [funcSms, funcTransfer, funcBooking].forEach(el => {
       if (el) el.addEventListener('change', updateCustomInstructions);
     });
+
+    // Configure transfer button
+    const configureTransferBtn = document.getElementById('configure-transfer-btn');
+    if (configureTransferBtn) {
+      configureTransferBtn.addEventListener('click', () => this.showTransferModal());
+    }
   }
 
   attachDeploymentTabListeners() {
@@ -2414,6 +2425,277 @@ export default class AgentDetailPage {
     } catch (err) {
       console.error('Error assigning numbers:', err);
       alert('Failed to assign some numbers. Please try again.');
+    }
+  }
+
+  async showTransferModal() {
+    // Load transfer numbers from database
+    const { data: transferNumbers, error } = await supabase
+      .from('transfer_numbers')
+      .select('*')
+      .eq('user_id', this.agent.user_id)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.error('Error loading transfer numbers:', error);
+    }
+
+    const numbers = transferNumbers || [];
+
+    const modal = document.createElement('div');
+    modal.className = 'voice-modal-overlay';
+    modal.id = 'transfer-modal';
+    modal.innerHTML = `
+      <div class="voice-modal" style="max-width: 500px; max-height: 90vh; display: flex; flex-direction: column;">
+        <div class="voice-modal-header">
+          <h3>Transfer Numbers</h3>
+          <button class="close-modal-btn">&times;</button>
+        </div>
+        <div class="voice-modal-content" style="padding: 1rem; flex: 1; overflow-y: auto;">
+          <p style="margin: 0 0 1rem; color: var(--text-secondary); font-size: 0.875rem;">
+            Add phone numbers where calls can be transferred. The agent will offer these options to callers.
+          </p>
+          <div id="transfer-numbers-list" style="display: flex; flex-direction: column; gap: 0.75rem;">
+            ${numbers.length === 0 ? '<p style="color: var(--text-secondary); text-align: center; padding: 1rem;">No transfer numbers configured</p>' : ''}
+            ${numbers.map((num, index) => this.renderTransferNumberRow(num, index)).join('')}
+          </div>
+          <button id="add-transfer-number-btn" style="
+            width: 100%;
+            margin-top: 1rem;
+            padding: 0.75rem;
+            background: var(--bg-secondary, #f3f4f6);
+            border: 1px dashed var(--border-color, #e5e7eb);
+            border-radius: 8px;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+          ">
+            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            Add Transfer Number
+          </button>
+        </div>
+        <div style="padding: 1rem; border-top: 1px solid var(--border-color, #e5e7eb);">
+          <button id="save-transfer-numbers-btn" class="btn btn-primary" style="width: 100%;">
+            Save Changes
+          </button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // Store numbers for manipulation
+    this.modalTransferNumbers = [...numbers];
+
+    // Close button
+    modal.querySelector('.close-modal-btn').addEventListener('click', () => modal.remove());
+
+    // Click outside to close
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) modal.remove();
+    });
+
+    // Add number button
+    modal.querySelector('#add-transfer-number-btn').addEventListener('click', () => {
+      this.modalTransferNumbers.push({ id: null, label: '', phone_number: '', transfer_secret: '' });
+      this.refreshTransferNumbersList();
+    });
+
+    // Save button
+    modal.querySelector('#save-transfer-numbers-btn').addEventListener('click', async () => {
+      await this.saveTransferNumbers();
+      modal.remove();
+    });
+
+    // Attach input listeners
+    this.attachTransferModalListeners();
+  }
+
+  renderTransferNumberRow(num, index) {
+    let displayNumber = num.phone_number || '';
+    if (displayNumber.startsWith('+1')) {
+      displayNumber = displayNumber.substring(2);
+    }
+
+    return `
+      <div class="transfer-row" data-index="${index}" style="
+        background: var(--bg-secondary, #f9fafb);
+        border: 1px solid var(--border-color, #e5e7eb);
+        border-radius: 8px;
+        padding: 0.75rem;
+      ">
+        <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+          <input
+            type="text"
+            class="transfer-label-input form-input"
+            placeholder="Label (e.g., Mobile, Office)"
+            value="${num.label || ''}"
+            data-index="${index}"
+            style="flex: 1; font-size: 0.875rem;"
+          />
+          <button class="remove-transfer-btn btn btn-icon" data-index="${index}" style="
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 0.25rem;
+          ">
+            <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+            </svg>
+          </button>
+        </div>
+        <div style="display: flex; gap: 0.5rem;">
+          <div style="flex: 1; display: flex;">
+            <span style="
+              background: #eff6ff;
+              border: 1px solid #dbeafe;
+              border-right: none;
+              border-radius: 6px 0 0 6px;
+              padding: 0.5rem 0.5rem;
+              font-size: 0.875rem;
+              color: #64748b;
+            ">+1</span>
+            <input
+              type="tel"
+              class="transfer-phone-input form-input"
+              placeholder="Phone number"
+              value="${displayNumber}"
+              data-index="${index}"
+              maxlength="14"
+              style="flex: 1; border-radius: 0 6px 6px 0; font-size: 0.875rem;"
+            />
+          </div>
+        </div>
+        <div style="margin-top: 0.5rem;">
+          <input
+            type="text"
+            class="transfer-passcode-input form-input"
+            placeholder="Passcode (optional - for instant transfer)"
+            value="${num.transfer_secret || ''}"
+            data-index="${index}"
+            style="width: 100%; font-size: 0.875rem;"
+          />
+        </div>
+      </div>
+    `;
+  }
+
+  refreshTransferNumbersList() {
+    const container = document.getElementById('transfer-numbers-list');
+    if (!container) return;
+
+    container.innerHTML = this.modalTransferNumbers.length === 0
+      ? '<p style="color: var(--text-secondary); text-align: center; padding: 1rem;">No transfer numbers configured</p>'
+      : this.modalTransferNumbers.map((num, index) => this.renderTransferNumberRow(num, index)).join('');
+
+    this.attachTransferModalListeners();
+  }
+
+  attachTransferModalListeners() {
+    const modal = document.getElementById('transfer-modal');
+    if (!modal) return;
+
+    // Label inputs
+    modal.querySelectorAll('.transfer-label-input').forEach(input => {
+      input.addEventListener('input', (e) => {
+        const index = parseInt(e.target.dataset.index);
+        this.modalTransferNumbers[index].label = e.target.value;
+      });
+    });
+
+    // Phone inputs with formatting
+    modal.querySelectorAll('.transfer-phone-input').forEach(input => {
+      input.addEventListener('input', (e) => {
+        const index = parseInt(e.target.dataset.index);
+        let value = e.target.value.replace(/\D/g, '');
+
+        // Format as (XXX) XXX-XXXX
+        if (value.length > 0) {
+          if (value.length <= 3) {
+            value = `(${value}`;
+          } else if (value.length <= 6) {
+            value = `(${value.slice(0, 3)}) ${value.slice(3)}`;
+          } else {
+            value = `(${value.slice(0, 3)}) ${value.slice(3, 6)}-${value.slice(6, 10)}`;
+          }
+        }
+        e.target.value = value;
+
+        // Store as +1XXXXXXXXXX
+        const digits = value.replace(/\D/g, '');
+        this.modalTransferNumbers[index].phone_number = digits.length === 10 ? `+1${digits}` : '';
+      });
+    });
+
+    // Passcode inputs
+    modal.querySelectorAll('.transfer-passcode-input').forEach(input => {
+      input.addEventListener('input', (e) => {
+        const index = parseInt(e.target.dataset.index);
+        this.modalTransferNumbers[index].transfer_secret = e.target.value;
+      });
+    });
+
+    // Remove buttons
+    modal.querySelectorAll('.remove-transfer-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const index = parseInt(e.currentTarget.dataset.index);
+        const num = this.modalTransferNumbers[index];
+
+        // If it has an ID, delete from database
+        if (num.id) {
+          await supabase.from('transfer_numbers').delete().eq('id', num.id);
+        }
+
+        this.modalTransferNumbers.splice(index, 1);
+        this.refreshTransferNumbersList();
+      });
+    });
+  }
+
+  async saveTransferNumbers() {
+    const saveBtn = document.querySelector('#save-transfer-numbers-btn');
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+    }
+
+    try {
+      for (const num of this.modalTransferNumbers) {
+        // Skip empty entries
+        if (!num.label && !num.phone_number) continue;
+
+        if (num.id) {
+          // Update existing
+          await supabase
+            .from('transfer_numbers')
+            .update({
+              label: num.label,
+              phone_number: num.phone_number,
+              transfer_secret: num.transfer_secret || null,
+            })
+            .eq('id', num.id);
+        } else if (num.phone_number) {
+          // Insert new
+          await supabase
+            .from('transfer_numbers')
+            .insert({
+              user_id: this.agent.user_id,
+              label: num.label,
+              phone_number: num.phone_number,
+              transfer_secret: num.transfer_secret || null,
+            });
+        }
+      }
+    } catch (err) {
+      console.error('Error saving transfer numbers:', err);
+      alert('Failed to save transfer numbers. Please try again.');
     }
   }
 
