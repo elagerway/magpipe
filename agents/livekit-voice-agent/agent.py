@@ -956,27 +956,56 @@ THIS IS AN OUTBOUND CALL:
             logger.info("🔄 Outbound call - Using default outbound prompt")
 
         # Append call purpose and goal context if provided (from outbound template)
-        if call_purpose or call_goal:
+        if call_purpose or call_goal or contact_phone:
             template_context = "\n\nCALL CONTEXT:"
+            if contact_phone:
+                template_context += f"\n- You are calling: {contact_phone}"
             if call_purpose:
                 template_context += f"\n- Purpose: {call_purpose}"
             if call_goal:
                 template_context += f"\n- Goal: {call_goal}"
             template_context += "\n\nFocus on achieving the stated goal while being natural and conversational."
             system_prompt = system_prompt + template_context
-            logger.info(f"📋 Added template context to outbound prompt: purpose='{call_purpose}', goal='{call_goal}'")
+            logger.info(f"📋 Added template context to outbound prompt: contact='{contact_phone}', purpose='{call_purpose}', goal='{call_goal}'")
     else:
         # INBOUND: Agent handles the call for the user (traditional behavior)
         greeting = user_config.get("greeting_template", "Hello! This is Pat. How can I help you today?")
 
-        INBOUND_CONTEXT_SUFFIX = """
+        # Get the actual caller phone number for the prompt
+        # Try sip_caller_number first, then caller_number, then parse from participants
+        actual_caller_phone = None
+        for participant in ctx.room.remote_participants.values():
+            attrs = participant.attributes
+            # Extract from SIP attributes
+            sip_phone = (
+                attrs.get("sip.remoteUri") or
+                attrs.get("sip.from") or
+                attrs.get("sip.caller") or
+                participant.identity
+            )
+            if sip_phone:
+                # Clean up SIP URI format
+                if sip_phone.startswith("sip:"):
+                    sip_phone = sip_phone[4:]
+                if sip_phone.startswith("sip_"):
+                    sip_phone = sip_phone[4:]
+                if "@" in sip_phone:
+                    sip_phone = sip_phone.split("@")[0]
+                if sip_phone and not sip_phone.startswith("+"):
+                    sip_phone = "+" + sip_phone
+                actual_caller_phone = sip_phone
+                break
+
+        caller_phone_info = f"\n- The caller's phone number is: {actual_caller_phone}" if actual_caller_phone else ""
+
+        INBOUND_CONTEXT_SUFFIX = f"""
 
 CRITICAL - CALLER vs OWNER ROLES:
 - The person on this call is a CALLER/CUSTOMER - they are NOT the owner of this phone number
 - You are answering this call on behalf of the OWNER (your boss/the business)
 - Do NOT treat the caller as if they own this number or set you up
 - Do NOT say things like "your number" or "your assistant" to the caller
-- The caller is reaching out TO the business - treat them as a customer/prospect
+- The caller is reaching out TO the business - treat them as a customer/prospect{caller_phone_info}
 
 IMPORTANT CONTEXT - INBOUND CALL:
 - You are on a LIVE VOICE CALL with a customer calling in (not texting)
