@@ -174,87 +174,305 @@ export default class PricingPage {
 
         <!-- Interactive Calculator -->
         <section class="pricing-calculator">
-          <h2>Estimate Your Cost</h2>
-          <p class="calculator-subtitle">Adjust your usage, LLM, voice engine, and telephony to see real-time pricing</p>
-
           <div class="calculator-container">
             <!-- Left side: Controls -->
             <div class="calculator-controls">
-              <div class="calculator-slider-group">
-                <div class="slider-header">
-                  <label>Minutes per Month</label>
-                  <span class="slider-value" id="minutes-value">500</span>
-                </div>
+              <!-- Minutes Input -->
+              <div class="calculator-minutes-row">
+                <label>How many minutes of calls do you have per month?</label>
+                <input type="number" id="minutes-input" min="0" max="1000000" value="500" step="100">
+              </div>
+              <div class="calculator-slider-row">
                 <input type="range" id="minutes-slider" min="0" max="10000" value="500" step="50">
                 <div class="slider-range">
                   <span>0</span>
-                  <span>10,000</span>
+                  <span>10,000+</span>
                 </div>
               </div>
 
-              <div class="calculator-select-group">
-                <label>LLM Model</label>
-                <select id="llm-select">
-                  <option value="0.025">GPT-5 ($0.025/min)</option>
-                  <option value="0.015">GPT-5 mini ($0.015/min)</option>
-                  <option value="0.008">GPT-5 nano ($0.008/min)</option>
-                  <option value="0.003" selected>GPT-4o mini ($0.003/min)</option>
-                  <option value="0.01">GPT-4o ($0.01/min)</option>
-                  <option value="0.012">GPT-4.1 ($0.012/min)</option>
-                  <option value="0.008">GPT-4.1 mini ($0.008/min)</option>
-                  <option value="0.005">GPT-4.1 nano ($0.005/min)</option>
-                  <option value="0.015">GPT-4 Turbo ($0.015/min)</option>
-                </select>
+              <!-- LLM Selection -->
+              <div class="calculator-option-group">
+                <label>LLM Agent</label>
+                <div class="pill-group" id="llm-pills">
+                  <button class="pill-btn" data-value="0.04">GPT 5</button>
+                  <button class="pill-btn" data-value="0.012">GPT 5 mini</button>
+                  <button class="pill-btn" data-value="0.003">GPT 5 nano</button>
+                  <button class="pill-btn" data-value="0.045">GPT 4.1</button>
+                  <button class="pill-btn" data-value="0.016">GPT 4.1 mini</button>
+                  <button class="pill-btn" data-value="0.004">GPT 4.1 nano</button>
+                  <button class="pill-btn" data-value="0.05">GPT 4o</button>
+                  <button class="pill-btn active" data-value="0.006">GPT 4o mini</button>
+                </div>
               </div>
 
-              <div class="calculator-select-group">
+              <!-- Voice Selection -->
+              <div class="calculator-option-group">
                 <label>Voice Engine</label>
-                <select id="voice-select">
-                  <option value="0.03" selected>ElevenLabs ($0.03/min)</option>
-                  <option value="0.025">Cartesia ($0.025/min)</option>
-                  <option value="0.02">OpenAI TTS ($0.02/min)</option>
-                  <option value="0.015">Deepgram ($0.015/min)</option>
-                </select>
+                <div class="pill-group" id="voice-pills">
+                  <button class="pill-btn active" data-value="0.07">Elevenlabs/Cartesia Voices</button>
+                  <button class="pill-btn" data-value="0.08">OpenAI Voices</button>
+                </div>
               </div>
 
-              <div class="calculator-select-group">
+              <!-- Telephony Selection -->
+              <div class="calculator-option-group">
                 <label>Telephony</label>
-                <select id="telephony-select">
-                  <option value="0.015" selected>Solo Mobile Telephony ($0.015/min)</option>
-                  <option value="0.02">Twilio ($0.02/min)</option>
-                  <option value="0">Bring your own ($0.00/min)</option>
-                </select>
+                <div class="pill-group" id="telephony-pills">
+                  <button class="pill-btn" data-value="0">Custom Telephony</button>
+                  <button class="pill-btn active" data-value="0.015">Solo Mobile Telephony</button>
+                </div>
               </div>
             </div>
 
-            <!-- Right side: Cost breakdown -->
-            <div class="calculator-result">
-              <div class="cost-per-minute">
-                <h3>Cost Per Minute</h3>
-                <div class="result-breakdown">
-                  <div class="breakdown-item">
-                    <span>LLM</span>
-                    <span id="llm-cost">$0.005</span>
-                  </div>
-                  <div class="breakdown-item">
-                    <span>Voice</span>
-                    <span id="voice-cost">$0.030</span>
-                  </div>
-                  <div class="breakdown-item">
-                    <span>Telephony</span>
-                    <span id="telephony-cost">$0.015</span>
-                  </div>
-                  <div class="breakdown-item total-per-min">
-                    <span>Total per minute</span>
-                    <span id="per-minute-cost">$0.050</span>
-                  </div>
+            <!-- Right side: Cost Card -->
+            <div class="calculator-cost-card">
+              <div class="cost-per-minute-row">
+                <span class="cost-card-label">Cost Per Minute</span>
+                <span class="cost-card-value" id="per-minute-cost">$ 0.091</span>
+              </div>
+              <div class="cost-breakdown-list">
+                <div class="cost-breakdown-item">
+                  <span class="breakdown-bullet"></span>
+                  <span class="breakdown-label">LLM Cost</span>
+                  <span class="breakdown-value" id="llm-cost">$ 0.006</span>
+                </div>
+                <div class="cost-breakdown-item">
+                  <span class="breakdown-bullet"></span>
+                  <span class="breakdown-label">Voice Engine Cost</span>
+                  <span class="breakdown-value" id="voice-cost">$ 0.070</span>
+                </div>
+                <div class="cost-breakdown-item">
+                  <span class="breakdown-bullet"></span>
+                  <span class="breakdown-label">Telephony Cost</span>
+                  <span class="breakdown-value" id="telephony-cost">$ 0.015</span>
                 </div>
               </div>
-              <div class="result-total">
-                <span>Estimated Monthly Cost</span>
-                <span class="total-amount" id="total-cost">$25.00</span>
+              <div class="cost-total-row">
+                <span class="total-label">Total</span>
+                <span class="total-amount">$<span id="total-cost">45.50</span></span>
               </div>
-              <p class="calculator-note">Over $2,000/mo? <a href="/custom-plan" onclick="event.preventDefault(); navigateTo('/custom-plan');">Talk to us for enterprise pricing</a></p>
+            </div>
+          </div>
+          <p class="calculator-note">Over $2,000/mo? <a href="/custom-plan" onclick="event.preventDefault(); navigateTo('/custom-plan');">Talk to us for enterprise pricing</a></p>
+        </section>
+
+        <!-- Detailed Component Pricing -->
+        <section class="component-pricing">
+          <h2>Detailed Component Pricing</h2>
+
+          <!-- Tabs -->
+          <div class="component-tabs">
+            <button class="component-tab active" data-tab="call-agent">Call Agent Pricing</button>
+            <button class="component-tab" data-tab="add-ons">Add-ons</button>
+            <button class="component-tab" data-tab="monthly">Monthly</button>
+          </div>
+
+          <!-- Tab Content -->
+          <div class="component-tab-content">
+            <!-- Call Agent Pricing Tab -->
+            <div class="tab-panel active" id="tab-call-agent">
+              <!-- Voice Engine Section -->
+              <div class="pricing-section">
+                <div class="pricing-section-header" data-section="voice">
+                  <h3>Conversation Voice Engine</h3>
+                  <svg class="section-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </div>
+                <div class="pricing-section-content expanded" id="section-voice">
+                  <table class="component-table">
+                    <thead>
+                      <tr>
+                        <th>Provider</th>
+                        <th>Price</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>Elevenlabs / Cartesia voices</td>
+                        <td>$0.07/minute</td>
+                      </tr>
+                      <tr>
+                        <td>OpenAI voices</td>
+                        <td>$0.08/minute</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- LLM Section -->
+              <div class="pricing-section">
+                <div class="pricing-section-header" data-section="llm">
+                  <h3>LLM</h3>
+                  <svg class="section-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </div>
+                <div class="pricing-section-content expanded" id="section-llm">
+                  <table class="component-table">
+                    <thead>
+                      <tr>
+                        <th>Model</th>
+                        <th>Price</th>
+                        <th>Fast Tier</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>GPT 5</td>
+                        <td>$0.04/minute</td>
+                        <td>$0.08/minute</td>
+                      </tr>
+                      <tr>
+                        <td>GPT 5 mini</td>
+                        <td>$0.012/minute</td>
+                        <td>$0.024/minute</td>
+                      </tr>
+                      <tr>
+                        <td>GPT 5 nano</td>
+                        <td>$0.003/minute</td>
+                        <td>$0.006/minute</td>
+                      </tr>
+                      <tr>
+                        <td>GPT 4.1</td>
+                        <td>$0.045/minute</td>
+                        <td>$0.0675/minute</td>
+                      </tr>
+                      <tr>
+                        <td>GPT 4.1 mini</td>
+                        <td>$0.016/minute</td>
+                        <td>$0.024/minute</td>
+                      </tr>
+                      <tr>
+                        <td>GPT 4.1 nano</td>
+                        <td>$0.004/minute</td>
+                        <td>$0.006/minute</td>
+                      </tr>
+                      <tr>
+                        <td>GPT 4o</td>
+                        <td>$0.05/minute</td>
+                        <td>$0.075/minute</td>
+                      </tr>
+                      <tr>
+                        <td>GPT 4o mini</td>
+                        <td>$0.006/minute</td>
+                        <td>$0.009/minute</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- Telephony Section -->
+              <div class="pricing-section">
+                <div class="pricing-section-header" data-section="telephony">
+                  <h3>Telephony</h3>
+                  <svg class="section-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </div>
+                <div class="pricing-section-content expanded" id="section-telephony">
+                  <table class="component-table">
+                    <thead>
+                      <tr>
+                        <th>Provider</th>
+                        <th>Price</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>Solo Mobile Telephony</td>
+                        <td>$0.015/min</td>
+                      </tr>
+                      <tr>
+                        <td>SIP Trunking / Custom Telephony</td>
+                        <td>No charge</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <!-- Add-ons Tab -->
+            <div class="tab-panel" id="tab-add-ons">
+              <div class="pricing-section">
+                <div class="pricing-section-header" data-section="addons">
+                  <h3>Call Agent Add-ons</h3>
+                  <svg class="section-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </div>
+                <div class="pricing-section-content expanded" id="section-addons">
+                  <table class="component-table">
+                    <thead>
+                      <tr>
+                        <th>Feature</th>
+                        <th>Price</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>Knowledge Base</td>
+                        <td>$0.005/minute</td>
+                      </tr>
+                      <tr>
+                        <td>Batch Call</td>
+                        <td>$0.005/dial</td>
+                      </tr>
+                      <tr>
+                        <td>Branded Call</td>
+                        <td>$0.10/outbound call</td>
+                      </tr>
+                      <tr>
+                        <td>Advanced Denoising</td>
+                        <td>$0.005/min</td>
+                      </tr>
+                      <tr>
+                        <td>PII Removal</td>
+                        <td>$0.01/min</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <!-- Monthly Tab -->
+            <div class="tab-panel" id="tab-monthly">
+              <div class="pricing-section">
+                <div class="pricing-section-header" data-section="monthly">
+                  <h3>Monthly Subscriptions</h3>
+                  <svg class="section-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </div>
+                <div class="pricing-section-content expanded" id="section-monthly">
+                  <table class="component-table">
+                    <thead>
+                      <tr>
+                        <th>Item</th>
+                        <th>Price</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>Phone Number</td>
+                        <td>$2.00/month</td>
+                      </tr>
+                      <tr>
+                        <td>Additional Concurrency (per slot)</td>
+                        <td>$5.00/month</td>
+                      </tr>
+                      <tr>
+                        <td>Additional Knowledge Base</td>
+                        <td>$5.00/month</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -695,200 +913,248 @@ export default class PricingPage {
 
         /* Calculator */
         .pricing-calculator {
-          max-width: 900px;
+          max-width: 1000px;
           margin: 0 auto;
           padding: 4rem 1.5rem;
-          text-align: center;
-        }
-
-        .pricing-calculator h2 {
-          font-size: 2rem;
-          font-weight: 700;
-          margin-bottom: 0.5rem;
-        }
-
-        .calculator-subtitle {
-          color: var(--text-secondary);
-          margin-bottom: 2rem;
         }
 
         .calculator-container {
-          background: var(--bg-secondary);
-          border-radius: 1rem;
-          padding: 2rem;
+          background: linear-gradient(135deg, #4f7df3 0%, #6f8ef5 50%, #8b9ff7 100%);
+          border-radius: 1.25rem;
+          padding: 2.5rem;
           display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 2rem;
-          text-align: left;
+          grid-template-columns: 1fr 320px;
+          gap: 2.5rem;
         }
 
+        /* Left side: Controls */
         .calculator-controls {
           display: flex;
           flex-direction: column;
-          gap: 1.5rem;
+          gap: 1.75rem;
         }
 
-        .calculator-slider-group {
-          margin-bottom: 0;
-        }
-
-        .slider-header {
+        /* Minutes Input */
+        .calculator-minutes-row {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          margin-bottom: 0.75rem;
+          gap: 1rem;
         }
 
-        .slider-header label {
+        .calculator-minutes-row label {
+          font-size: 0.95rem;
+          font-weight: 400;
+          color: #ffffff;
+        }
+
+        .calculator-minutes-row input[type="number"] {
+          width: 100px;
+          padding: 0.5rem 0.75rem;
+          font-size: 1rem;
           font-weight: 500;
-          color: var(--text-primary);
+          border: 1px solid rgba(255, 255, 255, 0.3);
+          border-radius: 0.375rem;
+          background: transparent;
+          color: #ffffff;
+          text-align: right;
         }
 
-        .slider-value {
-          font-weight: 600;
-          color: #10b981;
-          font-size: 1.1rem;
+        .calculator-minutes-row input[type="number"]:focus {
+          outline: none;
+          border-color: rgba(255, 255, 255, 0.6);
         }
 
-        .calculator-slider-group input[type="range"] {
+        .calculator-minutes-row input[type="number"]::-webkit-inner-spin-button,
+        .calculator-minutes-row input[type="number"]::-webkit-outer-spin-button {
+          -webkit-appearance: none;
+          margin: 0;
+        }
+
+        .calculator-minutes-row input[type="number"] {
+          -moz-appearance: textfield;
+        }
+
+        /* Slider */
+        .calculator-slider-row {
+          margin-top: -0.5rem;
+        }
+
+        .calculator-slider-row input[type="range"] {
           width: 100%;
-          height: 8px;
-          border-radius: 4px;
-          background: var(--border-color);
+          height: 6px;
+          border-radius: 3px;
+          background: rgba(255, 255, 255, 0.3);
           outline: none;
           -webkit-appearance: none;
           appearance: none;
         }
 
-        .calculator-slider-group input[type="range"]::-webkit-slider-thumb {
+        .calculator-slider-row input[type="range"]::-webkit-slider-thumb {
           -webkit-appearance: none;
           appearance: none;
-          width: 24px;
-          height: 24px;
+          width: 18px;
+          height: 18px;
           border-radius: 50%;
-          background: linear-gradient(135deg, #10b981 0%, #34d399 100%);
+          background: #ffffff;
           cursor: pointer;
-          box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
-          transition: transform 0.15s, box-shadow 0.15s;
+          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+          transition: transform 0.15s;
         }
 
-        .calculator-select-group {
-          display: flex;
-          flex-direction: column;
-          gap: 0.5rem;
+        .calculator-slider-row input[type="range"]::-webkit-slider-thumb:hover {
+          transform: scale(1.1);
         }
 
-        .calculator-select-group label {
-          font-weight: 500;
-          color: var(--text-primary);
-          font-size: 0.9rem;
-        }
-
-        .calculator-select-group select {
-          width: 100%;
-          padding: 0.75rem 1rem;
-          font-size: 0.9rem;
-          border: 1px solid var(--border-color);
-          border-radius: 0.5rem;
-          background: var(--bg-primary);
-          color: var(--text-primary);
-          cursor: pointer;
-          transition: border-color 0.15s;
-        }
-
-        .calculator-select-group select:focus {
-          outline: none;
-          border-color: var(--primary-color);
-        }
-
-        .calculator-slider-group input[type="range"]::-webkit-slider-thumb:hover {
-          transform: scale(1.15);
-          box-shadow: 0 4px 12px rgba(16, 185, 129, 0.5);
-        }
-
-        .calculator-slider-group input[type="range"]::-moz-range-thumb {
-          width: 24px;
-          height: 24px;
+        .calculator-slider-row input[type="range"]::-moz-range-thumb {
+          width: 18px;
+          height: 18px;
           border-radius: 50%;
-          background: linear-gradient(135deg, #10b981 0%, #34d399 100%);
+          background: #ffffff;
           cursor: pointer;
           border: none;
-          box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
         }
 
         .slider-range {
           display: flex;
           justify-content: space-between;
-          font-size: 0.75rem;
-          color: var(--text-secondary);
-          margin-top: 0.5rem;
+          font-size: 0.7rem;
+          color: rgba(255, 255, 255, 0.6);
+          margin-top: 0.375rem;
         }
 
-        .calculator-result {
-          background: var(--bg-primary);
+        /* Option Groups */
+        .calculator-option-group {
+          display: flex;
+          flex-direction: column;
+          gap: 0.625rem;
+        }
+
+        .calculator-option-group label {
+          font-size: 0.8rem;
+          font-weight: 500;
+          color: rgba(255, 255, 255, 0.7);
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+
+        /* Pill Buttons */
+        .pill-group {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.5rem;
+        }
+
+        .pill-btn {
+          padding: 0.5rem 0.875rem;
+          font-size: 0.8rem;
+          font-weight: 500;
+          color: #ffffff;
+          background: transparent;
+          border: 1px solid rgba(255, 255, 255, 0.3);
+          border-radius: 0.375rem;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+
+        .pill-btn:hover {
+          border-color: rgba(255, 255, 255, 0.6);
+          background: rgba(255, 255, 255, 0.1);
+        }
+
+        .pill-btn.active {
+          background: #ffffff;
+          border-color: #ffffff;
+          color: #4f7df3;
+        }
+
+        /* Cost Card */
+        .calculator-cost-card {
+          background: #ffffff;
           border-radius: 0.75rem;
           padding: 1.5rem;
           display: flex;
           flex-direction: column;
-          justify-content: space-between;
         }
 
-        .cost-per-minute h3 {
-          font-size: 1rem;
-          font-weight: 600;
-          margin-bottom: 1rem;
-          color: var(--text-primary);
-        }
-
-        .result-breakdown {
-          margin-bottom: 1rem;
-          padding-bottom: 1rem;
-          border-bottom: 1px solid var(--border-color);
-        }
-
-        .breakdown-item {
+        .cost-per-minute-row {
           display: flex;
           justify-content: space-between;
-          padding: 0.375rem 0;
+          align-items: center;
+          padding-bottom: 1rem;
+          margin-bottom: 1rem;
+          border-bottom: 1px solid #e5e7eb;
+        }
+
+        .cost-card-label {
           font-size: 0.9rem;
-          color: var(--text-secondary);
+          font-weight: 500;
+          color: #374151;
         }
 
-        .breakdown-item.highlight {
-          color: var(--success-color);
-        }
-
-        .breakdown-item.total-per-min {
+        .cost-card-value {
+          font-size: 1rem;
           font-weight: 600;
-          color: var(--text-primary);
-          padding-top: 0.75rem;
-          margin-top: 0.5rem;
-          border-top: 1px solid var(--border-color);
+          color: #374151;
         }
 
-        .result-total {
+        .cost-breakdown-list {
+          display: flex;
+          flex-direction: column;
+          gap: 0.625rem;
+          margin-bottom: 1.5rem;
+        }
+
+        .cost-breakdown-item {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          font-size: 0.85rem;
+        }
+
+        .breakdown-bullet {
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          background: #9ca3af;
+          flex-shrink: 0;
+        }
+
+        .breakdown-label {
+          color: #6b7280;
+          flex: 1;
+        }
+
+        .breakdown-value {
+          color: #374151;
+          font-weight: 500;
+        }
+
+        .cost-total-row {
           display: flex;
           justify-content: space-between;
           align-items: center;
           padding-top: 1rem;
+          border-top: 1px solid #e5e7eb;
           margin-top: auto;
         }
 
-        .result-total span:first-child {
+        .total-label {
+          font-size: 0.9rem;
           font-weight: 500;
-          color: var(--text-primary);
+          color: #374151;
         }
 
         .total-amount {
-          font-size: 2rem;
+          font-size: 1.75rem;
           font-weight: 700;
-          color: var(--primary-color);
+          color: #4f7df3;
         }
 
         .calculator-note {
-          font-size: 0.8rem;
+          font-size: 0.85rem;
           color: var(--text-secondary);
-          margin-top: 1rem;
+          margin-top: 1.25rem;
           text-align: center;
         }
 
@@ -899,6 +1165,160 @@ export default class PricingPage {
 
         .calculator-note a:hover {
           text-decoration: underline;
+        }
+
+        /* Component Pricing */
+        .component-pricing {
+          max-width: 900px;
+          margin: 0 auto;
+          padding: 4rem 1.5rem;
+        }
+
+        .component-pricing h2 {
+          font-size: 2rem;
+          font-weight: 700;
+          margin-bottom: 2rem;
+          text-align: center;
+        }
+
+        /* Tabs */
+        .component-tabs {
+          display: flex;
+          gap: 0.5rem;
+          margin-bottom: 1.5rem;
+          border-bottom: 1px solid var(--border-color);
+          padding-bottom: 0;
+        }
+
+        .component-tab {
+          background: none;
+          border: none;
+          padding: 0.75rem 1.25rem;
+          font-size: 0.9rem;
+          font-weight: 500;
+          color: var(--text-secondary);
+          cursor: pointer;
+          position: relative;
+          transition: color 0.15s;
+        }
+
+        .component-tab:hover {
+          color: var(--text-primary);
+        }
+
+        .component-tab.active {
+          color: var(--primary-color);
+        }
+
+        .component-tab.active::after {
+          content: '';
+          position: absolute;
+          bottom: -1px;
+          left: 0;
+          right: 0;
+          height: 2px;
+          background: var(--primary-color);
+        }
+
+        /* Tab Panels */
+        .tab-panel {
+          display: none;
+        }
+
+        .tab-panel.active {
+          display: block;
+        }
+
+        /* Pricing Sections (Accordion) */
+        .pricing-section {
+          background: var(--bg-primary);
+          border: 1px solid var(--border-color);
+          border-radius: 0.75rem;
+          margin-bottom: 1rem;
+          overflow: hidden;
+        }
+
+        .pricing-section-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 1rem 1.25rem;
+          cursor: pointer;
+          transition: background 0.15s;
+        }
+
+        .pricing-section-header:hover {
+          background: var(--bg-secondary);
+        }
+
+        .pricing-section-header h3 {
+          font-size: 1rem;
+          font-weight: 600;
+          margin: 0;
+          color: var(--text-primary);
+        }
+
+        .section-chevron {
+          width: 20px;
+          height: 20px;
+          color: var(--text-secondary);
+          transition: transform 0.2s;
+        }
+
+        .pricing-section-content.expanded + .pricing-section-header .section-chevron,
+        .pricing-section-header.collapsed .section-chevron {
+          transform: rotate(180deg);
+        }
+
+        .pricing-section-content {
+          max-height: 0;
+          overflow: hidden;
+          transition: max-height 0.3s ease;
+        }
+
+        .pricing-section-content.expanded {
+          max-height: 1000px;
+        }
+
+        /* Component Table */
+        .component-table {
+          width: 100%;
+          border-collapse: collapse;
+        }
+
+        .component-table th,
+        .component-table td {
+          padding: 0.875rem 1.25rem;
+          text-align: left;
+          border-top: 1px solid var(--border-color);
+        }
+
+        .component-table th {
+          font-size: 0.75rem;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          color: var(--text-secondary);
+          background: var(--bg-secondary);
+        }
+
+        .component-table td {
+          font-size: 0.9rem;
+          color: var(--text-primary);
+        }
+
+        .component-table tbody tr:hover {
+          background: var(--bg-secondary);
+        }
+
+        .component-table td:not(:first-child) {
+          font-weight: 500;
+          color: var(--primary-color);
+          text-align: right;
+        }
+
+        .component-table th:not(:first-child) {
+          text-align: right;
         }
 
         /* Pricing Breakdown */
@@ -1263,12 +1683,32 @@ export default class PricingPage {
           }
 
           .calculator-container {
-            padding: 1.5rem;
             grid-template-columns: 1fr;
+            padding: 1.5rem;
+            gap: 1.5rem;
           }
 
-          .calculator-result {
-            margin-top: 1rem;
+          .calculator-minutes-row {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.5rem;
+          }
+
+          .calculator-minutes-row input[type="number"] {
+            width: 100%;
+          }
+
+          .pill-group {
+            gap: 0.375rem;
+          }
+
+          .pill-btn {
+            padding: 0.4rem 0.625rem;
+            font-size: 0.75rem;
+          }
+
+          .calculator-cost-card {
+            padding: 1.25rem;
           }
 
           .total-amount {
@@ -1278,8 +1718,34 @@ export default class PricingPage {
           .pricing-comparison h2,
           .pricing-breakdown h2,
           .pricing-faq h2,
-          .pricing-cta h2 {
+          .pricing-cta h2,
+          .component-pricing h2 {
             font-size: 1.5rem;
+          }
+
+          .component-tabs {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+          }
+
+          .component-tab {
+            padding: 0.625rem 1rem;
+            font-size: 0.85rem;
+            white-space: nowrap;
+          }
+
+          .component-table th,
+          .component-table td {
+            padding: 0.75rem 1rem;
+            font-size: 0.85rem;
+          }
+
+          .pricing-section-header {
+            padding: 0.875rem 1rem;
+          }
+
+          .pricing-section-header h3 {
+            font-size: 0.9rem;
           }
 
           .comparison-table {
@@ -1341,32 +1807,34 @@ export default class PricingPage {
   }
 
   formatCurrency(amount) {
-    return `$${amount.toFixed(2)}`;
+    return amount.toFixed(2);
   }
 
   formatCostPerMin(amount) {
-    return `$${amount.toFixed(3)}`;
+    return `$ ${amount.toFixed(3)}`;
+  }
+
+  getSelectedValue(groupId) {
+    const group = document.getElementById(groupId);
+    if (!group) return 0;
+    const activeBtn = group.querySelector('.pill-btn.active');
+    return activeBtn ? parseFloat(activeBtn.dataset.value) : 0;
   }
 
   updateCalculator() {
+    const minutesInput = document.getElementById('minutes-input');
     const minutesSlider = document.getElementById('minutes-slider');
-    const llmSelect = document.getElementById('llm-select');
-    const voiceSelect = document.getElementById('voice-select');
-    const telephonySelect = document.getElementById('telephony-select');
 
-    if (!minutesSlider || !llmSelect || !voiceSelect || !telephonySelect) return;
+    if (!minutesInput) return;
 
-    const minutes = parseInt(minutesSlider.value);
-    const llmRate = parseFloat(llmSelect.value);
-    const voiceRate = parseFloat(voiceSelect.value);
-    const telephonyRate = parseFloat(telephonySelect.value);
+    const minutes = parseInt(minutesInput.value) || 0;
+    const llmRate = this.getSelectedValue('llm-pills');
+    const voiceRate = this.getSelectedValue('voice-pills');
+    const telephonyRate = this.getSelectedValue('telephony-pills');
 
     // Calculate cost per minute
     const totalPerMinute = llmRate + voiceRate + telephonyRate;
     const totalMonthlyCost = minutes * totalPerMinute;
-
-    // Update display values
-    document.getElementById('minutes-value').textContent = this.formatNumber(minutes);
 
     // Update cost breakdown
     document.getElementById('llm-cost').textContent = this.formatCostPerMin(llmRate);
@@ -1377,27 +1845,48 @@ export default class PricingPage {
   }
 
   attachEventListeners() {
-    // Calculator controls
+    // Minutes input and slider
+    const minutesInput = document.getElementById('minutes-input');
     const minutesSlider = document.getElementById('minutes-slider');
-    const llmSelect = document.getElementById('llm-select');
-    const voiceSelect = document.getElementById('voice-select');
-    const telephonySelect = document.getElementById('telephony-select');
+
+    if (minutesInput) {
+      minutesInput.addEventListener('input', () => {
+        // Sync slider (clamp to slider max)
+        if (minutesSlider) {
+          minutesSlider.value = Math.min(parseInt(minutesInput.value) || 0, 10000);
+        }
+        this.updateCalculator();
+      });
+    }
 
     if (minutesSlider) {
-      minutesSlider.addEventListener('input', () => this.updateCalculator());
+      minutesSlider.addEventListener('input', () => {
+        // Sync input with slider
+        if (minutesInput) {
+          minutesInput.value = minutesSlider.value;
+        }
+        this.updateCalculator();
+      });
     }
 
-    if (llmSelect) {
-      llmSelect.addEventListener('change', () => this.updateCalculator());
-    }
+    // Pill button groups
+    const pillGroups = ['llm-pills', 'voice-pills', 'telephony-pills'];
+    pillGroups.forEach(groupId => {
+      const group = document.getElementById(groupId);
+      if (group) {
+        group.addEventListener('click', (e) => {
+          const btn = e.target.closest('.pill-btn');
+          if (!btn) return;
 
-    if (voiceSelect) {
-      voiceSelect.addEventListener('change', () => this.updateCalculator());
-    }
+          // Remove active from siblings
+          group.querySelectorAll('.pill-btn').forEach(b => b.classList.remove('active'));
+          // Add active to clicked
+          btn.classList.add('active');
 
-    if (telephonySelect) {
-      telephonySelect.addEventListener('change', () => this.updateCalculator());
-    }
+          this.updateCalculator();
+        });
+      }
+    });
 
     // Initialize calculator
     this.updateCalculator();
@@ -1415,6 +1904,46 @@ export default class PricingPage {
         // Toggle current
         if (!isExpanded) {
           item.classList.add('expanded');
+        }
+      });
+    });
+
+    // Component pricing tabs
+    const tabs = document.querySelectorAll('.component-tab');
+    const tabPanels = document.querySelectorAll('.tab-panel');
+
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        const targetTab = tab.dataset.tab;
+
+        // Update active tab
+        tabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+
+        // Show corresponding panel
+        tabPanels.forEach(panel => {
+          panel.classList.remove('active');
+          if (panel.id === `tab-${targetTab}`) {
+            panel.classList.add('active');
+          }
+        });
+      });
+    });
+
+    // Pricing section accordions
+    const sectionHeaders = document.querySelectorAll('.pricing-section-header');
+    sectionHeaders.forEach(header => {
+      header.addEventListener('click', () => {
+        const sectionId = header.dataset.section;
+        const content = document.getElementById(`section-${sectionId}`);
+        const chevron = header.querySelector('.section-chevron');
+
+        if (content.classList.contains('expanded')) {
+          content.classList.remove('expanded');
+          chevron.style.transform = 'rotate(180deg)';
+        } else {
+          content.classList.add('expanded');
+          chevron.style.transform = 'rotate(0deg)';
         }
       });
     });
