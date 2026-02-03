@@ -117,7 +117,7 @@ export class RealtimeAdminService {
       session: {
         type: 'realtime',
         output_modalities: ['audio'],
-        instructions: `You are an admin assistant for Pat AI. You help users configure their call/SMS handling agent and take actions on their behalf.
+        instructions: `You are an admin assistant for Solo Mobile. You help users configure their call/SMS handling agent and take actions on their behalf.
 
 You can:
 - Update system prompts (use update_system_prompt function)
@@ -165,7 +165,7 @@ CALENDAR BOOKING:
 - Example: "Book a call with Pizza Hut tomorrow at 2pm" → check availability → confirm time → book with title "Call with Pizza Hut"
 - If the user's calendar is not connected, inform them they need to connect Cal.com in Settings first
 
-Be warm, conversational, and helpful. Never expose vendor names like "OpenAI" or "Retell" - use "Pat AI assistant" instead.`,
+Be warm, conversational, and helpful. Never expose vendor names like "OpenAI" or "Retell" - use "your AI assistant" instead.`,
         audio: {
           input: {
             format: {

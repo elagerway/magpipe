@@ -58,7 +58,7 @@ export default class ManageNumbersPage {
 
           <h1 style="margin-bottom: 0.5rem;">My Service Numbers</h1>
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-            <p class="text-muted" style="margin: 0;">Manage your phone numbers for Pat AI</p>
+            <p class="text-muted" style="margin: 0;">Manage your phone numbers</p>
             <button class="btn btn-primary" id="add-number-btn">
               + Add New Number
             </button>
@@ -431,7 +431,7 @@ export default class ManageNumbersPage {
               ${this.formatPhoneNumber(number.phone_number)}
             </div>
             <div style="font-size: 0.75rem; color: var(--text-secondary);">
-              ${number.friendly_name || 'Pat AI - ' + number.user_id?.substring(0, 8)}
+              ${number.friendly_name || 'AI Assistant -' + number.user_id?.substring(0, 8)}
             </div>
             ${isUSRelay && relayForNumber ? `
               <div style="font-size: 0.75rem; color: var(--primary-color); margin-top: 0.25rem;">
@@ -529,7 +529,7 @@ export default class ManageNumbersPage {
             ${this.formatPhoneNumber(number.phone_number)}
           </div>
           <div style="font-size: 0.75rem; color: var(--text-secondary);">
-            ${number.friendly_name || 'Pat AI'}
+            ${number.friendly_name || 'AI Assistant'}
           </div>
         </div>
 
@@ -600,7 +600,7 @@ export default class ManageNumbersPage {
       // If activating, ensure agent is created and phone is registered with Retell
       if (newStatus) {
         successMessage.className = 'alert alert-info';
-        successMessage.textContent = 'Setting up Pat for this number...';
+        successMessage.textContent = 'Setting up AI assistant for this number...';
 
         // Check if user has an agent, create if not
         await this.ensureAgentExists();
@@ -610,7 +610,7 @@ export default class ManageNumbersPage {
       } else {
         // If deactivating, disassociate phone from agent in Retell
         successMessage.className = 'alert alert-info';
-        successMessage.textContent = 'Deactivating Pat for this number...';
+        successMessage.textContent = 'Deactivating AI assistant for this number...';
 
         if (number.retell_phone_id) {
           await this.deactivatePhoneInRetell(number.phone_number);
@@ -739,15 +739,15 @@ export default class ManageNumbersPage {
       },
       body: JSON.stringify({
         agentConfig: {
-          name: 'Pat AI Assistant',
-          prompt: 'You are Pat, a helpful AI assistant answering calls for the user. Be friendly, professional, and helpful. Take messages and provide information as needed.',
+          name: 'AI Assistant',
+          prompt: 'You are a helpful AI assistant answering calls for the user. Be friendly, professional, and helpful. Take messages and provide information as needed.',
         }
       }),
     });
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error('Failed to set up Pat AI assistant');
+      throw new Error('Failed to set up AI assistant');
     }
 
     return await response.json();

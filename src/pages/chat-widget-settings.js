@@ -478,7 +478,6 @@ export default class ChatWidgetSettingsPage {
   getPortalPages() {
     return [
       { path: '/home', name: 'Home' },
-      { path: '/dashboard', name: 'Dashboard' },
       { path: '/agent', name: 'Agent' },
       { path: '/inbox', name: 'Inbox' },
       { path: '/knowledge', name: 'Knowledge' },

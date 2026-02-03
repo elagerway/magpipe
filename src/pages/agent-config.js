@@ -140,7 +140,7 @@ export default class AgentConfigPage {
             <div style="text-align: center; margin-bottom: 0.5rem;">
               <img
                 src="${config.avatar_url}"
-                alt="Pat AI Avatar"
+                alt="AI Assistant Avatar"
                 style="
                   width: 60px;
                   height: 60px;
@@ -154,11 +154,11 @@ export default class AgentConfigPage {
           ` : ''}
 
           <h1 class="text-center" style="margin-bottom: ${this.isInitialSetup ? '0.25rem' : '0.75rem'}; font-size: 1.5rem;">
-            ${this.isInitialSetup ? 'Meet Pat' : 'Agent Configuration'}
+            ${this.isInitialSetup ? 'Meet Your Assistant' : 'Agent Configuration'}
           </h1>
           ${this.isInitialSetup ? `
             <p class="text-center text-muted" style="margin-bottom: 0.75rem; font-size: 0.875rem;">
-              Let's set up your AI assistant. You can customize Pat's behavior and personality.
+              Let's set up your AI assistant. You can customize its behavior and personality.
             </p>
           ` : ''}
 
@@ -343,7 +343,7 @@ export default class AgentConfigPage {
                   Lenient (Basic screening)
                 </option>
               </select>
-              <p class="form-help">How Pat should screen unknown callers</p>
+              <p class="form-help">How your assistant should screen unknown callers</p>
             </div>
 
             <!-- Advanced Settings Toggle -->
@@ -388,7 +388,7 @@ export default class AgentConfigPage {
                   rows="4"
                   placeholder="Instructions for handling inbound calls (when someone calls you)..."
                 >${config?.system_prompt || ''}</textarea>
-                <p class="form-help">How Pat should handle incoming calls from customers</p>
+                <p class="form-help">How your assistant should handle incoming calls from customers</p>
               </div>
 
               <div class="form-group" id="outbound-prompt-group" style="display: none;">
@@ -397,9 +397,9 @@ export default class AgentConfigPage {
                   id="adv-outbound-prompt"
                   class="form-textarea"
                   rows="4"
-                  placeholder="Instructions for making outbound calls (when Pat calls someone on your behalf)..."
+                  placeholder="Instructions for making outbound calls (when calling someone on your behalf)..."
                 >${config?.outbound_system_prompt || ''}</textarea>
-                <p class="form-help">How Pat should behave when calling people on your behalf</p>
+                <p class="form-help">How your assistant should behave when calling people on your behalf</p>
               </div>
 
               <div class="form-group">
@@ -453,7 +453,7 @@ export default class AgentConfigPage {
                   <span>Normal (1.0)</span>
                   <span>Loud (2.0)</span>
                 </div>
-                <p class="form-help">Adjust Pat's voice volume</p>
+                <p class="form-help">Adjust voice volume</p>
               </div>
 
               <div class="form-group">
@@ -1743,7 +1743,7 @@ Always sound approachable, keep things simple, and update the user with a quick 
               },
               body: JSON.stringify({
                 agentConfig: {
-                  name: 'Pat AI Assistant',
+                  name: 'AI Assistant',
                   voice_id: '21m00Tcm4TlvDq8ikWAM', // Rachel voice
                   prompt: defaultPrompt,
                 },
@@ -2137,7 +2137,7 @@ Always sound approachable, keep things simple, and update the user with a quick 
           successMessage.textContent = 'Agent configured successfully! Redirecting...';
 
           setTimeout(() => {
-            navigateTo('/dashboard');
+            navigateTo('/agent');
           }, 1500);
         } else {
           // Update existing config

@@ -1232,7 +1232,7 @@ export default class PhonePage {
             <div style="font-size: 3rem; margin-bottom: 1rem;">🎤</div>
             <h2 style="margin: 0 0 0.5rem 0; font-size: 1.5rem; color: var(--text-primary);">Microphone Access Required</h2>
             <p style="margin: 0; color: var(--text-secondary); line-height: 1.5;">
-              Pat needs access to your microphone to make calls.
+              We need access to your microphone to make calls.
               Your browser will ask for permission.
             </p>
           </div>
@@ -1334,7 +1334,7 @@ export default class PhonePage {
         sipUri,
         sipPassword: userRecord.sip_password,
         wsServer: userRecord.sip_ws_server,
-        displayName: 'Pat AI',
+        displayName: 'AI Assistant',
       });
 
       this.updateSIPStatus('registered');

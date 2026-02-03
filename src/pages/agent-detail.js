@@ -818,7 +818,7 @@ export default class AgentDetailPage {
             ${assignedNumbers.map(num => {
               // Clean up friendly_name - remove "Pat AI - email" format
               let displayName = '';
-              if (num.friendly_name && !num.friendly_name.startsWith('Pat AI')) {
+              if (num.friendly_name && !num.friendly_name.startsWith('AI Assistant')) {
                 displayName = num.friendly_name;
               }
               const label = num.isSipTrunk ? (num.trunkName || displayName || 'SIP Trunk') : displayName;
@@ -2301,7 +2301,7 @@ export default class AgentDetailPage {
           <div class="number-list" style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 300px; overflow-y: auto;">
             ${availableNumbers.map(num => {
               let displayName = '';
-              if (num.friendly_name && !num.friendly_name.startsWith('Pat AI')) {
+              if (num.friendly_name && !num.friendly_name.startsWith('AI Assistant')) {
                 displayName = num.friendly_name;
               }
               const label = num.isSipTrunk ? (num.trunkName || displayName || 'SIP Trunk') : displayName;
@@ -2507,7 +2507,7 @@ export default class AgentDetailPage {
    * Generate inbound prompt from identity fields
    */
   generateInboundPrompt() {
-    const agentName = this.agent.name || 'Pat';
+    const agentName = this.agent.name || 'Assistant';
     const organization = this.agent.organization_name || '';
     const owner = this.agent.owner_name || '';
     const role = this.agent.agent_role || '';
@@ -2551,7 +2551,7 @@ export default class AgentDetailPage {
    * Generate outbound prompt from identity fields
    */
   generateOutboundPrompt() {
-    const agentName = this.agent.name || 'Pat';
+    const agentName = this.agent.name || 'Assistant';
     const organization = this.agent.organization_name || '';
     const owner = this.agent.owner_name || '';
     const role = this.agent.agent_role || '';
