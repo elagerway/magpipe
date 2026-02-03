@@ -52,8 +52,32 @@ export default class CustomPlanPage {
 
         <!-- Main Content -->
         <main class="custom-plan-main">
-          <div class="custom-plan-container">
+          <div class="custom-plan-layout">
+            <!-- Testimonial Side -->
+            <div class="testimonial-side">
+              <div class="testimonial-bg"></div>
+              <div class="testimonial-content">
+                <div class="testimonial-bubble">
+                  <div class="quote-mark">"</div>
+                  <p class="testimonial-text">
+                    We deployed Solo Mobile to improve how we talk to patients after hours. Traditionally we would ask them to leave a voice mail. Problem with that is, one, many people these days don't want to leave a voice mail. So they hang up.
+                  </p>
+                  <p class="testimonial-text">
+                    The platform and the technology work really well. I've listened to a lot of our calls and Solo Mobile does an incredible job of helping the caller thru the call…and getting the information we require.
+                  </p>
+                  <p class="testimonial-text">
+                    The result: Many more people are completing calls after hours - instead of abandoning. And we are extracting the info we need to take the right actions the next morning. We couldn't be more pleased.
+                  </p>
+                  <div class="testimonial-author">
+                    <span class="author-name">Larry Lisser</span>
+                    <span class="author-title">CEO - HelloMD</span>
+                  </div>
+                </div>
+              </div>
+            </div>
 
+            <!-- Form Side -->
+            <div class="form-side">
             <form id="custom-plan-form" class="custom-plan-form">
               <div id="form-error" class="form-error-banner hidden"></div>
               <div id="form-success" class="form-success-banner hidden"></div>
@@ -176,6 +200,7 @@ export default class CustomPlanPage {
                 We typically respond within 1 business day.
               </p>
             </form>
+            </div>
           </div>
         </main>
 
@@ -254,7 +279,6 @@ export default class CustomPlanPage {
           position: relative;
           text-align: center;
           padding: 4rem 1.5rem 3rem;
-          margin-bottom: 20px;
           background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
           overflow: hidden;
         }
@@ -340,15 +364,117 @@ export default class CustomPlanPage {
         /* Main content */
         .custom-plan-main {
           flex: 1;
-          padding: 2rem 1.5rem;
-          margin-top: -1.5rem;
           position: relative;
           z-index: 1;
         }
 
-        .custom-plan-container {
-          max-width: 600px;
-          margin: 0 auto;
+        .custom-plan-layout {
+          display: flex;
+          min-height: 600px;
+        }
+
+        /* Testimonial Side */
+        .testimonial-side {
+          flex: 1;
+          position: relative;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 3rem;
+          overflow: hidden;
+        }
+
+        .testimonial-bg {
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 40%, #a855f7 70%, #d946ef 100%);
+        }
+
+        .testimonial-bg::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background-image:
+            radial-gradient(circle at 20% 80%, rgba(255,255,255,0.15) 0%, transparent 50%),
+            radial-gradient(circle at 80% 20%, rgba(255,255,255,0.1) 0%, transparent 40%),
+            radial-gradient(circle at 40% 40%, rgba(0,0,0,0.1) 0%, transparent 30%);
+        }
+
+        .testimonial-bg::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+        }
+
+        .testimonial-content {
+          position: relative;
+          z-index: 1;
+          max-width: 500px;
+        }
+
+        .testimonial-bubble {
+          background: rgba(255, 255, 255, 0.15);
+          backdrop-filter: blur(10px);
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          border-radius: 1.5rem;
+          padding: 2.5rem;
+          position: relative;
+        }
+
+        .quote-mark {
+          font-size: 4rem;
+          font-family: Georgia, serif;
+          color: rgba(255, 255, 255, 0.3);
+          line-height: 1;
+          position: absolute;
+          top: 1rem;
+          left: 1.5rem;
+        }
+
+        .testimonial-text {
+          color: #ffffff;
+          font-size: 1rem;
+          line-height: 1.7;
+          margin: 0 0 1rem;
+          position: relative;
+        }
+
+        .testimonial-text:first-of-type {
+          padding-top: 1.5rem;
+        }
+
+        .testimonial-text:last-of-type {
+          margin-bottom: 1.5rem;
+        }
+
+        .testimonial-author {
+          display: flex;
+          flex-direction: column;
+          gap: 0.25rem;
+          padding-top: 1rem;
+          border-top: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .author-name {
+          color: #ffffff;
+          font-weight: 600;
+          font-size: 1rem;
+        }
+
+        .author-title {
+          color: rgba(255, 255, 255, 0.7);
+          font-size: 0.875rem;
+        }
+
+        /* Form Side */
+        .form-side {
+          flex: 1;
+          padding: 3rem;
+          background: var(--bg-secondary);
+          display: flex;
+          align-items: flex-start;
+          justify-content: center;
         }
 
         /* Form */
@@ -357,6 +483,8 @@ export default class CustomPlanPage {
           border-radius: 1rem;
           padding: 2rem;
           box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+          width: 100%;
+          max-width: 500px;
         }
 
         .form-row {
@@ -466,6 +594,33 @@ export default class CustomPlanPage {
         ${getPublicFooterStyles()}
 
         /* Mobile responsive */
+        @media (max-width: 1024px) {
+          .custom-plan-layout {
+            flex-direction: column;
+          }
+
+          .testimonial-side {
+            padding: 2rem 1.5rem;
+            min-height: auto;
+          }
+
+          .testimonial-bubble {
+            padding: 2rem;
+          }
+
+          .testimonial-text {
+            font-size: 0.9375rem;
+          }
+
+          .form-side {
+            padding: 2rem 1.5rem;
+          }
+
+          .custom-plan-form {
+            max-width: 100%;
+          }
+        }
+
         @media (max-width: 600px) {
           .form-row {
             grid-template-columns: 1fr;
@@ -495,6 +650,24 @@ export default class CustomPlanPage {
           .hero-orb-2 {
             width: 150px;
             height: 150px;
+          }
+
+          .testimonial-side {
+            padding: 1.5rem;
+          }
+
+          .testimonial-bubble {
+            padding: 1.5rem;
+          }
+
+          .quote-mark {
+            font-size: 3rem;
+            top: 0.5rem;
+            left: 1rem;
+          }
+
+          .testimonial-text {
+            font-size: 0.875rem;
           }
         }
       </style>

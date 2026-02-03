@@ -300,7 +300,7 @@ export default class HomePage {
           align-items: center;
           justify-content: center;
           text-align: center;
-          padding: 8rem 1.5rem 4rem;
+          padding: 12rem 1.5rem 20rem;
           background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
           overflow: hidden;
         }
@@ -314,33 +314,93 @@ export default class HomePage {
         .hero-gradient-orb {
           position: absolute;
           border-radius: 50%;
-          filter: blur(100px);
-          opacity: 0.6;
+          filter: blur(140px);
+          opacity: 0.5;
+          will-change: transform;
+          --mouse-x: 0px;
+          --mouse-y: 0px;
         }
 
         .hero-orb-1 {
-          width: 500px;
-          height: 500px;
-          background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-          top: -200px;
-          left: -150px;
+          width: 900px;
+          height: 900px;
+          background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%);
+          top: -350px;
+          left: -250px;
+          animation: float1 20s ease-in-out infinite;
         }
 
         .hero-orb-2 {
-          width: 400px;
-          height: 400px;
-          background: linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%);
-          bottom: -150px;
-          right: -100px;
+          width: 800px;
+          height: 800px;
+          background: linear-gradient(135deg, #06b6d4 0%, #3b82f6 50%, #6366f1 100%);
+          bottom: -300px;
+          right: -200px;
+          animation: float2 25s ease-in-out infinite;
         }
 
         .hero-orb-3 {
-          width: 300px;
-          height: 300px;
-          background: linear-gradient(135deg, #10b981 0%, #06b6d4 100%);
-          top: 30%;
-          right: 10%;
-          opacity: 0.3;
+          width: 600px;
+          height: 600px;
+          background: linear-gradient(135deg, #10b981 0%, #06b6d4 50%, #3b82f6 100%);
+          top: 15%;
+          right: 0%;
+          opacity: 0.6;
+          animation: float3 18s ease-in-out infinite;
+        }
+
+        @keyframes float1 {
+          0% {
+            transform: translate(var(--mouse-x), var(--mouse-y));
+          }
+          25% {
+            transform: translate(calc(300px + var(--mouse-x)), calc(200px + var(--mouse-y)));
+          }
+          50% {
+            transform: translate(calc(500px + var(--mouse-x)), calc(400px + var(--mouse-y)));
+          }
+          75% {
+            transform: translate(calc(250px + var(--mouse-x)), calc(200px + var(--mouse-y)));
+          }
+          100% {
+            transform: translate(var(--mouse-x), var(--mouse-y));
+          }
+        }
+
+        @keyframes float2 {
+          0% {
+            transform: translate(var(--mouse-x), var(--mouse-y));
+          }
+          25% {
+            transform: translate(calc(-300px + var(--mouse-x)), calc(-200px + var(--mouse-y)));
+          }
+          50% {
+            transform: translate(calc(-500px + var(--mouse-x)), calc(-350px + var(--mouse-y)));
+          }
+          75% {
+            transform: translate(calc(-250px + var(--mouse-x)), calc(-150px + var(--mouse-y)));
+          }
+          100% {
+            transform: translate(var(--mouse-x), var(--mouse-y));
+          }
+        }
+
+        @keyframes float3 {
+          0% {
+            transform: translate(var(--mouse-x), var(--mouse-y));
+          }
+          25% {
+            transform: translate(calc(-200px + var(--mouse-x)), calc(-150px + var(--mouse-y)));
+          }
+          50% {
+            transform: translate(calc(-350px + var(--mouse-x)), calc(100px + var(--mouse-y)));
+          }
+          75% {
+            transform: translate(calc(-150px + var(--mouse-x)), calc(200px + var(--mouse-y)));
+          }
+          100% {
+            transform: translate(var(--mouse-x), var(--mouse-y));
+          }
         }
 
         .hero-grid {
@@ -771,17 +831,23 @@ export default class HomePage {
           }
 
           .hero-orb-1 {
-            width: 300px;
-            height: 300px;
+            width: 500px;
+            height: 500px;
+            top: -200px;
+            left: -200px;
           }
 
           .hero-orb-2 {
-            width: 250px;
-            height: 250px;
+            width: 450px;
+            height: 450px;
+            bottom: -200px;
+            right: -150px;
           }
 
           .hero-orb-3 {
-            display: none;
+            width: 350px;
+            height: 350px;
+            opacity: 0.4;
           }
 
           .features-header h2,
@@ -833,6 +899,30 @@ export default class HomePage {
         if (e.target === iosModal) {
           iosModal.classList.remove('show');
         }
+      });
+    }
+
+    // Mouse parallax effect for hero orbs
+    const heroSection = document.querySelector('.landing-hero');
+    const orb1 = document.querySelector('.hero-orb-1');
+    const orb2 = document.querySelector('.hero-orb-2');
+    const orb3 = document.querySelector('.hero-orb-3');
+
+    if (heroSection && orb1 && orb2 && orb3) {
+      document.addEventListener('mousemove', (e) => {
+        const x = (e.clientX / window.innerWidth - 0.5) * 2;
+        const y = (e.clientY / window.innerHeight - 0.5) * 2;
+
+        // Each orb moves at different speeds for depth effect - dramatic movement
+        // Using CSS custom properties so animation and mouse interaction combine
+        orb1.style.setProperty('--mouse-x', `${x * 120}px`);
+        orb1.style.setProperty('--mouse-y', `${y * 80}px`);
+
+        orb2.style.setProperty('--mouse-x', `${x * -100}px`);
+        orb2.style.setProperty('--mouse-y', `${y * -70}px`);
+
+        orb3.style.setProperty('--mouse-x', `${x * 80}px`);
+        orb3.style.setProperty('--mouse-y', `${y * -60}px`);
       });
     }
   }

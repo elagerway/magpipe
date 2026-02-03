@@ -3,6 +3,7 @@
  */
 
 import { User } from '../models/User.js';
+import { renderPublicFooter, getPublicFooterStyles } from '../components/PublicFooter.js';
 
 export default class SignupPage {
   async render() {
@@ -164,6 +165,9 @@ export default class SignupPage {
             </div>
           </div>
         </main>
+
+        <!-- Footer -->
+        ${renderPublicFooter()}
       </div>
 
       <style>
@@ -173,6 +177,9 @@ export default class SignupPage {
           display: flex;
           flex-direction: column;
         }
+
+        /* Footer */
+        ${getPublicFooterStyles()}
 
         /* Header */
         .signup-header {
@@ -243,15 +250,35 @@ export default class SignupPage {
         .signup-branding {
           display: none;
           flex: 1;
-          background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+          background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 40%, #a855f7 70%, #d946ef 100%);
           padding: 2rem;
           align-items: center;
           justify-content: center;
+          position: relative;
+          overflow: hidden;
+        }
+
+        .signup-branding::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background-image:
+            radial-gradient(circle at 20% 80%, rgba(255,255,255,0.15) 0%, transparent 50%),
+            radial-gradient(circle at 80% 20%, rgba(255,255,255,0.1) 0%, transparent 40%);
+        }
+
+        .signup-branding::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
         }
 
         .branding-content {
           max-width: 400px;
           color: white;
+          position: relative;
+          z-index: 1;
         }
 
         .branding-content h2 {
@@ -465,6 +492,13 @@ export default class SignupPage {
         .legal-links .separator {
           color: var(--text-secondary);
           margin: 0 0.5rem;
+        }
+
+        /* Hide legal links in card on desktop (shown in footer) */
+        @media (min-width: 1024px) {
+          .legal-links {
+            display: none;
+          }
         }
 
         /* Mobile */

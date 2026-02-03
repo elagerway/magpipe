@@ -175,52 +175,86 @@ export default class PricingPage {
         <!-- Interactive Calculator -->
         <section class="pricing-calculator">
           <h2>Estimate Your Cost</h2>
-          <p class="calculator-subtitle">Adjust the sliders to see your estimated monthly cost</p>
+          <p class="calculator-subtitle">Adjust your usage, LLM, voice engine, and telephony to see real-time pricing</p>
 
           <div class="calculator-container">
-            <div class="calculator-slider-group">
-              <div class="slider-header">
-                <label>Voice Minutes per Month</label>
-                <span class="slider-value" id="minutes-value">500</span>
+            <!-- Left side: Controls -->
+            <div class="calculator-controls">
+              <div class="calculator-slider-group">
+                <div class="slider-header">
+                  <label>Minutes per Month</label>
+                  <span class="slider-value" id="minutes-value">500</span>
+                </div>
+                <input type="range" id="minutes-slider" min="0" max="10000" value="500" step="50">
+                <div class="slider-range">
+                  <span>0</span>
+                  <span>10,000</span>
+                </div>
               </div>
-              <input type="range" id="minutes-slider" min="0" max="10000" value="500" step="50">
-              <div class="slider-range">
-                <span>0</span>
-                <span>10,000</span>
+
+              <div class="calculator-select-group">
+                <label>LLM Model</label>
+                <select id="llm-select">
+                  <option value="0.025">GPT-5 ($0.025/min)</option>
+                  <option value="0.015">GPT-5 mini ($0.015/min)</option>
+                  <option value="0.008">GPT-5 nano ($0.008/min)</option>
+                  <option value="0.003" selected>GPT-4o mini ($0.003/min)</option>
+                  <option value="0.01">GPT-4o ($0.01/min)</option>
+                  <option value="0.012">GPT-4.1 ($0.012/min)</option>
+                  <option value="0.008">GPT-4.1 mini ($0.008/min)</option>
+                  <option value="0.005">GPT-4.1 nano ($0.005/min)</option>
+                  <option value="0.015">GPT-4 Turbo ($0.015/min)</option>
+                </select>
+              </div>
+
+              <div class="calculator-select-group">
+                <label>Voice Engine</label>
+                <select id="voice-select">
+                  <option value="0.03" selected>ElevenLabs ($0.03/min)</option>
+                  <option value="0.025">Cartesia ($0.025/min)</option>
+                  <option value="0.02">OpenAI TTS ($0.02/min)</option>
+                  <option value="0.015">Deepgram ($0.015/min)</option>
+                </select>
+              </div>
+
+              <div class="calculator-select-group">
+                <label>Telephony</label>
+                <select id="telephony-select">
+                  <option value="0.015" selected>Solo Mobile Telephony ($0.015/min)</option>
+                  <option value="0.02">Twilio ($0.02/min)</option>
+                  <option value="0">Bring your own ($0.00/min)</option>
+                </select>
               </div>
             </div>
 
-            <div class="calculator-slider-group">
-              <div class="slider-header">
-                <label>SMS Messages per Month</label>
-                <span class="slider-value" id="messages-value">1,000</span>
-              </div>
-              <input type="range" id="messages-slider" min="0" max="50000" value="1000" step="100">
-              <div class="slider-range">
-                <span>0</span>
-                <span>50,000</span>
-              </div>
-            </div>
-
+            <!-- Right side: Cost breakdown -->
             <div class="calculator-result">
-              <div class="result-breakdown">
-                <div class="breakdown-item">
-                  <span>Voice cost</span>
-                  <span id="voice-cost">$35.00</span>
-                </div>
-                <div class="breakdown-item">
-                  <span>SMS cost</span>
-                  <span id="sms-cost">$1.00</span>
-                </div>
-                <div class="breakdown-item highlight">
-                  <span>Free credits</span>
-                  <span id="free-credits">-$20.00</span>
+              <div class="cost-per-minute">
+                <h3>Cost Per Minute</h3>
+                <div class="result-breakdown">
+                  <div class="breakdown-item">
+                    <span>LLM</span>
+                    <span id="llm-cost">$0.005</span>
+                  </div>
+                  <div class="breakdown-item">
+                    <span>Voice</span>
+                    <span id="voice-cost">$0.030</span>
+                  </div>
+                  <div class="breakdown-item">
+                    <span>Telephony</span>
+                    <span id="telephony-cost">$0.015</span>
+                  </div>
+                  <div class="breakdown-item total-per-min">
+                    <span>Total per minute</span>
+                    <span id="per-minute-cost">$0.050</span>
+                  </div>
                 </div>
               </div>
               <div class="result-total">
                 <span>Estimated Monthly Cost</span>
-                <span class="total-amount" id="total-cost">$16.00</span>
+                <span class="total-amount" id="total-cost">$25.00</span>
               </div>
+              <p class="calculator-note">Over $2,000/mo? <a href="/custom-plan" onclick="event.preventDefault(); navigateTo('/custom-plan');">Talk to us for enterprise pricing</a></p>
             </div>
           </div>
         </section>
@@ -279,8 +313,8 @@ export default class PricingPage {
               </thead>
               <tbody>
                 <tr>
-                  <td>Monthly free credits</td>
-                  <td>$20</td>
+                  <td>Free credits on signup</td>
+                  <td>$20 (one-time)</td>
                   <td>Custom</td>
                 </tr>
                 <tr>
@@ -661,7 +695,7 @@ export default class PricingPage {
 
         /* Calculator */
         .pricing-calculator {
-          max-width: 700px;
+          max-width: 900px;
           margin: 0 auto;
           padding: 4rem 1.5rem;
           text-align: center;
@@ -682,10 +716,20 @@ export default class PricingPage {
           background: var(--bg-secondary);
           border-radius: 1rem;
           padding: 2rem;
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 2rem;
+          text-align: left;
+        }
+
+        .calculator-controls {
+          display: flex;
+          flex-direction: column;
+          gap: 1.5rem;
         }
 
         .calculator-slider-group {
-          margin-bottom: 2rem;
+          margin-bottom: 0;
         }
 
         .slider-header {
@@ -728,6 +772,35 @@ export default class PricingPage {
           transition: transform 0.15s, box-shadow 0.15s;
         }
 
+        .calculator-select-group {
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+        }
+
+        .calculator-select-group label {
+          font-weight: 500;
+          color: var(--text-primary);
+          font-size: 0.9rem;
+        }
+
+        .calculator-select-group select {
+          width: 100%;
+          padding: 0.75rem 1rem;
+          font-size: 0.9rem;
+          border: 1px solid var(--border-color);
+          border-radius: 0.5rem;
+          background: var(--bg-primary);
+          color: var(--text-primary);
+          cursor: pointer;
+          transition: border-color 0.15s;
+        }
+
+        .calculator-select-group select:focus {
+          outline: none;
+          border-color: var(--primary-color);
+        }
+
         .calculator-slider-group input[type="range"]::-webkit-slider-thumb:hover {
           transform: scale(1.15);
           box-shadow: 0 4px 12px rgba(16, 185, 129, 0.5);
@@ -755,7 +828,16 @@ export default class PricingPage {
           background: var(--bg-primary);
           border-radius: 0.75rem;
           padding: 1.5rem;
-          margin-top: 1rem;
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+        }
+
+        .cost-per-minute h3 {
+          font-size: 1rem;
+          font-weight: 600;
+          margin-bottom: 1rem;
+          color: var(--text-primary);
         }
 
         .result-breakdown {
@@ -776,10 +858,20 @@ export default class PricingPage {
           color: var(--success-color);
         }
 
+        .breakdown-item.total-per-min {
+          font-weight: 600;
+          color: var(--text-primary);
+          padding-top: 0.75rem;
+          margin-top: 0.5rem;
+          border-top: 1px solid var(--border-color);
+        }
+
         .result-total {
           display: flex;
           justify-content: space-between;
           align-items: center;
+          padding-top: 1rem;
+          margin-top: auto;
         }
 
         .result-total span:first-child {
@@ -791,6 +883,22 @@ export default class PricingPage {
           font-size: 2rem;
           font-weight: 700;
           color: var(--primary-color);
+        }
+
+        .calculator-note {
+          font-size: 0.8rem;
+          color: var(--text-secondary);
+          margin-top: 1rem;
+          text-align: center;
+        }
+
+        .calculator-note a {
+          color: var(--primary-color);
+          text-decoration: none;
+        }
+
+        .calculator-note a:hover {
+          text-decoration: underline;
         }
 
         /* Pricing Breakdown */
@@ -912,8 +1020,20 @@ export default class PricingPage {
           border-radius: 0 0.5rem 0 0;
         }
 
+        .comparison-table th:not(:first-child),
         .comparison-table td:not(:first-child) {
           text-align: center;
+        }
+
+        .comparison-table th:first-child,
+        .comparison-table td:first-child {
+          text-align: left;
+          width: 40%;
+        }
+
+        .comparison-table th:not(:first-child),
+        .comparison-table td:not(:first-child) {
+          width: 30%;
         }
 
         .feature-included svg {
@@ -1144,6 +1264,11 @@ export default class PricingPage {
 
           .calculator-container {
             padding: 1.5rem;
+            grid-template-columns: 1fr;
+          }
+
+          .calculator-result {
+            margin-top: 1rem;
           }
 
           .total-amount {
@@ -1211,20 +1336,6 @@ export default class PricingPage {
     `).join('');
   }
 
-  calculateCost(minutes, messages) {
-    const voiceCost = minutes * this.voiceRate;
-    const messageCost = messages * this.messageRate;
-    const totalBeforeCredits = voiceCost + messageCost;
-    const finalCost = Math.max(0, totalBeforeCredits - this.freeCredits);
-    return {
-      voiceCost,
-      messageCost,
-      totalBeforeCredits,
-      finalCost,
-      creditsApplied: Math.min(this.freeCredits, totalBeforeCredits)
-    };
-  }
-
   formatNumber(num) {
     return num.toLocaleString();
   }
@@ -1233,40 +1344,59 @@ export default class PricingPage {
     return `$${amount.toFixed(2)}`;
   }
 
+  formatCostPerMin(amount) {
+    return `$${amount.toFixed(3)}`;
+  }
+
   updateCalculator() {
     const minutesSlider = document.getElementById('minutes-slider');
-    const messagesSlider = document.getElementById('messages-slider');
+    const llmSelect = document.getElementById('llm-select');
+    const voiceSelect = document.getElementById('voice-select');
+    const telephonySelect = document.getElementById('telephony-select');
 
-    if (!minutesSlider || !messagesSlider) return;
+    if (!minutesSlider || !llmSelect || !voiceSelect || !telephonySelect) return;
 
     const minutes = parseInt(minutesSlider.value);
-    const messages = parseInt(messagesSlider.value);
+    const llmRate = parseFloat(llmSelect.value);
+    const voiceRate = parseFloat(voiceSelect.value);
+    const telephonyRate = parseFloat(telephonySelect.value);
+
+    // Calculate cost per minute
+    const totalPerMinute = llmRate + voiceRate + telephonyRate;
+    const totalMonthlyCost = minutes * totalPerMinute;
 
     // Update display values
     document.getElementById('minutes-value').textContent = this.formatNumber(minutes);
-    document.getElementById('messages-value').textContent = this.formatNumber(messages);
-
-    // Calculate costs
-    const costs = this.calculateCost(minutes, messages);
 
     // Update cost breakdown
-    document.getElementById('voice-cost').textContent = this.formatCurrency(costs.voiceCost);
-    document.getElementById('sms-cost').textContent = this.formatCurrency(costs.messageCost);
-    document.getElementById('free-credits').textContent = `-${this.formatCurrency(costs.creditsApplied)}`;
-    document.getElementById('total-cost').textContent = this.formatCurrency(costs.finalCost);
+    document.getElementById('llm-cost').textContent = this.formatCostPerMin(llmRate);
+    document.getElementById('voice-cost').textContent = this.formatCostPerMin(voiceRate);
+    document.getElementById('telephony-cost').textContent = this.formatCostPerMin(telephonyRate);
+    document.getElementById('per-minute-cost').textContent = this.formatCostPerMin(totalPerMinute);
+    document.getElementById('total-cost').textContent = this.formatCurrency(totalMonthlyCost);
   }
 
   attachEventListeners() {
-    // Calculator sliders
+    // Calculator controls
     const minutesSlider = document.getElementById('minutes-slider');
-    const messagesSlider = document.getElementById('messages-slider');
+    const llmSelect = document.getElementById('llm-select');
+    const voiceSelect = document.getElementById('voice-select');
+    const telephonySelect = document.getElementById('telephony-select');
 
     if (minutesSlider) {
       minutesSlider.addEventListener('input', () => this.updateCalculator());
     }
 
-    if (messagesSlider) {
-      messagesSlider.addEventListener('input', () => this.updateCalculator());
+    if (llmSelect) {
+      llmSelect.addEventListener('change', () => this.updateCalculator());
+    }
+
+    if (voiceSelect) {
+      voiceSelect.addEventListener('change', () => this.updateCalculator());
+    }
+
+    if (telephonySelect) {
+      telephonySelect.addEventListener('change', () => this.updateCalculator());
     }
 
     // Initialize calculator
