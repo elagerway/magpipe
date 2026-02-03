@@ -26,10 +26,13 @@ export class Router {
     this.addRoute('/forgot-password', () => import('./pages/forgot-password.js'), false);
     this.addRoute('/reset-password', () => import('./pages/reset-password.js'), false);
     this.addRoute('/impersonate', () => import('./pages/impersonate.js'), false);
+    this.addRoute('/pricing', () => import('./pages/pricing.js'), false);
+    this.addRoute('/custom-plan', () => import('./pages/custom-plan.js'), false);
+    this.addRoute('/privacy', () => import('./pages/privacy.js'), false);
+    this.addRoute('/terms', () => import('./pages/terms.js'), false);
 
     // Protected routes
     this.addRoute('/agent', () => import('./pages/agent.js'), true);
-    this.addRoute('/dashboard', () => import('./pages/dashboard.js'), true);
     this.addRoute('/inbox', () => import('./pages/inbox.js'), true);
     this.addRoute('/phone', () => import('./pages/phone.js'), true);
     this.addRoute('/verify-phone', () => import('./pages/verify-phone.js'), true);
@@ -189,8 +192,8 @@ export class Router {
           .single();
 
         if (!profile || !route.requiredRoles.includes(profile.role)) {
-          // User doesn't have required role, redirect to dashboard
-          this.navigate('/dashboard', true);
+          // User doesn't have required role, redirect to agent
+          this.navigate('/agent', true);
           return;
         }
       }
