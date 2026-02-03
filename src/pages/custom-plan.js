@@ -31,30 +31,17 @@ export default class CustomPlanPage {
           </div>
         </header>
 
-        <!-- Hero Header -->
-        <section class="custom-plan-hero">
-          <div class="hero-decoration">
-            <div class="hero-gradient-orb hero-orb-1"></div>
-            <div class="hero-gradient-orb hero-orb-2"></div>
-            <div class="hero-grid"></div>
-          </div>
-          <div class="hero-content">
-            <a href="/pricing" class="back-link" onclick="event.preventDefault(); navigateTo('/pricing');">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="15 18 9 12 15 6"></polyline>
-              </svg>
-              Back to Pricing
-            </a>
-            <h1>Contact Sales</h1>
-            <p>Tell us about your needs and we'll create a custom plan for your business.</p>
-          </div>
-        </section>
-
         <!-- Main Content -->
         <main class="custom-plan-main">
           <div class="custom-plan-layout">
             <!-- Testimonial Side -->
             <div class="testimonial-side">
+              <!-- Page Header -->
+              <div class="custom-plan-header">
+                <h1>Contact Sales</h1>
+                <p class="header-subtitle">We can show you how to deploy voice AI and text agents at scale.</p>
+                <p class="header-support">Need support? Email <a href="mailto:support@solomobile.ai">support@solomobile.ai</a></p>
+              </div>
               <div class="testimonial-bg"></div>
               <div class="testimonial-content">
                 <div class="testimonial-bubble">
@@ -274,103 +261,55 @@ export default class CustomPlanPage {
           background: var(--bg-secondary);
         }
 
-        /* Hero Header */
-        .custom-plan-hero {
-          position: relative;
-          text-align: center;
-          padding: 4rem 1.5rem 3rem;
-          background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
-          overflow: hidden;
-        }
-
-        .hero-decoration {
-          position: absolute;
-          inset: 0;
-          pointer-events: none;
-        }
-
-        .hero-gradient-orb {
-          position: absolute;
-          border-radius: 50%;
-          filter: blur(80px);
-          opacity: 0.5;
-        }
-
-        .hero-orb-1 {
-          width: 300px;
-          height: 300px;
-          background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-          top: -100px;
-          left: -50px;
-        }
-
-        .hero-orb-2 {
-          width: 200px;
-          height: 200px;
-          background: linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%);
-          bottom: -50px;
-          right: -30px;
-        }
-
-        .hero-grid {
-          position: absolute;
-          inset: 0;
-          background-image:
-            linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
-          background-size: 60px 60px;
-        }
-
-        .hero-content {
-          position: relative;
-          z-index: 1;
-        }
-
-        .back-link {
-          display: inline-flex;
-          align-items: center;
-          gap: 0.25rem;
-          color: rgba(255, 255, 255, 0.7);
-          text-decoration: none;
-          font-size: 0.875rem;
-          margin-bottom: 1.5rem;
-          transition: color 0.15s;
-        }
-
-        .back-link:hover {
-          color: #ffffff;
-        }
-
-        .back-link svg {
-          width: 18px;
-          height: 18px;
-        }
-
-        .custom-plan-hero h1 {
-          font-size: 2.5rem;
-          font-weight: 700;
-          margin-bottom: 0.75rem;
-          color: #ffffff;
-          letter-spacing: -0.02em;
-        }
-
-        .custom-plan-hero p {
-          color: rgba(255, 255, 255, 0.7);
-          font-size: 1.1rem;
-          max-width: 500px;
-          margin: 0 auto;
-        }
-
         /* Main content */
         .custom-plan-main {
           flex: 1;
           position: relative;
           z-index: 1;
+          padding: 60px 20px 20px;
+        }
+
+        /* Page Header */
+        .custom-plan-header {
+          position: relative;
+          z-index: 1;
+          margin-bottom: 2rem;
+        }
+
+        .custom-plan-header h1 {
+          font-size: 1.75rem;
+          font-weight: 700;
+          color: #ffffff;
+          margin-bottom: 0.5rem;
+        }
+
+        .header-subtitle {
+          font-size: 1rem;
+          color: rgba(255, 255, 255, 0.85);
+          margin-bottom: 0.5rem;
+        }
+
+        .header-support {
+          font-size: 0.875rem;
+          color: rgba(255, 255, 255, 0.7);
+        }
+
+        .header-support a {
+          color: #ffffff;
+          text-decoration: underline;
+        }
+
+        .header-support a:hover {
+          color: rgba(255, 255, 255, 0.9);
         }
 
         .custom-plan-layout {
           display: flex;
           min-height: 600px;
+          border-radius: 1rem 1rem 1rem 1rem;
+          overflow: hidden;
+          max-width: 1200px;
+          margin: 0 auto;
         }
 
         /* Testimonial Side */
@@ -378,8 +317,8 @@ export default class CustomPlanPage {
           flex: 1;
           position: relative;
           display: flex;
-          align-items: center;
-          justify-content: center;
+          flex-direction: column;
+          justify-content: flex-start;
           padding: 3rem;
           overflow: hidden;
         }
@@ -475,6 +414,9 @@ export default class CustomPlanPage {
           display: flex;
           align-items: flex-start;
           justify-content: center;
+          border: 1px solid var(--border-color);
+          border-left: none;
+          border-radius: 0 1rem 1rem 0;
         }
 
         /* Form */
@@ -482,7 +424,6 @@ export default class CustomPlanPage {
           background: var(--bg-primary);
           border-radius: 1rem;
           padding: 2rem;
-          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
           width: 100%;
           max-width: 500px;
         }
@@ -628,28 +569,6 @@ export default class CustomPlanPage {
 
           .custom-plan-form {
             padding: 1.5rem;
-          }
-
-          .custom-plan-hero {
-            padding: 3rem 1.5rem 2rem;
-          }
-
-          .custom-plan-hero h1 {
-            font-size: 1.75rem;
-          }
-
-          .custom-plan-hero p {
-            font-size: 1rem;
-          }
-
-          .hero-orb-1 {
-            width: 200px;
-            height: 200px;
-          }
-
-          .hero-orb-2 {
-            width: 150px;
-            height: 150px;
           }
 
           .testimonial-side {
