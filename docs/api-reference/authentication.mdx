@@ -1,17 +1,17 @@
 ---
 title: Authentication
-description: "How to authenticate with the Solo Mobile API"
+description: "How to authenticate with the Magpipe API"
 ---
 
 ## Overview
 
-Solo Mobile uses Bearer token authentication. You'll need to include your access token in the `Authorization` header of all API requests.
+Magpipe uses Bearer token authentication. You'll need to include your access token in the `Authorization` header of all API requests.
 
 ## Getting Your Access Token
 
 ### From the Dashboard
 
-1. Log in to [solomobile.ai](https://solomobile.ai)
+1. Log in to [magpipe.ai](https://magpipe.ai)
 2. Go to **Settings** → **API**
 3. Click **Generate Token**
 4. Copy and securely store your token
@@ -87,7 +87,7 @@ The token will immediately stop working.
   <Accordion title="Use environment variables">
     Store tokens in environment variables, not in code.
     ```bash
-    export SOLO_API_TOKEN="your-token"
+    export MAGPIPE_API_TOKEN="your-token"
     ```
   </Accordion>
   <Accordion title="Rotate tokens regularly">

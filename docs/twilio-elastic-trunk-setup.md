@@ -20,7 +20,7 @@ When someone calls your Twilio number, Twilio forwards the call via SIP to Pat's
 
 ## Step 1: Create an External Trunk in Pat
 
-1. Log in to Pat at https://solomobile.ai
+1. Log in to Pat at https://magpipe.ai
 2. Go to **Settings**
 3. Scroll down to **External SIP Trunks**
 4. Click **Add Trunk**

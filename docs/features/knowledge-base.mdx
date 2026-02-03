@@ -11,7 +11,7 @@ The Knowledge Base is your agent's memory. It stores information about your busi
 
 ### Vector Search Technology
 
-Solo Mobile uses pgvector for semantic search:
+Magpipe uses pgvector for semantic search:
 
 1. **Content Ingestion**
    - You add a URL or document
@@ -189,7 +189,7 @@ Deleting a source removes all associated content immediately. Your agent will no
 
 ### How Sync Works
 
-- At the scheduled interval, Solo Mobile re-fetches your URL
+- At the scheduled interval, Magpipe re-fetches your URL
 - Content is compared to existing version
 - If changed, new chunks are generated
 - Old chunks are replaced atomically

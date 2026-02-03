@@ -5,7 +5,7 @@ description: "Provision, manage, and configure phone numbers for your AI agents"
 
 ## Overview
 
-Phone numbers are the gateway for your AI agents to communicate with the world. Solo Mobile supports provisioning new numbers, bringing your own carrier via SIP trunks, and managing multiple numbers across your organization.
+Phone numbers are the gateway for your AI agents to communicate with the world. Magpipe supports provisioning new numbers, bringing your own carrier via SIP trunks, and managing multiple numbers across your organization.
 
 ## Number Types
 
@@ -106,11 +106,11 @@ Bring your own carrier for more control and potentially lower costs.
 
 ### What is a SIP Trunk?
 
-A SIP trunk connects your existing phone carrier to Solo Mobile, allowing:
+A SIP trunk connects your existing phone carrier to Magpipe, allowing:
 - Use your existing phone numbers
 - Keep your current carrier rates
 - Maintain existing phone infrastructure
-- Route calls through Solo Mobile AI
+- Route calls through Magpipe AI
 
 ### Supported Carriers
 
@@ -126,21 +126,21 @@ Any SIP-compatible carrier works, including:
 
 #### Inbound Trunk (Receiving Calls)
 
-Configure your carrier to send calls to Solo Mobile:
+Configure your carrier to send calls to Magpipe:
 
 **IP-Based Authentication:**
-1. Whitelist Solo Mobile's IP addresses in your carrier
-2. Point your carrier's SIP destination to Solo Mobile
-3. Add your phone numbers in Solo Mobile
+1. Whitelist Magpipe's IP addresses in your carrier
+2. Point your carrier's SIP destination to Magpipe
+3. Add your phone numbers in Magpipe
 
 **Registration-Based Authentication:**
 1. Get SIP credentials from your carrier
-2. Enter in Solo Mobile: username, password, domain
-3. Solo Mobile registers with your carrier
+2. Enter in Magpipe: username, password, domain
+3. Magpipe registers with your carrier
 
 #### Outbound Trunk (Making Calls)
 
-Configure Solo Mobile to send calls through your carrier:
+Configure Magpipe to send calls through your carrier:
 
 1. Enter your carrier's SIP URI
 2. Add authentication credentials
@@ -161,7 +161,7 @@ Configure Solo Mobile to send calls through your carrier:
 ```
 Caller dials your number
         ↓
-Solo Mobile receives call
+Magpipe receives call
         ↓
 Check if number has assigned agent
         ↓
@@ -213,7 +213,7 @@ To disable recording:
 
 ### Caller ID
 
-Outbound calls show your Solo Mobile number:
+Outbound calls show your Magpipe number:
 - Number must be verified
 - Consistent caller ID for callbacks
 - Multiple numbers = choose which to show
@@ -253,7 +253,7 @@ Track metrics per number:
 
 Currently, number porting (bringing existing numbers) is handled via:
 1. External SIP trunk setup
-2. Forward existing number to Solo Mobile number
+2. Forward existing number to Magpipe number
 
 Direct number porting coming soon.
 

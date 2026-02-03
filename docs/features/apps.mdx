@@ -7,7 +7,7 @@ description: "Connect external services and enable agent functions"
 
 Apps extend what your AI agents can do. Connect to your CRM, calendar, helpdesk, and more. When a caller asks to book an appointment, your agent checks your actual calendar. When a lead calls, their info is logged directly to your CRM.
 
-Solo Mobile has two levels of app configuration:
+Magpipe has two levels of app configuration:
 - **Apps** (global) - Connect external services like Cal.com, HubSpot, and Slack
 - **Functions** (per-agent) - Enable built-in capabilities like SMS, transfers, and booking
 
@@ -79,7 +79,7 @@ Send notifications and interact with your team.
 **Setup:**
 1. Go to **Apps** from the main navigation
 2. Find Slack and click **Connect**
-3. Authorize Solo Mobile in Slack
+3. Authorize Magpipe in Slack
 4. Select notification channels
 
 **What Agents Can Do:**
@@ -97,7 +97,7 @@ To disconnect a connected app:
 3. Click **Disconnect**
 4. Confirm
 
-This immediately revokes Solo Mobile's access.
+This immediately revokes Magpipe's access.
 
 ## Agent Functions
 
@@ -155,7 +155,7 @@ MCP (Model Context Protocol) servers let you add custom tools beyond the built-i
 
 ### What is MCP?
 
-Model Context Protocol is an open standard for connecting AI to external tools. Solo Mobile supports any MCP-compatible server, giving you access to 40+ pre-built servers plus the ability to create custom ones.
+Model Context Protocol is an open standard for connecting AI to external tools. Magpipe supports any MCP-compatible server, giving you access to 40+ pre-built servers plus the ability to create custom ones.
 
 ### Available MCP Servers
 
@@ -270,7 +270,7 @@ Build your own MCP server for custom tools:
 
 1. Implement the MCP specification
 2. Host your server (cloud function, VPS, etc.)
-3. Add the URL in Solo Mobile
+3. Add the URL in Magpipe
 4. Your tools become available to agents
 
 See [MCP Documentation](https://modelcontextprotocol.io) for implementation details.
@@ -316,7 +316,7 @@ APP INSTRUCTIONS:
 ### What Data is Shared
 
 When you connect an app:
-- Solo Mobile receives OAuth tokens or API keys
+- Magpipe receives OAuth tokens or API keys
 - Agents can access data within granted scopes
 - Call context may be sent to apps (e.g., contact lookup)
 
