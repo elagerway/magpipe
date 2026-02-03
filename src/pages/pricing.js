@@ -1757,6 +1757,60 @@ export default class PricingPage {
             padding: 0.75rem 0.5rem;
           }
         }
+
+        @media (max-width: 480px) {
+          .pricing-hero {
+            padding: 3rem 1rem;
+          }
+
+          .pricing-hero h1 {
+            font-size: 1.75rem;
+          }
+
+          .calculator-container {
+            padding: 1rem;
+            gap: 1.25rem;
+          }
+
+          .calculator-option-group label {
+            font-size: 0.7rem;
+          }
+
+          .pill-btn {
+            padding: 0.375rem 0.5rem;
+            font-size: 0.7rem;
+          }
+
+          .cost-per-minute-row,
+          .cost-total-row {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.25rem;
+          }
+
+          .total-amount {
+            font-size: 1.25rem;
+          }
+
+          .pricing-tiers {
+            padding: 0 1rem 3rem;
+          }
+
+          .pricing-breakdown,
+          .pricing-comparison,
+          .pricing-faq,
+          .component-pricing {
+            padding: 2.5rem 1rem;
+          }
+
+          .breakdown-grid {
+            gap: 1rem;
+          }
+
+          .breakdown-card {
+            padding: 1.5rem;
+          }
+        }
       </style>
     `;
 

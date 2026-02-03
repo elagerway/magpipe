@@ -475,8 +475,28 @@ export default class LoginPage {
           }
         }
 
+        /* Tablet */
+        @media (max-width: 768px) {
+          .login-page {
+            padding: 1rem;
+          }
+
+          .login-card {
+            max-width: 100%;
+          }
+
+          .login-nav .nav-link {
+            padding: 0.375rem 0.625rem;
+            font-size: 0.875rem;
+          }
+        }
+
         /* Mobile */
         @media (max-width: 480px) {
+          .login-page {
+            padding: 0.75rem;
+          }
+
           .login-card {
             padding: 1.5rem;
           }
@@ -487,6 +507,14 @@ export default class LoginPage {
 
           .login-nav .nav-link {
             display: none;
+          }
+
+          .sso-buttons {
+            flex-direction: column;
+          }
+
+          .sso-btn {
+            width: 100%;
           }
         }
       </style>

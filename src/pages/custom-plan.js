@@ -266,7 +266,7 @@ export default class CustomPlanPage {
           flex: 1;
           position: relative;
           z-index: 1;
-          padding: 60px 20px 20px;
+          padding: 60px 20px 60px;
         }
 
         /* Page Header */
@@ -536,6 +536,10 @@ export default class CustomPlanPage {
 
         /* Mobile responsive */
         @media (max-width: 1024px) {
+          .custom-plan-main {
+            padding: 40px 16px;
+          }
+
           .custom-plan-layout {
             flex-direction: column;
           }
@@ -543,6 +547,12 @@ export default class CustomPlanPage {
           .testimonial-side {
             padding: 2rem 1.5rem;
             min-height: auto;
+          }
+
+          .form-side {
+            border-left: none;
+            border-top: 1px solid var(--border-color);
+            border-radius: 0 0 1rem 1rem;
           }
 
           .testimonial-bubble {
@@ -563,6 +573,18 @@ export default class CustomPlanPage {
         }
 
         @media (max-width: 600px) {
+          .custom-plan-main {
+            padding: 24px 12px 40px;
+          }
+
+          .custom-plan-header h1 {
+            font-size: 1.5rem;
+          }
+
+          .header-subtitle {
+            font-size: 0.9rem;
+          }
+
           .form-row {
             grid-template-columns: 1fr;
           }
