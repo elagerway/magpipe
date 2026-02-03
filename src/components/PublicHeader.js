@@ -19,6 +19,7 @@ export function renderPublicHeader(options = {}) {
       <div class="public-header-content">
         <a href="/" class="public-header-logo" onclick="event.preventDefault(); navigateTo('/');">
           MAGPIPE
+          <img src="/magpipe-bird.png" alt="" class="public-header-logo-img" />
         </a>
         <nav class="public-header-nav">
           <a href="/pricing" class="nav-link ${isActive('pricing')}" onclick="event.preventDefault(); navigateTo('/pricing');">Pricing</a>
@@ -72,6 +73,14 @@ export function getPublicHeaderStyles() {
       color: var(--text-primary);
       text-decoration: none;
       letter-spacing: 0.02em;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .public-header-logo-img {
+      height: 36px;
+      width: auto;
     }
 
     .public-header-nav {
