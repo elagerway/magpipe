@@ -40,7 +40,7 @@ Calls are billed based on duration. See [Pricing](/pricing) for details.
 </ParamField>
 
 <ParamField body="from" type="string" required>
-  Your Solo Mobile phone number to use as caller ID. Must be a number provisioned in your account.
+  Your Magpipe phone number to use as caller ID. Must be a number provisioned in your account.
 
   **Example:** `+16045551234`
 </ParamField>
@@ -240,7 +240,7 @@ When the call status changes, a webhook is sent to your configured URL:
   "call_id": "a1b2c3d4-5678-9012-3456-789012345678",
   "status": "completed",
   "duration": 125,
-  "recording_url": "https://storage.solomobile.ai/recordings/...",
+  "recording_url": "https://storage.magpipe.ai/recordings/...",
   "transcript": "Agent: Hello! Caller: Hi there...",
   "metadata": {
     "customer_id": "cust_123"

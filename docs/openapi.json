@@ -1,11 +1,11 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Solo Mobile API",
+    "title": "Magpipe API",
     "description": "Complete API for AI phone agents, calls, SMS, and chat",
     "version": "1.0.0",
     "contact": {
-      "email": "support@solomobile.ai"
+      "email": "support@magpipe.ai"
     }
   },
   "servers": [
@@ -25,7 +25,7 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "JWT",
-        "description": "Your Solo Mobile access token from the dashboard"
+        "description": "Your Magpipe access token from the dashboard"
       }
     },
     "schemas": {
@@ -243,7 +243,7 @@
                   },
                   "from": {
                     "type": "string",
-                    "description": "Your Solo Mobile phone number (must be provisioned in your account)",
+                    "description": "Your Magpipe phone number (must be provisioned in your account)",
                     "example": "+16045551234"
                   },
                   "agent_id": {
@@ -311,7 +311,7 @@
       "post": {
         "operationId": "sendSms",
         "summary": "Send SMS Message",
-        "description": "Send an SMS message from your Solo Mobile number. Supports scheduling and MMS attachments.",
+        "description": "Send an SMS message from your Magpipe number. Supports scheduling and MMS attachments.",
         "tags": ["Messages"],
         "requestBody": {
           "required": true,
@@ -328,7 +328,7 @@
                   },
                   "from": {
                     "type": "string",
-                    "description": "Your SMS-enabled Solo Mobile number",
+                    "description": "Your SMS-enabled Magpipe number",
                     "example": "+16045551234"
                   },
                   "body": {
