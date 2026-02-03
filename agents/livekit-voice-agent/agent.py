@@ -41,6 +41,7 @@ from livekit.plugins import deepgram, openai as lkopenai, elevenlabs, silero
 from dotenv import load_dotenv
 from supabase import create_client, Client
 import bcrypt
+import openai
 
 # Load environment variables
 load_dotenv()
@@ -147,6 +148,80 @@ async def get_voice_config(voice_id: str, user_id: str) -> dict:
         "style": 0.0,
         "use_speaker_boost": True,
     }
+
+
+async def get_dynamic_variables(agent_id: str, user_id: str) -> list:
+    """Fetch dynamic variable definitions for extraction"""
+    try:
+        response = supabase.table("dynamic_variables") \
+            .select("*") \
+            .eq("user_id", user_id) \
+            .execute()
+
+        variables = response.data or []
+        # Filter by agent_id if set, or include variables with no agent_id (global)
+        if agent_id:
+            variables = [v for v in variables if v.get("agent_id") is None or v.get("agent_id") == agent_id]
+
+        logger.info(f"📊 Loaded {len(variables)} dynamic variables for extraction")
+        return variables
+    except Exception as e:
+        logger.warning(f"Could not fetch dynamic variables: {e}")
+        return []
+
+
+async def extract_data_from_transcript(transcript_text: str, dynamic_variables: list) -> dict:
+    """Use OpenAI to extract structured data from transcript based on variable definitions"""
+    if not dynamic_variables or not transcript_text:
+        return {}
+
+    try:
+        # Build extraction schema from variable definitions
+        variables_schema = []
+        for var in dynamic_variables:
+            var_def = {
+                "name": var["name"],
+                "description": var.get("description", ""),
+                "type": var.get("var_type", "text"),
+            }
+            if var.get("var_type") == "enum" and var.get("enum_options"):
+                var_def["allowed_values"] = var["enum_options"]
+            variables_schema.append(var_def)
+
+        prompt = f"""Analyze this phone call transcript and extract the following information.
+For each variable, provide a value based on what was discussed in the call.
+If a value cannot be determined from the transcript, use null.
+
+Variables to extract:
+{json.dumps(variables_schema, indent=2)}
+
+Transcript:
+{transcript_text}
+
+Respond with ONLY a valid JSON object containing the extracted values. Example:
+{{"variable_name": "extracted value", "another_variable": true}}
+
+For boolean variables, use true/false.
+For number variables, use numeric values.
+For enum variables, use one of the allowed values or null.
+For text variables, use a string value."""
+
+        client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1,
+            response_format={"type": "json_object"},
+        )
+
+        extracted = json.loads(response.choices[0].message.content)
+        logger.info(f"📊 Extracted data: {extracted}")
+        return extracted
+
+    except Exception as e:
+        logger.error(f"Failed to extract data from transcript: {e}")
+        return {}
 
 
 def normalize_voice_to_digits(text: str) -> str:
@@ -470,6 +545,7 @@ async def entrypoint(ctx: JobContext):
     user_config = None
     voice_config = None
     transfer_numbers = []
+    dynamic_variables = []
 
     # Get user_id and direction from metadata (outbound calls have these)
     user_id = room_metadata.get("user_id")
@@ -503,9 +579,11 @@ async def entrypoint(ctx: JobContext):
             logger.error(f"No user config found for user_id: {user_id}")
             return
 
-        # Get voice config and transfer numbers in parallel
+        # Get voice config, transfer numbers, and dynamic variables in parallel
         voice_id = user_config.get("voice_id", "11labs-Rachel")
+        agent_id = user_config.get("id")
         voice_config_task = get_voice_config(voice_id, user_id)
+        dynamic_vars_task = get_dynamic_variables(agent_id, user_id)
 
         async def get_transfer_nums():
             resp = supabase.table("transfer_numbers").select("*").eq("user_id", user_id).execute()
@@ -513,7 +591,9 @@ async def entrypoint(ctx: JobContext):
 
         transfer_task = get_transfer_nums()
 
-        voice_config, transfer_numbers = await asyncio.gather(voice_config_task, transfer_task)
+        voice_config, transfer_numbers, dynamic_variables = await asyncio.gather(
+            voice_config_task, transfer_task, dynamic_vars_task
+        )
 
         logger.info(f"✅ Configs loaded - proceeding to session start")
 
@@ -809,6 +889,10 @@ async def entrypoint(ctx: JobContext):
             .execute()
 
         transfer_numbers = transfer_numbers_response.data or []
+
+        # Get dynamic variables for extraction
+        agent_id = user_config.get("id")
+        dynamic_variables = await get_dynamic_variables(agent_id, user_id)
     else:
         logger.info("⚡ Using pre-fetched configs from fast path")
 
@@ -1039,12 +1123,20 @@ IMPORTANT CONTEXT - INBOUND CALL:
                     update_data["egress_id"] = egress_id
                     logger.info(f"💾 Saving egress_id {egress_id} for deferred recording URL fetch")
 
+                # Extract dynamic variables if configured
+                if dynamic_variables and transcript_text:
+                    logger.info(f"📊 Extracting data for {len(dynamic_variables)} dynamic variables...")
+                    extracted_data = await extract_data_from_transcript(transcript_text, dynamic_variables)
+                    if extracted_data:
+                        update_data["extracted_data"] = extracted_data
+                        logger.info(f"📊 Extracted data: {extracted_data}")
+
                 supabase.table("call_records") \
                     .update(update_data) \
                     .eq("id", call_record_id) \
                     .execute()
 
-                logger.info(f"✅ Call transcript saved to database{' with egress_id' if egress_id else ''}")
+                logger.info(f"✅ Call transcript saved to database{' with egress_id' if egress_id else ''}{' with extracted_data' if update_data.get('extracted_data') else ''}")
             else:
                 logger.warning("No call_record found - cannot save transcript")
 
