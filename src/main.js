@@ -121,8 +121,8 @@ class App {
         // Phone not verified, redirect to phone verification
         this.router.navigate('/verify-phone');
       } else {
-        // Everything set up, go to dashboard
-        this.router.navigate('/dashboard');
+        // Everything set up, go to agent
+        this.router.navigate('/agent');
       }
 
       // Load portal widget if configured
@@ -238,6 +238,12 @@ class App {
   }
 
   isPageHiddenForWidget(path) {
+    // Always hide widget on public pages
+    const publicPages = ['/', '/pricing', '/custom-plan', '/login', '/signup', '/forgot-password', '/reset-password', '/verify-email', '/impersonate'];
+    if (publicPages.includes(path)) {
+      return true;
+    }
+
     if (!this.hiddenPortalPages || this.hiddenPortalPages.length === 0) {
       return false;
     }
