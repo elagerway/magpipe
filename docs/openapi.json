@@ -225,7 +225,7 @@
       "post": {
         "operationId": "createPhoneCall",
         "summary": "Create Phone Call",
-        "description": "Initiate an outbound phone call with an AI agent. The agent will call the specified number and handle the conversation based on its configuration.",
+        "description": "Initiate an outbound phone call with an AI agent. The agent assigned to the caller_id number will handle the conversation.",
         "tags": ["Calls"],
         "requestBody": {
           "required": true,
@@ -233,46 +233,31 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["to", "from", "agent_id"],
+                "required": ["phone_number", "caller_id"],
                 "properties": {
-                  "to": {
+                  "phone_number": {
                     "type": "string",
                     "description": "Destination phone number in E.164 format",
                     "example": "+14155551234",
                     "pattern": "^\\+[1-9]\\d{1,14}$"
                   },
-                  "from": {
+                  "caller_id": {
                     "type": "string",
-                    "description": "Your Magpipe phone number (must be provisioned in your account)",
+                    "description": "Your Magpipe phone number to use as caller ID (agent assigned to this number handles the call)",
                     "example": "+16045551234"
                   },
-                  "agent_id": {
+                  "purpose": {
+                    "type": "string",
+                    "description": "Purpose of the call (provided to the agent as context)"
+                  },
+                  "goal": {
+                    "type": "string",
+                    "description": "Goal of the call (provided to the agent as context)"
+                  },
+                  "template_id": {
                     "type": "string",
                     "format": "uuid",
-                    "description": "UUID of the agent to handle this call"
-                  },
-                  "metadata": {
-                    "type": "object",
-                    "description": "Custom key-value pairs attached to the call for your reference",
-                    "additionalProperties": true,
-                    "example": { "customer_id": "cust_123", "campaign": "follow_up" }
-                  },
-                  "webhook_url": {
-                    "type": "string",
-                    "format": "uri",
-                    "description": "URL to receive call status webhooks (overrides account default)"
-                  },
-                  "max_duration": {
-                    "type": "integer",
-                    "description": "Maximum call duration in seconds",
-                    "minimum": 60,
-                    "maximum": 3600,
-                    "default": 1800
-                  },
-                  "record": {
-                    "type": "boolean",
-                    "description": "Whether to record this call",
-                    "default": true
+                    "description": "Optional call template ID"
                   }
                 }
               }
@@ -288,12 +273,9 @@
                   "type": "object",
                   "properties": {
                     "success": { "type": "boolean", "example": true },
-                    "call_id": { "type": "string", "format": "uuid" },
-                    "status": { "type": "string", "example": "initiated" },
-                    "from_number": { "type": "string" },
-                    "to_number": { "type": "string" },
-                    "agent_id": { "type": "string", "format": "uuid" },
-                    "created_at": { "type": "string", "format": "date-time" }
+                    "call_sid": { "type": "string", "description": "SignalWire call SID" },
+                    "call_record_id": { "type": "string", "format": "uuid", "description": "Internal call record ID" },
+                    "status": { "type": "string", "example": "queued" }
                   }
                 }
               }
@@ -301,17 +283,15 @@
           },
           "400": { "description": "Invalid request parameters", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
           "401": { "description": "Unauthorized - invalid or missing token", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "402": { "description": "Insufficient balance", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "404": { "description": "Agent or number not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "422": { "description": "Number not owned by account", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }
       }
     },
-    "/send-sms": {
+    "/send-user-sms": {
       "post": {
         "operationId": "sendSms",
         "summary": "Send SMS Message",
-        "description": "Send an SMS message from your Magpipe number. Supports scheduling and MMS attachments.",
+        "description": "Send an SMS message from your Magpipe number.",
         "tags": ["Messages"],
         "requestBody": {
           "required": true,
@@ -319,39 +299,23 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["to", "from", "body"],
+                "required": ["serviceNumber", "contactPhone", "message"],
                 "properties": {
-                  "to": {
+                  "contactPhone": {
                     "type": "string",
                     "description": "Recipient phone number in E.164 format",
                     "example": "+14155551234"
                   },
-                  "from": {
+                  "serviceNumber": {
                     "type": "string",
                     "description": "Your SMS-enabled Magpipe number",
                     "example": "+16045551234"
                   },
-                  "body": {
+                  "message": {
                     "type": "string",
                     "description": "Message content (max 1600 characters)",
                     "maxLength": 1600,
                     "example": "Your appointment is confirmed for tomorrow at 2pm."
-                  },
-                  "media_urls": {
-                    "type": "array",
-                    "description": "URLs for MMS attachments (images, PDFs)",
-                    "items": { "type": "string", "format": "uri" },
-                    "maxItems": 10
-                  },
-                  "scheduled_at": {
-                    "type": "string",
-                    "format": "date-time",
-                    "description": "Schedule message for future delivery (max 7 days)"
-                  },
-                  "metadata": {
-                    "type": "object",
-                    "description": "Custom data for your reference",
-                    "additionalProperties": true
                   }
                 }
               }
@@ -396,18 +360,13 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["widget_key", "message"],
+                "required": ["widgetKey", "visitorId", "message"],
                 "properties": {
-                  "widget_key": {
+                  "widgetKey": {
                     "type": "string",
                     "description": "Chat widget key from your dashboard"
                   },
-                  "session_id": {
-                    "type": "string",
-                    "format": "uuid",
-                    "description": "Existing session ID (omit to create new session)"
-                  },
-                  "visitor_id": {
+                  "visitorId": {
                     "type": "string",
                     "description": "Unique visitor identifier (e.g., from localStorage)"
                   },
@@ -415,18 +374,22 @@
                     "type": "string",
                     "description": "Visitor's message content"
                   },
-                  "visitor_name": {
+                  "visitorName": {
                     "type": "string",
                     "description": "Visitor's name (optional)"
                   },
-                  "visitor_email": {
+                  "visitorEmail": {
                     "type": "string",
                     "format": "email",
                     "description": "Visitor's email (optional)"
                   },
-                  "page_url": {
+                  "pageUrl": {
                     "type": "string",
                     "description": "Current page URL for context"
+                  },
+                  "requestGreeting": {
+                    "type": "boolean",
+                    "description": "Request initial greeting message (message not required if true)"
                   }
                 }
               }
@@ -456,7 +419,7 @@
       "post": {
         "operationId": "searchPhoneNumbers",
         "summary": "Search Available Numbers",
-        "description": "Search for available phone numbers to provision by area code or location.",
+        "description": "Search for available phone numbers to provision by area code.",
         "tags": ["Phone Numbers"],
         "requestBody": {
           "required": true,
@@ -464,31 +427,12 @@
             "application/json": {
               "schema": {
                 "type": "object",
+                "required": ["query"],
                 "properties": {
-                  "area_code": {
+                  "query": {
                     "type": "string",
                     "description": "3-digit area code to search",
                     "example": "604"
-                  },
-                  "contains": {
-                    "type": "string",
-                    "description": "Pattern the number should contain"
-                  },
-                  "country": {
-                    "type": "string",
-                    "default": "US",
-                    "enum": ["US", "CA"]
-                  },
-                  "type": {
-                    "type": "string",
-                    "enum": ["local", "toll_free"],
-                    "default": "local"
-                  },
-                  "limit": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": 50,
-                    "default": 10
                   }
                 }
               }
@@ -509,7 +453,6 @@
                         "type": "object",
                         "properties": {
                           "phone_number": { "type": "string" },
-                          "friendly_name": { "type": "string" },
                           "locality": { "type": "string" },
                           "region": { "type": "string" },
                           "capabilities": {
@@ -519,11 +462,12 @@
                               "sms": { "type": "boolean" },
                               "mms": { "type": "boolean" }
                             }
-                          },
-                          "monthly_cost": { "type": "number" }
+                          }
                         }
                       }
-                    }
+                    },
+                    "searchedQuery": { "type": "string" },
+                    "usedFallback": { "type": "boolean" }
                   }
                 }
               }
@@ -544,20 +488,12 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["phone_number"],
+                "required": ["phoneNumber"],
                 "properties": {
-                  "phone_number": {
+                  "phoneNumber": {
                     "type": "string",
-                    "description": "Phone number to provision (from search results)"
-                  },
-                  "friendly_name": {
-                    "type": "string",
-                    "description": "Display name for the number"
-                  },
-                  "agent_id": {
-                    "type": "string",
-                    "format": "uuid",
-                    "description": "Agent to assign immediately (optional)"
+                    "description": "Phone number to provision in E.164 format (from search results)",
+                    "example": "+16045551234"
                   }
                 }
               }
@@ -846,12 +782,11 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["call_id"],
+                "required": ["call_sid"],
                 "properties": {
-                  "call_id": {
+                  "call_sid": {
                     "type": "string",
-                    "format": "uuid",
-                    "description": "ID of the call to terminate"
+                    "description": "SignalWire call SID of the call to terminate"
                   }
                 }
               }
@@ -887,16 +822,12 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["call_id"],
+                "required": ["recordingUrl"],
                 "properties": {
-                  "call_id": {
+                  "recordingUrl": {
                     "type": "string",
-                    "format": "uuid"
-                  },
-                  "expires_in": {
-                    "type": "integer",
-                    "description": "URL expiration in seconds",
-                    "default": 3600
+                    "format": "uri",
+                    "description": "Original recording URL to sign"
                   }
                 }
               }
@@ -911,8 +842,7 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "recording_url": { "type": "string", "format": "uri" },
-                    "expires_at": { "type": "string", "format": "date-time" }
+                    "signedUrl": { "type": "string", "format": "uri", "description": "Signed recording URL" }
                   }
                 }
               }
