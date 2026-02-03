@@ -225,8 +225,8 @@ class App {
     }
 
     const script = document.createElement('script');
-    script.id = 'SoloWidget';
-    script.src = '/widget/solo-chat.js';
+    script.id = 'MagpipeWidget';
+    script.src = '/widget/magpipe-chat.js';
     script.async = true;
     script.onload = () => {
       // Initialize widget with the widget key and portal mode
