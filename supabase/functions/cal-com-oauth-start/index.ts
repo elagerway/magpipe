@@ -54,6 +54,11 @@ serve(async (req) => {
       );
     }
 
+    // Get optional return URL from query parameter
+    const reqUrl = new URL(req.url);
+    const returnUrl = reqUrl.searchParams.get('returnUrl') || '/settings';
+    console.log('returnUrl from query:', returnUrl);
+
     // Get Cal.com OAuth credentials
     const clientId = Deno.env.get('CAL_COM_CLIENT_ID');
     if (!clientId) {
@@ -72,6 +77,7 @@ serve(async (req) => {
       userId: user.id,
       timestamp: Date.now(),
       nonce: crypto.randomUUID(),
+      returnUrl,
     }));
 
     // Store state AND code_verifier in database for validation during callback

@@ -5,8 +5,11 @@ Deno.serve(async (req) => {
   try {
     const url = new URL(req.url);
     const code = url.searchParams.get('code');
-    const state = url.searchParams.get('state');
+    // State might have + converted to space in URL, convert back
+    const state = url.searchParams.get('state')?.replace(/ /g, '+') || null;
     const error = url.searchParams.get('error');
+
+    console.log('Received state:', state);
 
     // Get frontend URL for redirects
     const frontendUrl = Deno.env.get('FRONTEND_URL') || 'https://magpipe.ai';
@@ -45,8 +48,11 @@ Deno.serve(async (req) => {
 
     if (stateError || !storedState) {
       console.error('State validation failed:', stateError);
+      console.error('Looking for state:', state);
+      console.error('User ID from state:', stateData.userId);
       return Response.redirect(`${frontendUrl}/settings?cal_error=invalid_state`);
     }
+    console.log('State validated successfully');
 
     // Check if state has expired
     if (new Date(storedState.expires_at) < new Date()) {
@@ -85,6 +91,7 @@ Deno.serve(async (req) => {
     }
 
     const tokens = await tokenResponse.json();
+    console.log('Token exchange successful');
 
     // Calculate token expiration
     const expiresAt = new Date(Date.now() + (tokens.expires_in || 3600) * 1000);
@@ -119,8 +126,14 @@ Deno.serve(async (req) => {
       return Response.redirect(`${frontendUrl}/settings?cal_error=storage_failed`);
     }
 
-    // Success - redirect back to settings
-    return Response.redirect(`${frontendUrl}/settings?cal_connected=true`);
+    // Success - redirect back to return URL or settings
+    const returnUrl = stateData.returnUrl || '/settings';
+    console.log('stateData:', JSON.stringify(stateData));
+    console.log('returnUrl from state:', returnUrl);
+    const redirectUrl = returnUrl.startsWith('http') ? returnUrl : `${frontendUrl}${returnUrl}`;
+    console.log('Final redirectUrl:', redirectUrl);
+    const separator = redirectUrl.includes('?') ? '&' : '?';
+    return Response.redirect(`${redirectUrl}${separator}cal_connected=true`);
 
   } catch (error) {
     console.error('Error in cal-com-oauth-callback:', error);
