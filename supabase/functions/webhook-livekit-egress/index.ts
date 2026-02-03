@@ -142,7 +142,7 @@ serve(async (req) => {
       .from('call_records')
       .update(updateData)
       .eq('egress_id', egressId)
-      .select('id, user_id, slack_message_ts, slack_channel_id, contact_phone, caller_number, direction, duration_seconds, transcript')
+      .select('id, user_id, slack_message_ts, slack_channel_id, contact_phone, caller_number, direction, duration_seconds, transcript, extracted_data, call_summary, user_sentiment')
 
     if (updateError) {
       console.error('Error updating call_record:', updateError)
@@ -174,7 +174,10 @@ serve(async (req) => {
         callRecord.direction,
         callRecord.duration_seconds,
         recordingUrl,
-        callRecord.transcript
+        callRecord.transcript,
+        callRecord.extracted_data,
+        callRecord.call_summary,
+        callRecord.user_sentiment || sentiment
       ).catch(err => console.error('Failed to update Slack message:', err))
     }
 
@@ -192,8 +195,7 @@ serve(async (req) => {
 })
 
 /**
- * Update Slack message with recording and transcript
- * Downloads the recording and uploads it to Slack for inline playback
+ * Update Slack message with recording, extracted data, and post transcript as thread reply
  */
 async function updateSlackMessageWithRecording(
   supabase: any,
@@ -204,7 +206,10 @@ async function updateSlackMessageWithRecording(
   direction: string,
   durationSeconds: number,
   recordingUrl: string,
-  transcript: string | null
+  transcript: string | null,
+  extractedData: Record<string, any> | null,
+  callSummary: string | null,
+  sentiment: string | null
 ) {
   try {
     // Get Slack provider ID
@@ -227,15 +232,40 @@ async function updateSlackMessageWithRecording(
 
     if (!integration?.access_token) return
 
-    // Get contact name
-    const { data: contact } = await supabase
+    // Check if contact exists
+    let { data: contact } = await supabase
       .from('contacts')
-      .select('name')
+      .select('id, name')
       .eq('user_id', userId)
       .eq('phone_number', phoneNumber)
       .single()
 
-    const contactName = contact?.name || phoneNumber
+    // If no contact exists and we have caller_name in extracted data, create one
+    const callerName = extractedData?.caller_name
+    if (!contact && callerName && typeof callerName === 'string') {
+      console.log(`Creating new contact: ${callerName} (${phoneNumber})`)
+      const { data: newContact, error: contactError } = await supabase
+        .from('contacts')
+        .insert({
+          user_id: userId,
+          name: callerName,
+          phone_number: phoneNumber,
+        })
+        .select('id, name')
+        .single()
+
+      if (!contactError && newContact) {
+        contact = newContact
+        console.log(`✅ Created contact: ${newContact.name}`)
+      } else {
+        console.error('Failed to create contact:', contactError)
+      }
+    }
+
+    // Display name: contact name + phone, or just phone if no name
+    const displayName = contact?.name
+      ? `${contact.name} (${phoneNumber})`
+      : phoneNumber
 
     // Format duration
     const minutes = Math.floor((durationSeconds || 0) / 60)
@@ -243,8 +273,29 @@ async function updateSlackMessageWithRecording(
     const durationStr = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`
 
     const isInbound = direction === 'inbound'
+
+    // Check for urgent flag in extracted data
+    const hasUrgent = extractedData && Object.entries(extractedData).some(([key, value]) =>
+      (key.toLowerCase().includes('urgent') && value === true)
+    )
     const emoji = isInbound ? '📞' : '📱'
     const directionText = isInbound ? 'Inbound call from' : 'Outbound call to'
+
+    // Sentiment emoji
+    const sentimentEmoji = sentiment === 'positive' ? '😊'
+      : sentiment === 'negative' ? '😠'
+      : sentiment === 'neutral' ? '😐'
+      : ''
+
+    // Build header text
+    let headerText = `${emoji} *${directionText} ${displayName}*`
+    if (hasUrgent) {
+      headerText += `\n🚨 *URGENT*`
+    }
+    headerText += `\nDuration: ${durationStr}`
+    if (sentimentEmoji) {
+      headerText += ` • Sentiment: ${sentimentEmoji} ${sentiment}`
+    }
 
     // Build updated message blocks
     const blocks: any[] = [
@@ -252,10 +303,55 @@ async function updateSlackMessageWithRecording(
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `${emoji} *${directionText} ${contactName}*\nDuration: ${durationStr}`
+          text: headerText
         }
       }
     ]
+
+    // Add call summary if present
+    if (callSummary) {
+      const truncatedSummary = callSummary.length > 500
+        ? callSummary.substring(0, 500) + '...'
+        : callSummary
+      blocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `📝 *Summary:* ${truncatedSummary}`
+        }
+      })
+    }
+
+    // Add extracted data if present (excluding caller_name since it's in header)
+    if (extractedData && Object.keys(extractedData).length > 0) {
+      const extractedFields = Object.entries(extractedData)
+        .filter(([key]) => key !== 'caller_name') // Don't show caller_name again
+        .map(([key, value]) => {
+          const displayKey = key.replace(/_/g, ' ')
+          let displayValue: string
+          if (value === true) {
+            displayValue = '✅ Yes'
+          } else if (value === false) {
+            displayValue = '❌ No'
+          } else if (typeof value === 'string' && value.length > 100) {
+            displayValue = value.substring(0, 100) + '...'
+          } else {
+            displayValue = String(value)
+          }
+          return `• *${displayKey}:* ${displayValue}`
+        })
+        .join('\n')
+
+      if (extractedFields) {
+        blocks.push({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `📊 *Extracted Data*\n${extractedFields}`
+          }
+        })
+      }
+    }
 
     // Add recording link
     if (recordingUrl) {
@@ -268,21 +364,7 @@ async function updateSlackMessageWithRecording(
       })
     }
 
-    // Add transcript if available
-    if (transcript) {
-      const truncatedTranscript = transcript.length > 500
-        ? transcript.substring(0, 500) + '...'
-        : transcript
-      blocks.push({
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `📝 *Transcript:*\n>${truncatedTranscript.replace(/\n/g, '\n>')}`
-        }
-      })
-    }
-
-    // Add context
+    // Add context footer
     blocks.push({
       type: 'context',
       elements: [
@@ -293,8 +375,8 @@ async function updateSlackMessageWithRecording(
       ]
     })
 
-    // Update the message first
-    await fetch('https://slack.com/api/chat.update', {
+    // Update the main message
+    const updateResponse = await fetch('https://slack.com/api/chat.update', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${integration.access_token}`,
@@ -303,12 +385,36 @@ async function updateSlackMessageWithRecording(
       body: JSON.stringify({
         channel: channelId,
         ts: messageTs,
-        text: `${emoji} ${directionText} ${contactName}`,
+        text: `${emoji} ${directionText} ${displayName}`,
         blocks,
       }),
     })
+    const updateResult = await updateResponse.json()
+    if (!updateResult.ok) {
+      console.error('Failed to update Slack message:', updateResult.error)
+    }
 
-    console.log('✅ Updated Slack message with recording and transcript')
+    // Post full transcript as a thread reply
+    if (transcript) {
+      const transcriptResponse = await fetch('https://slack.com/api/chat.postMessage', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${integration.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          channel: channelId,
+          thread_ts: messageTs,
+          text: `💬 *Full Transcript*\n\n${transcript}`,
+        }),
+      })
+      const transcriptResult = await transcriptResponse.json()
+      if (!transcriptResult.ok) {
+        console.error('Failed to post transcript thread:', transcriptResult.error)
+      }
+    }
+
+    console.log('✅ Updated Slack message and posted transcript thread')
   } catch (error) {
     console.error('Error updating Slack message:', error)
   }
