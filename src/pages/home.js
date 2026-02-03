@@ -602,7 +602,7 @@ export default class HomePage {
         .step-number {
           width: 56px;
           height: 56px;
-          background: linear-gradient(135deg, var(--primary-color) 0%, #8b5cf6 100%);
+          background: linear-gradient(135deg, #4f7df3 0%, #6f8ef5 50%, #8b9ff7 100%);
           border-radius: 50%;
           display: flex;
           align-items: center;
@@ -876,6 +876,61 @@ export default class HomePage {
 
           .highlight-price {
             font-size: 2rem;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .landing-hero {
+            padding: 5rem 1rem 3rem;
+          }
+
+          .landing-hero h1 {
+            font-size: 1.75rem;
+          }
+
+          .hero-subtitle {
+            font-size: 1rem;
+          }
+
+          .hero-buttons {
+            flex-direction: column;
+            width: 100%;
+          }
+
+          .hero-buttons .btn {
+            width: 100%;
+          }
+
+          .landing-nav .nav-link {
+            display: none;
+          }
+
+          .features-header h2,
+          .how-header h2,
+          .pricing-preview-content h2,
+          .landing-cta h2 {
+            font-size: 1.5rem;
+          }
+
+          .features-section,
+          .how-section,
+          .pricing-preview,
+          .landing-cta {
+            padding: 3rem 1rem;
+          }
+
+          .feature-card,
+          .step {
+            padding: 1.5rem;
+          }
+
+          .pricing-highlights {
+            flex-direction: column;
+            gap: 1.5rem;
+          }
+
+          .highlight-price {
+            font-size: 1.75rem;
           }
         }
       </style>
