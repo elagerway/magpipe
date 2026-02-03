@@ -3,6 +3,7 @@
  */
 
 import { renderPublicFooter, getPublicFooterStyles } from '../components/PublicFooter.js';
+import { renderPublicHeader, getPublicHeaderStyles } from '../components/PublicHeader.js';
 
 // Store the install prompt for later use
 let deferredPrompt = null;
@@ -28,21 +29,7 @@ export default class HomePage {
 
     appElement.innerHTML = `
       <div class="landing-page">
-        <!-- Header Navigation -->
-        <header class="landing-header">
-          <div class="landing-header-content">
-            <a href="/" class="landing-logo">
-              Solo Mobile
-            </a>
-            <nav class="landing-nav">
-              <a href="/pricing" class="nav-link" onclick="event.preventDefault(); navigateTo('/pricing');">Pricing</a>
-              <a href="/custom-plan" class="nav-link" onclick="event.preventDefault(); navigateTo('/custom-plan');">Enterprise</a>
-              <a href="https://docs.solomobile.ai" class="nav-link" target="_blank" rel="noopener">Docs</a>
-              <a href="/login" class="btn btn-ghost" onclick="event.preventDefault(); navigateTo('/login');">Sign In</a>
-              <a href="/signup" class="btn btn-primary" onclick="event.preventDefault(); navigateTo('/signup');">Get Started</a>
-            </nav>
-          </div>
-        </header>
+        ${renderPublicHeader({ activePage: 'home' })}
 
         <!-- Hero Section -->
         <section class="landing-hero">
@@ -232,65 +219,7 @@ export default class HomePage {
         }
 
         /* Header */
-        .landing-header {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          background: rgba(255, 255, 255, 0.95);
-          backdrop-filter: blur(10px);
-          border-bottom: 1px solid var(--border-color);
-          z-index: 100;
-          padding: 1rem 0;
-        }
-
-        .landing-header-content {
-          max-width: 1200px;
-          margin: 0 auto;
-          padding: 0 1.5rem;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-
-        .landing-logo {
-          font-size: 1.5rem;
-          font-weight: 700;
-          color: var(--text-primary);
-          text-decoration: none;
-        }
-
-        .landing-nav {
-          display: flex;
-          gap: 0.5rem;
-          align-items: center;
-        }
-
-        .nav-link {
-          color: var(--text-secondary);
-          text-decoration: none;
-          font-weight: 500;
-          padding: 0.5rem 1rem;
-          transition: color 0.15s;
-        }
-
-        .nav-link:hover {
-          color: var(--primary-color);
-        }
-
-        .nav-link-active {
-          color: var(--primary-color);
-        }
-
-        .btn-ghost {
-          background: transparent;
-          color: var(--text-primary);
-          border: none;
-        }
-
-        .btn-ghost:hover {
-          background: var(--bg-secondary);
-        }
+        ${getPublicHeaderStyles()}
 
         /* Hero Section */
         .landing-hero {
