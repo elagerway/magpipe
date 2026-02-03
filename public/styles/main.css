@@ -162,12 +162,12 @@ p {
 }
 
 .btn-primary {
-  background-color: var(--primary-color);
+  background: linear-gradient(135deg, #4f7df3 0%, #6f8ef5 50%, #8b9ff7 100%);
   color: white;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background-color: var(--primary-hover);
+  background: linear-gradient(135deg, #4066d4 0%, #5a7ae6 50%, #7b8fe8 100%);
 }
 
 .btn-secondary {
