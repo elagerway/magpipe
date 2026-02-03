@@ -149,7 +149,13 @@
       "Bash(__NEW_LINE_cb466cf17145f90b__ echo \"=== 1. /search-phone-numbers ===\")",
       "Bash(__NEW_LINE_ca23c15e53588fa5__ echo \"=== 2. /webhook-chat-message \\(validation\\) ===\")",
       "Bash(__NEW_LINE_d397ddd4d1ff2ffc__ echo \"=== 3. /get-signed-recording-url ===\")",
-      "Bash(__NEW_LINE_d2da9d2b8a0b1102__ echo \"=== 4. /provision-phone-number \\(auth check\\) ===\")"
+      "Bash(__NEW_LINE_d2da9d2b8a0b1102__ echo \"=== 4. /provision-phone-number \\(auth check\\) ===\")",
+      "Bash(# Count references in source files only \\(exclude dist/, node_modules\\) echo \"\"=== Supabase URL references in source files ===\"\" grep -r \"\"mtxbiyilvgwhbdptysex\"\" --include=\"\"*.js\"\" --include=\"\"*.ts\"\" --include=\"\"*.json\"\" --include=\"\"*.env*\"\" -l)",
+      "Bash(# Find OAuth callback URLs echo \"\"=== OAuth/Callback URL patterns ===\"\" grep -rn \"\"redirect.*url\\\\|callback.*url\\\\|REDIRECT_URL\\\\|oauth.*callback\"\" --include=\"\"*.ts\"\" --include=\"\"*.js\"\" supabase/functions/ src/)",
+      "Bash(# Check .env files echo \"\"=== Environment variables with Supabase URLs ===\"\" cat .env)",
+      "Bash(# Check for webhook URLs that external services call echo \"\"=== External webhook configurations ===\"\" grep -rn \"\"webhook.*url\\\\|StatusCallback\\\\|status_callback\"\" --include=\"\"*.ts\"\" supabase/functions/)",
+      "Bash(# Check Supabase auth settings \\(redirect URLs\\) echo \"\"=== Auth redirect configurations ===\"\" grep -rn \"\"site_url\\\\|redirect.*to\\\\|getURL\\\\|window.location.origin\"\" --include=\"\"*.js\"\" --include=\"\"*.ts\"\" src/)",
+      "Bash(SUPABASE_ACCESS_TOKEN=$SUPABASE_ACCESS_TOKEN npx supabase functions deploy:*)"
     ],
     "deny": [],
     "ask": []

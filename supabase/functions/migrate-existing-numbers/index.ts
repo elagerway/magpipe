@@ -69,7 +69,7 @@ serve(async (req) => {
         StatusCallbackMethod: 'POST',
         SmsUrl: `${webhookBaseUrl}/webhook-inbound-sms`,
         SmsMethod: 'POST',
-        FriendlyName: `Pat AI - ${userEmail}`,
+        FriendlyName: `Magpipe - ${userEmail}`,
       })
 
       await fetch(updateUrl, {
@@ -88,7 +88,7 @@ serve(async (req) => {
           user_id: user.id,
           phone_number: num.phone_number,
           phone_sid: num.sid,
-          friendly_name: `Pat AI - ${userEmail}`,
+          friendly_name: `Magpipe - ${userEmail}`,
           is_active: false,
           capabilities: num.capabilities || { voice: true, sms: true, mms: true },
           purchased_at: num.date_created, // Use SignalWire's original purchase date

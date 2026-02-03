@@ -58,7 +58,7 @@ serve(async (req) => {
         user_id: user.id,
         phone_number,
         phone_sid,
-        friendly_name: `Pat AI - ${email.split('@')[0]}`,
+        friendly_name: `Magpipe - ${email.split('@')[0]}`,
         is_active,
         capabilities: ['voice', 'SMS'],
         purchased_at: new Date().toISOString()

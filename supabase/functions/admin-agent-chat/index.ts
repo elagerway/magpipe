@@ -310,7 +310,7 @@ serve(async (req) => {
     // Add system message
     openaiMessages.unshift({
       role: 'system',
-      content: `You are an admin assistant for Pat AI. You help users configure their call/SMS handling agent and take actions on their behalf.
+      content: `You are an admin assistant for Magpipe. You help users configure their call/SMS handling agent and take actions on their behalf.
 
 You can:
 - Update system prompts (use update_system_prompt function)
@@ -365,7 +365,7 @@ CRITICAL - NEVER REFUSE TO CALL OR TEXT:
 - NEVER say "I can't make calls to external numbers" - you absolutely CAN via the search_business function
 - For ANY business name the user wants to call/text, use search_business first to look up their phone number
 
-Be warm, conversational, and helpful. Never expose vendor names like "OpenAI" or "Retell" - use "Pat AI assistant" instead.`,
+Be warm, conversational, and helpful. Never expose vendor names like "OpenAI" or "Retell" - use "Magpipe assistant" instead.`,
     });
 
     // Call OpenAI

@@ -167,14 +167,15 @@ export class AgentConfig {
     const { configs: existingAgents } = await this.getAllByUserId(userId);
     const isFirstAgent = !existingAgents || existingAgents.length === 0;
 
+    const agentName = agentData.name || 'My Agent';
     const newAgentData = {
       user_id: userId,
-      name: agentData.name || 'My Agent',
+      name: agentName,
       agent_type: agentData.agent_type || 'inbound',
       is_default: isFirstAgent, // First agent is always default
       voice_id: agentData.voice_id || '21m00Tcm4TlvDq8ikWAM',
       system_prompt: agentData.system_prompt || this.getDefaultInboundPrompt(firstName),
-      outbound_system_prompt: agentData.outbound_system_prompt || this.getDefaultOutboundPrompt(firstName),
+      outbound_system_prompt: agentData.outbound_system_prompt || this.getDefaultOutboundPrompt(firstName, agentName),
       ...agentData,
     };
 
@@ -358,23 +359,25 @@ Always be professional, friendly, and efficient.`;
 
   /**
    * Generate default outbound system prompt
-   * @param {string} firstName - User's first name
+   * @param {string} orgName - Organization or user's name
+   * @param {string} agentName - Agent's name (optional)
    * @returns {string} Default outbound prompt
    */
-  static getDefaultOutboundPrompt(firstName) {
-    return `You are Pat, ${firstName}'s personal AI assistant, making a call on their behalf.
+  static getDefaultOutboundPrompt(orgName, agentName = null) {
+    const name = agentName || 'your assistant';
+    return `You are ${name}, making a call on behalf of ${orgName}.
 
 When calling someone:
-1. Introduce yourself: "Hi, this is Pat calling on behalf of ${firstName}"
+1. Introduce yourself: "Hi, this is ${name} calling on behalf of ${orgName}"
 2. Clearly state the purpose of the call
 3. Be professional and respectful of the recipient's time
 
 If you reach voicemail, leave a clear message with:
-- Who you are (Pat, ${firstName}'s assistant)
+- Who you are (${name}, calling for ${orgName})
 - The reason for the call
-- How they can reach ${firstName} back
+- How they can reach ${orgName} back
 
-Stay focused on the call objective and represent ${firstName} professionally.`;
+Stay focused on the call objective and represent ${orgName} professionally.`;
   }
 
   /**

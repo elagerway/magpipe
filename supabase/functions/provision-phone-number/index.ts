@@ -82,7 +82,7 @@ serve(async (req) => {
       StatusCallbackMethod: 'POST',
       SmsUrl: `${webhookBaseUrl}/webhook-inbound-sms`,
       SmsMethod: 'POST',
-      FriendlyName: `Pat AI - ${user.email}`,
+      FriendlyName: `Magpipe - ${user.email}`,
     })
 
     console.log('Purchasing number from SignalWire...')
@@ -174,7 +174,7 @@ serve(async (req) => {
         user_id: user.id,
         phone_number: phoneNumber,
         phone_sid: phoneSid,
-        friendly_name: `Pat AI - ${user.email}`,
+        friendly_name: `Magpipe - ${user.email}`,
         is_active: false, // Inactive by default - user must activate
         capabilities: normalizedCapabilities,
       })
@@ -219,7 +219,7 @@ serve(async (req) => {
               StatusCallbackMethod: 'POST',
               SmsUrl: `${webhookBaseUrl}/webhook-inbound-sms`,
               SmsMethod: 'POST',
-              FriendlyName: `Pat AI - ${user.email} (Auto US Relay)`,
+              FriendlyName: `Magpipe - ${user.email} (Auto US Relay)`,
             })
 
             const usPurchaseResponse = await fetch(purchaseUrl, {
@@ -276,7 +276,7 @@ serve(async (req) => {
                   user_id: user.id,
                   phone_number: usNumber,
                   phone_sid: usPhoneSid,
-                  friendly_name: `Pat AI - ${user.email} (Auto US Relay)`,
+                  friendly_name: `Magpipe - ${user.email} (Auto US Relay)`,
                   is_active: true, // Auto-activate for seamless SMS to US contacts
                   capabilities: usNormalizedCapabilities,
                 })
