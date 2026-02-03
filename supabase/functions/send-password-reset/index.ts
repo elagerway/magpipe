@@ -127,7 +127,7 @@ serve(async (req) => {
           <tr>
             <td style="padding: 20px 40px 40px; text-align: center; border-top: 1px solid #e5e7eb;">
               <p style="margin: 0; font-size: 13px; color: #9ca3af;">
-                © 2025 Pat AI Assistant. All rights reserved.
+                © 2025 Magpipe Assistant. All rights reserved.
               </p>
             </td>
           </tr>
@@ -152,7 +152,7 @@ ${resetLink}
 If you didn't request this, you can safely ignore this email. This link will expire in 1 hour.
 
 ---
-© 2025 Pat AI Assistant. All rights reserved.
+© 2025 Magpipe Assistant. All rights reserved.
     `
 
     console.log('Sending email via Postmark to:', email)

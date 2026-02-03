@@ -816,7 +816,7 @@ export default class AgentDetailPage {
         ${assignedNumbers.length > 0 ? `
           <div class="assigned-numbers">
             ${assignedNumbers.map(num => {
-              // Clean up friendly_name - remove "Pat AI - email" format
+              // Clean up friendly_name - remove "Magpipe - email" format
               let displayName = '';
               if (num.friendly_name && !num.friendly_name.startsWith('AI Assistant')) {
                 displayName = num.friendly_name;

@@ -103,7 +103,7 @@ serve(async (req) => {
           StatusCallbackMethod: 'POST',
           SmsUrl: `${webhookBaseUrl}/webhook-inbound-sms`,
           SmsMethod: 'POST',
-          FriendlyName: `Pat AI - ${targetUser.email} (Admin Provisioned)`,
+          FriendlyName: `Magpipe - ${targetUser.email} (Admin Provisioned)`,
         })
 
         const purchaseResponse = await fetch(purchaseUrl, {
@@ -130,7 +130,7 @@ serve(async (req) => {
             user_id: body.userId,
             phone_number: body.phoneNumber,
             phone_sid: purchaseResult.sid,
-            friendly_name: `Pat AI - ${targetUser.email} (Admin Provisioned)`,
+            friendly_name: `Magpipe - ${targetUser.email} (Admin Provisioned)`,
             is_active: false,
             capabilities: {
               voice: purchaseResult.capabilities?.voice || purchaseResult.capabilities?.Voice || false,
@@ -266,7 +266,7 @@ serve(async (req) => {
           .from('service_numbers')
           .update({
             user_id: body.transferToUserId,
-            friendly_name: `Pat AI - ${newOwner.email} (Transferred)`,
+            friendly_name: `Magpipe - ${newOwner.email} (Transferred)`,
             updated_at: new Date().toISOString()
           })
           .eq('id', body.numberId)
