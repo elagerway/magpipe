@@ -119,6 +119,19 @@ Fixed mismatches between documented and actual API parameters:
 - Old global: `SoloChat`
 - New global: `MagpipeChat`
 
+## Portal Widget Feature
+The Magpipe portal includes an embedded chat widget for user support. This is loaded from `/widget/magpipe-chat.js` in `src/main.js`.
+
+**Behavior:**
+- Hidden on public pages (login, signup, pricing, etc.)
+- Shown on authenticated portal pages
+- Can be configured per-user via `portalWidgetConfig`
+- Users can configure which pages hide the widget via `hiddenPortalPages`
+
+**Files:**
+- `src/main.js` - Loads widget script, handles visibility
+- `public/widget/magpipe-chat.js` - Widget code
+
 ---
 
 ## Session: 2026-02-02 (Evening)
