@@ -200,7 +200,7 @@ export default class HomePage {
         <!-- iOS Install Instructions Modal -->
         <div id="ios-install-modal" class="ios-modal-overlay">
           <div class="ios-modal">
-            <h3>Install Solo Mobile</h3>
+            <h3>Install MAGPIPE</h3>
             <p>To install this app on your iPhone:</p>
             <ol>
               <li>Tap the <strong>Share</strong> button <span class="share-icon">↑</span></li>

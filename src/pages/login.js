@@ -43,7 +43,7 @@ export default class LoginPage {
           <div class="login-container">
             <div class="login-card">
               <h1>Welcome Back</h1>
-              <p class="login-subtitle">Sign in to your Solo Mobile account</p>
+              <p class="login-subtitle">Sign in to your MAGPIPE account</p>
 
               <div id="error-message" class="hidden"></div>
 

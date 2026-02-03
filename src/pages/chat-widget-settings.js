@@ -85,14 +85,14 @@ export default class ChatWidgetSettingsPage {
                     <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
                     <line x1="12" y1="17" x2="12.01" y2="17"></line>
                   </svg>
-                  <span style="font-weight: 600;">Solo Mobile Support Agent</span>
+                  <span style="font-weight: 600;">MAGPIPE Support Agent</span>
                 </div>
                 <label class="toggle-switch">
                   <input type="checkbox" id="widget-support-agent" ${widget.is_support_agent ? 'checked' : ''} />
                   <span class="toggle-slider"></span>
                 </label>
               </div>
-              <p class="form-help" style="margin: 0;">Enable this to make the agent an expert on Solo Mobile - it will know how to help users with calls, SMS, phone numbers, MCP servers, integrations, and all app features.</p>
+              <p class="form-help" style="margin: 0;">Enable this to make the agent an expert on MAGPIPE - it will know how to help users with calls, SMS, phone numbers, MCP servers, integrations, and all app features.</p>
             </div>
           </div>
 
@@ -327,7 +327,7 @@ export default class ChatWidgetSettingsPage {
               <div class="toggle-row">
                 <div>
                   <span>Show on Portal</span>
-                  <p class="form-help" style="margin: 0.25rem 0 0 0;">Display this widget on your Solo Mobile dashboard</p>
+                  <p class="form-help" style="margin: 0.25rem 0 0 0;">Display this widget on your MAGPIPE dashboard</p>
                 </div>
                 <label class="toggle-switch">
                   <input type="checkbox" id="widget-portal" ${widget.is_portal_widget ? 'checked' : ''} />

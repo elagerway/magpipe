@@ -15,7 +15,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 // Custom storage adapter using IndexedDB for better persistence on iOS PWAs
 // Falls back to localStorage if IndexedDB is unavailable
-const DB_NAME = 'solo-mobile-auth';
+const DB_NAME = 'magpipe-auth';
 const STORE_NAME = 'session';
 
 class IndexedDBStorage {
@@ -119,7 +119,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     persistSession: true,
     detectSessionInUrl: true,
     storage: customStorage,
-    storageKey: 'solo-mobile-auth-token',
+    storageKey: 'magpipe-auth-token',
   },
 });
 

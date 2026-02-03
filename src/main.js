@@ -230,8 +230,8 @@ class App {
     script.async = true;
     script.onload = () => {
       // Initialize widget with the widget key and portal mode
-      if (window.SoloChat) {
-        window.SoloChat('init', this.portalWidgetConfig);
+      if (window.MagpipeChat) {
+        window.MagpipeChat('init', this.portalWidgetConfig);
       }
     };
     document.body.appendChild(script);
@@ -288,8 +288,8 @@ class App {
     }
 
     // Clean up global function
-    if (window.SoloChat) {
-      delete window.SoloChat;
+    if (window.MagpipeChat) {
+      delete window.MagpipeChat;
     }
   }
 

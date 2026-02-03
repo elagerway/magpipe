@@ -26,7 +26,7 @@ test.describe('Agent Page Layout - Mobile', () => {
       const supabase = createClient(
         'https://mtxbiyilvgwhbdptysex.supabase.co',
         'YOUR_SUPABASE_KEY',
-        { auth: { storageKey: 'solo-mobile-auth-token' } }
+        { auth: { storageKey: 'magpipe-auth-token' } }
       );
       const { data, error } = await supabase.auth.verifyOtp({
         email,
@@ -34,7 +34,7 @@ test.describe('Agent Page Layout - Mobile', () => {
         type: 'email'
       });
       if (data?.session) {
-        localStorage.setItem('solo-mobile-auth-token', JSON.stringify(data.session));
+        localStorage.setItem('magpipe-auth-token', JSON.stringify(data.session));
       }
       return { success: !!data?.session, error: error?.message };
     }, { email: 'erik@snapsonic.com', otp: otpCode });

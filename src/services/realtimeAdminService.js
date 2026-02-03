@@ -117,7 +117,7 @@ export class RealtimeAdminService {
       session: {
         type: 'realtime',
         output_modalities: ['audio'],
-        instructions: `You are an admin assistant for Solo Mobile. You help users configure their call/SMS handling agent and take actions on their behalf.
+        instructions: `You are an admin assistant for MAGPIPE. You help users configure their call/SMS handling agent and take actions on their behalf.
 
 You can:
 - Update system prompts (use update_system_prompt function)

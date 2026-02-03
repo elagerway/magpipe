@@ -1,7 +1,7 @@
 {
-  "name": "solomobile",
+  "name": "magpipe",
   "version": "1.0.0",
-  "description": "SoloMobile - AI-powered phone assistant for calls and SMS",
+  "description": "MAGPIPE - AI-powered phone assistant for calls and SMS",
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -5,7 +5,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
  *
  * This CXML handler is triggered when the user answers their cell phone.
  * It:
- * 1. Plays a whisper announcement: "Outbound call from Solo Mobile"
+ * 1. Plays a whisper announcement: "Outbound call from MAGPIPE"
  * 2. Bridges to the destination number with recording
  * 3. Uses the caller_id for the outbound leg to destination
  */
@@ -70,7 +70,7 @@ Deno.serve(async (req) => {
     // 2. Bridge to destination with caller ID and recording
     const cxml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="alice">Outbound call from Solo Mobile. Connecting now.</Say>
+  <Say voice="alice">Outbound call from MAGPIPE. Connecting now.</Say>
   <Dial
     callerId="${callerId}"
     record="record-from-answer"

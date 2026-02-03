@@ -14,7 +14,7 @@ interface OAuthConfig {
 
 // This is a webhook that doesn't require JWT verification
 Deno.serve(async (req) => {
-  const frontendUrl = Deno.env.get('FRONTEND_URL') || 'https://solomobile.ai';
+  const frontendUrl = Deno.env.get('FRONTEND_URL') || 'https://magpipe.ai';
 
   try {
     const url = new URL(req.url);

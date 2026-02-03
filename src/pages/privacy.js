@@ -14,12 +14,12 @@ export default class PrivacyPage {
         <header class="legal-header">
           <div class="legal-header-content">
             <a href="/" class="legal-logo" onclick="event.preventDefault(); navigateTo('/');">
-              Solo Mobile
+              MAGPIPE
             </a>
             <nav class="legal-nav">
               <a href="/pricing" class="nav-link" onclick="event.preventDefault(); navigateTo('/pricing');">Pricing</a>
               <a href="/custom-plan" class="nav-link" onclick="event.preventDefault(); navigateTo('/custom-plan');">Enterprise</a>
-              <a href="https://docs.solomobile.ai" class="nav-link" target="_blank" rel="noopener">Docs</a>
+              <a href="https://docs.magpipe.ai" class="nav-link" target="_blank" rel="noopener">Docs</a>
               <a href="/login" class="btn btn-ghost" onclick="event.preventDefault(); navigateTo('/login');">Sign In</a>
               <a href="/signup" class="btn btn-primary" onclick="event.preventDefault(); navigateTo('/signup');">Get Started</a>
             </nav>
@@ -34,7 +34,7 @@ export default class PrivacyPage {
 
             <section class="legal-section">
               <h2>1. Introduction</h2>
-              <p>Solo Mobile ("we," "our," or "us") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our AI-powered voice and text platform service.</p>
+              <p>MAGPIPE ("we," "our," or "us") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our AI-powered voice and text platform service.</p>
             </section>
 
             <section class="legal-section">
@@ -120,7 +120,7 @@ export default class PrivacyPage {
             <section class="legal-section">
               <h2>10. Contact Us</h2>
               <p>If you have questions about this Privacy Policy, please contact us at:</p>
-              <p><a href="mailto:privacy@solomobile.ai">privacy@solomobile.ai</a></p>
+              <p><a href="mailto:privacy@magpipe.ai">privacy@magpipe.ai</a></p>
             </section>
           </div>
         </main>

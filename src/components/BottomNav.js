@@ -492,7 +492,7 @@ function generateNavHtml(currentPath) {
       <div class="nav-user-modal" id="nav-user-modal">
         <div class="nav-modal-section">
           <div class="nav-modal-section-title">Documentation</div>
-          <button class="nav-modal-item" onclick="window.open('https://docs.solomobile.ai', '_blank'); closeUserModal();">
+          <button class="nav-modal-item" onclick="window.open('https://docs.magpipe.ai', '_blank'); closeUserModal();">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
               <polyline points="14 2 14 8 20 8"></polyline>
@@ -512,7 +512,7 @@ function generateNavHtml(currentPath) {
             </svg>
             <span>Contact Us</span>
           </button>
-          <button class="nav-modal-item" onclick="window.open('https://solomobile.ai/chat', '_blank'); closeUserModal();">
+          <button class="nav-modal-item" onclick="window.open('https://magpipe.ai/chat', '_blank'); closeUserModal();">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
             </svg>
@@ -720,7 +720,7 @@ export function renderBottomNav(currentPath = '/agent') {
       <div class="nav-user-modal" id="nav-user-modal">
         <div class="nav-modal-section">
           <div class="nav-modal-section-title">Documentation</div>
-          <button class="nav-modal-item" onclick="window.open('https://docs.solomobile.ai', '_blank'); closeUserModal();">
+          <button class="nav-modal-item" onclick="window.open('https://docs.magpipe.ai', '_blank'); closeUserModal();">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
               <polyline points="14 2 14 8 20 8"></polyline>
@@ -740,7 +740,7 @@ export function renderBottomNav(currentPath = '/agent') {
             </svg>
             <span>Contact Us</span>
           </button>
-          <button class="nav-modal-item" onclick="window.open('https://solomobile.ai/chat', '_blank'); closeUserModal();">
+          <button class="nav-modal-item" onclick="window.open('https://magpipe.ai/chat', '_blank'); closeUserModal();">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
             </svg>
