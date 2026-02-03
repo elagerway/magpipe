@@ -31,7 +31,7 @@ export async function createIntegrationSettings(containerId) {
     <div class="integration-settings">
       <h2>Connected Apps</h2>
       <p class="text-muted" style="margin-bottom: 1.5rem;">
-        Connect third-party services to extend Pat's capabilities
+        Connect third-party services to extend your assistant's capabilities
       </p>
       <div class="integration-loading">Loading integrations...</div>
     </div>
@@ -111,7 +111,7 @@ function renderIntegrations(container, connected, available, accessToken) {
     <div class="integration-settings">
       <h2>Connected Apps</h2>
       <p class="text-muted" style="margin-bottom: 1.5rem;">
-        Connect third-party services to extend Pat's capabilities
+        Connect third-party services to extend your assistant's capabilities
       </p>
 
       ${connected.length > 0 ? `

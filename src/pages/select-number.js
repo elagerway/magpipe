@@ -103,7 +103,7 @@ export default class SelectNumberPage {
         <div class="card">
           <h1 class="text-center">Select Your Service Number</h1>
           <p class="text-center text-muted">
-            Choose a phone number that callers will use to reach Pat
+            Choose a phone number that callers will use to reach your AI assistant
           </p>
 
           <div id="error-message" class="hidden"></div>

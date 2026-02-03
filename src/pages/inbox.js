@@ -1184,7 +1184,7 @@ export default class InboxPage {
       return `
         <div style="padding: 2rem; text-align: center; color: var(--text-secondary);">
           <p style="font-size: 1rem; margin-bottom: 0.5rem;">No messages yet</p>
-          <p style="font-size: 0.875rem;">When Pat receives calls or messages, they'll appear here.</p>
+          <p style="font-size: 0.875rem;">When your assistant receives calls or messages, they'll appear here.</p>
         </div>
       `;
     }
@@ -1733,7 +1733,7 @@ export default class InboxPage {
       },
       'answered_by_pat': {
         icon: checkIcon,
-        text: 'Answered by Pat',
+        text: 'Answered by AI',
         class: 'status-completed',
         color: '#10b981'
       },
@@ -4189,7 +4189,7 @@ Examples:
             <div style="font-size: 3rem; margin-bottom: 1rem;">🎤</div>
             <h2 style="margin: 0 0 0.5rem 0; font-size: 1.5rem; color: var(--text-primary);">Microphone Access Required</h2>
             <p style="margin: 0; color: var(--text-secondary); line-height: 1.5;">
-              Pat needs access to your microphone to make calls.
+              We need access to your microphone to make calls.
               Your browser will ask for permission.
             </p>
           </div>
@@ -4293,7 +4293,7 @@ Examples:
         sipUri,
         sipPassword: userRecord.sip_password,
         wsServer: userRecord.sip_ws_server,
-        displayName: 'Pat AI',
+        displayName: 'AI Assistant',
       });
 
       this.updateSIPStatus('registered');
@@ -5440,8 +5440,8 @@ Examples:
   getSpeakerDisplayLabel(speakerLabel) {
     // Map transcript speaker labels to display names
     const labelMap = {
-      'Agent': 'Pat (AI)',
-      'Pat': 'Pat (AI)',
+      'Agent': 'AI Assistant',
+      'Pat': 'AI Assistant',
       'You': 'You',
       'User': 'Caller',
       'Caller': 'Caller',
