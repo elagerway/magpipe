@@ -224,6 +224,38 @@ For text variables, use a string value."""
         return {}
 
 
+async def generate_call_summary(transcript_text: str) -> str:
+    """Generate a brief 3-sentence summary of the call"""
+    if not transcript_text:
+        return ""
+
+    try:
+        client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{
+                "role": "user",
+                "content": f"""Summarize this phone call in exactly 3 short sentences. Focus on: who called, what they needed, and the outcome/next steps.
+
+Transcript:
+{transcript_text}
+
+Provide only the 3-sentence summary, no additional text."""
+            }],
+            temperature=0.3,
+            max_tokens=150,
+        )
+
+        summary = response.choices[0].message.content.strip()
+        logger.info(f"📝 Generated call summary: {summary}")
+        return summary
+
+    except Exception as e:
+        logger.error(f"Failed to generate call summary: {e}")
+        return ""
+
+
 def normalize_voice_to_digits(text: str) -> str:
     """Convert spoken numbers to digit string (e.g., 'one two three' -> '123')"""
     # Map of spoken numbers to digits
@@ -1123,10 +1155,24 @@ IMPORTANT CONTEXT - INBOUND CALL:
                     update_data["egress_id"] = egress_id
                     logger.info(f"💾 Saving egress_id {egress_id} for deferred recording URL fetch")
 
-                # Extract dynamic variables if configured
-                if dynamic_variables and transcript_text:
-                    logger.info(f"📊 Extracting data for {len(dynamic_variables)} dynamic variables...")
-                    extracted_data = await extract_data_from_transcript(transcript_text, dynamic_variables)
+                # Generate call summary and extract dynamic variables in parallel
+                if transcript_text:
+                    logger.info(f"📝 Generating call summary and extracting data...")
+
+                    # Run summary and extraction in parallel
+                    summary_task = generate_call_summary(transcript_text)
+                    extraction_task = extract_data_from_transcript(transcript_text, dynamic_variables) if dynamic_variables else None
+
+                    if extraction_task:
+                        call_summary, extracted_data = await asyncio.gather(summary_task, extraction_task)
+                    else:
+                        call_summary = await summary_task
+                        extracted_data = {}
+
+                    if call_summary:
+                        update_data["call_summary"] = call_summary
+                        logger.info(f"📝 Call summary: {call_summary}")
+
                     if extracted_data:
                         update_data["extracted_data"] = extracted_data
                         logger.info(f"📊 Extracted data: {extracted_data}")
@@ -1136,7 +1182,7 @@ IMPORTANT CONTEXT - INBOUND CALL:
                     .eq("id", call_record_id) \
                     .execute()
 
-                logger.info(f"✅ Call transcript saved to database{' with egress_id' if egress_id else ''}{' with extracted_data' if update_data.get('extracted_data') else ''}")
+                logger.info(f"✅ Call transcript saved to database{' with summary' if update_data.get('call_summary') else ''}{' with extracted_data' if update_data.get('extracted_data') else ''}")
             else:
                 logger.warning("No call_record found - cannot save transcript")
 
