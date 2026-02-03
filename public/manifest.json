@@ -1,6 +1,6 @@
 {
-  "name": "Solo Mobile - AI Phone Assistant",
-  "short_name": "Solo Mobile",
+  "name": "MAGPIPE - AI Phone Assistant",
+  "short_name": "MAGPIPE",
   "description": "Your AI-powered phone assistant for calls and SMS",
   "start_url": "/",
   "display": "standalone",

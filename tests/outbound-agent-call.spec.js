@@ -58,7 +58,7 @@ test.describe('Outbound Agent Call Test', () => {
       const supabase = createClient(
         'https://mtxbiyilvgwhbdptysex.supabase.co',
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im10eGJpeWlsdmd3aGJkcHR5c2V4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkxNzE2OTksImV4cCI6MjA3NDc0NzY5OX0.VpOfuXl7S_ZdSpRjD8DGkSbbT4Y5g4rsezYNYGdtNPs',
-        { auth: { storageKey: 'solo-mobile-auth-token' } }
+        { auth: { storageKey: 'magpipe-auth-token' } }
       );
       const { data, error } = await supabase.auth.verifyOtp({
         email: email,
@@ -67,7 +67,7 @@ test.describe('Outbound Agent Call Test', () => {
       });
       if (data?.session) {
         // Also manually store in the correct key for the app
-        const storageKey = 'solo-mobile-auth-token';
+        const storageKey = 'magpipe-auth-token';
         localStorage.setItem(storageKey, JSON.stringify({
           access_token: data.session.access_token,
           refresh_token: data.session.refresh_token,
@@ -98,7 +98,7 @@ test.describe('Outbound Agent Call Test', () => {
       const supabase = createClient(
         'https://mtxbiyilvgwhbdptysex.supabase.co',
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im10eGJpeWlsdmd3aGJkcHR5c2V4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkxNzE2OTksImV4cCI6MjA3NDc0NzY5OX0.VpOfuXl7S_ZdSpRjD8DGkSbbT4Y5g4rsezYNYGdtNPs',
-        { auth: { storageKey: 'solo-mobile-auth-token' } }
+        { auth: { storageKey: 'magpipe-auth-token' } }
       );
       const { data: { session }, error } = await supabase.auth.getSession();
       return {

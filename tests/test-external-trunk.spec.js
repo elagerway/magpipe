@@ -31,11 +31,11 @@ test.describe('External SIP Trunk UX', () => {
       const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
       const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im10eGJpeWlsdmd3aGJkcHR5c2V4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzI2NjMwMzAsImV4cCI6MjA0ODIzOTAzMH0.PLjsjze5n24OKIvYQdqmOYVj3raPaoXTfePsz9CQiXY';
       const supabase = createClient(supabaseUrl, ANON_KEY, {
-        auth: { storageKey: 'solo-mobile-auth-token' }
+        auth: { storageKey: 'magpipe-auth-token' }
       });
       const { data, error } = await supabase.auth.verifyOtp({ email, token: otp, type: 'email' });
       if (data?.session) {
-        localStorage.setItem('solo-mobile-auth-token', JSON.stringify(data.session));
+        localStorage.setItem('magpipe-auth-token', JSON.stringify(data.session));
       }
       return { success: !!data?.session, error: error?.message };
     }, { email, otp: email_otp, supabaseUrl: SUPABASE_URL });

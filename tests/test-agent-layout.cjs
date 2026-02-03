@@ -42,7 +42,7 @@ test.describe('Agent Page Layout', () => {
     const sessionResult = await page.evaluate(async ({ url, anonKey, email, otpCode }) => {
       const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
       const supabase = createClient(url, anonKey, {
-        auth: { storageKey: 'solo-mobile-auth-token' }
+        auth: { storageKey: 'magpipe-auth-token' }
       });
       const { data, error } = await supabase.auth.verifyOtp({
         email,
@@ -50,7 +50,7 @@ test.describe('Agent Page Layout', () => {
         type: 'email'
       });
       if (data?.session) {
-        localStorage.setItem('solo-mobile-auth-token', JSON.stringify(data.session));
+        localStorage.setItem('magpipe-auth-token', JSON.stringify(data.session));
       }
       return { success: !!data?.session, error: error?.message };
     }, { url: SUPABASE_URL, anonKey: SUPABASE_ANON_KEY, email: 'erik@snapsonic.com', otpCode: otp });

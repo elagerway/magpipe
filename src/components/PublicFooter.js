@@ -24,8 +24,8 @@ export function renderPublicFooter() {
           </div>
           <div class="footer-column">
             <h4>Developers</h4>
-            <a href="https://docs.solomobile.ai" target="_blank" rel="noopener">Documentation</a>
-            <a href="https://docs.solomobile.ai/api" target="_blank" rel="noopener">API Reference</a>
+            <a href="https://docs.magpipe.ai" target="_blank" rel="noopener">Documentation</a>
+            <a href="https://docs.magpipe.ai/api" target="_blank" rel="noopener">API Reference</a>
           </div>
           <div class="footer-column">
             <h4>Company</h4>

@@ -14,12 +14,12 @@ export default class TermsPage {
         <header class="legal-header">
           <div class="legal-header-content">
             <a href="/" class="legal-logo" onclick="event.preventDefault(); navigateTo('/');">
-              Solo Mobile
+              MAGPIPE
             </a>
             <nav class="legal-nav">
               <a href="/pricing" class="nav-link" onclick="event.preventDefault(); navigateTo('/pricing');">Pricing</a>
               <a href="/custom-plan" class="nav-link" onclick="event.preventDefault(); navigateTo('/custom-plan');">Enterprise</a>
-              <a href="https://docs.solomobile.ai" class="nav-link" target="_blank" rel="noopener">Docs</a>
+              <a href="https://docs.magpipe.ai" class="nav-link" target="_blank" rel="noopener">Docs</a>
               <a href="/login" class="btn btn-ghost" onclick="event.preventDefault(); navigateTo('/login');">Sign In</a>
               <a href="/signup" class="btn btn-primary" onclick="event.preventDefault(); navigateTo('/signup');">Get Started</a>
             </nav>
@@ -34,12 +34,12 @@ export default class TermsPage {
 
             <section class="legal-section">
               <h2>1. Acceptance of Terms</h2>
-              <p>By accessing or using Solo Mobile's services ("Service"), you agree to be bound by these Terms of Use ("Terms"). If you do not agree to these Terms, please do not use our Service.</p>
+              <p>By accessing or using MAGPIPE's services ("Service"), you agree to be bound by these Terms of Use ("Terms"). If you do not agree to these Terms, please do not use our Service.</p>
             </section>
 
             <section class="legal-section">
               <h2>2. Description of Service</h2>
-              <p>Solo Mobile provides an AI-powered voice and text platform that handles phone calls and text messages on behalf of users. Our Service includes call answering, message handling, AI-generated responses, and related features.</p>
+              <p>MAGPIPE provides an AI-powered voice and text platform that handles phone calls and text messages on behalf of users. Our Service includes call answering, message handling, AI-generated responses, and related features.</p>
             </section>
 
             <section class="legal-section">
@@ -93,7 +93,7 @@ export default class TermsPage {
 
             <section class="legal-section">
               <h2>7. Intellectual Property</h2>
-              <p>The Service, including all content, features, and functionality, is owned by Solo Mobile and is protected by copyright, trademark, and other intellectual property laws. You may not copy, modify, distribute, or create derivative works without our express permission.</p>
+              <p>The Service, including all content, features, and functionality, is owned by MAGPIPE and is protected by copyright, trademark, and other intellectual property laws. You may not copy, modify, distribute, or create derivative works without our express permission.</p>
             </section>
 
             <section class="legal-section">
@@ -113,7 +113,7 @@ export default class TermsPage {
 
             <section class="legal-section">
               <h2>11. Indemnification</h2>
-              <p>You agree to indemnify and hold harmless Solo Mobile and its officers, directors, employees, and agents from any claims, damages, losses, or expenses arising from your use of the Service or violation of these Terms.</p>
+              <p>You agree to indemnify and hold harmless MAGPIPE and its officers, directors, employees, and agents from any claims, damages, losses, or expenses arising from your use of the Service or violation of these Terms.</p>
             </section>
 
             <section class="legal-section">
@@ -134,7 +134,7 @@ export default class TermsPage {
             <section class="legal-section">
               <h2>15. Contact Us</h2>
               <p>If you have questions about these Terms, please contact us at:</p>
-              <p><a href="mailto:legal@solomobile.ai">legal@solomobile.ai</a></p>
+              <p><a href="mailto:legal@magpipe.ai">legal@magpipe.ai</a></p>
             </section>
           </div>
         </main>

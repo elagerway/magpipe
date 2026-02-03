@@ -110,7 +110,7 @@ serve(async (req) => {
     }
 
     // Generate embed code
-    const embedCode = `<script>(function(w,d,s,o,f,js,fjs){w['PatWidget']=o;w[o]=w[o]||function(){(w[o].q=w[o].q||[]).push(arguments)};js=d.createElement(s);fjs=d.getElementsByTagName(s)[0];js.id=o;js.src=f;js.async=1;fjs.parentNode.insertBefore(js,fjs);}(window,document,'script','PatChat','https://solomobile.ai/widget/pat-chat.js'));PatChat('init',{widgetKey:'${widget_key}'});</script>`;
+    const embedCode = `<script>(function(w,d,s,o,f,js,fjs){w['MagpipeWidget']=o;w[o]=w[o]||function(){(w[o].q=w[o].q||[]).push(arguments)};js=d.createElement(s);fjs=d.getElementsByTagName(s)[0];js.id=o;js.src=f;js.async=1;fjs.parentNode.insertBefore(js,fjs);}(window,document,'script','MagpipeChat','https://magpipe.ai/widget/magpipe-chat.js'));MagpipeChat('init',{widgetKey:'${widget_key}'});</script>`;
 
     return new Response(
       JSON.stringify({

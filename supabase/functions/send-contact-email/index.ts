@@ -61,10 +61,10 @@ Deno.serve(async (req) => {
       <p><strong>Message:</strong></p>
       <div style="background: #f5f5f5; padding: 1rem; border-radius: 8px; white-space: pre-wrap;">${message}</div>
       <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid #ccc;">
-      <p style="color: #666; font-size: 0.875rem;">Sent from Solo Mobile contact form</p>
+      <p style="color: #666; font-size: 0.875rem;">Sent from MAGPIPE contact form</p>
     `
 
-    const textBody = `Contact Form Submission\n\nFrom: ${userName ? `${userName} (${userEmail})` : userEmail}\n${userId ? `User ID: ${userId}\n` : ''}Subject: ${subject}\n\nMessage:\n${message}\n\n---\nSent from Solo Mobile contact form`
+    const textBody = `Contact Form Submission\n\nFrom: ${userName ? `${userName} (${userEmail})` : userEmail}\n${userId ? `User ID: ${userId}\n` : ''}Subject: ${subject}\n\nMessage:\n${message}\n\n---\nSent from MAGPIPE contact form`
 
     // Send email via Postmark
     const emailResponse = await fetch('https://api.postmarkapp.com/email', {

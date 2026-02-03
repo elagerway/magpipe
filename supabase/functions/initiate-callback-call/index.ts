@@ -12,7 +12,7 @@ const corsHeaders = {
  *
  * This function initiates a callback-style outbound call:
  * 1. SignalWire calls the user's cell phone first
- * 2. When user answers, plays whisper: "Outbound call from Solo Mobile"
+ * 2. When user answers, plays whisper: "Outbound call from MAGPIPE"
  * 3. Then bridges to the destination number
  * 4. Caller ID shown to destination is the user's selected service number
  */

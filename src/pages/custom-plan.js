@@ -27,17 +27,17 @@ export default class CustomPlanPage {
               <div class="custom-plan-header">
                 <h1>Contact Sales</h1>
                 <p class="header-subtitle">We can show you how to deploy voice AI and text agents at scale.</p>
-                <p class="header-support">Need support? Email <a href="mailto:support@solomobile.ai">support@solomobile.ai</a></p>
+                <p class="header-support">Need support? Email <a href="mailto:support@magpipe.ai">support@magpipe.ai</a></p>
               </div>
               <div class="testimonial-bg"></div>
               <div class="testimonial-content">
                 <div class="testimonial-bubble">
                   <div class="quote-mark">"</div>
                   <p class="testimonial-text">
-                    We deployed Solo Mobile to improve how we talk to patients after hours. Traditionally we would ask them to leave a voice mail. Problem with that is, one, many people these days don't want to leave a voice mail. So they hang up.
+                    We deployed MAGPIPE to improve how we talk to patients after hours. Traditionally we would ask them to leave a voice mail. Problem with that is, one, many people these days don't want to leave a voice mail. So they hang up.
                   </p>
                   <p class="testimonial-text">
-                    The platform and the technology work really well. I've listened to a lot of our calls and Solo Mobile does an incredible job of helping the caller thru the call…and getting the information we require.
+                    The platform and the technology work really well. I've listened to a lot of our calls and MAGPIPE does an incredible job of helping the caller thru the call…and getting the information we require.
                   </p>
                   <p class="testimonial-text">
                     The result: Many more people are completing calls after hours - instead of abandoning. And we are extracting the info we need to take the right actions the next morning. We couldn't be more pleased.

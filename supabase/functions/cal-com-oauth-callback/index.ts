@@ -9,7 +9,7 @@ Deno.serve(async (req) => {
     const error = url.searchParams.get('error');
 
     // Get frontend URL for redirects
-    const frontendUrl = Deno.env.get('FRONTEND_URL') || 'https://solomobile.ai';
+    const frontendUrl = Deno.env.get('FRONTEND_URL') || 'https://magpipe.ai';
 
     // Handle OAuth errors
     if (error) {
@@ -124,7 +124,7 @@ Deno.serve(async (req) => {
 
   } catch (error) {
     console.error('Error in cal-com-oauth-callback:', error);
-    const frontendUrl = Deno.env.get('FRONTEND_URL') || 'https://solomobile.ai';
+    const frontendUrl = Deno.env.get('FRONTEND_URL') || 'https://magpipe.ai';
     return Response.redirect(`${frontendUrl}/settings?cal_error=internal_error`);
   }
 });

@@ -31,7 +31,7 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey)
 
     // Generate invitation link
-    const baseUrl = Deno.env.get('APP_URL') || 'https://solomobile.ai'
+    const baseUrl = Deno.env.get('APP_URL') || 'https://magpipe.ai'
     const inviteLink = `${baseUrl}/signup?invite=${memberId}`
 
     // Send email via Postmark
@@ -45,10 +45,10 @@ Deno.serve(async (req) => {
             Hi ${name || 'there'},
           </p>
           <p style="color: #666; font-size: 16px; line-height: 1.6;">
-            ${inviterName} has invited you to join <strong>${organizationName}</strong> on Solo Mobile.
+            ${inviterName} has invited you to join <strong>${organizationName}</strong> on MAGPIPE.
           </p>
           <p style="color: #666; font-size: 16px; line-height: 1.6;">
-            Solo Mobile is an AI-powered communication assistant that helps manage calls and messages for your business.
+            MAGPIPE is an AI-powered communication assistant that helps manage calls and messages for your business.
           </p>
           <div style="margin: 30px 0;">
             <a href="${inviteLink}" style="background: #6366f1; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500; display: inline-block;">
@@ -69,7 +69,7 @@ Deno.serve(async (req) => {
           'X-Postmark-Server-Token': postmarkApiKey,
         },
         body: JSON.stringify({
-          From: 'Solo Mobile <notifications@snapsonic.com>',
+          From: 'MAGPIPE <notifications@snapsonic.com>',
           To: email,
           Subject: `You've been invited to join ${organizationName}`,
           HtmlBody: htmlBody,

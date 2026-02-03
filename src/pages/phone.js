@@ -1903,7 +1903,7 @@ export default class PhonePage {
   /**
    * Initiate a callback-style direct call
    * 1. SignalWire calls the user's cell phone first
-   * 2. When user answers, plays whisper "Outbound call from Solo Mobile"
+   * 2. When user answers, plays whisper "Outbound call from MAGPIPE"
    * 3. Then bridges to destination with recording
    */
   async initiateCallbackCall(phoneNumber, callerIdNumber) {

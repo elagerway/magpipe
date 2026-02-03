@@ -85,7 +85,7 @@ navItems.push({ path: '/new', label: 'New' });
 - **Format**: Brief summary, then details of what/why/how
 
 ### Vercel (Frontend)
-- **Production**: https://solomobile.ai
+- **Production**: https://magpipe.ai
 - **Branch**: `master` (auto-deploys on push)
 - **User can test on localhost** (including mobile) - do NOT push without user testing first
 - **Wait for user approval before pushing**: Always let user test changes on localhost before committing/pushing
@@ -139,11 +139,11 @@ const otp = (await response.json()).email_otp;
 const sessionResult = await page.evaluate(async ({ email, otp }) => {
   const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
   const supabase = createClient(SUPABASE_URL, ANON_KEY,
-    { auth: { storageKey: 'solo-mobile-auth-token' } }  // App's storage key!
+    { auth: { storageKey: 'magpipe-auth-token' } }  // App's storage key!
   );
   const { data, error } = await supabase.auth.verifyOtp({ email, token: otp, type: 'email' });
   if (data?.session) {
-    localStorage.setItem('solo-mobile-auth-token', JSON.stringify(data.session));
+    localStorage.setItem('magpipe-auth-token', JSON.stringify(data.session));
   }
   return { success: !!data?.session, error: error?.message };
 }, { email: 'erik@snapsonic.com', otp: otpCode });

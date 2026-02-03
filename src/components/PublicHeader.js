@@ -24,7 +24,7 @@ export function renderPublicHeader(options = {}) {
         <nav class="public-header-nav">
           <a href="/pricing" class="nav-link ${isActive('pricing')}" onclick="event.preventDefault(); navigateTo('/pricing');">Pricing</a>
           <a href="/custom-plan" class="nav-link ${isActive('enterprise')}" onclick="event.preventDefault(); navigateTo('/custom-plan');">Enterprise</a>
-          <a href="https://docs.solomobile.ai" class="nav-link" target="_blank" rel="noopener">Docs</a>
+          <a href="https://docs.magpipe.ai" class="nav-link" target="_blank" rel="noopener">Docs</a>
           <a href="/login" class="btn btn-ghost" onclick="event.preventDefault(); navigateTo('/login');">Sign In</a>
           <a href="/signup" class="btn btn-primary" onclick="event.preventDefault(); navigateTo('/signup');">Get Started</a>
         </nav>

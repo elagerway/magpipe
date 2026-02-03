@@ -1,15 +1,15 @@
 /**
- * Solo Chat Widget
+ * Magpipe Chat Widget
  * Embeddable chat widget for websites
  *
  * Usage:
  * <script>
  *   (function(w,d,s,o,f,js,fjs){
- *     w['SoloWidget']=o;w[o]=w[o]||function(){(w[o].q=w[o].q||[]).push(arguments)};
+ *     w['MagpipeWidget']=o;w[o]=w[o]||function(){(w[o].q=w[o].q||[]).push(arguments)};
  *     js=d.createElement(s);fjs=d.getElementsByTagName(s)[0];
  *     js.id=o;js.src=f;js.async=1;fjs.parentNode.insertBefore(js,fjs);
- *   }(window,document,'script','SoloChat','https://solomobile.ai/widget/solo-chat.js'));
- *   SoloChat('init', { widgetKey: 'YOUR_WIDGET_KEY' });
+ *   }(window,document,'script','MagpipeChat','https://magpipe.ai/widget/magpipe-chat.js'));
+ *   MagpipeChat('init', { widgetKey: 'YOUR_WIDGET_KEY' });
  * </script>
  */
 
@@ -32,10 +32,10 @@
 
   // Get or generate visitor ID
   function getVisitorId() {
-    let id = localStorage.getItem('solo_chat_visitor_id');
+    let id = localStorage.getItem('magpipe_chat_visitor_id');
     if (!id) {
       id = 'v_' + crypto.randomUUID();
-      localStorage.setItem('solo_chat_visitor_id', id);
+      localStorage.setItem('magpipe_chat_visitor_id', id);
     }
     return id;
   }
@@ -105,7 +105,7 @@
         })
         .subscribe();
     } catch (err) {
-      console.error('Solo Chat: Failed to subscribe to realtime:', err);
+      console.error('Magpipe Chat: Failed to subscribe to realtime:', err);
     }
   }
 
@@ -133,12 +133,12 @@
 
     // Create container
     const container = document.createElement('div');
-    container.id = 'solo-chat-container';
+    container.id = 'magpipe-chat-container';
 
     // Styles
     const styles = document.createElement('style');
     styles.textContent = `
-      .solo-chat-bubble {
+      .magpipe-chat-bubble {
         position: fixed;
         ${bubblePosition}
         width: 60px;
@@ -153,16 +153,16 @@
         z-index: 99999;
         transition: transform 0.2s, box-shadow 0.2s;
       }
-      .solo-chat-bubble:hover {
+      .magpipe-chat-bubble:hover {
         transform: scale(1.05);
         box-shadow: 0 6px 16px rgba(0,0,0,0.2);
       }
-      .solo-chat-bubble svg {
+      .magpipe-chat-bubble svg {
         width: 28px;
         height: 28px;
         fill: white;
       }
-      .solo-chat-modal {
+      .magpipe-chat-modal {
         position: fixed;
         ${modalPosition}
         width: 380px;
@@ -178,10 +178,10 @@
         overflow: hidden;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       }
-      .solo-chat-modal.open {
+      .magpipe-chat-modal.open {
         display: flex;
       }
-      .solo-chat-header {
+      .magpipe-chat-header {
         background: ${primaryColor};
         color: white;
         padding: 16px 20px;
@@ -189,12 +189,12 @@
         align-items: center;
         justify-content: space-between;
       }
-      .solo-chat-header h3 {
+      .magpipe-chat-header h3 {
         margin: 0;
         font-size: 16px;
         font-weight: 600;
       }
-      .solo-chat-close {
+      .magpipe-chat-close {
         background: none;
         border: none;
         color: white;
@@ -203,10 +203,10 @@
         display: flex;
         opacity: 0.8;
       }
-      .solo-chat-close:hover {
+      .magpipe-chat-close:hover {
         opacity: 1;
       }
-      .solo-chat-messages {
+      .magpipe-chat-messages {
         flex: 1;
         overflow-y: auto;
         padding: 16px;
@@ -214,7 +214,7 @@
         flex-direction: column;
         gap: 12px;
       }
-      .solo-chat-message {
+      .magpipe-chat-message {
         max-width: 85%;
         padding: 10px 14px;
         border-radius: 16px;
@@ -222,26 +222,26 @@
         line-height: 1.4;
         word-wrap: break-word;
       }
-      .solo-chat-message.visitor {
+      .magpipe-chat-message.visitor {
         background: ${primaryColor};
         color: white;
         align-self: flex-end;
         border-bottom-right-radius: 4px;
       }
-      .solo-chat-message.agent {
+      .magpipe-chat-message.agent {
         background: #f3f4f6;
         color: #1f2937;
         align-self: flex-start;
         border-bottom-left-radius: 4px;
       }
-      .solo-chat-message.system {
+      .magpipe-chat-message.system {
         background: #fef3c7;
         color: #92400e;
         align-self: center;
         font-size: 12px;
         text-align: center;
       }
-      .solo-chat-typing {
+      .magpipe-chat-typing {
         align-self: flex-start;
         background: #f3f4f6;
         padding: 10px 14px;
@@ -250,30 +250,30 @@
         display: none;
         margin: 0 16px 12px 16px;
       }
-      .solo-chat-typing.show {
+      .magpipe-chat-typing.show {
         display: flex;
       }
-      .solo-chat-typing span {
+      .magpipe-chat-typing span {
         width: 8px;
         height: 8px;
         background: #9ca3af;
         border-radius: 50%;
         margin: 0 2px;
-        animation: solo-chat-bounce 1.4s infinite ease-in-out both;
+        animation: magpipe-chat-bounce 1.4s infinite ease-in-out both;
       }
-      .solo-chat-typing span:nth-child(1) { animation-delay: -0.32s; }
-      .solo-chat-typing span:nth-child(2) { animation-delay: -0.16s; }
-      @keyframes solo-chat-bounce {
+      .magpipe-chat-typing span:nth-child(1) { animation-delay: -0.32s; }
+      .magpipe-chat-typing span:nth-child(2) { animation-delay: -0.16s; }
+      @keyframes magpipe-chat-bounce {
         0%, 80%, 100% { transform: scale(0); }
         40% { transform: scale(1); }
       }
-      .solo-chat-input-container {
+      .magpipe-chat-input-container {
         padding: 12px 16px;
         border-top: 1px solid #e5e7eb;
         display: flex;
         gap: 8px;
       }
-      .solo-chat-input {
+      .magpipe-chat-input {
         flex: 1;
         border: 1px solid #e5e7eb;
         border-radius: 24px;
@@ -282,10 +282,10 @@
         outline: none;
         transition: border-color 0.2s;
       }
-      .solo-chat-input:focus {
+      .magpipe-chat-input:focus {
         border-color: ${primaryColor};
       }
-      .solo-chat-send {
+      .magpipe-chat-send {
         background: ${primaryColor};
         border: none;
         border-radius: 50%;
@@ -297,19 +297,19 @@
         justify-content: center;
         transition: opacity 0.2s;
       }
-      .solo-chat-send:hover {
+      .magpipe-chat-send:hover {
         opacity: 0.9;
       }
-      .solo-chat-send:disabled {
+      .magpipe-chat-send:disabled {
         opacity: 0.5;
         cursor: not-allowed;
       }
-      .solo-chat-send svg {
+      .magpipe-chat-send svg {
         width: 18px;
         height: 18px;
         fill: white;
       }
-      .solo-chat-empty {
+      .magpipe-chat-empty {
         flex: 1;
         display: flex;
         flex-direction: column;
@@ -319,7 +319,7 @@
         text-align: center;
         padding: 20px;
       }
-      .solo-chat-empty svg {
+      .magpipe-chat-empty svg {
         width: 48px;
         height: 48px;
         fill: #d1d5db;
@@ -328,12 +328,12 @@
       @media (max-width: 480px) {
         ${isPortal ? `
         /* Hide widget on mobile when on portal */
-        .solo-chat-bubble,
-        .solo-chat-modal {
+        .magpipe-chat-bubble,
+        .magpipe-chat-modal {
           display: none !important;
         }
         ` : `
-        .solo-chat-modal {
+        .magpipe-chat-modal {
           top: 0;
           bottom: 0;
           right: 0;
@@ -344,7 +344,7 @@
           max-height: 100%;
           border-radius: 0;
         }
-        .solo-chat-bubble {
+        .magpipe-chat-bubble {
           ${isBottom ? `bottom: ${Math.max(16, offsetY)}px; top: auto;` : `top: ${Math.max(16, offsetY)}px; bottom: auto;`}
           ${isRight ? `right: ${Math.max(16, offsetX)}px; left: auto;` : `left: ${Math.max(16, offsetX)}px; right: auto;`}
         }
@@ -355,7 +355,7 @@
 
     // Chat bubble
     const bubble = document.createElement('div');
-    bubble.className = 'solo-chat-bubble';
+    bubble.className = 'magpipe-chat-bubble';
     bubble.innerHTML = `
       <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
         <path d="M12 2C6.48 2 2 6.48 2 12c0 1.82.49 3.53 1.34 5L2 22l5-1.34C8.47 21.51 10.18 22 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm0 18c-1.61 0-3.12-.46-4.39-1.25l-.31-.19-3.22.84.85-3.12-.2-.32C4.46 15.12 4 13.61 4 12c0-4.41 3.59-8 8-8s8 3.59 8 8-3.59 8-8 8z"/>
@@ -366,31 +366,31 @@
 
     // Chat modal
     const modal = document.createElement('div');
-    modal.className = 'solo-chat-modal';
-    modal.id = 'solo-chat-modal';
+    modal.className = 'magpipe-chat-modal';
+    modal.id = 'magpipe-chat-modal';
     modal.innerHTML = `
-      <div class="solo-chat-header">
+      <div class="magpipe-chat-header">
         <h3>${config.name || 'Chat with us'}</h3>
-        <button class="solo-chat-close">
+        <button class="magpipe-chat-close">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M18 6L6 18M6 6l12 12"/>
           </svg>
         </button>
       </div>
-      <div class="solo-chat-messages" id="solo-chat-messages">
-        <div class="solo-chat-empty">
+      <div class="magpipe-chat-messages" id="magpipe-chat-messages">
+        <div class="magpipe-chat-empty">
           <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path d="M12 2C6.48 2 2 6.48 2 12c0 1.82.49 3.53 1.34 5L2 22l5-1.34C8.47 21.51 10.18 22 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm0 18c-1.61 0-3.12-.46-4.39-1.25l-.31-.19-3.22.84.85-3.12-.2-.32C4.46 15.12 4 13.61 4 12c0-4.41 3.59-8 8-8s8 3.59 8 8-3.59 8-8 8z"/>
           </svg>
           <p>${getWelcomeMessage()}</p>
         </div>
       </div>
-      <div class="solo-chat-typing" id="solo-chat-typing">
+      <div class="magpipe-chat-typing" id="magpipe-chat-typing">
         <span></span><span></span><span></span>
       </div>
-      <div class="solo-chat-input-container">
-        <input type="text" class="solo-chat-input" id="solo-chat-input" placeholder="Type a message..." />
-        <button class="solo-chat-send" id="solo-chat-send">
+      <div class="magpipe-chat-input-container">
+        <input type="text" class="magpipe-chat-input" id="magpipe-chat-input" placeholder="Type a message..." />
+        <button class="magpipe-chat-send" id="magpipe-chat-send">
           <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
           </svg>
@@ -403,10 +403,10 @@
     document.body.appendChild(container);
 
     // Event listeners
-    modal.querySelector('.solo-chat-close').addEventListener('click', toggleChat);
+    modal.querySelector('.magpipe-chat-close').addEventListener('click', toggleChat);
 
-    const input = document.getElementById('solo-chat-input');
-    const sendBtn = document.getElementById('solo-chat-send');
+    const input = document.getElementById('magpipe-chat-input');
+    const sendBtn = document.getElementById('magpipe-chat-send');
 
     input.addEventListener('keypress', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
@@ -431,11 +431,11 @@
   // Toggle chat open/closed
   function toggleChat() {
     isOpen = !isOpen;
-    const modal = document.getElementById('solo-chat-modal');
+    const modal = document.getElementById('magpipe-chat-modal');
     if (modal) {
       modal.classList.toggle('open', isOpen);
       if (isOpen) {
-        document.getElementById('solo-chat-input').focus();
+        document.getElementById('magpipe-chat-input').focus();
         // Load history on first open
         if (messages.length === 0) {
           loadHistory();
@@ -481,7 +481,7 @@
         subscribeToMessages();
       }
     } catch (error) {
-      console.error('Solo Chat: Failed to fetch AI greeting:', error);
+      console.error('Magpipe Chat: Failed to fetch AI greeting:', error);
     } finally {
       setTyping(false);
     }
@@ -489,7 +489,7 @@
 
   // Load chat history from localStorage
   function loadHistory() {
-    const saved = localStorage.getItem(`solo_chat_history_${config.widgetKey}`);
+    const saved = localStorage.getItem(`magpipe_chat_history_${config.widgetKey}`);
     if (saved) {
       try {
         const data = JSON.parse(saved);
@@ -499,7 +499,7 @@
         // Subscribe to realtime updates
         subscribeToMessages();
       } catch (e) {
-        console.error('Solo Chat: Failed to load history', e);
+        console.error('Magpipe Chat: Failed to load history', e);
       }
     } else if (config.useAiGreeting) {
       // No history - fetch AI greeting
@@ -509,7 +509,7 @@
 
   // Save chat history to localStorage
   function saveHistory() {
-    localStorage.setItem(`solo_chat_history_${config.widgetKey}`, JSON.stringify({
+    localStorage.setItem(`magpipe_chat_history_${config.widgetKey}`, JSON.stringify({
       sessionId,
       messages
     }));
@@ -530,12 +530,12 @@
 
   // Render messages
   function renderMessages() {
-    const container = document.getElementById('solo-chat-messages');
+    const container = document.getElementById('magpipe-chat-messages');
     if (!container) return;
 
     if (messages.length === 0) {
       container.innerHTML = `
-        <div class="solo-chat-empty">
+        <div class="magpipe-chat-empty">
           <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path d="M12 2C6.48 2 2 6.48 2 12c0 1.82.49 3.53 1.34 5L2 22l5-1.34C8.47 21.51 10.18 22 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm0 18c-1.61 0-3.12-.46-4.39-1.25l-.31-.19-3.22.84.85-3.12-.2-.32C4.46 15.12 4 13.61 4 12c0-4.41 3.59-8 8-8s8 3.59 8 8-3.59 8-8 8z"/>
           </svg>
@@ -546,7 +546,7 @@
     }
 
     container.innerHTML = messages.map(m => `
-      <div class="solo-chat-message ${m.role}">
+      <div class="magpipe-chat-message ${m.role}">
         ${escapeHtml(m.content)}
       </div>
     `).join('');
@@ -561,7 +561,7 @@
 
   // Scroll messages to bottom
   function scrollToBottom() {
-    const container = document.getElementById('solo-chat-messages');
+    const container = document.getElementById('magpipe-chat-messages');
     if (container) {
       container.scrollTop = container.scrollHeight;
     }
@@ -569,7 +569,7 @@
 
   // Show/hide typing indicator
   function setTyping(show) {
-    const typing = document.getElementById('solo-chat-typing');
+    const typing = document.getElementById('magpipe-chat-typing');
     if (typing) {
       typing.classList.toggle('show', show);
     }
@@ -578,8 +578,8 @@
 
   // Send message
   async function sendMessage() {
-    const input = document.getElementById('solo-chat-input');
-    const sendBtn = document.getElementById('solo-chat-send');
+    const input = document.getElementById('magpipe-chat-input');
+    const sendBtn = document.getElementById('magpipe-chat-send');
     const message = input.value.trim();
 
     if (!message) return;
@@ -628,7 +628,7 @@
       const data = await response.json();
 
       if (data.error) {
-        console.error('Solo Chat: API error:', data.error, data.details);
+        console.error('Magpipe Chat: API error:', data.error, data.details);
         // Show error message
         messages.push({
           id: 'error_' + Date.now(),
@@ -666,7 +666,7 @@
       renderMessages();
       scrollToBottom();
     } catch (error) {
-      console.error('Solo Chat: Request failed:', error);
+      console.error('Magpipe Chat: Request failed:', error);
       messages.push({
         id: 'error_' + Date.now(),
         role: 'system',
@@ -687,7 +687,7 @@
   // Initialize
   function init(options) {
     if (!options || !options.widgetKey) {
-      console.error('Solo Chat: widgetKey is required');
+      console.error('Magpipe Chat: widgetKey is required');
       return;
     }
 
@@ -716,7 +716,7 @@
   }
 
   // Process queue and expose API
-  window.SoloChat = function(action, options) {
+  window.MagpipeChat = function(action, options) {
     if (action === 'init') {
       init(options);
     } else if (action === 'open') {
@@ -726,13 +726,13 @@
     } else if (action === 'clearHistory') {
       messages = [];
       sessionId = null;
-      localStorage.removeItem(`solo_chat_history_${config?.widgetKey}`);
+      localStorage.removeItem(`magpipe_chat_history_${config?.widgetKey}`);
       renderMessages();
     }
   };
 
   // Process queued commands
-  if (window.SoloChat && window.SoloChat.q) {
-    window.SoloChat.q.forEach(args => window.SoloChat.apply(null, args));
+  if (window.MagpipeChat && window.MagpipeChat.q) {
+    window.MagpipeChat.q.forEach(args => window.MagpipeChat.apply(null, args));
   }
 })();

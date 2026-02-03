@@ -206,7 +206,7 @@ export default class PricingPage {
                 <label>Telephony</label>
                 <div class="pill-group" id="telephony-pills">
                   <button class="pill-btn" data-value="0">Custom Telephony</button>
-                  <button class="pill-btn active" data-value="0.015">Solo Mobile Telephony</button>
+                  <button class="pill-btn active" data-value="0.015">MAGPIPE Telephony</button>
                 </div>
               </div>
             </div>
@@ -369,7 +369,7 @@ export default class PricingPage {
                     </thead>
                     <tbody>
                       <tr>
-                        <td>Solo Mobile Telephony</td>
+                        <td>MAGPIPE Telephony</td>
                         <td>$0.015/min</td>
                       </tr>
                       <tr>

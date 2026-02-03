@@ -2072,7 +2072,7 @@ export default class AgentDetailPage {
           <button class="close-btn" id="close-portal-confirm">&times;</button>
         </div>
         <div class="modal-body">
-          <p style="margin-bottom: 16px;">This will add the chat widget to your Solo Mobile portal, allowing you to chat with your own AI agent.</p>
+          <p style="margin-bottom: 16px;">This will add the chat widget to your MAGPIPE portal, allowing you to chat with your own AI agent.</p>
           <p style="margin-bottom: 16px; color: var(--text-secondary);">The chat bubble will appear in the bottom-right corner of the app. Any existing portal widget will be replaced.</p>
           <p style="font-size: 13px; color: var(--text-tertiary);">You can remove it anytime from this page.</p>
         </div>
@@ -2159,8 +2159,8 @@ export default class AgentDetailPage {
     w['SoloWidget']=o;w[o]=w[o]||function(){(w[o].q=w[o].q||[]).push(arguments)};
     js=d.createElement(s);fjs=d.getElementsByTagName(s)[0];
     js.id=o;js.src=f;js.async=1;fjs.parentNode.insertBefore(js,fjs);
-  }(window,document,'script','SoloChat','https://solomobile.ai/widget/solo-chat.js'));
-  SoloChat('init', { widgetKey: '${this.chatWidget.widget_key}' });
+  }(window,document,'script','MagpipeChat','https://magpipe.ai/widget/magpipe-chat.js'));
+  MagpipeChat('init', { widgetKey: '${this.chatWidget.widget_key}' });
 </script>`;
 
     // Create modal

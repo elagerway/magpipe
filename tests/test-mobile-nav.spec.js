@@ -41,11 +41,11 @@ test('mobile nav should be at bottom', async ({ page }) => {
   await page.evaluate(async ({ email, otp, SUPABASE_URL, SUPABASE_ANON_KEY }) => {
     const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      auth: { storageKey: 'solo-mobile-auth-token' }
+      auth: { storageKey: 'magpipe-auth-token' }
     });
     const { data, error } = await supabase.auth.verifyOtp({ email, token: otp, type: 'email' });
     if (data?.session) {
-      localStorage.setItem('solo-mobile-auth-token', JSON.stringify(data.session));
+      localStorage.setItem('magpipe-auth-token', JSON.stringify(data.session));
     }
     return { success: !!data?.session, error: error?.message };
   }, { email: TEST_EMAIL, otp, SUPABASE_URL, SUPABASE_ANON_KEY });
