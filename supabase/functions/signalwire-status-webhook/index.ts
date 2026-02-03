@@ -202,9 +202,6 @@ async function sendSlackCallNotification(
   durationSeconds: number
 ) {
   try {
-    // Wait a few seconds to allow LiveKit agent to save extracted data
-    await new Promise(resolve => setTimeout(resolve, 5000))
-
     // Get Slack provider ID
     const { data: slackProvider } = await supabase
       .from('integration_providers')
@@ -225,16 +222,33 @@ async function sendSlackCallNotification(
 
     if (!integration?.access_token) return
 
-    // Get call record with extracted data and sentiment
-    const { data: callRecord } = await supabase
-      .from('call_records')
-      .select('extracted_data, call_summary, user_sentiment')
-      .eq('id', callRecordId)
-      .single()
+    // Wait for extraction to complete - poll with retries
+    let extractedData: Record<string, any> = {}
+    let callSummary: string | null = null
+    let sentiment: string | null = null
 
-    const extractedData = callRecord?.extracted_data || {}
-    const callSummary = callRecord?.call_summary
-    const sentiment = callRecord?.user_sentiment
+    // Try up to 6 times (30 seconds total) waiting for data
+    for (let attempt = 0; attempt < 6; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 5000))
+
+      const { data: callRecord } = await supabase
+        .from('call_records')
+        .select('extracted_data, call_summary, user_sentiment')
+        .eq('id', callRecordId)
+        .single()
+
+      extractedData = callRecord?.extracted_data || {}
+      callSummary = callRecord?.call_summary
+      sentiment = callRecord?.user_sentiment
+
+      // If we have extracted data or summary, we're done waiting
+      if (Object.keys(extractedData).length > 0 || callSummary) {
+        console.log(`✅ Got extracted data after ${(attempt + 1) * 5} seconds`)
+        break
+      }
+
+      console.log(`⏳ Waiting for extraction... attempt ${attempt + 1}/6`)
+    }
 
     // Check if contact exists
     let { data: contact } = await supabase
@@ -244,23 +258,49 @@ async function sendSlackCallNotification(
       .eq('phone_number', phoneNumber)
       .single()
 
-    // If no contact exists and we have caller_name in extracted data, create one
+    // Get caller_name from extracted data
     const callerName = extractedData?.caller_name
-    if (!contact && callerName && typeof callerName === 'string') {
-      console.log(`Creating new contact: ${callerName} (${phoneNumber})`)
-      const { data: newContact, error: contactError } = await supabase
-        .from('contacts')
-        .insert({
-          user_id: userId,
-          name: callerName,
-          phone_number: phoneNumber,
-        })
-        .select('id, name')
-        .single()
 
-      if (!contactError && newContact) {
-        contact = newContact
-        console.log(`✅ Created contact: ${newContact.name}`)
+    if (callerName && typeof callerName === 'string') {
+      if (!contact) {
+        // No contact exists - create one
+        console.log(`Creating new contact: ${callerName} (${phoneNumber})`)
+        const { data: newContact, error: contactError } = await supabase
+          .from('contacts')
+          .insert({
+            user_id: userId,
+            name: callerName,
+            phone_number: phoneNumber,
+          })
+          .select('id, name')
+          .single()
+
+        if (!contactError && newContact) {
+          contact = newContact
+          console.log(`✅ Created contact: ${newContact.name}`)
+        }
+      } else if (contact.name === 'Unknown' || contact.name === 'unknown' || !contact.name) {
+        // Contact exists but has no real name - update it
+        console.log(`Updating contact name from "${contact.name}" to "${callerName}"`)
+        const { data: updatedContact, error: updateError } = await supabase
+          .from('contacts')
+          .update({ name: callerName, updated_at: new Date().toISOString() })
+          .eq('id', contact.id)
+          .select('id, name')
+          .single()
+
+        if (!updateError && updatedContact) {
+          contact = updatedContact
+          console.log(`✅ Updated contact: ${updatedContact.name}`)
+        }
+      }
+
+      // Link contact to call record
+      if (contact?.id) {
+        await supabase
+          .from('call_records')
+          .update({ contact_id: contact.id })
+          .eq('id', callRecordId)
       }
     }
 

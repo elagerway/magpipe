@@ -240,25 +240,43 @@ async function updateSlackMessageWithRecording(
       .eq('phone_number', phoneNumber)
       .single()
 
-    // If no contact exists and we have caller_name in extracted data, create one
+    // Get caller_name from extracted data
     const callerName = extractedData?.caller_name
-    if (!contact && callerName && typeof callerName === 'string') {
-      console.log(`Creating new contact: ${callerName} (${phoneNumber})`)
-      const { data: newContact, error: contactError } = await supabase
-        .from('contacts')
-        .insert({
-          user_id: userId,
-          name: callerName,
-          phone_number: phoneNumber,
-        })
-        .select('id, name')
-        .single()
 
-      if (!contactError && newContact) {
-        contact = newContact
-        console.log(`✅ Created contact: ${newContact.name}`)
-      } else {
-        console.error('Failed to create contact:', contactError)
+    if (callerName && typeof callerName === 'string') {
+      if (!contact) {
+        // No contact exists - create one
+        console.log(`Creating new contact: ${callerName} (${phoneNumber})`)
+        const { data: newContact, error: contactError } = await supabase
+          .from('contacts')
+          .insert({
+            user_id: userId,
+            name: callerName,
+            phone_number: phoneNumber,
+          })
+          .select('id, name')
+          .single()
+
+        if (!contactError && newContact) {
+          contact = newContact
+          console.log(`✅ Created contact: ${newContact.name}`)
+        } else {
+          console.error('Failed to create contact:', contactError)
+        }
+      } else if (contact.name === 'Unknown' || contact.name === 'unknown' || !contact.name) {
+        // Contact exists but has no real name - update it
+        console.log(`Updating contact name from "${contact.name}" to "${callerName}"`)
+        const { data: updatedContact, error: updateError } = await supabase
+          .from('contacts')
+          .update({ name: callerName, updated_at: new Date().toISOString() })
+          .eq('id', contact.id)
+          .select('id, name')
+          .single()
+
+        if (!updateError && updatedContact) {
+          contact = updatedContact
+          console.log(`✅ Updated contact: ${updatedContact.name}`)
+        }
       }
     }
 
