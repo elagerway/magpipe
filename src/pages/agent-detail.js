@@ -140,6 +140,14 @@ export default class AgentDetailPage {
     }));
     this.serviceNumbers = [...regularNumbers, ...sipNumbers];
 
+    // Check Cal.com connection status
+    const { data: userData } = await supabase
+      .from('users')
+      .select('cal_com_access_token')
+      .eq('id', user.id)
+      .single();
+    this.isCalComConnected = !!userData?.cal_com_access_token;
+
     // Load chat widget for this agent
     const { widget } = await ChatWidget.getByAgentId(this.agent.id);
     this.chatWidget = widget;
@@ -241,6 +249,37 @@ export default class AgentDetailPage {
     const tabParam = urlParams.get('tab');
     if (tabParam) {
       this.switchTab(tabParam);
+    }
+
+    // Check for Cal.com OAuth callback success
+    if (urlParams.get('cal_connected') === 'true') {
+      // Clean URL
+      window.history.replaceState({}, '', `/agents/${this.agentId}`);
+
+      // Enable booking in custom_instructions
+      const customInstructions = {
+        ...this.agent.custom_instructions,
+        enable_booking: true,
+      };
+      this.scheduleAutoSave({ custom_instructions: customInstructions });
+
+      // Update the checkbox if on functions tab
+      const funcBooking = document.getElementById('func-booking');
+      if (funcBooking) {
+        funcBooking.checked = true;
+      }
+
+      // Show success message and open modal to configure event types
+      setTimeout(() => {
+        this.showBookingModal();
+      }, 500);
+    }
+
+    // Check for Cal.com error
+    const calError = urlParams.get('cal_error');
+    if (calError) {
+      window.history.replaceState({}, '', `/agents/${this.agentId}`);
+      alert(`Cal.com connection failed: ${calError}`);
     }
   }
 
@@ -746,34 +785,49 @@ export default class AgentDetailPage {
         <p class="section-desc">Enable capabilities for your agent.</p>
 
         <div class="function-toggles">
-          <label class="function-toggle">
-            <input type="checkbox" id="func-sms" ${this.agent.custom_instructions?.enable_sms !== false ? 'checked' : ''} />
-            <div class="toggle-content">
-              <span class="toggle-label">Send SMS</span>
-              <span class="toggle-desc">Allow agent to send text messages</span>
-            </div>
-          </label>
+          <div class="function-toggle sms-toggle-container" style="padding: 0; cursor: default;">
+            <label style="display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem; cursor: pointer; flex: 1;">
+              <input type="checkbox" id="func-sms" ${this.agent.custom_instructions?.enable_sms !== false ? 'checked' : ''} style="margin-top: 0.2rem;" />
+              <div class="toggle-content">
+                <span class="toggle-label">Send SMS</span>
+                <span class="toggle-desc">Allow agent to send text messages</span>
+              </div>
+            </label>
+            <button id="configure-sms-btn" type="button" class="configure-btn">Configure</button>
+          </div>
 
-          <div class="function-toggle-row" style="display: flex; align-items: center; gap: 0.5rem;">
-            <label class="function-toggle" style="flex: 1;">
-              <input type="checkbox" id="func-transfer" ${this.agent.custom_instructions?.enable_transfer !== false ? 'checked' : ''} />
+          <div class="function-toggle transfer-toggle-container" style="padding: 0; cursor: default;">
+            <label style="display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem; cursor: pointer; flex: 1;">
+              <input type="checkbox" id="func-transfer" ${this.agent.custom_instructions?.enable_transfer !== false ? 'checked' : ''} style="margin-top: 0.2rem;" />
               <div class="toggle-content">
                 <span class="toggle-label">Transfer Calls</span>
                 <span class="toggle-desc">Allow agent to transfer calls to another number</span>
               </div>
             </label>
-            <button id="configure-transfer-btn" class="btn btn-secondary btn-sm" style="white-space: nowrap; padding: 0.4rem 0.75rem; font-size: 0.8rem;">
-              Configure
-            </button>
+            <button id="configure-transfer-btn" type="button" class="configure-btn">Configure</button>
           </div>
 
-          <label class="function-toggle">
-            <input type="checkbox" id="func-booking" ${this.agent.custom_instructions?.enable_booking ? 'checked' : ''} />
-            <div class="toggle-content">
-              <span class="toggle-label">Book Appointments</span>
-              <span class="toggle-desc">Allow agent to schedule appointments (requires Cal.com)</span>
-            </div>
-          </label>
+          <div class="function-toggle booking-toggle-container" style="padding: 0; cursor: default;">
+            <label style="display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem; cursor: pointer; flex: 1;">
+              <input type="checkbox" id="func-booking" ${this.isCalComConnected && this.agent.custom_instructions?.enable_booking ? 'checked' : ''} style="margin-top: 0.2rem;" />
+              <div class="toggle-content">
+                <span class="toggle-label">Book Appointments</span>
+                <span class="toggle-desc">Allow agent to schedule appointments (requires Cal.com)</span>
+              </div>
+            </label>
+            <button id="configure-booking-btn" type="button" class="configure-btn">Configure</button>
+          </div>
+
+          <div class="function-toggle extract-toggle-container" style="padding: 0; cursor: default;">
+            <label style="display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem; cursor: pointer; flex: 1;">
+              <input type="checkbox" id="func-extract" ${this.agent.custom_instructions?.enable_extract ? 'checked' : ''} style="margin-top: 0.2rem;" />
+              <div class="toggle-content">
+                <span class="toggle-label">Extract Data</span>
+                <span class="toggle-desc">Extract structured data from conversations (name, email, etc.)</span>
+              </div>
+            </label>
+            <button id="configure-extract-btn" type="button" class="configure-btn">Configure</button>
+          </div>
 
           <label class="function-toggle">
             <input type="checkbox" id="func-end-call" checked disabled />
@@ -1498,6 +1552,7 @@ export default class AgentDetailPage {
     const funcSms = document.getElementById('func-sms');
     const funcTransfer = document.getElementById('func-transfer');
     const funcBooking = document.getElementById('func-booking');
+    const funcExtract = document.getElementById('func-extract');
 
     const updateCustomInstructions = () => {
       const customInstructions = {
@@ -1505,13 +1560,70 @@ export default class AgentDetailPage {
         enable_sms: funcSms?.checked ?? true,
         enable_transfer: funcTransfer?.checked ?? true,
         enable_booking: funcBooking?.checked ?? false,
+        enable_extract: funcExtract?.checked ?? false,
       };
       this.scheduleAutoSave({ custom_instructions: customInstructions });
     };
 
-    [funcSms, funcBooking].forEach(el => {
-      if (el) el.addEventListener('change', updateCustomInstructions);
-    });
+    // Booking toggle - show modal when enabled
+    if (funcBooking) {
+      funcBooking.addEventListener('change', () => {
+        updateCustomInstructions();
+        if (funcBooking.checked) {
+          this.showBookingModal();
+        }
+      });
+    }
+
+    // Configure booking button
+    const configureBookingBtn = document.getElementById('configure-booking-btn');
+    if (configureBookingBtn) {
+      configureBookingBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.showBookingModal();
+      });
+    }
+
+    // Extract toggle - show modal when enabled
+    if (funcExtract) {
+      funcExtract.addEventListener('change', () => {
+        updateCustomInstructions();
+        if (funcExtract.checked) {
+          this.showExtractDataModal();
+        }
+      });
+    }
+
+    // Configure extract button
+    const configureExtractBtn = document.getElementById('configure-extract-btn');
+    if (configureExtractBtn) {
+      configureExtractBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.showExtractDataModal();
+      });
+    }
+
+    // SMS toggle - show modal when enabled
+    if (funcSms) {
+      funcSms.addEventListener('change', () => {
+        updateCustomInstructions();
+        if (funcSms.checked) {
+          this.showSmsModal();
+        }
+      });
+    }
+
+    // Configure SMS button
+    const configureSmsBtn = document.getElementById('configure-sms-btn');
+    if (configureSmsBtn) {
+      configureSmsBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.showSmsModal();
+      });
+    }
 
     // Transfer toggle - show modal when enabled
     if (funcTransfer) {
@@ -1523,10 +1635,14 @@ export default class AgentDetailPage {
       });
     }
 
-    // Configure transfer button
+    // Configure transfer button (stopPropagation prevents checkbox toggle)
     const configureTransferBtn = document.getElementById('configure-transfer-btn');
     if (configureTransferBtn) {
-      configureTransferBtn.addEventListener('click', () => this.showTransferModal());
+      configureTransferBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.showTransferModal();
+      });
     }
   }
 
@@ -2438,17 +2554,691 @@ export default class AgentDetailPage {
     }
   }
 
-  async showTransferModal() {
-    // Load transfer numbers from database
-    const { data: transferNumbers, error } = await supabase
-      .from('transfer_numbers')
-      .select('*')
-      .eq('user_id', this.agent.user_id)
-      .order('created_at', { ascending: true });
+  async showBookingModal() {
+    try {
+      // Check if Cal.com is connected
+      const { data: user } = await supabase
+        .from('users')
+        .select('cal_com_access_token, cal_com_refresh_token')
+        .eq('id', this.agent.user_id)
+        .single();
 
-    if (error) {
-      console.error('Error loading transfer numbers:', error);
+      const isCalComConnected = !!user?.cal_com_access_token;
+
+      // Get event types if connected
+      let eventTypes = [];
+      if (isCalComConnected) {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const response = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cal-com-get-slots`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${session.access_token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ action: 'get_event_types' }),
+            }
+          );
+          if (response.ok) {
+            const data = await response.json();
+            eventTypes = data.eventTypes || [];
+          }
+        } catch (err) {
+          console.error('Error fetching event types:', err);
+        }
+      }
+
+      // Get saved booking config from custom_instructions
+      const bookingConfig = this.agent.custom_instructions?.booking_config || {};
+      const selectedEventTypes = bookingConfig.event_type_ids || [];
+
+      const modal = document.createElement('div');
+      modal.className = 'voice-modal-overlay';
+      modal.id = 'booking-modal';
+      modal.innerHTML = `
+        <div class="voice-modal" style="max-width: 500px; max-height: 90vh; display: flex; flex-direction: column;">
+          <div class="voice-modal-header">
+            <h3>Booking Settings</h3>
+            <button class="close-modal-btn">&times;</button>
+          </div>
+          <div class="voice-modal-content" style="padding: 1rem; flex: 1; overflow-y: auto;">
+            ${!isCalComConnected ? `
+              <div style="text-align: center; padding: 2rem 1rem;">
+                <svg width="48" height="48" fill="none" stroke="var(--text-secondary)" viewBox="0 0 24 24" style="margin-bottom: 1rem;">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                </svg>
+                <h4 style="margin: 0 0 0.5rem; color: var(--text-primary);">Connect Cal.com</h4>
+                <p style="margin: 0 0 1.5rem; color: var(--text-secondary); font-size: 0.875rem;">
+                  Connect your Cal.com account to let your agent book appointments.
+                </p>
+                <button id="connect-calcom-btn" class="btn btn-primary">
+                  Connect Cal.com
+                </button>
+              </div>
+            ` : `
+              <p style="margin: 0 0 1rem; color: var(--text-secondary); font-size: 0.875rem;">
+                Select which event types your agent can book appointments for.
+              </p>
+              ${eventTypes.length === 0 ? `
+                <p style="color: var(--text-secondary); text-align: center; padding: 1rem;">
+                  No event types found. Create event types in Cal.com first.
+                </p>
+              ` : `
+                <div id="event-types-list" style="display: flex; flex-direction: column; gap: 0.5rem;">
+                  ${eventTypes.map(et => `
+                    <label class="event-type-option" style="
+                      display: flex;
+                      align-items: center;
+                      gap: 0.75rem;
+                      padding: 0.75rem;
+                      background: var(--bg-secondary, #f9fafb);
+                      border: 1px solid var(--border-color, #e5e7eb);
+                      border-radius: 8px;
+                      cursor: pointer;
+                    ">
+                      <input type="checkbox" class="event-type-checkbox" value="${et.id}"
+                        ${selectedEventTypes.includes(et.id) ? 'checked' : ''} />
+                      <div style="flex: 1;">
+                        <div style="font-weight: 500; font-size: 0.9rem;">${et.title || et.name}</div>
+                        <div style="font-size: 0.8rem; color: var(--text-secondary);">${et.length || et.duration || 30} minutes</div>
+                      </div>
+                    </label>
+                  `).join('')}
+                </div>
+              `}
+            `}
+          </div>
+          ${isCalComConnected && eventTypes.length > 0 ? `
+            <div style="padding: 1rem; border-top: 1px solid var(--border-color, #e5e7eb);">
+              <button id="save-booking-config-btn" class="btn btn-primary" style="width: 100%;">
+                Save Changes
+              </button>
+            </div>
+          ` : ''}
+        </div>
+      `;
+
+      document.body.appendChild(modal);
+
+      // Close button
+      modal.querySelector('.close-modal-btn').addEventListener('click', () => modal.remove());
+
+      // Click outside to close
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.remove();
+      });
+
+      // Save button
+      const saveBtn = modal.querySelector('#save-booking-config-btn');
+      if (saveBtn) {
+        saveBtn.addEventListener('click', async () => {
+          const checkboxes = modal.querySelectorAll('.event-type-checkbox:checked');
+          const selectedIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
+
+          const customInstructions = {
+            ...this.agent.custom_instructions,
+            booking_config: {
+              event_type_ids: selectedIds,
+            },
+          };
+
+          this.scheduleAutoSave({ custom_instructions: customInstructions });
+          modal.remove();
+        });
+      }
+
+      // Connect Cal.com button - initiate OAuth
+      const connectBtn = modal.querySelector('#connect-calcom-btn');
+      if (connectBtn) {
+        connectBtn.addEventListener('click', async () => {
+          connectBtn.disabled = true;
+          connectBtn.textContent = 'Connecting...';
+
+          try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const returnUrl = `${window.location.origin}/agents/${this.agentId}?tab=functions`;
+
+            const encodedReturnUrl = encodeURIComponent(returnUrl);
+            const response = await fetch(
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cal-com-oauth-start?returnUrl=${encodedReturnUrl}`,
+              {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${session.access_token}`,
+                  'Content-Type': 'application/json',
+                },
+              }
+            );
+
+            if (response.ok) {
+              const data = await response.json();
+              if (data.url) {
+                window.location.href = data.url;
+              }
+            } else {
+              const error = await response.json();
+              alert(error.error || 'Failed to start Cal.com connection');
+              connectBtn.disabled = false;
+              connectBtn.textContent = 'Connect Cal.com';
+            }
+          } catch (err) {
+            console.error('Error starting Cal.com OAuth:', err);
+            alert('Failed to connect to Cal.com');
+            connectBtn.disabled = false;
+            connectBtn.textContent = 'Connect Cal.com';
+          }
+        });
+      }
+    } catch (err) {
+      console.error('Error in showBookingModal:', err);
     }
+  }
+
+  async showExtractDataModal() {
+    try {
+      // Load dynamic variables from database
+      const { data: dynamicVars, error } = await supabase
+        .from('dynamic_variables')
+        .select('*')
+        .eq('user_id', this.agent.user_id)
+        .eq('agent_id', this.agent.id)
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.error('Error loading dynamic variables:', error);
+      }
+
+      const variables = dynamicVars || [];
+
+      const modal = document.createElement('div');
+      modal.className = 'voice-modal-overlay';
+      modal.id = 'extract-modal';
+      modal.innerHTML = `
+        <div class="voice-modal" style="max-width: 550px; max-height: 90vh; display: flex; flex-direction: column;">
+          <div class="voice-modal-header">
+            <h3>Extract Data</h3>
+            <button class="close-modal-btn">&times;</button>
+          </div>
+          <div class="voice-modal-content" style="padding: 1rem; flex: 1; overflow-y: auto;">
+            <p style="margin: 0 0 1rem; color: var(--text-secondary); font-size: 0.875rem;">
+              Define variables to extract from conversations. This data can be sent to CRMs, databases, or other integrations.
+            </p>
+            <div id="dynamic-vars-list" style="display: flex; flex-direction: column; gap: 0.75rem;">
+              ${variables.length === 0 ? '<p style="color: var(--text-secondary); text-align: center; padding: 1rem;">No variables configured</p>' : ''}
+              ${variables.map((v, index) => this.renderDynamicVarRow(v, index)).join('')}
+            </div>
+            <button id="add-dynamic-var-btn" style="
+              width: 100%;
+              margin-top: 1rem;
+              padding: 0.75rem;
+              background: var(--bg-secondary, #f3f4f6);
+              border: 1px dashed var(--border-color, #e5e7eb);
+              border-radius: 8px;
+              color: var(--text-secondary);
+              font-size: 0.875rem;
+              cursor: pointer;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              gap: 0.5rem;
+            ">
+              <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+              </svg>
+              Add Variable
+            </button>
+          </div>
+          <div style="padding: 1rem; border-top: 1px solid var(--border-color, #e5e7eb);">
+            <button id="save-dynamic-vars-btn" class="btn btn-primary" style="width: 100%;">
+              Save Changes
+            </button>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(modal);
+
+      // Store variables for manipulation
+      this.modalDynamicVars = [...variables];
+
+      // Close button
+      modal.querySelector('.close-modal-btn').addEventListener('click', () => modal.remove());
+
+      // Click outside to close
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.remove();
+      });
+
+      // Add variable button
+      modal.querySelector('#add-dynamic-var-btn').addEventListener('click', () => {
+        this.modalDynamicVars.push({ id: null, name: '', description: '', var_type: 'text', enum_options: [] });
+        this.refreshDynamicVarsList();
+      });
+
+      // Save button
+      modal.querySelector('#save-dynamic-vars-btn').addEventListener('click', async () => {
+        await this.saveDynamicVars();
+        modal.remove();
+      });
+
+      // Attach input listeners
+      this.attachExtractModalListeners();
+    } catch (err) {
+      console.error('Error in showExtractDataModal:', err);
+    }
+  }
+
+  renderDynamicVarRow(v, index) {
+    const types = [
+      { value: 'text', label: 'Text' },
+      { value: 'number', label: 'Number' },
+      { value: 'boolean', label: 'Boolean' },
+      { value: 'enum', label: 'Enum (list)' },
+    ];
+
+    return `
+      <div class="dynamic-var-row" data-index="${index}" style="
+        background: var(--bg-secondary, #f9fafb);
+        border: 1px solid var(--border-color, #e5e7eb);
+        border-radius: 8px;
+        padding: 0.75rem;
+      ">
+        <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+          <input
+            type="text"
+            class="dynamic-var-name-input form-input"
+            placeholder="Variable name (e.g., caller_name)"
+            value="${v.name || ''}"
+            data-index="${index}"
+            style="flex: 1; font-size: 0.875rem;"
+          />
+          <select class="dynamic-var-type-select form-input" data-index="${index}" style="width: 110px; font-size: 0.875rem;">
+            ${types.map(t => `<option value="${t.value}" ${v.var_type === t.value ? 'selected' : ''}>${t.label}</option>`).join('')}
+          </select>
+          <button class="remove-dynamic-var-btn btn btn-icon" data-index="${index}" style="
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 0.25rem;
+          ">
+            <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+            </svg>
+          </button>
+        </div>
+        <input
+          type="text"
+          class="dynamic-var-desc-input form-input"
+          placeholder="Description (e.g., The caller's full name)"
+          value="${v.description || ''}"
+          data-index="${index}"
+          style="width: 100%; font-size: 0.875rem; margin-bottom: 0.5rem;"
+        />
+        <div class="enum-options-container" data-index="${index}" style="display: ${v.var_type === 'enum' ? 'block' : 'none'};">
+          <input
+            type="text"
+            class="dynamic-var-enum-input form-input"
+            placeholder="Options (comma-separated, e.g., Yes, No, Maybe)"
+            value="${(v.enum_options || []).join(', ')}"
+            data-index="${index}"
+            style="width: 100%; font-size: 0.875rem;"
+          />
+        </div>
+      </div>
+    `;
+  }
+
+  refreshDynamicVarsList() {
+    const list = document.getElementById('dynamic-vars-list');
+    if (!list) return;
+
+    if (this.modalDynamicVars.length === 0) {
+      list.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 1rem;">No variables configured</p>';
+    } else {
+      list.innerHTML = this.modalDynamicVars.map((v, index) => this.renderDynamicVarRow(v, index)).join('');
+    }
+
+    this.attachExtractModalListeners();
+  }
+
+  attachExtractModalListeners() {
+    const modal = document.getElementById('extract-modal');
+    if (!modal) return;
+
+    // Name inputs
+    modal.querySelectorAll('.dynamic-var-name-input').forEach(input => {
+      input.addEventListener('input', (e) => {
+        const index = parseInt(e.target.dataset.index);
+        this.modalDynamicVars[index].name = e.target.value;
+      });
+    });
+
+    // Description inputs
+    modal.querySelectorAll('.dynamic-var-desc-input').forEach(input => {
+      input.addEventListener('input', (e) => {
+        const index = parseInt(e.target.dataset.index);
+        this.modalDynamicVars[index].description = e.target.value;
+      });
+    });
+
+    // Type selects
+    modal.querySelectorAll('.dynamic-var-type-select').forEach(select => {
+      select.addEventListener('change', (e) => {
+        const index = parseInt(e.target.dataset.index);
+        this.modalDynamicVars[index].var_type = e.target.value;
+        // Show/hide enum options
+        const enumContainer = modal.querySelector(`.enum-options-container[data-index="${index}"]`);
+        if (enumContainer) {
+          enumContainer.style.display = e.target.value === 'enum' ? 'block' : 'none';
+        }
+      });
+    });
+
+    // Enum options inputs
+    modal.querySelectorAll('.dynamic-var-enum-input').forEach(input => {
+      input.addEventListener('input', (e) => {
+        const index = parseInt(e.target.dataset.index);
+        this.modalDynamicVars[index].enum_options = e.target.value.split(',').map(s => s.trim()).filter(s => s);
+      });
+    });
+
+    // Remove buttons
+    modal.querySelectorAll('.remove-dynamic-var-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const index = parseInt(e.currentTarget.dataset.index);
+        const v = this.modalDynamicVars[index];
+
+        // If it has an ID, delete from database
+        if (v.id) {
+          await supabase.from('dynamic_variables').delete().eq('id', v.id);
+        }
+
+        this.modalDynamicVars.splice(index, 1);
+        this.refreshDynamicVarsList();
+      });
+    });
+  }
+
+  async saveDynamicVars() {
+    const saveBtn = document.querySelector('#save-dynamic-vars-btn');
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+    }
+
+    try {
+      for (const v of this.modalDynamicVars) {
+        // Skip empty entries
+        if (!v.name) continue;
+
+        if (v.id) {
+          // Update existing
+          await supabase
+            .from('dynamic_variables')
+            .update({
+              name: v.name,
+              description: v.description,
+              var_type: v.var_type,
+              enum_options: v.var_type === 'enum' ? v.enum_options : null,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', v.id);
+        } else if (v.name) {
+          // Insert new
+          await supabase
+            .from('dynamic_variables')
+            .insert({
+              user_id: this.agent.user_id,
+              agent_id: this.agent.id,
+              name: v.name,
+              description: v.description,
+              var_type: v.var_type,
+              enum_options: v.var_type === 'enum' ? v.enum_options : null,
+            });
+        }
+      }
+    } catch (err) {
+      console.error('Error saving dynamic variables:', err);
+      alert('Failed to save variables. Please try again.');
+    }
+  }
+
+  async showSmsModal() {
+    try {
+      // Load SMS templates from database
+      const { data: smsTemplates, error } = await supabase
+        .from('sms_templates')
+        .select('*')
+        .eq('user_id', this.agent.user_id)
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.error('Error loading SMS templates:', error);
+      }
+
+      const templates = smsTemplates || [];
+
+      const modal = document.createElement('div');
+      modal.className = 'voice-modal-overlay';
+      modal.id = 'sms-modal';
+      modal.innerHTML = `
+        <div class="voice-modal" style="max-width: 500px; max-height: 90vh; display: flex; flex-direction: column;">
+          <div class="voice-modal-header">
+            <h3>SMS Templates</h3>
+            <button class="close-modal-btn">&times;</button>
+          </div>
+          <div class="voice-modal-content" style="padding: 1rem; flex: 1; overflow-y: auto;">
+            <p style="margin: 0 0 1rem; color: var(--text-secondary); font-size: 0.875rem;">
+              Create message templates your agent can use when sending SMS.
+            </p>
+            <div id="sms-templates-list" style="display: flex; flex-direction: column; gap: 0.75rem;">
+              ${templates.length === 0 ? '<p style="color: var(--text-secondary); text-align: center; padding: 1rem;">No templates configured</p>' : ''}
+              ${templates.map((tmpl, index) => this.renderSmsTemplateRow(tmpl, index)).join('')}
+            </div>
+            <button id="add-sms-template-btn" style="
+              width: 100%;
+              margin-top: 1rem;
+              padding: 0.75rem;
+              background: var(--bg-secondary, #f3f4f6);
+              border: 1px dashed var(--border-color, #e5e7eb);
+              border-radius: 8px;
+              color: var(--text-secondary);
+              font-size: 0.875rem;
+              cursor: pointer;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              gap: 0.5rem;
+            ">
+              <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+              </svg>
+              Add Template
+            </button>
+          </div>
+          <div style="padding: 1rem; border-top: 1px solid var(--border-color, #e5e7eb);">
+            <button id="save-sms-templates-btn" class="btn btn-primary" style="width: 100%;">
+              Save Changes
+            </button>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(modal);
+
+      // Store templates for manipulation
+      this.modalSmsTemplates = [...templates];
+
+      // Close button
+      modal.querySelector('.close-modal-btn').addEventListener('click', () => modal.remove());
+
+      // Click outside to close
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.remove();
+      });
+
+      // Add template button
+      modal.querySelector('#add-sms-template-btn').addEventListener('click', () => {
+        this.modalSmsTemplates.push({ id: null, name: '', content: '' });
+        this.refreshSmsTemplatesList();
+      });
+
+      // Save button
+      modal.querySelector('#save-sms-templates-btn').addEventListener('click', async () => {
+        await this.saveSmsTemplates();
+        modal.remove();
+      });
+
+      // Attach input listeners
+      this.attachSmsModalListeners();
+    } catch (err) {
+      console.error('Error in showSmsModal:', err);
+    }
+  }
+
+  renderSmsTemplateRow(tmpl, index) {
+    return `
+      <div class="sms-template-row" data-index="${index}" style="
+        background: var(--bg-secondary, #f9fafb);
+        border: 1px solid var(--border-color, #e5e7eb);
+        border-radius: 8px;
+        padding: 0.75rem;
+      ">
+        <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+          <input
+            type="text"
+            class="sms-template-name-input form-input"
+            placeholder="Template name (e.g., Follow up)"
+            value="${tmpl.name || ''}"
+            data-index="${index}"
+            style="flex: 1; font-size: 0.875rem;"
+          />
+          <button class="remove-sms-template-btn btn btn-icon" data-index="${index}" style="
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 0.25rem;
+          ">
+            <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+            </svg>
+          </button>
+        </div>
+        <textarea
+          class="sms-template-content-input form-input"
+          placeholder="Message content..."
+          data-index="${index}"
+          style="width: 100%; min-height: 80px; font-size: 0.875rem; resize: vertical;"
+        >${tmpl.content || ''}</textarea>
+      </div>
+    `;
+  }
+
+  refreshSmsTemplatesList() {
+    const list = document.getElementById('sms-templates-list');
+    if (!list) return;
+
+    if (this.modalSmsTemplates.length === 0) {
+      list.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 1rem;">No templates configured</p>';
+    } else {
+      list.innerHTML = this.modalSmsTemplates.map((tmpl, index) => this.renderSmsTemplateRow(tmpl, index)).join('');
+    }
+
+    this.attachSmsModalListeners();
+  }
+
+  attachSmsModalListeners() {
+    const modal = document.getElementById('sms-modal');
+    if (!modal) return;
+
+    // Name inputs
+    modal.querySelectorAll('.sms-template-name-input').forEach(input => {
+      input.addEventListener('input', (e) => {
+        const index = parseInt(e.target.dataset.index);
+        this.modalSmsTemplates[index].name = e.target.value;
+      });
+    });
+
+    // Content inputs
+    modal.querySelectorAll('.sms-template-content-input').forEach(input => {
+      input.addEventListener('input', (e) => {
+        const index = parseInt(e.target.dataset.index);
+        this.modalSmsTemplates[index].content = e.target.value;
+      });
+    });
+
+    // Remove buttons
+    modal.querySelectorAll('.remove-sms-template-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const index = parseInt(e.currentTarget.dataset.index);
+        const tmpl = this.modalSmsTemplates[index];
+
+        // If it has an ID, delete from database
+        if (tmpl.id) {
+          await supabase.from('sms_templates').delete().eq('id', tmpl.id);
+        }
+
+        this.modalSmsTemplates.splice(index, 1);
+        this.refreshSmsTemplatesList();
+      });
+    });
+  }
+
+  async saveSmsTemplates() {
+    const saveBtn = document.querySelector('#save-sms-templates-btn');
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+    }
+
+    try {
+      for (const tmpl of this.modalSmsTemplates) {
+        // Skip empty entries
+        if (!tmpl.name && !tmpl.content) continue;
+
+        if (tmpl.id) {
+          // Update existing
+          await supabase
+            .from('sms_templates')
+            .update({
+              name: tmpl.name,
+              content: tmpl.content,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', tmpl.id);
+        } else if (tmpl.name || tmpl.content) {
+          // Insert new
+          await supabase
+            .from('sms_templates')
+            .insert({
+              user_id: this.agent.user_id,
+              name: tmpl.name,
+              content: tmpl.content,
+            });
+        }
+      }
+    } catch (err) {
+      console.error('Error saving SMS templates:', err);
+      alert('Failed to save templates. Please try again.');
+    }
+  }
+
+  async showTransferModal() {
+    try {
+      // Load transfer numbers from database
+      const { data: transferNumbers, error } = await supabase
+        .from('transfer_numbers')
+        .select('*')
+        .eq('user_id', this.agent.user_id)
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.error('Error loading transfer numbers:', error);
+      }
 
     const numbers = transferNumbers || [];
 
@@ -2525,6 +3315,9 @@ export default class AgentDetailPage {
 
     // Attach input listeners
     this.attachTransferModalListeners();
+    } catch (err) {
+      console.error('Error in showTransferModal:', err);
+    }
   }
 
   renderTransferNumberRow(num, index) {
@@ -3677,6 +4470,31 @@ export default class AgentDetailPage {
 
       .function-toggle:hover {
         border-color: var(--primary-color);
+      }
+
+      .function-toggle.transfer-toggle-container:hover,
+      .function-toggle.sms-toggle-container:hover,
+      .function-toggle.booking-toggle-container:hover,
+      .function-toggle.extract-toggle-container:hover {
+        border-color: var(--border-color);
+      }
+
+      .configure-btn {
+        padding: 10px;
+        background: var(--bg-secondary, #f3f4f6);
+        border: none;
+        border-left: 1px solid var(--border-color);
+        color: var(--text-secondary);
+        font-size: 0.8rem;
+        cursor: pointer;
+        align-self: stretch;
+        border-radius: 0 var(--radius-md) var(--radius-md) 0;
+        transition: background 0.2s, color 0.2s;
+      }
+
+      .configure-btn:hover {
+        background: var(--border-color, #e5e7eb);
+        color: var(--text-primary);
       }
 
       .function-toggle input[type="checkbox"] {
