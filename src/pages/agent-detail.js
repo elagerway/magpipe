@@ -1979,6 +1979,11 @@ export default class AgentDetailPage {
         this.loadAnalytics();
         break;
     }
+
+    // Update URL with tab parameter
+    const url = new URL(window.location);
+    url.searchParams.set('tab', tabName);
+    window.history.replaceState({}, '', url);
   }
 
   async loadAnalytics() {
