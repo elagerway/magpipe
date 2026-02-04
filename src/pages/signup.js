@@ -541,6 +541,13 @@ export default class SignupPage {
         // Profile is created automatically by database trigger (handle_new_user)
         // No need to call User.createProfile() here
 
+        // Send signup notification (don't await - fire and forget)
+        fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/notify-signup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, email })
+        }).catch(() => {}); // Ignore errors
+
         // Redirect to phone verification
         navigateTo('/verify-phone');
       } catch (error) {

@@ -94,6 +94,57 @@ Deno.serve(async (req) => {
 
     console.log('Contact email sent successfully:', emailResult)
 
+    // Send SMS notification for upgrade requests
+    if (subject.includes('Custom Plan Request')) {
+      try {
+        const signalwireProjectId = Deno.env.get('SIGNALWIRE_PROJECT_ID')!
+        const signalwireApiToken = Deno.env.get('SIGNALWIRE_API_TOKEN')!
+        const signalwireSpaceUrl = Deno.env.get('SIGNALWIRE_SPACE_URL')!
+
+        // Get the first service number to use as sender
+        const supabase = createClient(supabaseUrl, supabaseKey)
+        const { data: serviceNumber } = await supabase
+          .from('service_numbers')
+          .select('phone_number')
+          .eq('is_active', true)
+          .limit(1)
+          .single()
+
+        if (serviceNumber) {
+          // Build concise SMS summary
+          const smsBody = `New Custom Plan Request\n${userName ? `From: ${userName}` : `Email: ${userEmail}`}\n${subject.replace('Custom Plan Request', '').replace(' - ', '').trim() || ''}\n\nCheck email for details.`
+
+          const smsData = new URLSearchParams({
+            From: serviceNumber.phone_number,
+            To: '+16045628647',
+            Body: smsBody.substring(0, 160), // Keep SMS short
+          })
+
+          const auth = btoa(`${signalwireProjectId}:${signalwireApiToken}`)
+          const smsResponse = await fetch(
+            `https://${signalwireSpaceUrl}/api/laml/2010-04-01/Accounts/${signalwireProjectId}/Messages`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Basic ${auth}`,
+                'Content-Type': 'application/x-www-form-urlencoded',
+              },
+              body: smsData.toString(),
+            }
+          )
+
+          if (smsResponse.ok) {
+            console.log('SMS notification sent for upgrade request')
+          } else {
+            console.error('SMS send failed:', await smsResponse.text())
+          }
+        }
+      } catch (smsError) {
+        // Don't fail the whole request if SMS fails
+        console.error('Error sending SMS notification:', smsError)
+      }
+    }
+
     return new Response(JSON.stringify({ success: true }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }

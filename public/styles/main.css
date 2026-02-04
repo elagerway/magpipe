@@ -588,12 +588,45 @@ p {
   }
 
   .nav-plan-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     margin-bottom: 0.5rem;
   }
 
   .nav-plan-title {
     font-size: 11px;
     color: var(--text-secondary);
+  }
+
+  .nav-plan-usage-level {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    border-radius: 9999px;
+    font-size: 0.625rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .nav-plan-usage-level.usage-low {
+    background: rgba(99, 102, 241, 0.1);
+    color: var(--primary-color);
+  }
+
+  .nav-plan-usage-level.usage-medium {
+    background: #f59e0b;
+    color: white;
+  }
+
+  .nav-plan-usage-level.usage-high {
+    background: #f97316;
+    color: white;
+  }
+
+  .nav-plan-usage-level.usage-very-high {
+    background: var(--error-color);
+    color: white;
   }
 
   .nav-plan-usage-line {
@@ -935,6 +968,81 @@ p {
 
 .upgrade-usage-stats strong {
   color: var(--text-primary);
+}
+
+/* Thank You Modal */
+.thank-you-modal {
+  max-width: 400px;
+  padding: 2rem;
+}
+
+.thank-you-content {
+  text-align: center;
+}
+
+.thank-you-icon {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 1.5rem;
+  background: rgba(34, 197, 94, 0.1);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #22c55e;
+}
+
+.thank-you-content h3 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0 0 0.75rem;
+  color: var(--text-primary);
+}
+
+.thank-you-content p {
+  color: var(--text-secondary);
+  margin: 0 0 1.5rem;
+  line-height: 1.5;
+}
+
+.thank-you-content .btn {
+  min-width: 120px;
+}
+
+/* Form row - stacked on mobile, side-by-side on desktop */
+.contact-modal-body .form-row {
+  margin-bottom: 0.75rem;
+}
+
+.contact-modal-body .form-row .form-group {
+  margin-bottom: 0.75rem;
+}
+
+.contact-modal-body .form-row .form-group:last-child {
+  margin-bottom: 0;
+}
+
+/* Desktop: Wider upgrade modal with full form visible */
+@media (min-width: 769px) {
+  .contact-modal {
+    max-width: 650px;
+  }
+
+  .contact-modal-body {
+    max-height: none;
+    overflow-y: visible;
+  }
+
+  /* Two-column layout for form fields */
+  .contact-modal-body .form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+
+  .contact-modal-body .form-row .form-group {
+    margin-bottom: 0;
+  }
 }
 
 @keyframes slideUp {

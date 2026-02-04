@@ -233,10 +233,27 @@ function updateNavPlanSection(userData) {
   }
   percentage = Math.min(100, percentage);
 
+  // Determine usage level label based on spend
+  let usageLevel, usageLevelClass;
+  if (percentage <= 30) {
+    usageLevel = 'Low';
+    usageLevelClass = 'usage-low';
+  } else if (percentage <= 60) {
+    usageLevel = 'Medium';
+    usageLevelClass = 'usage-medium';
+  } else if (percentage <= 90) {
+    usageLevel = 'High';
+    usageLevelClass = 'usage-high';
+  } else {
+    usageLevel = 'Very High';
+    usageLevelClass = 'usage-very-high';
+  }
+
   planSection.innerHTML = `
     <div class="nav-plan-card">
       <div class="nav-plan-header">
         <span class="nav-plan-title">Monthly Consumption</span>
+        <span class="nav-plan-usage-level ${usageLevelClass}">${usageLevel}</span>
       </div>
       <div class="nav-plan-usage-line">
         <span>Minutes: ${userData.minutesUsed.toLocaleString()}</span>
@@ -498,49 +515,55 @@ function generateNavHtml(currentPath) {
           </div>
           <form id="upgrade-form" onsubmit="submitUpgradeForm(event)">
             <div class="contact-modal-body">
-              <div class="form-group">
-                <label for="upgrade-name">Name</label>
-                <input type="text" id="upgrade-name" name="name" readonly class="readonly-input">
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="upgrade-name">Name</label>
+                  <input type="text" id="upgrade-name" name="name" readonly class="readonly-input">
+                </div>
+                <div class="form-group">
+                  <label for="upgrade-email">Email</label>
+                  <input type="email" id="upgrade-email" name="email" readonly class="readonly-input">
+                </div>
               </div>
-              <div class="form-group">
-                <label for="upgrade-email">Email</label>
-                <input type="email" id="upgrade-email" name="email" readonly class="readonly-input">
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="upgrade-company">Company / Organization</label>
+                  <input type="text" id="upgrade-company" name="company" placeholder="Your company name">
+                </div>
+                <div class="form-group">
+                  <label for="upgrade-company-size">Company Size</label>
+                  <select id="upgrade-company-size" name="company_size" class="form-input">
+                    <option value="">Select...</option>
+                    <option value="1-10">1-10 employees</option>
+                    <option value="11-50">11-50 employees</option>
+                    <option value="51-200">51-200 employees</option>
+                    <option value="201-500">201-500 employees</option>
+                    <option value="500+">500+ employees</option>
+                  </select>
+                </div>
               </div>
-              <div class="form-group">
-                <label for="upgrade-company">Company / Organization</label>
-                <input type="text" id="upgrade-company" name="company" placeholder="Your company name">
-              </div>
-              <div class="form-group">
-                <label for="upgrade-company-size">Company Size</label>
-                <select id="upgrade-company-size" name="company_size" class="form-input">
-                  <option value="">Select...</option>
-                  <option value="1-10">1-10 employees</option>
-                  <option value="11-50">11-50 employees</option>
-                  <option value="51-200">51-200 employees</option>
-                  <option value="201-500">201-500 employees</option>
-                  <option value="500+">500+ employees</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="upgrade-call-volume">Expected Monthly Call Volume</label>
-                <select id="upgrade-call-volume" name="call_volume" class="form-input">
-                  <option value="">Select...</option>
-                  <option value="< 100">Less than 100 calls</option>
-                  <option value="100-500">100-500 calls</option>
-                  <option value="500-2000">500-2,000 calls</option>
-                  <option value="2000-10000">2,000-10,000 calls</option>
-                  <option value="10000+">10,000+ calls</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="upgrade-concurrent">Expected Concurrent Calls</label>
-                <select id="upgrade-concurrent" name="concurrent_calls" class="form-input">
-                  <option value="">Select...</option>
-                  <option value="1-5">1-5 simultaneous</option>
-                  <option value="6-20">6-20 simultaneous</option>
-                  <option value="21-50">21-50 simultaneous</option>
-                  <option value="50+">50+ simultaneous</option>
-                </select>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="upgrade-call-volume">Expected Monthly Call Volume</label>
+                  <select id="upgrade-call-volume" name="call_volume" class="form-input">
+                    <option value="">Select...</option>
+                    <option value="< 100">Less than 100 calls</option>
+                    <option value="100-500">100-500 calls</option>
+                    <option value="500-2000">500-2,000 calls</option>
+                    <option value="2000-10000">2,000-10,000 calls</option>
+                    <option value="10000+">10,000+ calls</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="upgrade-concurrent">Expected Concurrent Calls</label>
+                  <select id="upgrade-concurrent" name="concurrent_calls" class="form-input">
+                    <option value="">Select...</option>
+                    <option value="1-5">1-5 simultaneous</option>
+                    <option value="6-20">6-20 simultaneous</option>
+                    <option value="21-50">21-50 simultaneous</option>
+                    <option value="50+">50+ simultaneous</option>
+                  </select>
+                </div>
               </div>
               <div class="form-group">
                 <label>Current Usage</label>
@@ -558,6 +581,23 @@ function generateNavHtml(currentPath) {
               <button type="submit" class="btn btn-primary" id="upgrade-submit-btn">Send Request</button>
             </div>
           </form>
+        </div>
+      </div>
+
+      <!-- Thank You Modal -->
+      <div class="contact-modal-overlay" id="thank-you-modal-overlay" style="display: none;" onclick="closeThankYouModal()">
+        <div class="contact-modal thank-you-modal" onclick="event.stopPropagation()">
+          <div class="thank-you-content">
+            <div class="thank-you-icon">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                <polyline points="22 4 12 14.01 9 11.01"></polyline>
+              </svg>
+            </div>
+            <h3>Thank You!</h3>
+            <p>We've received your request and will be in touch within 24 hours to discuss your custom plan.</p>
+            <button class="btn btn-primary" onclick="closeThankYouModal()">Got it</button>
+          </div>
         </div>
       </div>
     </nav>
@@ -798,49 +838,55 @@ export function renderBottomNav(currentPath = '/agent') {
           </div>
           <form id="upgrade-form" onsubmit="submitUpgradeForm(event)">
             <div class="contact-modal-body">
-              <div class="form-group">
-                <label for="upgrade-name">Name</label>
-                <input type="text" id="upgrade-name" name="name" readonly class="readonly-input">
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="upgrade-name">Name</label>
+                  <input type="text" id="upgrade-name" name="name" readonly class="readonly-input">
+                </div>
+                <div class="form-group">
+                  <label for="upgrade-email">Email</label>
+                  <input type="email" id="upgrade-email" name="email" readonly class="readonly-input">
+                </div>
               </div>
-              <div class="form-group">
-                <label for="upgrade-email">Email</label>
-                <input type="email" id="upgrade-email" name="email" readonly class="readonly-input">
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="upgrade-company">Company / Organization</label>
+                  <input type="text" id="upgrade-company" name="company" placeholder="Your company name">
+                </div>
+                <div class="form-group">
+                  <label for="upgrade-company-size">Company Size</label>
+                  <select id="upgrade-company-size" name="company_size" class="form-input">
+                    <option value="">Select...</option>
+                    <option value="1-10">1-10 employees</option>
+                    <option value="11-50">11-50 employees</option>
+                    <option value="51-200">51-200 employees</option>
+                    <option value="201-500">201-500 employees</option>
+                    <option value="500+">500+ employees</option>
+                  </select>
+                </div>
               </div>
-              <div class="form-group">
-                <label for="upgrade-company">Company / Organization</label>
-                <input type="text" id="upgrade-company" name="company" placeholder="Your company name">
-              </div>
-              <div class="form-group">
-                <label for="upgrade-company-size">Company Size</label>
-                <select id="upgrade-company-size" name="company_size" class="form-input">
-                  <option value="">Select...</option>
-                  <option value="1-10">1-10 employees</option>
-                  <option value="11-50">11-50 employees</option>
-                  <option value="51-200">51-200 employees</option>
-                  <option value="201-500">201-500 employees</option>
-                  <option value="500+">500+ employees</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="upgrade-call-volume">Expected Monthly Call Volume</label>
-                <select id="upgrade-call-volume" name="call_volume" class="form-input">
-                  <option value="">Select...</option>
-                  <option value="< 100">Less than 100 calls</option>
-                  <option value="100-500">100-500 calls</option>
-                  <option value="500-2000">500-2,000 calls</option>
-                  <option value="2000-10000">2,000-10,000 calls</option>
-                  <option value="10000+">10,000+ calls</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="upgrade-concurrent">Expected Concurrent Calls</label>
-                <select id="upgrade-concurrent" name="concurrent_calls" class="form-input">
-                  <option value="">Select...</option>
-                  <option value="1-5">1-5 simultaneous</option>
-                  <option value="6-20">6-20 simultaneous</option>
-                  <option value="21-50">21-50 simultaneous</option>
-                  <option value="50+">50+ simultaneous</option>
-                </select>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="upgrade-call-volume">Expected Monthly Call Volume</label>
+                  <select id="upgrade-call-volume" name="call_volume" class="form-input">
+                    <option value="">Select...</option>
+                    <option value="< 100">Less than 100 calls</option>
+                    <option value="100-500">100-500 calls</option>
+                    <option value="500-2000">500-2,000 calls</option>
+                    <option value="2000-10000">2,000-10,000 calls</option>
+                    <option value="10000+">10,000+ calls</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="upgrade-concurrent">Expected Concurrent Calls</label>
+                  <select id="upgrade-concurrent" name="concurrent_calls" class="form-input">
+                    <option value="">Select...</option>
+                    <option value="1-5">1-5 simultaneous</option>
+                    <option value="6-20">6-20 simultaneous</option>
+                    <option value="21-50">21-50 simultaneous</option>
+                    <option value="50+">50+ simultaneous</option>
+                  </select>
+                </div>
               </div>
               <div class="form-group">
                 <label>Current Usage</label>
@@ -858,6 +904,23 @@ export function renderBottomNav(currentPath = '/agent') {
               <button type="submit" class="btn btn-primary" id="upgrade-submit-btn">Send Request</button>
             </div>
           </form>
+        </div>
+      </div>
+
+      <!-- Thank You Modal -->
+      <div class="contact-modal-overlay" id="thank-you-modal-overlay" style="display: none;" onclick="closeThankYouModal()">
+        <div class="contact-modal thank-you-modal" onclick="event.stopPropagation()">
+          <div class="thank-you-content">
+            <div class="thank-you-icon">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                <polyline points="22 4 12 14.01 9 11.01"></polyline>
+              </svg>
+            </div>
+            <h3>Thank You!</h3>
+            <p>We've received your request and will be in touch within 24 hours to discuss your custom plan.</p>
+            <button class="btn btn-primary" onclick="closeThankYouModal()">Got it</button>
+          </div>
         </div>
       </div>
     </nav>
@@ -1058,6 +1121,20 @@ window.closeUpgradeModal = function() {
   }
 };
 
+window.showThankYouModal = function() {
+  const overlay = document.getElementById('thank-you-modal-overlay');
+  if (overlay) {
+    overlay.style.display = 'flex';
+  }
+};
+
+window.closeThankYouModal = function() {
+  const overlay = document.getElementById('thank-you-modal-overlay');
+  if (overlay) {
+    overlay.style.display = 'none';
+  }
+};
+
 window.handleUpgradeOverlayClick = function(event) {
   if (event.target.id === 'upgrade-modal-overlay') {
     closeUpgradeModal();
@@ -1114,9 +1191,9 @@ ${message ? `\nAdditional Notes:\n${message}` : ''}`;
       throw new Error(result.error || 'Failed to send request');
     }
 
-    // Success - close modal and show notification
+    // Success - close upgrade modal and show thank you modal
     closeUpgradeModal();
-    showContactNotification('Request sent! We\'ll get back to you soon.', 'success');
+    showThankYouModal();
 
   } catch (error) {
     console.error('Error sending upgrade request:', error);
