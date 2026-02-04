@@ -3,7 +3,9 @@
  */
 
 import { getCurrentUser, supabase } from '../lib/supabase.js';
-import { renderBottomNav, clearUnreadBadge, setPhoneNavActive, setUnreadBadgeCount, resetInboxManagedCount } from '../components/BottomNav.js';
+import { renderBottomNav, clearUnreadBadge, setPhoneNavActive, resetInboxManagedCount, markAsRead, recalculateUnreads } from '../components/BottomNav.js';
+import { markAllAsRead as markAllReadService, recalculateUnreads as refreshUnreadBadge } from '../services/unreadService.js';
+import { showDeleteConfirmModal, showAlertModal } from '../components/ConfirmModal.js';
 import { User, ChatSession } from '../models/index.js';
 
 // Lazy load heavy libraries only when needed for calls
@@ -64,6 +66,9 @@ export default class InboxPage {
     this.searchQuery = ''; // search filter
     this.dateFilter = 'all'; // all, today, yesterday, week, month
     this.searchExpanded = false; // whether search is expanded
+    this.editModeExpanded = false; // Toggle for edit mode options
+    this.selectMode = false; // Multi-select mode for deletion
+    this.selectedForDeletion = new Set(); // Conversations selected for deletion
   }
 
   /**
@@ -255,6 +260,25 @@ export default class InboxPage {
                 <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
               </svg>
             </button>
+            <button id="edit-toggle-btn" style="
+              background: ${this.editModeExpanded ? 'var(--primary-color)' : 'none'};
+              color: ${this.editModeExpanded ? 'white' : 'var(--text-secondary)'};
+              border: 1px solid ${this.editModeExpanded ? 'var(--primary-color)' : 'var(--border-color)'};
+              border-radius: 50%;
+              width: 29px;
+              height: 29px;
+              cursor: pointer;
+              display: ${this.searchExpanded ? 'none' : 'flex'};
+              align-items: center;
+              justify-content: center;
+              flex-shrink: 0;
+              transition: all 0.2s ease;
+            ">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+              </svg>
+            </button>
 
             <!-- New Message Dropdown Menu -->
             <div id="new-message-dropdown" style="
@@ -362,20 +386,51 @@ export default class InboxPage {
 
           <!-- Filter Tabs -->
           <div id="filters-container" style="display: ${this.filtersExpanded ? 'block' : 'none'};">
-            <div class="inbox-filters" id="inbox-filters" style="border-bottom: none; padding-bottom: 0;">
-              <button class="inbox-filter-btn ${this.typeFilter === 'all' && this.directionFilter === 'all' && !this.missedFilter && this.sentimentFilter === 'all' ? 'active' : ''}" data-filter-type="all" data-filter-reset="true">All</button>
+            <div class="inbox-filters" id="inbox-filters" style="justify-content: center; gap: 0.5rem; border-bottom: none; padding-bottom: 0;">
+              <button class="inbox-filter-btn ${this.typeFilter === 'all' && this.directionFilter === 'all' && !this.missedFilter && this.sentimentFilter === 'all' && !this.unreadFilter ? 'active' : ''}" data-filter-type="all" data-filter-reset="true">All</button>
               <button class="inbox-filter-btn ${this.typeFilter === 'calls' ? 'active' : ''}" data-filter-type="calls">Calls</button>
               <button class="inbox-filter-btn ${this.typeFilter === 'texts' ? 'active' : ''}" data-filter-type="texts">Texts</button>
               <button class="inbox-filter-btn ${this.typeFilter === 'chat' ? 'active' : ''}" data-filter-type="chat">Chat</button>
+            </div>
+            <div class="inbox-filters" id="inbox-filters-status" style="justify-content: center; gap: 0.5rem; padding-top: 0.375rem; border-bottom: none; padding-bottom: 0;">
               <button class="inbox-filter-btn ${this.directionFilter === 'inbound' ? 'active' : ''}" data-filter-direction="inbound">In</button>
               <button class="inbox-filter-btn ${this.directionFilter === 'outbound' ? 'active' : ''}" data-filter-direction="outbound">Out</button>
               <button class="inbox-filter-btn ${this.missedFilter ? 'active' : ''}" data-filter-missed="true">Missed</button>
               <button class="inbox-filter-btn ${this.unreadFilter ? 'active' : ''}" data-filter-unread="true">Unread</button>
             </div>
-            <div class="inbox-filters" id="inbox-filters-sentiment" style="padding-top: 0.375rem; justify-content: center; gap: 0.5rem;">
+            <div class="inbox-filters" id="inbox-filters-sentiment" style="justify-content: center; gap: 0.5rem; padding-top: 0.375rem;">
               <button class="inbox-filter-btn ${this.sentimentFilter === 'positive' ? 'active' : ''}" data-filter-sentiment="positive">Positive</button>
               <button class="inbox-filter-btn ${this.sentimentFilter === 'neutral' ? 'active' : ''}" data-filter-sentiment="neutral">Neutral</button>
               <button class="inbox-filter-btn ${this.sentimentFilter === 'negative' ? 'active' : ''}" data-filter-sentiment="negative">Negative</button>
+            </div>
+          </div>
+
+          <!-- Edit Actions -->
+          <div id="edit-actions-container" style="display: ${this.editModeExpanded ? 'block' : 'none'};">
+            <div class="inbox-filters" style="justify-content: center; gap: 0.5rem;">
+              <button class="inbox-filter-btn" id="mark-all-read-btn" style="display: flex; align-items: center; gap: 0.375rem;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                  <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                </svg>
+                Mark All Read
+              </button>
+              <button class="inbox-filter-btn ${this.selectMode ? 'active' : ''}" id="select-delete-btn" style="display: flex; align-items: center; gap: 0.375rem;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+                ${this.selectMode ? 'Cancel Selection' : 'Select to Delete'}
+              </button>
+              ${this.selectMode && this.selectedForDeletion.size > 0 ? `
+              <button class="inbox-filter-btn" id="confirm-delete-btn" style="background: #ef4444; color: white; border-color: #ef4444; display: flex; align-items: center; gap: 0.375rem;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+                Delete (${this.selectedForDeletion.size})
+              </button>
+              ` : ''}
             </div>
           </div>
 
@@ -392,9 +447,8 @@ export default class InboxPage {
       ${renderBottomNav('/inbox')}
     `;
 
-    // Now that DOM is rendered, update the badge with the correct count
-    const totalUnread = this.conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
-    setUnreadBadgeCount(totalUnread);
+    // Sync badge with unified service (single source of truth)
+    refreshUnreadBadge();
 
     // Defer heavy operations to allow UI to be scrollable immediately
     requestAnimationFrame(() => {
@@ -569,13 +623,9 @@ export default class InboxPage {
     conv.lastMessageRole = chatMessage.role;
     conv.lastActivity = new Date(chatMessage.created_at);
 
-    // If visitor message, increment unread and update badge
+    // If visitor message, increment unread (badge updated by service subscription)
     if (chatMessage.role === 'visitor') {
       conv.unreadCount = (conv.unreadCount || 0) + 1;
-
-      // Update the nav badge with total unread count
-      const totalUnread = this.conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
-      setUnreadBadgeCount(totalUnread);
     }
 
     // Update conversation list
@@ -664,19 +714,15 @@ export default class InboxPage {
     if (this.selectedContact === contactPhone && this.selectedServiceNumber === serviceNumber) {
       console.log('Updating thread for selected contact');
 
-      // Mark conversation as read since user is viewing it
-      const lastViewedKey = `conversation_last_viewed_sms_${contactPhone}_${serviceNumber}`;
-      localStorage.setItem(lastViewedKey, new Date().toISOString());
+      // Mark conversation as read since user is viewing it (service handles badge)
+      const smsKey = `${contactPhone}_${serviceNumber}`;
+      markAsRead('sms', smsKey);
 
-      // Clear unread count for this conversation
+      // Clear unread count for this conversation locally
       const conv = this.conversations.find(c => c.type === 'sms' && c.phone === contactPhone && c.serviceNumber === serviceNumber);
       if (conv) {
         conv.unreadCount = 0;
       }
-
-      // Update the nav badge
-      const totalUnread = this.conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
-      setUnreadBadgeCount(totalUnread);
 
       const threadElement = document.getElementById('message-thread');
       if (threadElement) {
@@ -989,14 +1035,29 @@ export default class InboxPage {
       // Use contact_phone if available, otherwise use caller_number for inbound calls
       const phoneNumber = call.contact_phone || call.caller_number || 'Unknown';
 
+      // Calculate unread count for inbound calls
+      const convKey = `call_${call.id}`;
+      const lastViewedKey = `conversation_last_viewed_call_${call.id}`;
+      const lastViewed = localStorage.getItem(lastViewedKey);
+      const callDate = new Date(call.started_at || call.created_at || Date.now());
+
+      // Inbound calls are unread if not viewed in this session and not previously marked as viewed
+      let unreadCount = 0;
+      if (call.direction === 'inbound' && !this.viewedConversations.has(convKey)) {
+        if (!lastViewed || callDate > new Date(lastViewed)) {
+          unreadCount = 1;
+        }
+      }
+
       conversationsList.push({
         type: 'call',
         callId: call.id,
         phone: phoneNumber,
         call: call,
-        lastActivity: new Date(call.started_at || call.created_at || Date.now()),
+        lastActivity: callDate,
         lastMessage: `${call.direction === 'inbound' ? 'Incoming' : 'Outgoing'} Call • ${durationText}`,
         statusInfo: statusInfo,
+        unreadCount: unreadCount,
       });
     });
 
@@ -1059,9 +1120,7 @@ export default class InboxPage {
       }
     });
 
-    // Update the nav badge with total unread count
-    const totalUnread = this.conversations.reduce((sum, conv) => sum + (conv.unreadCount || 0), 0);
-    setUnreadBadgeCount(totalUnread);
+    // Badge is updated by refreshUnreadBadge() in render()
   }
 
   // Helper to get consistent conversation key
@@ -1210,6 +1269,11 @@ export default class InboxPage {
               <span>Delete</span>
             </div>
             <div class="conversation-item swipe-content ${isSelected ? 'selected' : ''} ${conv.unreadCount > 0 ? 'unread' : ''}" data-chat-session-id="${conv.chatSessionId}" data-type="chat" style="display: flex !important; flex-direction: row !important; gap: 0.75rem;">
+              ${this.selectMode ? `
+              <label class="select-checkbox" style="display: flex; align-items: center; flex-shrink: 0; cursor: pointer;">
+                <input type="checkbox" data-conv-key="chat_${conv.chatSessionId}" ${this.selectedForDeletion.has(`chat_${conv.chatSessionId}`) ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--primary-color);">
+              </label>
+              ` : ''}
               <div class="conversation-avatar chat-avatar" style="flex-shrink: 0; background: linear-gradient(135deg, #6366f1, #8b5cf6);">
                 ${chatIcon}
               </div>
@@ -1262,7 +1326,12 @@ export default class InboxPage {
               </svg>
               <span>Delete</span>
             </div>
-            <div class="conversation-item swipe-content ${isSelected ? 'selected' : ''}" data-call-id="${conv.callId}" data-type="call" style="display: flex !important; flex-direction: row !important; gap: 0.75rem;">
+            <div class="conversation-item swipe-content ${isSelected ? 'selected' : ''} ${conv.unreadCount > 0 ? 'unread' : ''}" data-call-id="${conv.callId}" data-type="call" style="display: flex !important; flex-direction: row !important; gap: 0.75rem;">
+              ${this.selectMode ? `
+              <label class="select-checkbox" style="display: flex; align-items: center; flex-shrink: 0; cursor: pointer;">
+                <input type="checkbox" data-conv-key="call_${conv.callId}" ${this.selectedForDeletion.has(`call_${conv.callId}`) ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--primary-color);">
+              </label>
+              ` : ''}
               <div class="conversation-avatar call-avatar" style="flex-shrink: 0;">
                 ${iconSvg}
               </div>
@@ -1296,6 +1365,11 @@ export default class InboxPage {
               <span>Delete</span>
             </div>
             <div class="conversation-item swipe-content ${isSelected ? 'selected' : ''} ${conv.unreadCount > 0 ? 'unread' : ''}" data-phone="${conv.phone}" data-service-number="${conv.serviceNumber}" data-type="sms" style="display: flex !important; flex-direction: row !important; gap: 0.75rem;">
+              ${this.selectMode ? `
+              <label class="select-checkbox" style="display: flex; align-items: center; flex-shrink: 0; cursor: pointer;">
+                <input type="checkbox" data-conv-key="sms_${conv.phone}_${conv.serviceNumber}" ${this.selectedForDeletion.has(`sms_${conv.phone}_${conv.serviceNumber}`) ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--primary-color);">
+              </label>
+              ` : ''}
               <div class="conversation-avatar sms-avatar" style="flex-shrink: 0; ${contact?.avatar_url ? 'padding: 0; background: none;' : ''}">
                 ${contact?.avatar_url
                   ? `<img src="${contact.avatar_url}" alt="${contactName}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" />`
@@ -2746,19 +2820,19 @@ Examples:
 
     // Validate inputs
     if (!phone) {
-      alert('Please enter a recipient phone number');
+      showAlertModal('Missing Information', 'Please enter a recipient phone number');
       phoneInput.focus();
       return;
     }
 
     if (!prompt) {
-      alert('Please enter a prompt describing what you want to say');
+      showAlertModal('Missing Information', 'Please enter a prompt describing what you want to say');
       promptInput.focus();
       return;
     }
 
     if (!this.selectedServiceNumber) {
-      alert('Please select a From number');
+      showAlertModal('Missing Information', 'Please select a From number');
       return;
     }
 
@@ -2822,7 +2896,7 @@ Examples:
 
     } catch (error) {
       console.error('Agent message error:', error);
-      alert(error.message || 'Failed to send message');
+      showAlertModal('Error', error.message || 'Failed to send message');
       generateBtn.disabled = false;
       generateBtn.innerHTML = `
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -2920,7 +2994,7 @@ Examples:
       this.voiceRecognition.start();
     } catch (error) {
       console.error('Failed to start voice recognition:', error);
-      alert('Voice input is not available in this browser');
+      showAlertModal('Voice Input Unavailable', 'Voice input is not available in this browser');
     }
   }
 
@@ -2942,17 +3016,17 @@ Examples:
     }
 
     if (!phone) {
-      alert('Please enter a recipient phone number');
+      showAlertModal('Missing Information', 'Please enter a recipient phone number');
       return;
     }
 
     if (!message) {
-      alert('Please generate a message first');
+      showAlertModal('Missing Information', 'Please generate a message first');
       return;
     }
 
     if (!serviceNumber) {
-      alert('Please select a From number');
+      showAlertModal('Missing Information', 'Please select a From number');
       return;
     }
 
@@ -2992,7 +3066,7 @@ Examples:
 
     } catch (error) {
       console.error('Send agent message error:', error);
-      alert(error.message || 'Failed to send message');
+      showAlertModal('Error', error.message || 'Failed to send message');
       sendBtn.disabled = false;
       sendBtn.innerHTML = `
         Send
@@ -3486,7 +3560,7 @@ Examples:
       const phoneNumber = searchInput ? searchInput.value.trim() : '';
 
       if (!phoneNumber) {
-        alert('Please enter a phone number');
+        await showAlertModal('Missing Phone Number', 'Please enter a phone number');
         return;
       }
 
@@ -3494,7 +3568,7 @@ Examples:
       const selectedCallerId = callerIdSelect ? callerIdSelect.value : null;
 
       if (!selectedCallerId) {
-        alert('No active phone number selected');
+        await showAlertModal('No Caller ID', 'No active phone number selected');
         return;
       }
 
@@ -3543,7 +3617,7 @@ Examples:
           fromNumber = serviceNumbers[0].phone_number;
           sipCredentials = serviceNumbers[0];
         } else {
-          alert('No active service numbers found');
+          await showAlertModal('No Service Numbers', 'No active service numbers found');
           return;
         }
       } else {
@@ -3556,7 +3630,7 @@ Examples:
           .single();
 
         if (!serviceNumber) {
-          alert('Selected number not found or inactive');
+          await showAlertModal('Number Not Found', 'Selected number not found or inactive');
           return;
         }
         sipCredentials = serviceNumber;
@@ -3686,7 +3760,7 @@ Examples:
               .eq('id', callRecordId);
           }
 
-          alert(`Call failed: ${cause}`);
+          showAlertModal('Call Failed', `Call failed: ${cause}`);
           this.transformToCallButton();
         },
         onEnded: async () => {
@@ -3732,7 +3806,7 @@ Examples:
 
     } catch (error) {
       console.error('Failed to initiate call:', error);
-      alert(`Failed to initiate call: ${error.message}`);
+      showAlertModal('Call Error', `Failed to initiate call: ${error.message}`);
       this.updateCallState('idle');
       this.transformToCallButton();
     }
@@ -3811,7 +3885,7 @@ Examples:
 
     } catch (error) {
       console.error('Failed to initiate bridged call:', error);
-      alert(`Failed to initiate call: ${error.message}`);
+      showAlertModal('Call Error', `Failed to initiate call: ${error.message}`);
       this.updateCallState('idle');
       this.transformToCallButton();
     }
@@ -4155,7 +4229,7 @@ Examples:
 
       if (isBlocked) {
         // Show instructions to unblock
-        alert('⚠️ Microphone is BLOCKED\n\nTo enable calling:\n\n1. Look at your browser address bar (where it shows localhost:3000)\n2. Click the camera/lock icon on the LEFT side\n3. Find "Microphone" and change it to "Allow"\n4. Refresh this page\n5. Try again');
+        await showAlertModal('Microphone Blocked', 'To enable calling:\n\n1. Look at your browser address bar\n2. Click the camera/lock icon on the left side\n3. Find "Microphone" and change it to "Allow"\n4. Refresh this page\n5. Try again');
         this.updateSIPStatus('error', 'Mic blocked');
         return;
       }
@@ -4248,9 +4322,9 @@ Examples:
       this.updateSIPStatus('error', 'Mic denied');
 
       if (error.name === 'NotAllowedError') {
-        alert('⚠️ Microphone was denied\n\nThe browser denied microphone access.\n\nTry:\n1. Click the lock/camera icon in the address bar\n2. Reset permissions for this site\n3. Refresh and try again');
+        showAlertModal('Microphone Denied', 'The browser denied microphone access.\n\nTry:\n1. Click the lock/camera icon in the address bar\n2. Reset permissions for this site\n3. Refresh and try again');
       } else {
-        alert(`⚠️ Microphone error: ${error.name}\n\n${error.message}`);
+        showAlertModal('Microphone Error', `${error.name}: ${error.message}`);
       }
     }
   }
@@ -4486,6 +4560,7 @@ Examples:
     this.attachFilterListeners();
     this.attachSearchListener();
     this.attachFilterToggleListener();
+    this.attachEditToggleListener();
 
     // Only attach dropdown listeners once
     if (!this.dropdownListenersAttached) {
@@ -4509,12 +4584,205 @@ Examples:
         this.filtersExpanded = !this.filtersExpanded;
         filtersContainer.style.display = this.filtersExpanded ? 'block' : 'none';
 
+        // Reset filters to All when hiding the filter panel
+        if (!this.filtersExpanded && this.hasActiveFilters()) {
+          this.typeFilter = 'all';
+          this.directionFilter = 'all';
+          this.missedFilter = false;
+          this.unreadFilter = false;
+          this.sentimentFilter = 'all';
+
+          // Re-render conversation list
+          const conversationsEl = document.getElementById('conversations');
+          if (conversationsEl) {
+            conversationsEl.innerHTML = this.renderConversationList();
+            this.attachConversationListeners();
+          }
+        }
+
         // Update button appearance
-        const hasFilters = this.hasActiveFilters();
-        filterToggleBtn.style.background = (this.filtersExpanded || hasFilters) ? 'var(--primary-color)' : 'none';
-        filterToggleBtn.style.color = (this.filtersExpanded || hasFilters) ? 'white' : 'var(--text-secondary)';
-        filterToggleBtn.style.borderColor = (this.filtersExpanded || hasFilters) ? 'var(--primary-color)' : 'var(--border-color)';
+        filterToggleBtn.style.background = this.filtersExpanded ? 'var(--primary-color)' : 'none';
+        filterToggleBtn.style.color = this.filtersExpanded ? 'white' : 'var(--text-secondary)';
+        filterToggleBtn.style.borderColor = this.filtersExpanded ? 'var(--primary-color)' : 'var(--border-color)';
       });
+    }
+  }
+
+  attachEditToggleListener() {
+    const editToggleBtn = document.getElementById('edit-toggle-btn');
+    const editActionsContainer = document.getElementById('edit-actions-container');
+
+    // Only attach toggle button listener once (check for flag)
+    if (editToggleBtn && editActionsContainer && !editToggleBtn.dataset.listenerAttached) {
+      editToggleBtn.dataset.listenerAttached = 'true';
+      editToggleBtn.addEventListener('click', () => {
+        this.editModeExpanded = !this.editModeExpanded;
+        editActionsContainer.style.display = this.editModeExpanded ? 'block' : 'none';
+
+        // Exit select mode when closing edit actions
+        if (!this.editModeExpanded && this.selectMode) {
+          this.selectMode = false;
+          this.selectedForDeletion.clear();
+          this.refreshConversationList();
+        }
+
+        // Update button appearance
+        editToggleBtn.style.background = this.editModeExpanded ? 'var(--primary-color)' : 'none';
+        editToggleBtn.style.color = this.editModeExpanded ? 'white' : 'var(--text-secondary)';
+        editToggleBtn.style.borderColor = this.editModeExpanded ? 'var(--primary-color)' : 'var(--border-color)';
+      });
+    }
+
+    // Attach action button listeners (these get re-attached when container is re-rendered)
+    this.attachEditActionListeners();
+  }
+
+  attachEditActionListeners() {
+    // Mark All Read button
+    const markAllReadBtn = document.getElementById('mark-all-read-btn');
+    if (markAllReadBtn) {
+      markAllReadBtn.addEventListener('click', () => this.markAllAsRead());
+    }
+
+    // Select to Delete button
+    const selectDeleteBtn = document.getElementById('select-delete-btn');
+    if (selectDeleteBtn) {
+      selectDeleteBtn.addEventListener('click', () => {
+        this.selectMode = !this.selectMode;
+        if (!this.selectMode) {
+          this.selectedForDeletion.clear();
+        }
+        this.refreshConversationList();
+        // Re-render edit actions to update button state
+        const editActionsContainer = document.getElementById('edit-actions-container');
+        if (editActionsContainer) {
+          editActionsContainer.innerHTML = this.renderEditActions();
+          this.attachEditActionListeners(); // Re-attach action listeners only
+        }
+      });
+    }
+
+    // Confirm Delete button
+    const confirmDeleteBtn = document.getElementById('confirm-delete-btn');
+    if (confirmDeleteBtn) {
+      confirmDeleteBtn.addEventListener('click', () => this.deleteSelectedConversations());
+    }
+  }
+
+  renderEditActions() {
+    return `
+      <div class="inbox-filters" style="justify-content: center; gap: 0.5rem;">
+        <button class="inbox-filter-btn" id="mark-all-read-btn" style="display: flex; align-items: center; gap: 0.375rem;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+          </svg>
+          Mark All Read
+        </button>
+        <button class="inbox-filter-btn ${this.selectMode ? 'active' : ''}" id="select-delete-btn" style="display: flex; align-items: center; gap: 0.375rem;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+          ${this.selectMode ? 'Cancel Selection' : 'Select to Delete'}
+        </button>
+        ${this.selectMode && this.selectedForDeletion.size > 0 ? `
+        <button class="inbox-filter-btn" id="confirm-delete-btn" style="background: #ef4444; color: white; border-color: #ef4444; display: flex; align-items: center; gap: 0.375rem;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+          Delete (${this.selectedForDeletion.size})
+        </button>
+        ` : ''}
+      </div>
+    `;
+  }
+
+  async markAllAsRead() {
+    // Use unified service to mark all as read
+    await markAllReadService();
+
+    // Update local conversation state
+    for (const conv of this.conversations) {
+      if (conv.unreadCount > 0) {
+        const convKey = this.getConversationKey(conv);
+        this.viewedConversations.add(convKey);
+        conv.unreadCount = 0;
+
+        // Also mark chat sessions in database
+        if (conv.type === 'chat') {
+          ChatSession.markAsRead(conv.chatSessionId);
+        }
+      }
+    }
+
+    // Refresh the list
+    this.refreshConversationList();
+  }
+
+  async deleteSelectedConversations() {
+    if (this.selectedForDeletion.size === 0) return;
+
+    const count = this.selectedForDeletion.size;
+    const itemName = count === 1 ? 'this conversation' : `${count} conversations`;
+    const confirmDelete = await showDeleteConfirmModal(itemName);
+    if (!confirmDelete) return;
+
+    const { user } = await getCurrentUser();
+    if (!user) return;
+
+    for (const convKey of this.selectedForDeletion) {
+      const conv = this.conversations.find(c => this.getConversationKey(c) === convKey);
+      if (!conv) continue;
+
+      try {
+        if (conv.type === 'sms') {
+          // Delete all SMS messages for this conversation
+          await supabase
+            .from('sms_messages')
+            .delete()
+            .eq('user_id', user.id)
+            .or(`sender_number.eq.${conv.phone},recipient_number.eq.${conv.phone}`);
+        } else if (conv.type === 'chat') {
+          // Delete chat session and messages
+          await supabase.from('chat_messages').delete().eq('session_id', conv.chatSessionId);
+          await supabase.from('chat_sessions').delete().eq('id', conv.chatSessionId);
+        } else if (conv.type === 'call') {
+          // Delete call record
+          await supabase.from('call_records').delete().eq('id', conv.callId);
+        }
+
+        // Remove from conversations list
+        const index = this.conversations.findIndex(c => this.getConversationKey(c) === convKey);
+        if (index > -1) {
+          this.conversations.splice(index, 1);
+        }
+      } catch (error) {
+        console.error('Error deleting conversation:', error);
+      }
+    }
+
+    // Clear selection and exit select mode
+    this.selectedForDeletion.clear();
+    this.selectMode = false;
+
+    // Refresh the list and edit actions
+    this.refreshConversationList();
+    const editActionsContainer = document.getElementById('edit-actions-container');
+    if (editActionsContainer) {
+      editActionsContainer.innerHTML = this.renderEditActions();
+      this.attachEditActionListeners();
+    }
+  }
+
+  refreshConversationList() {
+    const conversationsEl = document.getElementById('conversations');
+    if (conversationsEl) {
+      // Remove delegated flag so listeners get re-attached
+      delete conversationsEl.dataset.delegated;
+      conversationsEl.innerHTML = this.renderConversationList();
+      this.attachConversationListeners();
     }
   }
 
@@ -4605,6 +4873,7 @@ Examples:
 
   attachFilterListeners() {
     const filtersContainer = document.getElementById('inbox-filters');
+    const statusFiltersContainer = document.getElementById('inbox-filters-status');
     const sentimentFiltersContainer = document.getElementById('inbox-filters-sentiment');
     if (!filtersContainer) return;
 
@@ -4665,6 +4934,9 @@ Examples:
     };
 
     filtersContainer.addEventListener('click', handleFilterClick);
+    if (statusFiltersContainer) {
+      statusFiltersContainer.addEventListener('click', handleFilterClick);
+    }
     if (sentimentFiltersContainer) {
       sentimentFiltersContainer.addEventListener('click', handleFilterClick);
     }
@@ -4791,6 +5063,24 @@ Examples:
         return;
       }
 
+      // Handle select mode checkbox click
+      const checkbox = e.target.closest('input[type="checkbox"][data-conv-key]');
+      if (checkbox && this.selectMode) {
+        const convKey = checkbox.dataset.convKey;
+        if (checkbox.checked) {
+          this.selectedForDeletion.add(convKey);
+        } else {
+          this.selectedForDeletion.delete(convKey);
+        }
+        // Update the delete button count
+        const editActionsContainer = document.getElementById('edit-actions-container');
+        if (editActionsContainer) {
+          editActionsContainer.innerHTML = this.renderEditActions();
+          this.attachEditActionListeners();
+        }
+        return;
+      }
+
       // Don't trigger conversation click if container is swiped
       const swipeContainer = e.target.closest('.swipe-container');
       if (swipeContainer && swipeContainer.classList.contains('swiped')) {
@@ -4816,6 +5106,16 @@ Examples:
         localStorage.removeItem('inbox_last_selected_contact');
         localStorage.removeItem('inbox_last_selected_service_number');
         localStorage.removeItem('inbox_last_selected_chat');
+
+        // Mark as read using unified service
+        markAsRead('call', this.selectedCallId);
+        this.viewedConversations.add(`call_${this.selectedCallId}`);
+
+        // Clear unread count for this call
+        const conv = this.conversations.find(c => c.type === 'call' && c.callId === this.selectedCallId);
+        if (conv) {
+          conv.unreadCount = 0;
+        }
       } else if (type === 'chat') {
         // Handle chat conversation click
         this.selectedChatSessionId = item.dataset.chatSessionId;
@@ -4829,22 +5129,15 @@ Examples:
         localStorage.removeItem('inbox_last_selected_service_number');
         localStorage.removeItem('inbox_last_selected_call');
 
-        // Mark this conversation as viewed
-        const convKey = `chat_${this.selectedChatSessionId}`;
-        const lastViewedKey = `conversation_last_viewed_chat_${this.selectedChatSessionId}`;
-        localStorage.setItem(lastViewedKey, new Date().toISOString());
-        this.viewedConversations.add(convKey);
-        localStorage.setItem('inbox_viewed_conversations', JSON.stringify([...this.viewedConversations]));
+        // Mark as read using unified service
+        markAsRead('chat', this.selectedChatSessionId);
+        this.viewedConversations.add(`chat_${this.selectedChatSessionId}`);
 
         // Clear unread count for this conversation
         const conv = this.conversations.find(c => c.type === 'chat' && c.chatSessionId === this.selectedChatSessionId);
         if (conv) {
           conv.unreadCount = 0;
         }
-
-        // Update the nav badge with new total unread count
-        const totalUnread = this.conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
-        setUnreadBadgeCount(totalUnread);
 
         // Mark messages as read in database
         ChatSession.markAsRead(this.selectedChatSessionId);
@@ -4861,22 +5154,16 @@ Examples:
         localStorage.removeItem('inbox_last_selected_call');
         localStorage.removeItem('inbox_last_selected_chat');
 
-        // Mark this conversation as viewed (both localStorage and in-memory)
-        const convKey = `${this.selectedContact}_${this.selectedServiceNumber}`;
-        const lastViewedKey = `conversation_last_viewed_sms_${convKey}`;
-        localStorage.setItem(lastViewedKey, new Date().toISOString());
-        this.viewedConversations.add(convKey);
-        localStorage.setItem('inbox_viewed_conversations', JSON.stringify([...this.viewedConversations]));
+        // Mark as read using unified service
+        const smsKey = `${this.selectedContact}_${this.selectedServiceNumber}`;
+        markAsRead('sms', smsKey);
+        this.viewedConversations.add(smsKey);
 
         // Clear unread count for this conversation
         const conv = this.conversations.find(c => c.type === 'sms' && c.phone === this.selectedContact && c.serviceNumber === this.selectedServiceNumber);
         if (conv) {
           conv.unreadCount = 0;
         }
-
-        // Update the nav badge with new total unread count
-        const totalUnread = this.conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
-        setUnreadBadgeCount(totalUnread);
       }
 
       // Update conversation list - use fresh references to avoid stale DOM issues
@@ -5139,11 +5426,11 @@ Examples:
             this.openNewConversation(phoneNumber);
           } catch (err) {
             console.error('Error in openNewConversation:', err);
-            alert('Error: ' + err.message);
+            showAlertModal('Error', err.message);
           }
         } else {
           console.error('No valid phone number on message button:', phoneNumber);
-          alert('No phone number available for this call');
+          showAlertModal('No Phone Number', 'No phone number available for this call');
         }
       });
     } else {
@@ -5370,7 +5657,7 @@ Examples:
 
       if (error) {
         console.error('Error sending chat message:', error);
-        alert('Failed to send message. Please try again.');
+        showAlertModal('Send Failed', 'Failed to send message. Please try again.');
         input.value = message;
         input.disabled = false;
         return;
@@ -5399,7 +5686,7 @@ Examples:
       }
     } catch (err) {
       console.error('Error sending chat message:', err);
-      alert('Failed to send message. Please try again.');
+      showAlertModal('Send Failed', 'Failed to send message. Please try again.');
       input.value = message;
     } finally {
       input.disabled = false;
@@ -5484,7 +5771,7 @@ Examples:
       // Use the most recent message's service number (the one they last texted)
       const conv = this.conversations.find(c => c.type === 'sms' && c.phone === this.selectedContact && c.serviceNumber === this.selectedServiceNumber);
       if (!conv || !conv.messages || conv.messages.length === 0) {
-        alert('No conversation found.');
+        await showAlertModal('Error', 'No conversation found.');
         return;
       }
 
@@ -5497,7 +5784,7 @@ Examples:
       console.log('Using service number from conversation:', serviceNumber);
 
       if (!serviceNumber) {
-        alert('Could not determine service number.');
+        await showAlertModal('Error', 'Could not determine service number.');
         return;
       }
 
@@ -5570,7 +5857,7 @@ Examples:
 
     } catch (error) {
       console.error('Error sending message:', error);
-      alert('Failed to send message. Please try again.');
+      showAlertModal('Send Failed', 'Failed to send message. Please try again.');
     } finally {
       input.disabled = false;
       sendButton.disabled = false;
@@ -5585,7 +5872,7 @@ Examples:
     const prompt = promptInput?.value.trim();
 
     if (!prompt) {
-      alert('Please enter a prompt describing what you want to say');
+      await showAlertModal('Missing Prompt', 'Please enter a prompt describing what you want to say');
       promptInput?.focus();
       return;
     }
@@ -5724,7 +6011,7 @@ Examples:
 
     } catch (error) {
       console.error('Error generating/sending agent reply:', error);
-      alert(error.message || 'Failed to generate and send message. Please try again.');
+      showAlertModal('Error', error.message || 'Failed to generate and send message. Please try again.');
     } finally {
       sendBtn.disabled = false;
       sendBtn.innerHTML = originalContent;
