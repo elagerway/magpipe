@@ -50,7 +50,7 @@ export default class SettingsPage {
       // Fetch all data in parallel for speed
       const [profileResult, billingResult, notifResult, numbersResult, calComResult, orgResult] = await Promise.all([
         User.getProfile(user.id),
-        supabase.from('users').select('plan, stripe_customer_id, stripe_subscription_id, stripe_subscription_status, stripe_current_period_end').eq('id', user.id).single(),
+        supabase.from('users').select('plan, stripe_customer_id, stripe_subscription_id, stripe_subscription_status, stripe_current_period_end, credits_balance, credits_used_this_period, has_payment_method, received_signup_bonus, auto_recharge_enabled, auto_recharge_amount, auto_recharge_threshold').eq('id', user.id).single(),
         supabase.from('notification_preferences').select('*').eq('user_id', user.id).single(),
         supabase.from('service_numbers').select('phone_number, is_active').eq('user_id', user.id).order('is_active', { ascending: false }),
         supabase.from('users').select('cal_com_access_token, cal_com_user_id').eq('id', user.id).single(),
@@ -93,9 +93,12 @@ export default class SettingsPage {
     // Get user initials for avatar fallback
     const userInitials = this.getInitials(profile?.name, user.email);
 
-    // Check for billing and Cal.com success/error in URL
+    // Check for billing, credits and Cal.com success/error in URL
     const urlParams = new URLSearchParams(window.location.search);
     const billingStatus = urlParams.get('billing');
+    const creditsStatus = urlParams.get('credits');
+    const paymentMethodStatus = urlParams.get('payment_method');
+    const bonusClaimed = urlParams.get('bonus_claimed');
     const calConnected = urlParams.get('cal_connected');
     const calError = urlParams.get('cal_error');
 
@@ -116,6 +119,28 @@ export default class SettingsPage {
         ${billingStatus === 'canceled' ? `
           <div class="alert alert-warning" style="margin-bottom: 1rem;">
             Checkout was canceled. You can upgrade anytime from the Billing section below.
+          </div>
+        ` : ''}
+        ${creditsStatus === 'success' ? `
+          <div class="alert alert-success" style="margin-bottom: 1rem;">
+            Credits added successfully! Your new balance is shown below.
+          </div>
+        ` : ''}
+        ${creditsStatus === 'canceled' ? `
+          <div class="alert alert-warning" style="margin-bottom: 1rem;">
+            Credit purchase was canceled. You can add credits anytime below.
+          </div>
+        ` : ''}
+        ${paymentMethodStatus === 'success' ? `
+          <div class="alert alert-success" style="margin-bottom: 1rem;">
+            ${bonusClaimed === 'true'
+              ? '🎉 Payment method saved, auto-recharge enabled, and $20 free credits added to your account!'
+              : 'Payment method saved successfully! You can now enable auto-recharge.'}
+          </div>
+        ` : ''}
+        ${paymentMethodStatus === 'canceled' ? `
+          <div class="alert alert-warning" style="margin-bottom: 1rem;">
+            Payment method setup was canceled.
           </div>
         ` : ''}
         ${calConnected === 'true' ? `
@@ -320,47 +345,132 @@ export default class SettingsPage {
           </div>
         </div>
 
-        <!-- Billing & Plan Section -->
+        <!-- Credits & Billing Section -->
         <div class="card" style="margin-bottom: 1rem;">
-          <h2>Billing & Plan</h2>
+          <h2>Credits & Billing</h2>
           <div id="billing-section">
-            <div class="billing-plan" style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; background: var(--bg-secondary); border-radius: var(--radius-md); margin-bottom: 1rem;">
-              <div>
-                <div style="font-weight: 600; font-size: 1.1rem;">
-                  ${profile?.plan === 'pro' ? 'Pro Plan' : 'Free Plan'}
-                  ${profile?.plan === 'pro' ? '<span style="background: var(--success-color); color: white; padding: 0.125rem 0.5rem; border-radius: 1rem; font-size: 0.75rem; margin-left: 0.5rem;">ACTIVE</span>' : ''}
+            ${!profile?.received_signup_bonus ? `
+            <!-- Free Credits Offer Banner -->
+            <div style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); border-radius: var(--radius-md); padding: 1.25rem; margin-bottom: 1rem; color: white;">
+              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                <div>
+                  <div style="font-weight: 700; font-size: 1.25rem; margin-bottom: 0.25rem;">
+                    🎁 Get $20 Free Credits!
+                  </div>
+                  <div style="font-size: 0.875rem; opacity: 0.9;">
+                    Add a payment method and enable auto-recharge to get your $20 welcome bonus. You won't be charged until your free credits run out.
+                  </div>
                 </div>
-                <div style="color: var(--text-secondary); font-size: 0.875rem; margin-top: 0.25rem;">
-                  ${profile?.plan === 'pro' ? '$9.99/month' : 'Limited features'}
+                <button class="btn" id="claim-bonus-btn" style="background: white; color: #6366f1; font-weight: 600; white-space: nowrap;">
+                  Claim $20 Free
+                </button>
+              </div>
+            </div>
+            ` : ''}
+
+            <!-- Credits Balance -->
+            <div class="credits-balance" style="display: flex; justify-content: space-between; align-items: center; padding: 1.25rem; background: var(--bg-secondary); border-radius: var(--radius-md); margin-bottom: 1rem;">
+              <div>
+                <div style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Current Balance</div>
+                <div style="font-weight: 700; font-size: 2rem; color: var(--text-primary);">
+                  $${(profile?.credits_balance ?? 20).toFixed(2)}
+                </div>
+                <div style="color: var(--text-secondary); font-size: 0.75rem; margin-top: 0.25rem;">
+                  Used this period: $${(profile?.credits_used_this_period ?? 0).toFixed(2)}
                 </div>
               </div>
-              ${profile?.plan === 'pro' ? `
-                <button class="btn btn-secondary" id="manage-billing-btn">
-                  Manage Billing
-                </button>
-              ` : `
-                <button class="btn btn-primary" id="upgrade-btn">
-                  Upgrade to Pro
-                </button>
-              `}
+              <button class="btn btn-primary" id="add-credits-btn">
+                Add Credits
+              </button>
             </div>
 
-            ${profile?.plan === 'free' ? `
-              <div style="border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem;">
-                <h3 style="margin: 0 0 0.75rem 0; font-size: 1rem;">Pro Plan Features</h3>
-                <ul style="margin: 0; padding-left: 1.25rem; color: var(--text-secondary);">
-                  <li style="margin-bottom: 0.5rem;">Unlimited phone numbers</li>
-                  <li style="margin-bottom: 0.5rem;">Voice cloning capabilities</li>
-                  <li style="margin-bottom: 0.5rem;">Priority support</li>
-                  <li style="margin-bottom: 0.5rem;">Advanced analytics</li>
-                  <li>Unlimited calls, minutes, and SMS</li>
-                </ul>
+            <!-- Add Credits Options (hidden by default, shown on button click) -->
+            <div id="credits-options" style="display: none; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1rem;">
+              <h3 style="margin: 0 0 1rem 0; font-size: 1rem;">Select Amount</h3>
+              <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin-bottom: 1rem;">
+                <button class="btn btn-secondary credit-amount-btn" data-amount="20" style="padding: 1rem; font-size: 1rem;">$20</button>
+                <button class="btn btn-secondary credit-amount-btn" data-amount="50" style="padding: 1rem; font-size: 1rem;">$50</button>
+                <button class="btn btn-secondary credit-amount-btn" data-amount="100" style="padding: 1rem; font-size: 1rem;">$100</button>
               </div>
-            ` : `
-              <div style="color: var(--text-secondary); font-size: 0.875rem;">
-                ${profile?.stripe_current_period_end ? `Next billing date: ${new Date(profile.stripe_current_period_end).toLocaleDateString()}` : ''}
+              <div class="form-group" style="margin-bottom: 0.75rem;">
+                <label for="custom-amount" style="font-size: 0.875rem;">Or enter custom amount ($10-$1000):</label>
+                <div style="display: flex; gap: 0.5rem;">
+                  <input type="number" id="custom-amount" class="form-input" min="10" max="1000" step="1" placeholder="Enter amount" style="flex: 1;" />
+                  <button class="btn btn-primary" id="add-custom-credits-btn">Add</button>
+                </div>
               </div>
-            `}
+              <button class="btn btn-secondary btn-sm" id="cancel-credits-btn" style="width: 100%;">Cancel</button>
+            </div>
+
+            <!-- Auto-Recharge Settings -->
+            <div style="border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1rem;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                <div>
+                  <h3 style="margin: 0; font-size: 1rem;">Auto-Recharge</h3>
+                  <p class="text-muted" style="margin: 0.25rem 0 0 0; font-size: 0.75rem;">Automatically add credits when your balance is low</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="auto-recharge-enabled" ${profile?.auto_recharge_enabled ? 'checked' : ''} ${!profile?.has_payment_method ? 'disabled' : ''} />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+
+              ${!profile?.has_payment_method ? `
+                <div style="background: var(--warning-bg, #fff3cd); border: 1px solid var(--warning-border, #ffc107); border-radius: var(--radius-sm); padding: 0.75rem; margin-bottom: 0.75rem;">
+                  <p style="margin: 0 0 0.5rem 0; font-size: 0.875rem; color: var(--warning-text, #856404);">
+                    Add a payment method to enable auto-recharge.
+                  </p>
+                  <button class="btn btn-sm btn-secondary" id="setup-payment-btn">Add Payment Method</button>
+                </div>
+              ` : ''}
+
+              <div id="auto-recharge-settings" style="${profile?.auto_recharge_enabled ? '' : 'opacity: 0.5; pointer-events: none;'}">
+                <div class="form-group" style="margin-bottom: 0.75rem;">
+                  <label for="recharge-threshold" style="font-size: 0.875rem;">Recharge when balance falls below:</label>
+                  <select id="recharge-threshold" class="form-input">
+                    <option value="5" ${(profile?.auto_recharge_threshold ?? 5) == 5 ? 'selected' : ''}>$5</option>
+                    <option value="10" ${profile?.auto_recharge_threshold == 10 ? 'selected' : ''}>$10</option>
+                    <option value="20" ${profile?.auto_recharge_threshold == 20 ? 'selected' : ''}>$20</option>
+                    <option value="50" ${profile?.auto_recharge_threshold == 50 ? 'selected' : ''}>$50</option>
+                  </select>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label for="recharge-amount" style="font-size: 0.875rem;">Amount to add:</label>
+                  <select id="recharge-amount" class="form-input">
+                    <option value="20" ${profile?.auto_recharge_amount == 20 ? 'selected' : ''}>$20</option>
+                    <option value="50" ${(profile?.auto_recharge_amount ?? 50) == 50 ? 'selected' : ''}>$50</option>
+                    <option value="100" ${profile?.auto_recharge_amount == 100 ? 'selected' : ''}>$100</option>
+                    <option value="200" ${profile?.auto_recharge_amount == 200 ? 'selected' : ''}>$200</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Pricing Info -->
+            <div style="border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem;">
+              <h3 style="margin: 0 0 0.75rem 0; font-size: 1rem;">Usage Rates</h3>
+              <div style="display: grid; gap: 0.5rem; color: var(--text-secondary); font-size: 0.875rem;">
+                <div style="display: flex; justify-content: space-between;">
+                  <span>Voice calls</span>
+                  <span>~$0.07-0.10/min</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                  <span>SMS messages</span>
+                  <span>$0.001/msg</span>
+                </div>
+              </div>
+              <p class="text-muted" style="margin: 0.75rem 0 0 0; font-size: 0.75rem;">
+                Voice rates vary by AI model and voice provider used.
+              </p>
+            </div>
+
+            ${profile?.stripe_customer_id ? `
+              <div style="margin-top: 1rem;">
+                <button class="btn btn-secondary btn-sm" id="manage-billing-btn">
+                  Manage Payment Methods
+                </button>
+              </div>
+            ` : ''}
           </div>
         </div>
 
@@ -646,6 +756,55 @@ export default class SettingsPage {
       document.head.appendChild(link);
     }
     link.href = url || '/favicon.ico';
+  }
+
+  async purchaseCredits(amount) {
+    const errorMessage = document.getElementById('error-message');
+    const addCreditsBtn = document.getElementById('add-credits-btn');
+    const creditsOptions = document.getElementById('credits-options');
+
+    try {
+      // Disable all credit buttons while processing
+      document.querySelectorAll('.credit-amount-btn, #add-custom-credits-btn').forEach(btn => {
+        btn.disabled = true;
+      });
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/stripe-add-credits`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          amount: amount,
+          successUrl: `${window.location.origin}/settings?credits=success`,
+          cancelUrl: `${window.location.origin}/settings?credits=canceled`
+        })
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to create checkout session');
+
+      // Redirect to Stripe Checkout
+      window.location.href = data.url;
+    } catch (error) {
+      console.error('Purchase credits error:', error);
+      errorMessage.className = 'alert alert-error';
+      errorMessage.textContent = 'Failed to start checkout. Please try again.';
+      errorMessage.classList.remove('hidden');
+
+      // Re-enable buttons
+      document.querySelectorAll('.credit-amount-btn, #add-custom-credits-btn').forEach(btn => {
+        btn.disabled = false;
+      });
+
+      // Reset UI
+      if (creditsOptions) creditsOptions.style.display = 'none';
+      if (addCreditsBtn) addCreditsBtn.style.display = 'block';
+    }
   }
 
   attachEventListeners() {
@@ -1048,45 +1207,131 @@ export default class SettingsPage {
       });
     }
 
-    // Billing buttons
-    const upgradeBtn = document.getElementById('upgrade-btn');
+    // Credits and Billing buttons
+    const addCreditsBtn = document.getElementById('add-credits-btn');
+    const creditsOptions = document.getElementById('credits-options');
+    const cancelCreditsBtn = document.getElementById('cancel-credits-btn');
+    const creditAmountBtns = document.querySelectorAll('.credit-amount-btn');
+    const addCustomCreditsBtn = document.getElementById('add-custom-credits-btn');
+    const setupPaymentBtn = document.getElementById('setup-payment-btn');
     const manageBillingBtn = document.getElementById('manage-billing-btn');
+    const autoRechargeEnabled = document.getElementById('auto-recharge-enabled');
+    const autoRechargeSettings = document.getElementById('auto-recharge-settings');
+    const rechargeThreshold = document.getElementById('recharge-threshold');
+    const rechargeAmount = document.getElementById('recharge-amount');
 
-    if (upgradeBtn) {
-      upgradeBtn.addEventListener('click', async () => {
-        upgradeBtn.disabled = true;
-        upgradeBtn.textContent = 'Loading...';
+    // Show/hide credits options
+    if (addCreditsBtn && creditsOptions) {
+      addCreditsBtn.addEventListener('click', () => {
+        creditsOptions.style.display = 'block';
+        addCreditsBtn.style.display = 'none';
+      });
+    }
+
+    if (cancelCreditsBtn && creditsOptions && addCreditsBtn) {
+      cancelCreditsBtn.addEventListener('click', () => {
+        creditsOptions.style.display = 'none';
+        addCreditsBtn.style.display = 'block';
+      });
+    }
+
+    // Handle preset credit amounts
+    creditAmountBtns.forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const amount = parseInt(btn.dataset.amount);
+        await this.purchaseCredits(amount);
+      });
+    });
+
+    // Handle custom credit amount
+    if (addCustomCreditsBtn) {
+      addCustomCreditsBtn.addEventListener('click', async () => {
+        const customInput = document.getElementById('custom-amount');
+        const amount = parseInt(customInput.value);
+        if (amount >= 10 && amount <= 1000) {
+          await this.purchaseCredits(amount);
+        } else {
+          errorMessage.className = 'alert alert-error';
+          errorMessage.textContent = 'Please enter an amount between $10 and $1000';
+          errorMessage.classList.remove('hidden');
+        }
+      });
+    }
+
+    // Setup payment method
+    if (setupPaymentBtn) {
+      setupPaymentBtn.addEventListener('click', async () => {
+        setupPaymentBtn.disabled = true;
+        setupPaymentBtn.textContent = 'Loading...';
 
         try {
           const { data: { session } } = await supabase.auth.getSession();
           if (!session) throw new Error('Not authenticated');
 
-          const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/stripe-create-checkout`, {
+          const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/stripe-setup-payment`, {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${session.access_token}`,
               'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-              successUrl: `${window.location.origin}/settings?billing=success`,
-              cancelUrl: `${window.location.origin}/settings?billing=canceled`
+              returnUrl: `${window.location.origin}/settings?payment_method=success`
             })
           });
 
           const data = await response.json();
-          if (!response.ok) throw new Error(data.error || 'Failed to create checkout session');
+          if (!response.ok) throw new Error(data.error || 'Failed to create setup session');
 
-          // Redirect to Stripe Checkout
           window.location.href = data.url;
         } catch (error) {
-          console.error('Upgrade error:', error);
-          alert('Failed to start checkout. Please try again.');
-          upgradeBtn.disabled = false;
-          upgradeBtn.textContent = 'Upgrade to Pro';
+          console.error('Setup payment error:', error);
+          errorMessage.className = 'alert alert-error';
+          errorMessage.textContent = 'Failed to setup payment method. Please try again.';
+          errorMessage.classList.remove('hidden');
+          setupPaymentBtn.disabled = false;
+          setupPaymentBtn.textContent = 'Add Payment Method';
         }
       });
     }
 
+    // Claim bonus button (same flow as setup payment, redirects to Stripe to add card)
+    const claimBonusBtn = document.getElementById('claim-bonus-btn');
+    if (claimBonusBtn) {
+      claimBonusBtn.addEventListener('click', async () => {
+        claimBonusBtn.disabled = true;
+        claimBonusBtn.textContent = 'Loading...';
+
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session) throw new Error('Not authenticated');
+
+          const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/stripe-setup-payment`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              returnUrl: `${window.location.origin}/settings?payment_method=success&bonus_claimed=true`
+            })
+          });
+
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || 'Failed to create setup session');
+
+          window.location.href = data.url;
+        } catch (error) {
+          console.error('Claim bonus error:', error);
+          errorMessage.className = 'alert alert-error';
+          errorMessage.textContent = 'Failed to setup payment method. Please try again.';
+          errorMessage.classList.remove('hidden');
+          claimBonusBtn.disabled = false;
+          claimBonusBtn.textContent = 'Claim $20 Free';
+        }
+      });
+    }
+
+    // Manage billing portal
     if (manageBillingBtn) {
       manageBillingBtn.addEventListener('click', async () => {
         manageBillingBtn.disabled = true;
@@ -1110,15 +1355,64 @@ export default class SettingsPage {
           const data = await response.json();
           if (!response.ok) throw new Error(data.error || 'Failed to create portal session');
 
-          // Redirect to Stripe Billing Portal
           window.location.href = data.url;
         } catch (error) {
           console.error('Billing portal error:', error);
-          alert('Failed to open billing portal. Please try again.');
+          errorMessage.className = 'alert alert-error';
+          errorMessage.textContent = 'Failed to open billing portal. Please try again.';
+          errorMessage.classList.remove('hidden');
           manageBillingBtn.disabled = false;
-          manageBillingBtn.textContent = 'Manage Billing';
+          manageBillingBtn.textContent = 'Manage Payment Methods';
         }
       });
+    }
+
+    // Auto-recharge toggle
+    if (autoRechargeEnabled && autoRechargeSettings) {
+      autoRechargeEnabled.addEventListener('change', async () => {
+        const isEnabled = autoRechargeEnabled.checked;
+        autoRechargeSettings.style.opacity = isEnabled ? '1' : '0.5';
+        autoRechargeSettings.style.pointerEvents = isEnabled ? 'auto' : 'none';
+
+        try {
+          const { user } = await getCurrentUser();
+          await supabase
+            .from('users')
+            .update({ auto_recharge_enabled: isEnabled })
+            .eq('id', user.id);
+
+          successMessage.className = 'alert alert-success';
+          successMessage.textContent = isEnabled ? 'Auto-recharge enabled' : 'Auto-recharge disabled';
+          successMessage.classList.remove('hidden');
+          setTimeout(() => successMessage.classList.add('hidden'), 3000);
+        } catch (error) {
+          console.error('Auto-recharge toggle error:', error);
+          autoRechargeEnabled.checked = !isEnabled; // Revert
+        }
+      });
+    }
+
+    // Auto-recharge threshold/amount changes
+    const saveAutoRechargeSettings = async () => {
+      try {
+        const { user } = await getCurrentUser();
+        await supabase
+          .from('users')
+          .update({
+            auto_recharge_threshold: parseFloat(rechargeThreshold.value),
+            auto_recharge_amount: parseFloat(rechargeAmount.value)
+          })
+          .eq('id', user.id);
+      } catch (error) {
+        console.error('Save auto-recharge settings error:', error);
+      }
+    };
+
+    if (rechargeThreshold) {
+      rechargeThreshold.addEventListener('change', saveAutoRechargeSettings);
+    }
+    if (rechargeAmount) {
+      rechargeAmount.addEventListener('change', saveAutoRechargeSettings);
     }
 
     // Initialize knowledge source manager component (mobile only - on desktop it has its own page)

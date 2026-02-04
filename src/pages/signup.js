@@ -541,8 +541,8 @@ export default class SignupPage {
         // Profile is created automatically by database trigger (handle_new_user)
         // No need to call User.createProfile() here
 
-        // Redirect to email verification
-        navigateTo('/verify-email');
+        // Redirect to phone verification
+        navigateTo('/verify-phone');
       } catch (error) {
         console.error('Signup error:', error);
         errorMessage.className = 'alert alert-error';

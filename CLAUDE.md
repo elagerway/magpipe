@@ -4,8 +4,14 @@
 - **Frontend**: JavaScript ES6+, HTML5, CSS3 (vanilla, minimal frameworks), Vite
 - **Backend**: TypeScript (Supabase Edge Functions), Python 3.11 (LiveKit agent)
 - **Database**: PostgreSQL (Supabase) with pgvector extension
-- **APIs**: Supabase JS Client, SignalWire (telephony/SMS), LiveKit (voice AI)
+- **APIs**: Supabase JS Client, SignalWire (telephony/SMS), LiveKit (voice AI), Postmark (transactional email)
 - **Other**: Service Worker (PWA), Web Audio API, WebRTC
+
+## Email & Auth
+- **Email provider**: Postmark (for ALL emails - auth, contact forms, notifications)
+- **Supabase auth emails**: Configured to use Postmark SMTP (smtp.postmarkapp.com)
+- **Auth flow**: Email/password signup with auto-confirm (no email verification), then phone verification via SMS OTP
+- **Phone verification required** before users can access the app
 
 ## Project Structure
 ```
@@ -162,6 +168,10 @@ const sessionResult = await page.evaluate(async ({ email, otp }) => {
   - Use `mobile-only` class to show elements only on mobile
   - Use `desktop-only` class to show elements only on desktop
   - Test both viewports when making UI changes
+- **NEVER use native browser alerts/confirms** (`alert()`, `confirm()`, `prompt()`):
+  - Always use custom modals that match the app design (see `src/components/ConfirmModal.js`)
+  - Modals should have: backdrop, styled buttons, mobile-friendly header with back button
+  - Use `showConfirmModal(title, message, options)` for confirmations
 
 ## Database Management
 

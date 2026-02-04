@@ -111,6 +111,17 @@ Deno.serve(async (req) => {
             dbStatus,
             duration
           ).catch(err => console.error('Failed to send Slack call notification:', err));
+
+          // Deduct credits for completed calls with duration
+          if (status?.toLowerCase() === 'completed' && duration > 0) {
+            deductCallCredits(
+              supabaseUrl,
+              supabaseKey,
+              callRecord.user_id,
+              duration,
+              callRecordId
+            ).catch(err => console.error('Failed to deduct credits:', err));
+          }
         }
       }
     } else {
@@ -133,6 +144,57 @@ Deno.serve(async (req) => {
 /**
  * Send Slack notification for completed calls
  */
+/**
+ * Deduct credits for a completed call
+ */
+async function deductCallCredits(
+  supabaseUrl: string,
+  supabaseKey: string,
+  userId: string,
+  durationSeconds: number,
+  callRecordId: string
+) {
+  try {
+    // Get user's agent config to determine voice and LLM rates
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const { data: agentConfig } = await supabase
+      .from('agent_configs')
+      .select('voice_id, ai_model')
+      .eq('user_id', userId)
+      .single();
+
+    // Call deduct-credits function
+    const response = await fetch(`${supabaseUrl}/functions/v1/deduct-credits`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseKey}`,
+      },
+      body: JSON.stringify({
+        userId,
+        type: 'voice',
+        durationSeconds,
+        voiceId: agentConfig?.voice_id,
+        aiModel: agentConfig?.ai_model,
+        referenceType: 'call',
+        referenceId: callRecordId,
+      }),
+    });
+
+    const result = await response.json();
+    if (result.success) {
+      console.log(
+        `Deducted $${result.cost} for ${durationSeconds}s call, balance: $${result.balanceAfter}`
+      );
+    } else {
+      console.error('Failed to deduct credits:', result.error);
+    }
+  } catch (error) {
+    console.error('Error deducting call credits:', error);
+  }
+}
+
 async function sendSlackCallNotification(
   supabase: any,
   userId: string,

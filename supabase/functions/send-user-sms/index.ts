@@ -181,6 +181,10 @@ serve(async (req) => {
 
     console.log(`User sent message - AI paused until ${pauseUntil.toISOString()}`)
 
+    // Deduct credits for the SMS (fire and forget)
+    deductSmsCredits(supabaseUrl, supabaseKey, user.id, 1)
+      .catch(err => console.error('Failed to deduct SMS credits:', err))
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -197,3 +201,38 @@ serve(async (req) => {
     )
   }
 })
+
+/**
+ * Deduct credits for SMS messages
+ */
+async function deductSmsCredits(
+  supabaseUrl: string,
+  supabaseKey: string,
+  userId: string,
+  messageCount: number
+) {
+  try {
+    const response = await fetch(`${supabaseUrl}/functions/v1/deduct-credits`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseKey}`
+      },
+      body: JSON.stringify({
+        userId,
+        type: 'sms',
+        messageCount,
+        referenceType: 'sms'
+      })
+    })
+
+    const result = await response.json()
+    if (result.success) {
+      console.log(`Deducted $${result.cost} for ${messageCount} SMS, balance: $${result.balanceAfter}`)
+    } else {
+      console.error('Failed to deduct SMS credits:', result.error)
+    }
+  } catch (error) {
+    console.error('Error deducting SMS credits:', error)
+  }
+}
