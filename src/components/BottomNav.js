@@ -92,7 +92,7 @@ async function fetchNavUserData() {
 
       const { data: profile } = await supabase
         .from('users')
-        .select('name, avatar_url, logo_url, plan, stripe_current_period_end, created_at')
+        .select('name, avatar_url, logo_url, favicon_url, favicon_white_bg, plan, stripe_current_period_end, created_at')
         .eq('id', user.id)
         .single();
 
@@ -172,6 +172,8 @@ async function fetchNavUserData() {
         email: user.email,
         avatar_url: profile?.avatar_url || null,
         logo_url: profile?.logo_url || null,
+        favicon_url: profile?.favicon_url || null,
+        favicon_white_bg: profile?.favicon_white_bg || false,
         plan: profile?.plan || 'free',
         minutesUsed,
         messagesUsed,
@@ -202,20 +204,93 @@ function getInitials(name, email) {
   return email ? email.substring(0, 2).toUpperCase() : 'U';
 }
 
+// Update the favicon in the document head
+function setFaviconHref(url) {
+  let link = document.querySelector("link[rel~='icon']");
+  if (!link) {
+    link = document.createElement('link');
+    link.rel = 'icon';
+    document.head.appendChild(link);
+  }
+  link.href = url || '/favicon.ico';
+}
+
+// Apply favicon with optional white background
+function applyFavicon(url, withWhiteBg = false) {
+  if (!url) {
+    setFaviconHref(null);
+    return;
+  }
+
+  if (!withWhiteBg) {
+    setFaviconHref(url);
+    return;
+  }
+
+  // Create a canvas to add white background with rounded corners
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    const canvas = document.createElement('canvas');
+    const size = 32;
+    const radius = 6;
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+
+    // Draw rounded rectangle path
+    ctx.beginPath();
+    ctx.moveTo(radius, 0);
+    ctx.lineTo(size - radius, 0);
+    ctx.quadraticCurveTo(size, 0, size, radius);
+    ctx.lineTo(size, size - radius);
+    ctx.quadraticCurveTo(size, size, size - radius, size);
+    ctx.lineTo(radius, size);
+    ctx.quadraticCurveTo(0, size, 0, size - radius);
+    ctx.lineTo(0, radius);
+    ctx.quadraticCurveTo(0, 0, radius, 0);
+    ctx.closePath();
+
+    // Fill with white background
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+
+    // Clip to rounded rectangle for the image
+    ctx.clip();
+
+    // Draw the favicon centered
+    const scale = Math.min(size / img.width, size / img.height);
+    const x = (size - img.width * scale) / 2;
+    const y = (size - img.height * scale) / 2;
+    ctx.drawImage(img, x, y, img.width * scale, img.height * scale);
+
+    // Convert to data URL and set as favicon
+    const dataUrl = canvas.toDataURL('image/png');
+    setFaviconHref(dataUrl);
+  };
+  img.onerror = () => {
+    // Fallback to original if processing fails
+    setFaviconHref(url);
+  };
+  img.src = url;
+}
+
 // Update the logo section in the DOM
 function updateNavLogoSection(userData) {
   const logoSection = document.getElementById('nav-logo-section');
   if (!logoSection) return;
 
-  if (userData?.logo_url) {
-    logoSection.innerHTML = `
-      <div class="nav-logo">
-        <img src="${userData.logo_url}" alt="Logo" />
-      </div>
-    `;
-    logoSection.style.display = 'block';
-  } else {
-    logoSection.style.display = 'none';
+  const logoUrl = userData?.logo_url || '/magpipe-logo.png';
+  logoSection.innerHTML = `
+    <div class="nav-logo">
+      <img src="${logoUrl}" alt="Logo" />
+    </div>
+  `;
+  logoSection.style.display = 'block';
+
+  // Also update favicon if custom one is set
+  if (userData?.favicon_url) {
+    applyFavicon(userData.favicon_url, userData.favicon_white_bg);
   }
 }
 
