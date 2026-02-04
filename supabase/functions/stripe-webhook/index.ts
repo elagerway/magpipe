@@ -68,8 +68,39 @@ serve(async (req) => {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session
         const userId = session.metadata?.supabase_user_id
+        const transactionType = session.metadata?.transaction_type
         const subscriptionId = session.subscription as string
 
+        // Handle credit purchase (one-time payment)
+        if (userId && transactionType === 'credit_purchase') {
+          const creditAmount = parseFloat(session.metadata?.credit_amount || '0')
+          const paymentIntentId = session.payment_intent as string
+
+          if (creditAmount > 0) {
+            // Use the add_credits function to add credits and record transaction
+            const { data: result, error: addError } = await supabase.rpc('add_credits', {
+              p_user_id: userId,
+              p_amount: creditAmount,
+              p_transaction_type: 'purchase',
+              p_description: `Added $${creditAmount} credits via Stripe`,
+              p_reference_type: 'stripe_payment',
+              p_reference_id: paymentIntentId,
+              p_metadata: {
+                checkout_session_id: session.id,
+                amount_paid: session.amount_total ? session.amount_total / 100 : creditAmount
+              }
+            })
+
+            if (addError) {
+              console.error(`Failed to add credits for user ${userId}:`, addError)
+            } else {
+              console.log(`User ${userId} added $${creditAmount} credits, new balance: $${result?.balance_after}`)
+            }
+          }
+          break
+        }
+
+        // Handle subscription checkout (legacy - keep for backwards compatibility)
         if (userId && subscriptionId) {
           // Fetch the subscription details
           const subscription = await stripe.subscriptions.retrieve(subscriptionId)
@@ -85,6 +116,84 @@ serve(async (req) => {
             .eq('id', userId)
 
           console.log(`User ${userId} upgraded to Pro via checkout`)
+        }
+        break
+      }
+
+      case 'setup_intent.succeeded': {
+        // Payment method saved successfully
+        const setupIntent = event.data.object as Stripe.SetupIntent
+        const customerId = setupIntent.customer as string
+
+        if (customerId) {
+          // Find user by customer ID
+          const { data: user } = await supabase
+            .from('users')
+            .select('id, received_signup_bonus')
+            .eq('stripe_customer_id', customerId)
+            .single()
+
+          if (user) {
+            // Mark user as having a payment method
+            await supabase
+              .from('users')
+              .update({ has_payment_method: true })
+              .eq('id', user.id)
+
+            console.log(`User ${user.id} saved payment method`)
+
+            // Grant signup bonus if not already received
+            if (!user.received_signup_bonus) {
+              const { data: bonusResult, error: bonusError } = await supabase.rpc('grant_signup_bonus', {
+                p_user_id: user.id
+              })
+
+              if (bonusError) {
+                console.error(`Failed to grant signup bonus for user ${user.id}:`, bonusError)
+              } else if (bonusResult?.success) {
+                console.log(`User ${user.id} received $20 signup bonus, new balance: $${bonusResult.balance_after}`)
+              } else {
+                console.log(`User ${user.id} signup bonus: ${bonusResult?.error || 'already received'}`)
+              }
+            }
+          }
+        }
+        break
+      }
+
+      case 'payment_method.detached': {
+        // Payment method removed - check if user still has payment methods
+        const paymentMethod = event.data.object as Stripe.PaymentMethod
+        const customerId = paymentMethod.customer as string
+
+        if (customerId) {
+          // Find user by customer ID
+          const { data: user } = await supabase
+            .from('users')
+            .select('id')
+            .eq('stripe_customer_id', customerId)
+            .single()
+
+          if (user) {
+            // Check if customer still has payment methods
+            const paymentMethods = await stripe.paymentMethods.list({
+              customer: customerId,
+              type: 'card'
+            })
+
+            if (paymentMethods.data.length === 0) {
+              // No more payment methods, update user
+              await supabase
+                .from('users')
+                .update({
+                  has_payment_method: false,
+                  auto_recharge_enabled: false // Disable auto-recharge if no payment method
+                })
+                .eq('id', user.id)
+
+              console.log(`User ${user.id} has no more payment methods, disabled auto-recharge`)
+            }
+          }
         }
         break
       }

@@ -1,5 +1,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+
 /**
  * Callback Call Status Handler
  *
@@ -48,10 +51,7 @@ Deno.serve(async (req) => {
     }
 
     // Initialize Supabase client
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Map SignalWire statuses to our database statuses
     const statusMap: Record<string, string> = {
@@ -102,6 +102,13 @@ Deno.serve(async (req) => {
       console.log(`Intermediate state ${status}. Updating call record ${callRecordId}:`, updateData);
     }
 
+    // Get the call record to know user_id for credit deduction
+    const { data: callRecord } = await supabase
+      .from("call_records")
+      .select("user_id")
+      .eq("id", callRecordId)
+      .single();
+
     const { error } = await supabase
       .from("call_records")
       .update(updateData)
@@ -111,6 +118,17 @@ Deno.serve(async (req) => {
       console.error("Error updating call record:", error);
     } else {
       console.log(`✅ Updated call record ${callRecordId}`);
+
+      // Deduct credits for completed calls with duration
+      if (callRecord && isTerminal && status?.toLowerCase() === "completed" && duration > 0) {
+        deductCallCredits(
+          supabaseUrl,
+          supabaseKey,
+          callRecord.user_id,
+          duration,
+          callRecordId
+        ).catch(err => console.error("Failed to deduct credits:", err));
+      }
     }
 
     // Return empty response for non-terminal states
@@ -141,3 +159,54 @@ Deno.serve(async (req) => {
     );
   }
 });
+
+/**
+ * Deduct credits for a completed call
+ */
+async function deductCallCredits(
+  supabaseUrl: string,
+  supabaseKey: string,
+  userId: string,
+  durationSeconds: number,
+  callRecordId: string
+) {
+  try {
+    // Get user's agent config to determine voice and LLM rates
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const { data: agentConfig } = await supabase
+      .from("agent_configs")
+      .select("voice_id, ai_model")
+      .eq("user_id", userId)
+      .single();
+
+    // Call deduct-credits function
+    const response = await fetch(`${supabaseUrl}/functions/v1/deduct-credits`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${supabaseKey}`,
+      },
+      body: JSON.stringify({
+        userId,
+        type: "voice",
+        durationSeconds,
+        voiceId: agentConfig?.voice_id,
+        aiModel: agentConfig?.ai_model,
+        referenceType: "call",
+        referenceId: callRecordId,
+      }),
+    });
+
+    const result = await response.json();
+    if (result.success) {
+      console.log(
+        `Deducted $${result.cost} for ${durationSeconds}s call, balance: $${result.balanceAfter}`
+      );
+    } else {
+      console.error("Failed to deduct credits:", result.error);
+    }
+  } catch (error) {
+    console.error("Error deducting call credits:", error);
+  }
+}

@@ -4,6 +4,7 @@
  */
 
 import { supabase, getCurrentUser } from '../lib/supabase.js';
+import { AgentConfig } from '../models/AgentConfig.js';
 import {
   initUnreadTracking as initUnreadService,
   recalculateUnreads,
@@ -13,6 +14,29 @@ import {
   getUnreadCount,
   onUnreadChange
 } from '../services/unreadService.js';
+
+// Pricing rates (from /pricing page)
+const VOICE_RATES = {
+  elevenlabs: 0.07,  // 11labs-* voices
+  openai: 0.08,      // openai-* voices
+  default: 0.07      // legacy voices default to ElevenLabs rate
+};
+
+const LLM_RATES = {
+  'gpt-4o': 0.05,
+  'gpt-4o-mini': 0.006,
+  'gpt-4.1': 0.045,
+  'gpt-4.1-mini': 0.016,
+  'gpt-5': 0.04,
+  'gpt-5-mini': 0.012,
+  'gpt-5-nano': 0.003,
+  'claude-3.5-sonnet': 0.05,
+  'claude-3-haiku': 0.006,
+  'default': 0.006  // Default to GPT 4o mini rate
+};
+
+const TELEPHONY_RATE = 0.015;  // MAGPIPE telephony
+const MESSAGE_RATE = 0.001;    // Per SMS message
 
 // Cached user data for nav (avoids refetching on every page)
 let cachedUserData = null;
@@ -68,16 +92,32 @@ async function fetchNavUserData() {
 
       const { data: profile } = await supabase
         .from('users')
-        .select('name, avatar_url, logo_url, plan, stripe_current_period_end')
+        .select('name, avatar_url, logo_url, plan, stripe_current_period_end, created_at')
         .eq('id', user.id)
         .single();
 
+      // Calculate billing period start based on user's anniversary date
+      let periodStart;
+      if (profile?.stripe_current_period_end) {
+        // Use Stripe billing period
+        periodStart = new Date(new Date(profile.stripe_current_period_end).getTime() - 30 * 24 * 60 * 60 * 1000);
+      } else {
+        // Use account creation date to determine monthly anniversary
+        const createdAt = profile?.created_at ? new Date(profile.created_at) : new Date();
+        const anniversaryDay = createdAt.getDate();
+        const now = new Date();
+
+        // Calculate the most recent anniversary date
+        periodStart = new Date(now.getFullYear(), now.getMonth(), anniversaryDay);
+
+        // If anniversary hasn't happened this month yet, use last month's
+        if (periodStart > now) {
+          periodStart.setMonth(periodStart.getMonth() - 1);
+        }
+      }
+
       // Get minutes used this billing period
       let minutesUsed = 0;
-      const periodStart = profile?.stripe_current_period_end
-        ? new Date(new Date(profile.stripe_current_period_end).getTime() - 30 * 24 * 60 * 60 * 1000)
-        : new Date(new Date().setDate(1)); // First of month fallback
-
       const { data: calls } = await supabase
         .from('call_records')
         .select('duration_seconds')
@@ -89,12 +129,43 @@ async function fetchNavUserData() {
         minutesUsed = Math.round(totalSeconds / 60);
       }
 
-      // Plan limits (customize as needed)
-      const planLimits = {
-        free: 100,
-        pro: 2000,
-        enterprise: 10000
-      };
+      // Get messages sent this billing period
+      let messagesUsed = 0;
+      const { data: messages, count: messageCount } = await supabase
+        .from('sms_messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .eq('direction', 'outbound')
+        .gte('created_at', periodStart.toISOString());
+
+      messagesUsed = messageCount || 0;
+
+      // Get user's default agent config for rate calculation
+      let voiceRate = VOICE_RATES.default;
+      let llmRate = LLM_RATES.default;
+
+      const { config: agentConfig } = await AgentConfig.getByUserId(user.id);
+      if (agentConfig) {
+        // Determine voice rate based on voice_id
+        if (agentConfig.voice_id?.startsWith('openai-')) {
+          voiceRate = VOICE_RATES.openai;
+        } else {
+          voiceRate = VOICE_RATES.elevenlabs;
+        }
+
+        // Determine LLM rate based on ai_model
+        if (agentConfig.ai_model && LLM_RATES[agentConfig.ai_model]) {
+          llmRate = LLM_RATES[agentConfig.ai_model];
+        }
+      }
+
+      // Calculate per-minute rate (Voice + LLM + Telephony)
+      const perMinuteRate = voiceRate + llmRate + TELEPHONY_RATE;
+
+      // Calculate costs
+      const voiceCost = minutesUsed * perMinuteRate;
+      const messageCost = messagesUsed * MESSAGE_RATE;
+      const totalCost = voiceCost + messageCost;
 
       cachedUserData = {
         name: profile?.name || null,
@@ -102,8 +173,12 @@ async function fetchNavUserData() {
         avatar_url: profile?.avatar_url || null,
         logo_url: profile?.logo_url || null,
         plan: profile?.plan || 'free',
-        minutesUsed: minutesUsed,
-        minutesLimit: planLimits[profile?.plan] || 2000
+        minutesUsed,
+        messagesUsed,
+        perMinuteRate,
+        voiceCost,
+        messageCost,
+        totalCost
       };
 
       return cachedUserData;
@@ -149,19 +224,28 @@ function updateNavPlanSection(userData) {
   const planSection = document.getElementById('nav-plan-section');
   if (!planSection || !userData) return;
 
-  const percentage = Math.min(100, Math.round((userData.minutesUsed / userData.minutesLimit) * 100));
-  const planLabel = userData.plan === 'pro' ? 'Pro' : userData.plan === 'enterprise' ? 'Enterprise' : 'Free';
+  const maxBudget = 2000; // $2000 max for progress bar
+  const hasUsage = (userData.minutesUsed > 0 || userData.messagesUsed > 0);
+  let percentage = ((userData.totalCost || 0) / maxBudget) * 100;
+  // Ensure minimum visible width when there's any usage
+  if (hasUsage && percentage < 3) {
+    percentage = 3;
+  }
+  percentage = Math.min(100, percentage);
 
   planSection.innerHTML = `
     <div class="nav-plan-card">
       <div class="nav-plan-header">
-        <span class="nav-plan-usage">Minutes Used: ${userData.minutesUsed} of ${userData.minutesLimit}</span>
-        <span class="nav-plan-type">${planLabel}</span>
+        <span class="nav-plan-title">Monthly Consumption</span>
+      </div>
+      <div class="nav-plan-usage-line">
+        <span>Minutes: ${userData.minutesUsed.toLocaleString()}</span>
+        <span>Messages: ${userData.messagesUsed.toLocaleString()}</span>
       </div>
       <div class="nav-plan-progress">
         <div class="nav-plan-progress-bar" style="width: ${percentage}%"></div>
       </div>
-      <button class="nav-plan-upgrade-btn" onclick="navigateTo('/settings')">
+      <button class="nav-plan-upgrade-btn" onclick="openUpgradeModal()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
         </svg>
@@ -404,6 +488,78 @@ function generateNavHtml(currentPath) {
           </form>
         </div>
       </div>
+
+      <!-- Upgrade Modal -->
+      <div class="contact-modal-overlay" id="upgrade-modal-overlay" style="display: none;" onclick="handleUpgradeOverlayClick(event)">
+        <div class="contact-modal" onclick="event.stopPropagation()">
+          <div class="contact-modal-header">
+            <h3>Request Custom Plan</h3>
+            <button class="close-modal-btn" onclick="closeUpgradeModal()">&times;</button>
+          </div>
+          <form id="upgrade-form" onsubmit="submitUpgradeForm(event)">
+            <div class="contact-modal-body">
+              <div class="form-group">
+                <label for="upgrade-name">Name</label>
+                <input type="text" id="upgrade-name" name="name" readonly class="readonly-input">
+              </div>
+              <div class="form-group">
+                <label for="upgrade-email">Email</label>
+                <input type="email" id="upgrade-email" name="email" readonly class="readonly-input">
+              </div>
+              <div class="form-group">
+                <label for="upgrade-company">Company / Organization</label>
+                <input type="text" id="upgrade-company" name="company" placeholder="Your company name">
+              </div>
+              <div class="form-group">
+                <label for="upgrade-company-size">Company Size</label>
+                <select id="upgrade-company-size" name="company_size" class="form-input">
+                  <option value="">Select...</option>
+                  <option value="1-10">1-10 employees</option>
+                  <option value="11-50">11-50 employees</option>
+                  <option value="51-200">51-200 employees</option>
+                  <option value="201-500">201-500 employees</option>
+                  <option value="500+">500+ employees</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="upgrade-call-volume">Expected Monthly Call Volume</label>
+                <select id="upgrade-call-volume" name="call_volume" class="form-input">
+                  <option value="">Select...</option>
+                  <option value="< 100">Less than 100 calls</option>
+                  <option value="100-500">100-500 calls</option>
+                  <option value="500-2000">500-2,000 calls</option>
+                  <option value="2000-10000">2,000-10,000 calls</option>
+                  <option value="10000+">10,000+ calls</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="upgrade-concurrent">Expected Concurrent Calls</label>
+                <select id="upgrade-concurrent" name="concurrent_calls" class="form-input">
+                  <option value="">Select...</option>
+                  <option value="1-5">1-5 simultaneous</option>
+                  <option value="6-20">6-20 simultaneous</option>
+                  <option value="21-50">21-50 simultaneous</option>
+                  <option value="50+">50+ simultaneous</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Current Usage</label>
+                <div class="upgrade-usage-stats" id="upgrade-usage-stats">
+                  <span>Loading...</span>
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="upgrade-message">Anything else?</label>
+                <textarea id="upgrade-message" name="message" rows="3" placeholder="Special requirements, integrations, questions..."></textarea>
+              </div>
+            </div>
+            <div class="contact-modal-footer">
+              <button type="button" class="btn btn-secondary" onclick="closeUpgradeModal()">Cancel</button>
+              <button type="submit" class="btn btn-primary" id="upgrade-submit-btn">Send Request</button>
+            </div>
+          </form>
+        </div>
+      </div>
     </nav>
   `;
 }
@@ -632,6 +788,78 @@ export function renderBottomNav(currentPath = '/agent') {
           </form>
         </div>
       </div>
+
+      <!-- Upgrade Modal -->
+      <div class="contact-modal-overlay" id="upgrade-modal-overlay" style="display: none;" onclick="handleUpgradeOverlayClick(event)">
+        <div class="contact-modal" onclick="event.stopPropagation()">
+          <div class="contact-modal-header">
+            <h3>Request Custom Plan</h3>
+            <button class="close-modal-btn" onclick="closeUpgradeModal()">&times;</button>
+          </div>
+          <form id="upgrade-form" onsubmit="submitUpgradeForm(event)">
+            <div class="contact-modal-body">
+              <div class="form-group">
+                <label for="upgrade-name">Name</label>
+                <input type="text" id="upgrade-name" name="name" readonly class="readonly-input">
+              </div>
+              <div class="form-group">
+                <label for="upgrade-email">Email</label>
+                <input type="email" id="upgrade-email" name="email" readonly class="readonly-input">
+              </div>
+              <div class="form-group">
+                <label for="upgrade-company">Company / Organization</label>
+                <input type="text" id="upgrade-company" name="company" placeholder="Your company name">
+              </div>
+              <div class="form-group">
+                <label for="upgrade-company-size">Company Size</label>
+                <select id="upgrade-company-size" name="company_size" class="form-input">
+                  <option value="">Select...</option>
+                  <option value="1-10">1-10 employees</option>
+                  <option value="11-50">11-50 employees</option>
+                  <option value="51-200">51-200 employees</option>
+                  <option value="201-500">201-500 employees</option>
+                  <option value="500+">500+ employees</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="upgrade-call-volume">Expected Monthly Call Volume</label>
+                <select id="upgrade-call-volume" name="call_volume" class="form-input">
+                  <option value="">Select...</option>
+                  <option value="< 100">Less than 100 calls</option>
+                  <option value="100-500">100-500 calls</option>
+                  <option value="500-2000">500-2,000 calls</option>
+                  <option value="2000-10000">2,000-10,000 calls</option>
+                  <option value="10000+">10,000+ calls</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="upgrade-concurrent">Expected Concurrent Calls</label>
+                <select id="upgrade-concurrent" name="concurrent_calls" class="form-input">
+                  <option value="">Select...</option>
+                  <option value="1-5">1-5 simultaneous</option>
+                  <option value="6-20">6-20 simultaneous</option>
+                  <option value="21-50">21-50 simultaneous</option>
+                  <option value="50+">50+ simultaneous</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Current Usage</label>
+                <div class="upgrade-usage-stats" id="upgrade-usage-stats">
+                  <span>Loading...</span>
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="upgrade-message">Anything else?</label>
+                <textarea id="upgrade-message" name="message" rows="3" placeholder="Special requirements, integrations, questions..."></textarea>
+              </div>
+            </div>
+            <div class="contact-modal-footer">
+              <button type="button" class="btn btn-secondary" onclick="closeUpgradeModal()">Cancel</button>
+              <button type="submit" class="btn btn-primary" id="upgrade-submit-btn">Send Request</button>
+            </div>
+          </form>
+        </div>
+      </div>
     </nav>
   `;
 }
@@ -784,6 +1012,120 @@ function showContactNotification(message, type) {
     setTimeout(() => notification.remove(), 300);
   }, 3000);
 }
+
+// Upgrade modal functions
+window.openUpgradeModal = async function() {
+  closeUserModal();
+  const overlay = document.getElementById('upgrade-modal-overlay');
+  if (overlay) {
+    overlay.style.display = 'flex';
+
+    // Pre-fill the form with user data
+    const userData = cachedUserData || await fetchNavUserData();
+    if (userData) {
+      const nameInput = document.getElementById('upgrade-name');
+      const emailInput = document.getElementById('upgrade-email');
+      const usageStats = document.getElementById('upgrade-usage-stats');
+
+      if (nameInput) nameInput.value = userData.name || '';
+      if (emailInput) emailInput.value = userData.email || '';
+      if (usageStats) {
+        usageStats.innerHTML = `
+          <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+            <span><strong>${userData.minutesUsed.toLocaleString()}</strong> minutes</span>
+            <span><strong>${userData.messagesUsed.toLocaleString()}</strong> messages</span>
+            <span><strong>$${userData.totalCost.toFixed(2)}</strong> this period</span>
+          </div>
+        `;
+      }
+    }
+
+    // Focus on company field (first editable field)
+    setTimeout(() => {
+      const companyInput = document.getElementById('upgrade-company');
+      if (companyInput) companyInput.focus();
+    }, 100);
+  }
+};
+
+window.closeUpgradeModal = function() {
+  const overlay = document.getElementById('upgrade-modal-overlay');
+  if (overlay) {
+    overlay.style.display = 'none';
+    // Reset form
+    const form = document.getElementById('upgrade-form');
+    if (form) form.reset();
+  }
+};
+
+window.handleUpgradeOverlayClick = function(event) {
+  if (event.target.id === 'upgrade-modal-overlay') {
+    closeUpgradeModal();
+  }
+};
+
+window.submitUpgradeForm = async function(event) {
+  event.preventDefault();
+
+  const submitBtn = document.getElementById('upgrade-submit-btn');
+  const name = document.getElementById('upgrade-name').value.trim();
+  const email = document.getElementById('upgrade-email').value.trim();
+  const company = document.getElementById('upgrade-company').value.trim();
+  const companySize = document.getElementById('upgrade-company-size').value;
+  const callVolume = document.getElementById('upgrade-call-volume').value;
+  const concurrentCalls = document.getElementById('upgrade-concurrent').value;
+  const message = document.getElementById('upgrade-message').value.trim();
+
+  // Get current usage stats
+  const userData = cachedUserData || await fetchNavUserData();
+  const usageInfo = userData
+    ? `\n\nCurrent Usage:\n- Minutes: ${userData.minutesUsed}\n- Messages: ${userData.messagesUsed}\n- Total Cost: $${userData.totalCost.toFixed(2)}`
+    : '';
+
+  // Disable button and show loading
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Sending...';
+
+  try {
+    const { supabase } = await import('../lib/supabase.js');
+    const { data: { session } } = await supabase.auth.getSession();
+
+    const subject = `Custom Plan Request${company ? ` - ${company}` : ''}`;
+    const fullMessage = `Name: ${name}
+Email: ${email}
+${company ? `Company: ${company}\n` : ''}${companySize ? `Company Size: ${companySize}\n` : ''}
+Expected Monthly Call Volume: ${callVolume || 'Not specified'}
+Expected Concurrent Calls: ${concurrentCalls || 'Not specified'}
+${usageInfo}
+${message ? `\nAdditional Notes:\n${message}` : ''}`;
+
+    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-contact-email`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': session ? `Bearer ${session.access_token}` : '',
+      },
+      body: JSON.stringify({ subject, message: fullMessage })
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.error || 'Failed to send request');
+    }
+
+    // Success - close modal and show notification
+    closeUpgradeModal();
+    showContactNotification('Request sent! We\'ll get back to you soon.', 'success');
+
+  } catch (error) {
+    console.error('Error sending upgrade request:', error);
+    showContactNotification('Failed to send request. Please try again.', 'error');
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Send Request';
+  }
+};
 
 export function setPhoneNavActive(isActive) {
   const phoneBtn = document.getElementById('phone-nav-btn');
