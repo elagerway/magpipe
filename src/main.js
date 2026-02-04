@@ -114,8 +114,17 @@ class App {
       const { profile } = await User.getProfile(session.user.id);
 
       if (!profile) {
-        // Profile doesn't exist yet, create it
-        await User.createProfile(session.user.id, session.user.email, session.user.user_metadata?.name || 'User');
+        // Profile doesn't exist yet, create it (new OAuth user)
+        const name = session.user.user_metadata?.name || session.user.user_metadata?.full_name || 'User';
+        await User.createProfile(session.user.id, session.user.email, name);
+
+        // Send signup notification (fire and forget)
+        fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/notify-signup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, email: session.user.email })
+        }).catch(() => {});
+
         this.router.navigate('/verify-phone');
       } else if (!profile.phone_verified) {
         // Phone not verified, redirect to phone verification
