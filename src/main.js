@@ -171,7 +171,7 @@ class App {
       }
 
       // Check if widget is already loaded
-      if (document.getElementById('SoloWidget')) {
+      if (document.getElementById('chat-widget')) {
         return;
       }
 
@@ -220,12 +220,12 @@ class App {
     if (!this.portalWidgetConfig) return;
 
     // Check if widget is already loaded
-    if (document.getElementById('SoloWidget')) {
+    if (document.getElementById('chat-widget')) {
       return;
     }
 
     const script = document.createElement('script');
-    script.id = 'MagpipeWidget';
+    script.id = 'chat-widget';
     script.src = '/widget/magpipe-chat.js';
     script.async = true;
     script.onload = () => {
@@ -256,7 +256,7 @@ class App {
 
   updateWidgetVisibility() {
     const currentPath = window.location.pathname;
-    const container = document.getElementById('solo-chat-container');
+    const container = document.getElementById('magpipe-chat-container');
 
     if (this.isPageHiddenForWidget(currentPath)) {
       // Hide widget on this page
@@ -276,13 +276,13 @@ class App {
 
   removePortalWidget() {
     // Remove widget script
-    const script = document.getElementById('SoloWidget');
+    const script = document.getElementById('chat-widget');
     if (script) {
       script.remove();
     }
 
     // Remove widget container
-    const container = document.getElementById('solo-chat-container');
+    const container = document.getElementById('magpipe-chat-container');
     if (container) {
       container.remove();
     }
