@@ -3,7 +3,7 @@
  * Manage knowledge sources for AI assistant
  */
 
-import { addSource, listSources, deleteSource } from '../services/knowledgeService.js';
+import { addSource, listSources, deleteSource, getCrawlStatus, getCrawledUrls } from '../services/knowledgeService.js';
 
 /**
  * Create knowledge source manager
@@ -15,6 +15,7 @@ export function createKnowledgeSourceManager(container) {
   let sources = [];
   let isLoading = false;
   let expandedSourceId = null;
+  let crawlStatusPolling = null;  // Interval for polling crawl status
 
   // Create elements
   const managerContainer = document.createElement('div');
@@ -55,6 +56,14 @@ export function createKnowledgeSourceManager(container) {
 
     try {
       sources = await listSources();
+
+      // Check if any sources are actively crawling and start polling
+      const hasCrawling = sources.some(s =>
+        s.sync_status === 'syncing' && s.crawl_mode && s.crawl_mode !== 'single'
+      );
+      if (hasCrawling) {
+        startCrawlPolling();
+      }
     } catch (error) {
       console.error('Load sources error:', error);
       showError(error.message || 'Failed to load knowledge sources');
@@ -127,6 +136,16 @@ export function createKnowledgeSourceManager(container) {
 
     const detailsList = document.createElement('dl');
 
+    // Crawl mode (if not single)
+    if (source.crawl_mode && source.crawl_mode !== 'single') {
+      const modeLabel = document.createElement('dt');
+      modeLabel.textContent = 'Crawl Mode:';
+      const modeValue = document.createElement('dd');
+      modeValue.textContent = formatCrawlMode(source.crawl_mode);
+      detailsList.appendChild(modeLabel);
+      detailsList.appendChild(modeValue);
+    }
+
     // Chunk count
     const chunkLabel = document.createElement('dt');
     chunkLabel.textContent = 'Chunks:';
@@ -165,6 +184,34 @@ export function createKnowledgeSourceManager(container) {
 
     details.appendChild(detailsList);
 
+    // Crawl progress (shown when syncing with sitemap/recursive mode)
+    if (source.sync_status === 'syncing' && source.crawl_mode && source.crawl_mode !== 'single') {
+      const progressContainer = document.createElement('div');
+      progressContainer.className = 'crawl-progress';
+      progressContainer.id = `crawl-progress-${source.id}`;
+      progressContainer.innerHTML = '<div class="progress-loading">Loading crawl status...</div>';
+      details.appendChild(progressContainer);
+
+      // Fetch and display crawl status
+      loadCrawlStatus(source.id, progressContainer);
+    }
+
+    // Action buttons container
+    const actionsContainer = document.createElement('div');
+    actionsContainer.className = 'source-actions';
+
+    // View URLs button (only for multi-page sources)
+    if (source.crawl_mode && source.crawl_mode !== 'single' && source.chunk_count > 0) {
+      const viewUrlsBtn = document.createElement('button');
+      viewUrlsBtn.className = 'btn-view-urls';
+      viewUrlsBtn.textContent = 'View Parsed URLs';
+      viewUrlsBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showParsedUrls(source);
+      });
+      actionsContainer.appendChild(viewUrlsBtn);
+    }
+
     // Delete button
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'btn-delete-source';
@@ -173,11 +220,198 @@ export function createKnowledgeSourceManager(container) {
       e.stopPropagation();
       confirmDelete(source);
     });
-    details.appendChild(deleteBtn);
+    actionsContainer.appendChild(deleteBtn);
 
+    details.appendChild(actionsContainer);
     card.appendChild(details);
 
     return card;
+  }
+
+  /**
+   * Show parsed URLs modal
+   */
+  async function showParsedUrls(source) {
+    const modal = createModal();
+
+    const container = document.createElement('div');
+    container.className = 'parsed-urls-modal';
+
+    const title = document.createElement('h3');
+    title.textContent = 'Parsed URLs';
+    container.appendChild(title);
+
+    const subtitle = document.createElement('p');
+    subtitle.className = 'modal-subtitle';
+    subtitle.textContent = `URLs crawled from "${source.title}"`;
+    container.appendChild(subtitle);
+
+    // Loading state
+    const loadingDiv = document.createElement('div');
+    loadingDiv.className = 'urls-loading';
+    loadingDiv.textContent = 'Loading URLs...';
+    container.appendChild(loadingDiv);
+
+    // URL list container
+    const urlList = document.createElement('div');
+    urlList.className = 'parsed-urls-list';
+    urlList.style.display = 'none';
+    container.appendChild(urlList);
+
+    // Close button
+    const buttonContainer = document.createElement('div');
+    buttonContainer.className = 'modal-buttons';
+
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'btn-cancel';
+    closeBtn.textContent = 'Close';
+    closeBtn.addEventListener('click', () => modal.remove());
+    buttonContainer.appendChild(closeBtn);
+    container.appendChild(buttonContainer);
+
+    modal.appendChild(container);
+    document.body.appendChild(modal);
+
+    // Load URLs
+    try {
+      const urls = await getCrawledUrls(source.id);
+
+      loadingDiv.style.display = 'none';
+      urlList.style.display = 'block';
+
+      if (urls.length === 0) {
+        urlList.innerHTML = '<div class="no-urls">No URLs found</div>';
+        return;
+      }
+
+      // Summary
+      const summary = document.createElement('div');
+      summary.className = 'urls-summary';
+      summary.textContent = `${urls.length} page${urls.length !== 1 ? 's' : ''} crawled`;
+      urlList.appendChild(summary);
+
+      // URL items
+      urls.forEach(item => {
+        const urlItem = document.createElement('div');
+        urlItem.className = 'url-item';
+
+        const urlTitle = document.createElement('div');
+        urlTitle.className = 'url-item-title';
+        urlTitle.textContent = item.title || 'Untitled';
+        urlItem.appendChild(urlTitle);
+
+        const urlLink = document.createElement('a');
+        urlLink.className = 'url-item-link';
+        urlLink.href = item.url;
+        urlLink.target = '_blank';
+        urlLink.rel = 'noopener noreferrer';
+        urlLink.textContent = item.url;
+        urlItem.appendChild(urlLink);
+
+        const urlChunks = document.createElement('div');
+        urlChunks.className = 'url-item-chunks';
+        urlChunks.textContent = `${item.chunkCount} chunk${item.chunkCount !== 1 ? 's' : ''}`;
+        urlItem.appendChild(urlChunks);
+
+        urlList.appendChild(urlItem);
+      });
+
+    } catch (error) {
+      console.error('Error loading URLs:', error);
+      loadingDiv.textContent = 'Failed to load URLs';
+      loadingDiv.classList.add('error');
+    }
+  }
+
+  /**
+   * Load and display crawl status for a source
+   */
+  async function loadCrawlStatus(sourceId, container) {
+    try {
+      const status = await getCrawlStatus(sourceId);
+      if (!status) {
+        container.innerHTML = '';
+        return;
+      }
+
+      const progress = status.pagesDiscovered > 0
+        ? Math.round((status.pagesCrawled / status.pagesDiscovered) * 100)
+        : 0;
+
+      container.innerHTML = `
+        <div class="progress-header">
+          <span>Crawling pages...</span>
+          <span>${status.pagesCrawled} / ${status.pagesDiscovered}</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" style="width: ${progress}%"></div>
+        </div>
+        ${status.currentUrl ? `<div class="progress-current">Current: ${truncateUrl(status.currentUrl)}</div>` : ''}
+        ${status.pagesFailed > 0 ? `<div class="progress-failed">${status.pagesFailed} pages failed</div>` : ''}
+      `;
+    } catch (error) {
+      console.error('Error loading crawl status:', error);
+      container.innerHTML = '<div class="progress-error">Could not load crawl status</div>';
+    }
+  }
+
+  /**
+   * Start polling for crawl status updates
+   */
+  function startCrawlPolling() {
+    if (crawlStatusPolling) return;
+
+    crawlStatusPolling = setInterval(async () => {
+      // Check if any sources are still syncing
+      const syncingSources = sources.filter(s =>
+        s.sync_status === 'syncing' && s.crawl_mode && s.crawl_mode !== 'single'
+      );
+
+      if (syncingSources.length === 0) {
+        stopCrawlPolling();
+        return;
+      }
+
+      // Update status for each syncing source
+      for (const source of syncingSources) {
+        const container = document.getElementById(`crawl-progress-${source.id}`);
+        if (container) {
+          await loadCrawlStatus(source.id, container);
+        }
+      }
+
+      // Refresh sources to check for completion
+      const newSources = await listSources();
+      const wasComplete = !sources.some(s => s.sync_status === 'syncing');
+      const isNowComplete = !newSources.some(s => s.sync_status === 'syncing');
+
+      if (!wasComplete && isNowComplete) {
+        // Crawl just completed, refresh the list
+        sources = newSources;
+        renderSources();
+        showSuccess('Crawl completed successfully');
+      }
+    }, 5000);  // Poll every 5 seconds
+  }
+
+  /**
+   * Stop crawl status polling
+   */
+  function stopCrawlPolling() {
+    if (crawlStatusPolling) {
+      clearInterval(crawlStatusPolling);
+      crawlStatusPolling = null;
+    }
+  }
+
+  /**
+   * Truncate URL for display
+   */
+  function truncateUrl(url) {
+    if (url.length > 60) {
+      return url.substring(0, 57) + '...';
+    }
+    return url;
   }
 
   /**
@@ -241,6 +475,114 @@ export function createKnowledgeSourceManager(container) {
 
     periodLabel.appendChild(periodSelect);
     form.appendChild(periodLabel);
+
+    // Crawl mode section
+    const crawlModeLabel = document.createElement('label');
+    crawlModeLabel.textContent = 'Crawl Mode:';
+    const crawlModeSelect = document.createElement('select');
+    crawlModeSelect.name = 'crawl_mode';
+
+    const crawlModes = [
+      { value: 'single', label: 'Single Page', description: 'Only crawl this URL' },
+      { value: 'sitemap', label: 'Sitemap', description: 'Parse sitemap.xml and crawl all URLs' },
+      { value: 'recursive', label: 'Recursive', description: 'Follow links on pages' },
+    ];
+
+    crawlModes.forEach(mode => {
+      const option = document.createElement('option');
+      option.value = mode.value;
+      option.textContent = mode.label;
+      if (mode.value === 'single') {
+        option.selected = true;
+      }
+      crawlModeSelect.appendChild(option);
+    });
+
+    crawlModeLabel.appendChild(crawlModeSelect);
+    form.appendChild(crawlModeLabel);
+
+    // Advanced crawl options container (hidden by default)
+    const advancedOptions = document.createElement('div');
+    advancedOptions.className = 'advanced-crawl-options';
+    advancedOptions.style.cssText = 'display: none; margin-bottom: 16px; padding: 16px; background: #f3f4f6; border-radius: 8px;';
+
+    // Max pages input
+    const maxPagesLabel = document.createElement('label');
+    maxPagesLabel.textContent = 'Max Pages:';
+    maxPagesLabel.style.cssText = 'display: block; margin-bottom: 4px; font-weight: 500;';
+
+    const maxPagesInput = document.createElement('input');
+    maxPagesInput.type = 'number';
+    maxPagesInput.name = 'max_pages';
+    maxPagesInput.value = '100';
+    maxPagesInput.min = '1';
+    maxPagesInput.max = '500';
+    maxPagesInput.style.cssText = 'width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; margin-bottom: 12px;';
+
+    const maxPagesHelp = document.createElement('p');
+    maxPagesHelp.style.cssText = 'color: #6b7280; font-size: 12px; margin: 0 0 16px 0;';
+    maxPagesHelp.textContent = 'Maximum number of pages to crawl (1-500)';
+
+    advancedOptions.appendChild(maxPagesLabel);
+    advancedOptions.appendChild(maxPagesInput);
+    advancedOptions.appendChild(maxPagesHelp);
+
+    // Crawl depth input (only for recursive)
+    const depthContainer = document.createElement('div');
+    depthContainer.className = 'depth-container';
+    depthContainer.style.display = 'none';
+
+    const depthLabel = document.createElement('label');
+    depthLabel.textContent = 'Crawl Depth:';
+    depthLabel.style.cssText = 'display: block; margin-bottom: 4px; font-weight: 500;';
+
+    const depthInput = document.createElement('input');
+    depthInput.type = 'number';
+    depthInput.name = 'crawl_depth';
+    depthInput.value = '2';
+    depthInput.min = '1';
+    depthInput.max = '5';
+    depthInput.style.cssText = 'width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; margin-bottom: 12px;';
+
+    const depthHelp = document.createElement('p');
+    depthHelp.style.cssText = 'color: #6b7280; font-size: 12px; margin: 0 0 16px 0;';
+    depthHelp.textContent = 'How many levels of links to follow (1-5)';
+
+    depthContainer.appendChild(depthLabel);
+    depthContainer.appendChild(depthInput);
+    depthContainer.appendChild(depthHelp);
+    advancedOptions.appendChild(depthContainer);
+
+    // Respect robots.txt checkbox
+    const robotsLabel = document.createElement('label');
+    robotsLabel.style.cssText = 'display: flex; align-items: center; gap: 8px; cursor: pointer;';
+
+    const robotsCheckbox = document.createElement('input');
+    robotsCheckbox.type = 'checkbox';
+    robotsCheckbox.name = 'respect_robots_txt';
+    robotsCheckbox.checked = true;
+    robotsCheckbox.style.cssText = 'width: auto; margin: 0;';
+
+    const robotsText = document.createElement('span');
+    robotsText.textContent = 'Respect robots.txt';
+    robotsText.style.fontWeight = '500';
+
+    robotsLabel.appendChild(robotsCheckbox);
+    robotsLabel.appendChild(robotsText);
+    advancedOptions.appendChild(robotsLabel);
+
+    form.appendChild(advancedOptions);
+
+    // Toggle advanced options based on crawl mode
+    crawlModeSelect.addEventListener('change', () => {
+      const mode = crawlModeSelect.value;
+      if (mode === 'single') {
+        advancedOptions.style.display = 'none';
+      } else {
+        advancedOptions.style.display = 'block';
+        depthContainer.style.display = mode === 'recursive' ? 'block' : 'none';
+      }
+    });
 
     // Auth section for protected pages
     const authContainer = document.createElement('div');
@@ -387,6 +729,7 @@ export function createKnowledgeSourceManager(container) {
 
       const url = urlInput.value.trim();
       const syncPeriod = periodSelect.value;
+      const crawlMode = crawlModeSelect.value;
       const useAuth = authCheckbox.checked;
       const authType = authTypeSelect.value;
       const authHeaderValue = authHeaderInput.value.trim();
@@ -395,7 +738,7 @@ export function createKnowledgeSourceManager(container) {
 
       try {
         submitBtn.disabled = true;
-        submitBtn.textContent = 'Adding...';
+        submitBtn.textContent = crawlMode === 'single' ? 'Adding...' : 'Starting crawl...';
 
         // Build auth headers based on auth type
         let authHeaders = null;
@@ -413,11 +756,30 @@ export function createKnowledgeSourceManager(container) {
           }
         }
 
-        await addSource(url, syncPeriod, authHeaders);
+        // Build crawl options
+        const crawlOptions = {
+          crawlMode,
+        };
+        if (crawlMode !== 'single') {
+          crawlOptions.maxPages = parseInt(maxPagesInput.value, 10) || 100;
+          crawlOptions.respectRobotsTxt = robotsCheckbox.checked;
+          if (crawlMode === 'recursive') {
+            crawlOptions.crawlDepth = parseInt(depthInput.value, 10) || 2;
+          }
+        }
+
+        const result = await addSource(url, syncPeriod, authHeaders, crawlOptions);
 
         modal.remove();
         await loadSources();
-        showSuccess('Knowledge source added successfully');
+
+        if (crawlMode === 'single') {
+          showSuccess('Knowledge source added successfully');
+        } else {
+          showSuccess(`Crawl started! Found ${result.pagesDiscovered || 0} pages to process.`);
+          // Start polling for crawl status
+          startCrawlPolling();
+        }
 
       } catch (error) {
         console.error('Add source error:', error);
@@ -570,9 +932,22 @@ export function createKnowledgeSourceManager(container) {
     return periodMap[period] || period;
   }
 
+  /**
+   * Format crawl mode
+   */
+  function formatCrawlMode(mode) {
+    const modeMap = {
+      'single': 'Single Page',
+      'sitemap': 'Sitemap',
+      'recursive': 'Recursive',
+    };
+    return modeMap[mode] || mode;
+  }
+
   // Public API
   return {
     destroy: () => {
+      stopCrawlPolling();
       managerContainer.remove();
     },
     refresh: () => {
@@ -712,6 +1087,11 @@ export function addKnowledgeSourceManagerStyles() {
       color: #991b1b;
     }
 
+    .status-badge.status-crawling {
+      background: #e0e7ff;
+      color: #3730a3;
+    }
+
     .source-details {
       padding: 0 16px 16px;
       border-top: 1px solid #e5e7eb;
@@ -747,6 +1127,189 @@ export function addKnowledgeSourceManagerStyles() {
 
     .btn-delete-source:hover {
       background: #dc2626;
+    }
+
+    /* Source actions container */
+    .source-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .btn-view-urls {
+      padding: 8px 16px;
+      background: #3b82f6;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .btn-view-urls:hover {
+      background: #2563eb;
+    }
+
+    /* Parsed URLs modal */
+    .parsed-urls-modal {
+      background: white;
+      padding: 24px;
+      border-radius: 12px;
+      max-width: 600px;
+      width: 90%;
+      max-height: 80vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .parsed-urls-modal h3 {
+      margin: 0 0 8px 0;
+      font-size: 20px;
+    }
+
+    .modal-subtitle {
+      color: #6b7280;
+      margin: 0 0 16px 0;
+      font-size: 14px;
+    }
+
+    .urls-loading {
+      padding: 20px;
+      text-align: center;
+      color: #6b7280;
+    }
+
+    .urls-loading.error {
+      color: #dc2626;
+    }
+
+    .parsed-urls-list {
+      flex: 1;
+      overflow-y: auto;
+      max-height: 400px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      margin-bottom: 16px;
+    }
+
+    .urls-summary {
+      padding: 12px 16px;
+      background: #f9fafb;
+      border-bottom: 1px solid #e5e7eb;
+      font-weight: 500;
+      color: #374151;
+      position: sticky;
+      top: 0;
+    }
+
+    .no-urls {
+      padding: 40px;
+      text-align: center;
+      color: #6b7280;
+    }
+
+    .url-item {
+      padding: 12px 16px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .url-item:last-child {
+      border-bottom: none;
+    }
+
+    .url-item:hover {
+      background: #f9fafb;
+    }
+
+    .url-item-title {
+      font-weight: 500;
+      color: #111827;
+      margin-bottom: 4px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .url-item-link {
+      display: block;
+      color: #3b82f6;
+      font-size: 13px;
+      text-decoration: none;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      margin-bottom: 4px;
+    }
+
+    .url-item-link:hover {
+      text-decoration: underline;
+    }
+
+    .url-item-chunks {
+      font-size: 12px;
+      color: #6b7280;
+    }
+
+    /* Crawl progress styles */
+    .crawl-progress {
+      margin-top: 16px;
+      padding: 12px;
+      background: #f0f9ff;
+      border-radius: 8px;
+      border: 1px solid #bae6fd;
+    }
+
+    .progress-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      font-size: 14px;
+      color: #0369a1;
+    }
+
+    .progress-bar {
+      height: 8px;
+      background: #e0f2fe;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: #0ea5e9;
+      border-radius: 4px;
+      transition: width 0.3s ease;
+    }
+
+    .progress-current {
+      margin-top: 8px;
+      font-size: 12px;
+      color: #6b7280;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .progress-failed {
+      margin-top: 4px;
+      font-size: 12px;
+      color: #dc2626;
+    }
+
+    .progress-loading,
+    .progress-error {
+      font-size: 14px;
+      color: #6b7280;
+    }
+
+    .progress-error {
+      color: #dc2626;
+    }
+
+    /* Advanced options styles */
+    .advanced-crawl-options {
+      border: 1px solid #e5e7eb;
     }
 
     .loading-spinner {
