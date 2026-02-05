@@ -1,5 +1,4 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'npm:@supabase/supabase-js@2'
 import {
   requireAdmin,
   logAdminAction,
@@ -20,7 +19,7 @@ interface UserListParams {
   sortOrder?: 'asc' | 'desc'
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return handleCors()
@@ -77,7 +76,19 @@ serve(async (req) => {
 
     // Apply filters
     if (params.search) {
-      query = query.or(`email.ilike.%${params.search}%,name.ilike.%${params.search}%,phone_number.ilike.%${params.search}%`)
+      const searchTerm = params.search.trim()
+
+      // Check if search looks like a full UUID (36 chars with dashes, or 32 chars without)
+      const uuidPattern = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
+      const isFullUuid = uuidPattern.test(searchTerm)
+
+      if (isFullUuid) {
+        // For full UUID, do exact match on ID OR search other fields
+        query = query.or(`id.eq.${searchTerm},email.ilike.%${searchTerm}%,name.ilike.%${searchTerm}%,phone_number.ilike.%${searchTerm}%`)
+      } else {
+        // Standard search by email, name, phone
+        query = query.or(`email.ilike.%${searchTerm}%,name.ilike.%${searchTerm}%,phone_number.ilike.%${searchTerm}%`)
+      }
     }
 
     if (params.plan && params.plan !== 'all') {

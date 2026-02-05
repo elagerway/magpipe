@@ -59,6 +59,10 @@ export default class AgentConfigPage {
     this.currentPreviewAudio = null;
     this.outboundTemplates = [];
     this.templateSaveTimeout = null;
+    // Global agent editing support
+    this.isEditingGlobalAgent = false;
+    this.canEditGlobalAgent = false;
+    this.globalAgentConfig = null;
   }
 
   getVoiceDisplayName(voiceId, clonedVoices = []) {
@@ -91,12 +95,30 @@ export default class AgentConfigPage {
       return;
     }
 
-    // Fetch user profile for bottom nav
+    // Fetch user profile for bottom nav and check permissions
     const { profile } = await User.getProfile(user.id);
+
+    // Check if user can edit global agent (god role or explicit permission)
+    this.canEditGlobalAgent = profile?.role === 'god' || profile?.can_edit_global_agent === true;
 
     // Check if this is initial setup or editing existing config
     const { config } = await AgentConfig.getByUserId(user.id);
     this.isInitialSetup = !config;
+
+    // Load global agent config if user has permission
+    if (this.canEditGlobalAgent) {
+      const { data: globalConfig } = await supabase
+        .from('agent_configs')
+        .select('*')
+        .eq('is_global', true)
+        .single();
+      this.globalAgentConfig = globalConfig;
+    }
+
+    // Determine which config to show (default to personal unless explicitly set to global)
+    const activeConfig = this.isEditingGlobalAgent && this.globalAgentConfig
+      ? this.globalAgentConfig
+      : config;
 
     // Load cloned voices from voices table
     const { data: clonedVoices } = await supabase
@@ -135,11 +157,52 @@ export default class AgentConfigPage {
             </button>
           ` : ''}
 
+          ${this.canEditGlobalAgent && !this.isInitialSetup ? `
+          <!-- Agent Selector -->
+          <div class="agent-selector-container" style="margin-bottom: 1.5rem;">
+            <label style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.5rem; display: block;">Editing:</label>
+            <div class="agent-selector" style="display: flex; gap: 0.5rem;">
+              <button type="button" id="select-personal-agent" class="agent-selector-btn ${!this.isEditingGlobalAgent ? 'active' : ''}" style="
+                flex: 1;
+                padding: 0.75rem;
+                border: 2px solid ${!this.isEditingGlobalAgent ? 'var(--primary-color)' : 'var(--border-color)'};
+                border-radius: 8px;
+                background: ${!this.isEditingGlobalAgent ? 'rgba(99, 102, 241, 0.1)' : 'var(--bg-primary)'};
+                color: ${!this.isEditingGlobalAgent ? 'var(--primary-color)' : 'var(--text-primary)'};
+                font-weight: 500;
+                cursor: pointer;
+                transition: all 0.2s;
+              ">My Agent</button>
+              <button type="button" id="select-global-agent" class="agent-selector-btn ${this.isEditingGlobalAgent ? 'active' : ''}" style="
+                flex: 1;
+                padding: 0.75rem;
+                border: 2px solid ${this.isEditingGlobalAgent ? 'var(--primary-color)' : 'var(--border-color)'};
+                border-radius: 8px;
+                background: ${this.isEditingGlobalAgent ? 'rgba(99, 102, 241, 0.1)' : 'var(--bg-primary)'};
+                color: ${this.isEditingGlobalAgent ? 'var(--primary-color)' : 'var(--text-primary)'};
+                font-weight: 500;
+                cursor: pointer;
+                transition: all 0.2s;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 0.5rem;
+              ">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                </svg>
+                Global Agent
+              </button>
+            </div>
+          </div>
+          ` : ''}
+
           <!-- Avatar -->
-          ${config?.avatar_url ? `
+          ${activeConfig?.avatar_url ? `
             <div style="text-align: center; margin-bottom: 0.5rem;">
               <img
-                src="${config.avatar_url}"
+                src="${activeConfig.avatar_url}"
                 alt="AI Assistant Avatar"
                 style="
                   width: 60px;
@@ -154,7 +217,7 @@ export default class AgentConfigPage {
           ` : ''}
 
           <h1 class="text-center" style="margin-bottom: ${this.isInitialSetup ? '0.25rem' : '0.75rem'}; font-size: 1.5rem;">
-            ${this.isInitialSetup ? 'Meet Your Assistant' : 'Agent Configuration'}
+            ${this.isInitialSetup ? 'Meet Your Assistant' : (this.isEditingGlobalAgent ? 'Global Agent Configuration' : 'Agent Configuration')}
           </h1>
           ${this.isInitialSetup ? `
             <p class="text-center text-muted" style="margin-bottom: 0.75rem; font-size: 0.875rem;">
@@ -168,7 +231,7 @@ export default class AgentConfigPage {
           <form id="config-form" style="margin-bottom: 0;">
             <div class="form-group">
               <label class="form-label" for="voice-id">Voice</label>
-              <input type="hidden" id="voice-id" value="${config?.voice_id || '21m00Tcm4TlvDq8ikWAM'}" />
+              <input type="hidden" id="voice-id" value="${activeConfig?.voice_id || '21m00Tcm4TlvDq8ikWAM'}" />
               <div class="voice-selector-display" style="
                 flex: 1;
                 display: flex;
@@ -182,7 +245,7 @@ export default class AgentConfigPage {
                 transition: all 0.2s;
               " id="voice-selector-display">
                 <span id="selected-voice-display" style="font-weight: 500; pointer-events: none;">
-                  ${this.getVoiceDisplayName(config?.voice_id || '21m00Tcm4TlvDq8ikWAM', clonedVoices)}
+                  ${this.getVoiceDisplayName(activeConfig?.voice_id || '21m00Tcm4TlvDq8ikWAM', clonedVoices)}
                 </span>
                 <button type="button" id="change-voice-btn" class="btn btn-sm" style="background: var(--primary-color); color: white; padding: 0.35rem 0.75rem; font-size: 0.875rem; pointer-events: none;">
                   Change Voice
@@ -323,23 +386,23 @@ export default class AgentConfigPage {
             <div class="form-group">
               <label class="form-label" for="response-style">Response Style</label>
               <select id="response-style" class="form-select">
-                <option value="casual" ${!config?.response_style || config?.response_style === 'casual' ? 'selected' : ''}>Casual</option>
-                <option value="formal" ${config?.response_style === 'formal' ? 'selected' : ''}>Formal</option>
-                <option value="friendly" ${config?.response_style === 'friendly' ? 'selected' : ''}>Friendly</option>
-                <option value="professional" ${config?.response_style === 'professional' ? 'selected' : ''}>Professional</option>
+                <option value="casual" ${!activeConfig?.response_style || activeConfig?.response_style === 'casual' ? 'selected' : ''}>Casual</option>
+                <option value="formal" ${activeConfig?.response_style === 'formal' ? 'selected' : ''}>Formal</option>
+                <option value="friendly" ${activeConfig?.response_style === 'friendly' ? 'selected' : ''}>Friendly</option>
+                <option value="professional" ${activeConfig?.response_style === 'professional' ? 'selected' : ''}>Professional</option>
               </select>
             </div>
 
             <div class="form-group">
               <label class="form-label" for="vetting-strategy">Unknown Caller Vetting</label>
               <select id="vetting-strategy" class="form-select">
-                <option value="name-and-purpose" ${config?.vetting_strategy === 'name-and-purpose' ? 'selected' : ''}>
+                <option value="name-and-purpose" ${activeConfig?.vetting_strategy === 'name-and-purpose' ? 'selected' : ''}>
                   Name and Purpose (Recommended)
                 </option>
-                <option value="strict" ${config?.vetting_strategy === 'strict' ? 'selected' : ''}>
+                <option value="strict" ${activeConfig?.vetting_strategy === 'strict' ? 'selected' : ''}>
                   Strict (More questions)
                 </option>
-                <option value="lenient" ${config?.vetting_strategy === 'lenient' ? 'selected' : ''}>
+                <option value="lenient" ${activeConfig?.vetting_strategy === 'lenient' ? 'selected' : ''}>
                   Lenient (Basic screening)
                 </option>
               </select>
@@ -387,7 +450,7 @@ export default class AgentConfigPage {
                   class="form-textarea"
                   rows="4"
                   placeholder="Instructions for handling inbound calls (when someone calls you)..."
-                >${config?.system_prompt || ''}</textarea>
+                >${activeConfig?.system_prompt || ''}</textarea>
                 <p class="form-help">How your assistant should handle incoming calls from customers</p>
               </div>
 
@@ -398,14 +461,14 @@ export default class AgentConfigPage {
                   class="form-textarea"
                   rows="4"
                   placeholder="Instructions for making outbound calls (when calling someone on your behalf)..."
-                >${config?.outbound_system_prompt || ''}</textarea>
+                >${activeConfig?.outbound_system_prompt || ''}</textarea>
                 <p class="form-help">How your assistant should behave when calling people on your behalf</p>
               </div>
 
               <div class="form-group">
                 <label class="form-label" for="adv-creativity">
                   Creativity Level (Temperature)
-                  <span class="text-sm text-muted" id="creativity-value">${config?.temperature || 0.7}</span>
+                  <span class="text-sm text-muted" id="creativity-value">${activeConfig?.temperature || 0.7}</span>
                 </label>
                 <input
                   type="range"
@@ -413,7 +476,7 @@ export default class AgentConfigPage {
                   min="0"
                   max="1"
                   step="0.1"
-                  value="${config?.temperature || 0.7}"
+                  value="${activeConfig?.temperature || 0.7}"
                   style="width: 100%;"
                 />
                 <p class="form-help">Lower = more focused, Higher = more creative</p>
@@ -427,7 +490,7 @@ export default class AgentConfigPage {
                   type="number"
                   id="adv-max-response"
                   class="form-input"
-                  value="${config?.max_tokens || 150}"
+                  value="${activeConfig?.max_tokens || 150}"
                   min="50"
                   max="1000"
                 />
@@ -437,7 +500,7 @@ export default class AgentConfigPage {
               <div class="form-group">
                 <label class="form-label" for="adv-agent-volume">
                   Agent Volume
-                  <span class="text-sm text-muted" id="agent-volume-value">${config?.agent_volume || 1.0}</span>
+                  <span class="text-sm text-muted" id="agent-volume-value">${activeConfig?.agent_volume || 1.0}</span>
                 </label>
                 <input
                   type="range"
@@ -445,7 +508,7 @@ export default class AgentConfigPage {
                   min="0"
                   max="2"
                   step="0.1"
-                  value="${config?.agent_volume || 1.0}"
+                  value="${activeConfig?.agent_volume || 1.0}"
                   style="width: 100%;"
                 />
                 <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-secondary);">
@@ -459,12 +522,12 @@ export default class AgentConfigPage {
               <div class="form-group">
                 <label class="form-label" for="adv-ambient-sound">Ambient Sound</label>
                 <select id="adv-ambient-sound" class="form-select">
-                  <option value="off" ${!config?.ambient_sound || config?.ambient_sound === 'off' ? 'selected' : ''}>Off (Default)</option>
-                  <option value="coffee-shop" ${config?.ambient_sound === 'coffee-shop' ? 'selected' : ''}>Coffee Shop</option>
-                  <option value="convention-hall" ${config?.ambient_sound === 'convention-hall' ? 'selected' : ''}>Convention Hall</option>
-                  <option value="summer-outdoor" ${config?.ambient_sound === 'summer-outdoor' ? 'selected' : ''}>Summer Outdoor</option>
-                  <option value="mountain-outdoor" ${config?.ambient_sound === 'mountain-outdoor' ? 'selected' : ''}>Mountain Outdoor</option>
-                  <option value="high-school-hallway" ${config?.ambient_sound === 'high-school-hallway' ? 'selected' : ''}>School Hallway</option>
+                  <option value="off" ${!activeConfig?.ambient_sound || activeConfig?.ambient_sound === 'off' ? 'selected' : ''}>Off (Default)</option>
+                  <option value="coffee-shop" ${activeConfig?.ambient_sound === 'coffee-shop' ? 'selected' : ''}>Coffee Shop</option>
+                  <option value="convention-hall" ${activeConfig?.ambient_sound === 'convention-hall' ? 'selected' : ''}>Convention Hall</option>
+                  <option value="summer-outdoor" ${activeConfig?.ambient_sound === 'summer-outdoor' ? 'selected' : ''}>Summer Outdoor</option>
+                  <option value="mountain-outdoor" ${activeConfig?.ambient_sound === 'mountain-outdoor' ? 'selected' : ''}>Mountain Outdoor</option>
+                  <option value="high-school-hallway" ${activeConfig?.ambient_sound === 'high-school-hallway' ? 'selected' : ''}>School Hallway</option>
                 </select>
                 <p class="form-help">Add background ambience to phone calls</p>
               </div>
@@ -472,7 +535,7 @@ export default class AgentConfigPage {
               <div class="form-group">
                 <label class="form-label" for="adv-ambient-volume">
                   Ambient Sound Volume
-                  <span class="text-sm text-muted" id="ambient-volume-value">${config?.ambient_sound_volume || 1.0}</span>
+                  <span class="text-sm text-muted" id="ambient-volume-value">${activeConfig?.ambient_sound_volume || 1.0}</span>
                 </label>
                 <input
                   type="range"
@@ -480,7 +543,7 @@ export default class AgentConfigPage {
                   min="0"
                   max="2"
                   step="0.1"
-                  value="${config?.ambient_sound_volume || 1.0}"
+                  value="${activeConfig?.ambient_sound_volume || 1.0}"
                   style="width: 100%;"
                 />
                 <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-secondary);">
@@ -494,10 +557,10 @@ export default class AgentConfigPage {
               <div class="form-group">
                 <label class="form-label" for="adv-noise-suppression">Background Noise Suppression</label>
                 <select id="adv-noise-suppression" class="form-select">
-                  <option value="high" ${config?.noise_suppression === 'high' ? 'selected' : ''}>High</option>
-                  <option value="medium" ${config?.noise_suppression === 'medium' ? 'selected' : 'selected'}>Medium (Default)</option>
-                  <option value="low" ${config?.noise_suppression === 'low' ? 'selected' : ''}>Low</option>
-                  <option value="off" ${config?.noise_suppression === 'off' ? 'selected' : ''}>Off</option>
+                  <option value="high" ${activeConfig?.noise_suppression === 'high' ? 'selected' : ''}>High</option>
+                  <option value="medium" ${activeConfig?.noise_suppression === 'medium' ? 'selected' : 'selected'}>Medium (Default)</option>
+                  <option value="low" ${activeConfig?.noise_suppression === 'low' ? 'selected' : ''}>Low</option>
+                  <option value="off" ${activeConfig?.noise_suppression === 'off' ? 'selected' : ''}>Off</option>
                 </select>
                 <p class="form-help">Reduce background noise on phone calls</p>
               </div>
@@ -640,7 +703,7 @@ export default class AgentConfigPage {
                       cursor: pointer;
                       flex: 1;
                     ">
-                      <input type="radio" name="modal-voice-select" value="11labs-${voice.voice_id}" ${config?.voice_id === '11labs-' + voice.voice_id ? 'checked' : ''}>
+                      <input type="radio" name="modal-voice-select" value="11labs-${voice.voice_id}" ${activeConfig?.voice_id === '11labs-' + voice.voice_id ? 'checked' : ''}>
                       <div>
                         <span style="font-weight: 500;">${voice.voice_name}</span>
                       </div>
@@ -697,7 +760,7 @@ export default class AgentConfigPage {
                     cursor: pointer;
                     flex: 1;
                   ">
-                    <input type="radio" name="modal-voice-select" value="${voice.id}" ${config?.voice_id === voice.id ? 'checked' : ''}>
+                    <input type="radio" name="modal-voice-select" value="${voice.id}" ${activeConfig?.voice_id === voice.id ? 'checked' : ''}>
                     <div>
                       <span style="font-weight: 500;">${voice.label || voice.name}</span>
                       <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">
@@ -756,7 +819,7 @@ export default class AgentConfigPage {
                     cursor: pointer;
                     flex: 1;
                   ">
-                    <input type="radio" name="modal-voice-select" value="${voice.id}" ${config?.voice_id === voice.id ? 'checked' : ''}>
+                    <input type="radio" name="modal-voice-select" value="${voice.id}" ${activeConfig?.voice_id === voice.id ? 'checked' : ''}>
                     <div>
                       <span style="font-weight: 500;">${voice.name}</span>
                       <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">
@@ -1435,6 +1498,36 @@ export default class AgentConfigPage {
         noise_suppression: document.getElementById('adv-noise-suppression').value,
       };
 
+      // Handle global agent save separately (simpler, no Retell integration)
+      if (this.isEditingGlobalAgent) {
+        const { data, error } = await supabase
+          .from('agent_configs')
+          .update({
+            ...configData,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('is_global', true)
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        // Update local cache
+        this.globalAgentConfig = data;
+
+        // Show success briefly
+        successMessage.className = 'alert alert-success';
+        successMessage.classList.remove('hidden');
+        successMessage.textContent = 'Saved';
+
+        clearTimeout(this.successMessageTimeout);
+        this.successMessageTimeout = setTimeout(() => {
+          successMessage.classList.add('hidden');
+        }, 1500);
+
+        return; // Don't continue with personal agent logic
+      }
+
       const { user } = await getCurrentUser();
 
       // Get current config to check for changes
@@ -1678,6 +1771,26 @@ export default class AgentConfigPage {
     const agentVolumeValue = document.getElementById('agent-volume-value');
     const ambientVolumeSlider = document.getElementById('adv-ambient-volume');
     const ambientVolumeValue = document.getElementById('ambient-volume-value');
+
+    // Agent selector buttons (for users with global agent permission)
+    const selectPersonalBtn = document.getElementById('select-personal-agent');
+    const selectGlobalBtn = document.getElementById('select-global-agent');
+
+    if (selectPersonalBtn) {
+      selectPersonalBtn.addEventListener('click', () => {
+        if (!this.isEditingGlobalAgent) return; // Already on personal
+        this.isEditingGlobalAgent = false;
+        this.render(); // Re-render with personal agent config
+      });
+    }
+
+    if (selectGlobalBtn) {
+      selectGlobalBtn.addEventListener('click', () => {
+        if (this.isEditingGlobalAgent) return; // Already on global
+        this.isEditingGlobalAgent = true;
+        this.render(); // Re-render with global agent config
+      });
+    }
 
     // Fetch avatar button (also creates agent if doesn't exist)
     if (fetchAvatarBtn) {
@@ -2139,8 +2252,30 @@ Always sound approachable, keep things simple, and update the user with a quick 
           setTimeout(() => {
             navigateTo('/agent');
           }, 1500);
+        } else if (this.isEditingGlobalAgent) {
+          // Update global agent config
+          const { data, error } = await supabase
+            .from('agent_configs')
+            .update({
+              ...configData,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('is_global', true)
+            .select()
+            .single();
+
+          if (error) throw error;
+
+          // Update local cache
+          this.globalAgentConfig = data;
+
+          successMessage.className = 'alert alert-success';
+          successMessage.textContent = 'Global agent configuration saved successfully!';
+
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Save Configuration';
         } else {
-          // Update existing config
+          // Update existing personal config
           const { config, error } = await AgentConfig.update(user.id, configData);
 
           if (error) throw error;

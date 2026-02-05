@@ -1293,20 +1293,29 @@ export default class AdminPage {
     content.innerHTML = `
       <div class="admin-global-agent">
         <div class="global-agent-header">
-          <h2>Global Platform Agent</h2>
-          <p class="text-muted">Configure the Magpipe chat widget agent that appears on the main platform.</p>
+          <h2>Global Agent Access</h2>
+          <p class="text-muted">Control which users can view and edit the platform's global agent configuration.</p>
         </div>
-        <div class="global-agent-form" id="global-agent-form">
-          <div class="loading-spinner">Loading configuration...</div>
+        <div class="global-agent-search" style="margin-bottom: 1rem;">
+          <input type="text" id="global-agent-search" class="form-input" placeholder="Search users..." style="width: 100%;" />
         </div>
+        <div class="global-agent-permissions" id="global-agent-permissions">
+          <div class="loading-spinner">Loading users...</div>
+        </div>
+        <div id="global-agent-status" class="form-status" style="display: none; margin-top: 1rem;"></div>
       </div>
     `;
 
-    await this.loadGlobalAgent();
+    // Add search listener
+    document.getElementById('global-agent-search').addEventListener('input', (e) => {
+      this.filterGlobalAgentUsers(e.target.value);
+    });
+
+    await this.loadGlobalAgentPermissions();
   }
 
-  async loadGlobalAgent() {
-    const formContainer = document.getElementById('global-agent-form');
+  async loadGlobalAgentPermissions() {
+    const container = document.getElementById('global-agent-permissions');
 
     try {
       const response = await fetch(
@@ -1321,91 +1330,88 @@ export default class AdminPage {
       );
 
       if (!response.ok) {
-        throw new Error('Failed to load global agent');
+        throw new Error('Failed to load users');
       }
 
-      const { agent } = await response.json();
-
-      formContainer.innerHTML = `
-        <form id="global-agent-config-form" class="config-form">
-          <div class="form-group">
-            <label for="global-agent-name">Agent Name</label>
-            <input type="text" id="global-agent-name" class="form-input"
-              value="${agent?.name || 'Magpipe Assistant'}"
-              placeholder="Magpipe Assistant" />
-          </div>
-
-          <div class="form-group">
-            <label for="global-agent-greeting">Greeting Message</label>
-            <input type="text" id="global-agent-greeting" class="form-input"
-              value="${agent?.greeting || 'Hi! How can I help you today?'}"
-              placeholder="Hi! How can I help you today?" />
-          </div>
-
-          <div class="form-group">
-            <label for="global-agent-voice">Voice</label>
-            <select id="global-agent-voice" class="form-input form-select">
-              <option value="shimmer" ${agent?.voice_id === 'shimmer' ? 'selected' : ''}>Shimmer (Female, Warm)</option>
-              <option value="alloy" ${agent?.voice_id === 'alloy' ? 'selected' : ''}>Alloy (Neutral)</option>
-              <option value="echo" ${agent?.voice_id === 'echo' ? 'selected' : ''}>Echo (Male)</option>
-              <option value="fable" ${agent?.voice_id === 'fable' ? 'selected' : ''}>Fable (British)</option>
-              <option value="onyx" ${agent?.voice_id === 'onyx' ? 'selected' : ''}>Onyx (Male, Deep)</option>
-              <option value="nova" ${agent?.voice_id === 'nova' ? 'selected' : ''}>Nova (Female)</option>
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label for="global-agent-prompt">System Prompt</label>
-            <textarea id="global-agent-prompt" class="form-input form-textarea" rows="12"
-              placeholder="You are the Magpipe AI assistant...">${agent?.system_prompt || 'You are the Magpipe AI assistant. Help users with their questions about the platform, features, and troubleshooting.\n\nBe friendly, helpful, and concise. If you don\'t know something, be honest about it.'}</textarea>
-          </div>
-
-          <div class="form-actions">
-            <button type="submit" class="btn btn-primary">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-                <polyline points="17 21 17 13 7 13 7 21"/>
-                <polyline points="7 3 7 8 15 8"/>
-              </svg>
-              Save Configuration
-            </button>
-          </div>
-
-          <div id="global-agent-status" class="form-status" style="display: none;"></div>
-        </form>
-      `;
-
-      // Attach form submit handler
-      document.getElementById('global-agent-config-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        await this.saveGlobalAgent();
-      });
+      const { users } = await response.json();
+      this.globalAgentUsers = users;
+      this.renderGlobalAgentUsersList(users);
 
     } catch (error) {
-      console.error('Failed to load global agent:', error);
-      formContainer.innerHTML = `
+      console.error('Failed to load global agent permissions:', error);
+      container.innerHTML = `
         <div class="error-message">
-          <p>Failed to load global agent configuration: ${error.message}</p>
-          <button class="btn btn-secondary" onclick="window.adminPage.loadGlobalAgent()">Retry</button>
+          <p>Failed to load users: ${error.message}</p>
+          <button class="btn btn-secondary" onclick="window.adminPage.loadGlobalAgentPermissions()">Retry</button>
         </div>
       `;
     }
   }
 
-  async saveGlobalAgent() {
+  renderGlobalAgentUsersList(users) {
+    const container = document.getElementById('global-agent-permissions');
+
+    if (!users || users.length === 0) {
+      container.innerHTML = '<p class="text-muted">No users found.</p>';
+      return;
+    }
+
+    container.innerHTML = `
+      <div class="global-agent-users-list">
+        ${users.map(user => {
+          const isGod = user.role === 'god';
+          const hasAccess = isGod || user.can_edit_global_agent;
+          return `
+            <div class="global-agent-user-item" data-user-id="${user.id}" data-email="${user.email?.toLowerCase() || ''}" data-name="${user.name?.toLowerCase() || ''}">
+              <label class="global-agent-user-label">
+                <input type="checkbox"
+                  class="global-agent-checkbox"
+                  data-user-id="${user.id}"
+                  ${hasAccess ? 'checked' : ''}
+                  ${isGod ? 'disabled' : ''}
+                />
+                <div class="global-agent-user-info">
+                  <span class="global-agent-user-name">${user.name || 'Unknown'}</span>
+                  <span class="global-agent-user-email">${user.email || ''}</span>
+                </div>
+                <span class="badge badge-${user.role}">${user.role}</span>
+                ${isGod ? '<span class="global-agent-always-access">always has access</span>' : ''}
+              </label>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+
+    // Attach change listeners to checkboxes
+    container.querySelectorAll('.global-agent-checkbox:not([disabled])').forEach(checkbox => {
+      checkbox.addEventListener('change', async (e) => {
+        const userId = e.target.dataset.userId;
+        const grant = e.target.checked;
+        await this.updateGlobalAgentPermission(userId, grant);
+      });
+    });
+  }
+
+  filterGlobalAgentUsers(searchTerm) {
+    const term = searchTerm.toLowerCase().trim();
+    const items = document.querySelectorAll('.global-agent-user-item');
+
+    items.forEach(item => {
+      const email = item.dataset.email || '';
+      const name = item.dataset.name || '';
+      const userId = (item.dataset.userId || '').toLowerCase();
+      const matches = !term || email.includes(term) || name.includes(term) || userId.includes(term);
+      item.style.display = matches ? '' : 'none';
+    });
+  }
+
+  async updateGlobalAgentPermission(userId, grant) {
     const statusEl = document.getElementById('global-agent-status');
-    const submitBtn = document.querySelector('#global-agent-config-form button[type="submit"]');
+    const checkbox = document.querySelector(`.global-agent-checkbox[data-user-id="${userId}"]`);
 
     try {
-      submitBtn.disabled = true;
-      submitBtn.innerHTML = 'Saving...';
-
-      const data = {
-        name: document.getElementById('global-agent-name').value,
-        greeting: document.getElementById('global-agent-greeting').value,
-        voice_id: document.getElementById('global-agent-voice').value,
-        system_prompt: document.getElementById('global-agent-prompt').value,
-      };
+      checkbox.disabled = true;
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-global-agent`,
@@ -1415,40 +1421,34 @@ export default class AdminPage {
             'Authorization': `Bearer ${this.session.access_token}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify(data),
+          body: JSON.stringify({ userId, grant }),
         }
       );
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to save');
+        throw new Error(error.error || 'Failed to update permission');
       }
 
       const result = await response.json();
 
       statusEl.style.display = 'block';
       statusEl.className = 'form-status success';
-      statusEl.textContent = result.message || 'Configuration saved successfully!';
+      statusEl.textContent = result.message;
 
       setTimeout(() => {
         statusEl.style.display = 'none';
-      }, 3000);
+      }, 2000);
 
     } catch (error) {
-      console.error('Failed to save global agent:', error);
+      console.error('Failed to update permission:', error);
+      // Revert checkbox state
+      checkbox.checked = !grant;
       statusEl.style.display = 'block';
       statusEl.className = 'form-status error';
-      statusEl.textContent = 'Failed to save: ' + error.message;
+      statusEl.textContent = 'Failed to update: ' + error.message;
     } finally {
-      submitBtn.disabled = false;
-      submitBtn.innerHTML = `
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-          <polyline points="17 21 17 13 7 13 7 21"/>
-          <polyline points="7 3 7 8 15 8"/>
-        </svg>
-        Save Configuration
-      `;
+      checkbox.disabled = false;
     }
   }
 
@@ -1838,6 +1838,75 @@ export default class AdminPage {
         background: #fee;
         color: #c00;
         border: 1px solid #fcc;
+      }
+
+      /* Global Agent Permissions List */
+      .global-agent-users-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      .global-agent-user-item {
+        background: var(--bg-primary);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        transition: background 0.15s;
+      }
+
+      .global-agent-user-item:hover {
+        background: var(--bg-secondary);
+      }
+
+      .global-agent-user-label {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 0.75rem 1rem;
+        cursor: pointer;
+        margin: 0;
+      }
+
+      .global-agent-user-label input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        cursor: pointer;
+        flex-shrink: 0;
+      }
+
+      .global-agent-user-label input[type="checkbox"]:disabled {
+        cursor: not-allowed;
+        opacity: 0.7;
+      }
+
+      .global-agent-user-info {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .global-agent-user-name {
+        display: block;
+        font-weight: 500;
+        color: var(--text-primary);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .global-agent-user-email {
+        display: block;
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .global-agent-always-access {
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+        font-style: italic;
+        white-space: nowrap;
       }
 
       /* Chat Tab */
