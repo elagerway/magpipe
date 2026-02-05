@@ -5,6 +5,7 @@ import {
   logAdminAction,
   generateSecureToken,
   getTokenExpiry,
+  isSuperuser,
   handleCors,
   errorResponse,
   successResponse
@@ -12,6 +13,7 @@ import {
 
 interface ImpersonateRequest {
   userId: string
+  baseUrl?: string
 }
 
 serve(async (req) => {
@@ -67,6 +69,11 @@ serve(async (req) => {
       return errorResponse('User not found', 404)
     }
 
+    // Never allow impersonation of the superuser account
+    if (isSuperuser(targetUser.email)) {
+      return errorResponse('Cannot impersonate the superuser account', 403)
+    }
+
     // Generate secure token
     const impersonationToken = generateSecureToken()
     const expiresAt = getTokenExpiry()
@@ -99,7 +106,8 @@ serve(async (req) => {
 
     // Generate URL for new tab
     // The URL will be handled by the impersonate.js page
-    const baseUrl = req.headers.get('origin') || 'https://pat.snapsonic.com'
+    // Prefer explicit baseUrl from request body, then origin header, then fallback
+    const baseUrl = body.baseUrl || req.headers.get('origin') || 'https://magpipe.ai'
     const impersonateUrl = `${baseUrl}/impersonate?token=${impersonationToken}`
 
     return successResponse({

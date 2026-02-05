@@ -1,14 +1,17 @@
 /**
  * Admin Authentication Utilities
- * Handles admin/support role verification and audit logging
+ * Handles admin/support/god role verification and audit logging
  */
 
-import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { SupabaseClient } from 'npm:@supabase/supabase-js@2'
+
+// Superuser account - protected from modification
+export const SUPERUSER_EMAIL = 'erik@snapsonic.com'
 
 export interface AdminUser {
   id: string
   email: string
-  role: 'admin' | 'support'
+  role: 'admin' | 'support' | 'god'
 }
 
 export interface AuditLogEntry {
@@ -49,15 +52,15 @@ export async function requireAdmin(
     throw new Error(`Unauthorized: Account is ${userData.account_status}`)
   }
 
-  // Check if user has admin or support role
-  if (userData.role !== 'admin' && userData.role !== 'support') {
-    throw new Error('Forbidden: Admin or support role required')
+  // Check if user has admin, support, or god role
+  if (userData.role !== 'admin' && userData.role !== 'support' && userData.role !== 'god') {
+    throw new Error('Forbidden: Admin, support, or god role required')
   }
 
   return {
     id: userData.id,
     email: userData.email,
-    role: userData.role as 'admin' | 'support'
+    role: userData.role as 'admin' | 'support' | 'god'
   }
 }
 
@@ -65,7 +68,21 @@ export async function requireAdmin(
  * Check if user is specifically an admin (not just support)
  */
 export function isAdmin(adminUser: AdminUser): boolean {
-  return adminUser.role === 'admin'
+  return adminUser.role === 'admin' || adminUser.role === 'god'
+}
+
+/**
+ * Check if user is god (highest privilege)
+ */
+export function isGod(adminUser: AdminUser): boolean {
+  return adminUser.role === 'god'
+}
+
+/**
+ * Check if target email is the superuser (protected account)
+ */
+export function isSuperuser(email: string): boolean {
+  return email === SUPERUSER_EMAIL
 }
 
 /**

@@ -1,5 +1,4 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'npm:@supabase/supabase-js@2'
 import {
   logAdminAction,
   handleCors,
@@ -9,9 +8,10 @@ import {
 
 interface ConsumeTokenRequest {
   token: string
+  baseUrl?: string
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return handleCors()
@@ -93,11 +93,13 @@ serve(async (req) => {
 
     // Generate a session for the target user using Supabase Admin API
     // We'll use the admin.generateLink to create a magic link that auto-signs in
+    // Use baseUrl from request or origin header to construct proper redirect
+    const baseUrl = body.baseUrl || req.headers.get('origin') || 'https://magpipe.ai'
     const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
       type: 'magiclink',
       email: targetUser.email,
       options: {
-        redirectTo: '/'
+        redirectTo: `${baseUrl}/`
       }
     })
 
@@ -117,25 +119,22 @@ serve(async (req) => {
       }
     })
 
-    // Return the magic link properties for client-side session creation
-    // The client will use these to sign in as the target user
+    // Return the OTP token for client-side session creation
+    // The client will verify this OTP using sessionStorage to avoid affecting other tabs
     return successResponse({
       success: true,
-      session: {
-        // Use the token from the generated link
-        access_token: linkData.properties?.hashed_token,
-        // Include user info for the impersonation banner
-        user: {
-          id: targetUser.id,
-          email: targetUser.email,
-          name: targetUser.name
-        },
-        impersonatedBy: {
-          email: adminUser?.email
-        }
+      // OTP verification data - client uses this with verifyOtp()
+      otpToken: linkData.properties?.email_otp,
+      email: targetUser.email,
+      // User info for the impersonation banner
+      user: {
+        id: targetUser.id,
+        email: targetUser.email,
+        name: targetUser.name
       },
-      // The magic link URL - client can navigate to this or extract the token
-      magicLinkUrl: linkData.properties?.action_link
+      impersonatedBy: {
+        email: adminUser?.email
+      }
     })
   } catch (error) {
     console.error('Error in admin-consume-impersonation:', error)

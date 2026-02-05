@@ -118,12 +118,15 @@ class App {
         const name = session.user.user_metadata?.name || session.user.user_metadata?.full_name || 'User';
         await User.createProfile(session.user.id, session.user.email, name);
 
-        // Send signup notification (fire and forget)
-        fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/notify-signup`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, email: session.user.email })
-        }).catch(() => {});
+        // Send signup notification (fire and forget) - skip for impersonation sessions
+        const isImpersonating = sessionStorage.getItem('isImpersonating') === 'true';
+        if (!isImpersonating) {
+          fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/notify-signup`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, email: session.user.email })
+          }).catch(() => {});
+        }
 
         this.router.navigate('/verify-phone');
       } else if (!profile.phone_verified) {
@@ -170,7 +173,9 @@ class App {
       }
 
       // Store hidden pages for route change handling
-      this.hiddenPortalPages = widget.hidden_portal_pages || ['/agent', '/inbox'];
+      // Always force /admin to be hidden (system-protected page)
+      const hiddenPages = widget.hidden_portal_pages || ['/agent', '/inbox'];
+      this.hiddenPortalPages = hiddenPages.includes('/admin') ? hiddenPages : [...hiddenPages, '/admin'];
 
       // Check if widget should be hidden on current page
       const currentPath = window.location.pathname;
