@@ -39,10 +39,18 @@ export function renderImpersonationBanner() {
   // Insert at top of body
   document.body.insertBefore(banner, document.body.firstChild);
 
-  // Handle exit
+  // Handle exit - clear sessionStorage only (don't call signOut which broadcasts to other tabs)
   document.getElementById('exit-impersonation').addEventListener('click', () => {
+    // Clear impersonation session data from sessionStorage
     sessionStorage.removeItem('impersonation');
+    sessionStorage.removeItem('isImpersonating');
+    sessionStorage.removeItem('magpipe-auth-token');
+    // Close the tab or redirect to a goodbye page
     window.close();
+    // Fallback if window.close() doesn't work (wasn't opened by script)
+    setTimeout(() => {
+      document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;"><div style="text-align:center;"><h2>Session Ended</h2><p>You can close this tab.</p></div></div>';
+    }, 100);
   });
 }
 
@@ -57,18 +65,16 @@ export function addImpersonationBannerStyles() {
       top: 0;
       left: 0;
       right: 0;
+      height: 40px;
       background: linear-gradient(135deg, #7c3aed, #a855f7);
       color: white;
       padding: 0.5rem 1rem;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      z-index: 9999;
+      z-index: 100000;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-    }
-
-    #impersonation-banner + * {
-      margin-top: 44px; /* Height of banner */
+      box-sizing: border-box;
     }
 
     .impersonation-content {
@@ -96,10 +102,24 @@ export function addImpersonationBannerStyles() {
       background: rgba(255, 255, 255, 0.3);
     }
 
-    /* Adjust body padding when banner is present */
-    body:has(#impersonation-banner) .container,
-    body:has(#impersonation-banner) .admin-container {
-      padding-top: 44px;
+
+    /* Push down fixed headers and content when banner is present */
+    body:has(#impersonation-banner) {
+      padding-top: 40px;
+    }
+
+    body:has(#impersonation-banner) .public-header {
+      top: 40px;
+    }
+
+    /* App sidebar navigation */
+    body:has(#impersonation-banner) .bottom-nav {
+      top: 40px;
+    }
+
+    /* Agent page content area */
+    body:has(#impersonation-banner) .agent-page {
+      top: 40px;
     }
 
     @media (max-width: 480px) {

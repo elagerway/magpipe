@@ -1,6 +1,6 @@
 /**
  * Admin Portal Page
- * Manage users, plans, and phone numbers
+ * Manage users, phone numbers, and chat with agents
  */
 
 import { getCurrentUser, getCurrentSession, supabase } from '../lib/supabase.js';
@@ -10,8 +10,10 @@ export default class AdminPage {
     this.users = [];
     this.selectedUser = null;
     this.pagination = { page: 1, limit: 20, total: 0, totalPages: 0 };
-    this.filters = { search: '', plan: 'all', status: 'all', role: 'all' };
+    this.filters = { search: '', status: 'all', role: 'all' };
     this.loading = false;
+    this.activeTab = 'users';
+    this.omniChat = null;
   }
 
   async render() {
@@ -29,7 +31,7 @@ export default class AdminPage {
       .eq('id', user.id)
       .single();
 
-    if (!profile || (profile.role !== 'admin' && profile.role !== 'support')) {
+    if (!profile || (profile.role !== 'admin' && profile.role !== 'support' && profile.role !== 'god')) {
       navigateTo('/agent');
       return;
     }
@@ -37,6 +39,9 @@ export default class AdminPage {
     // Get session for API calls
     const { session } = await getCurrentSession();
     this.session = session;
+
+    // Expose for retry buttons
+    window.adminPage = this;
 
     const appElement = document.getElementById('app');
     appElement.innerHTML = `
@@ -56,66 +61,327 @@ export default class AdminPage {
           </div>
         </header>
 
-        <!-- Main Content -->
-        <div class="admin-content">
-          <!-- User List Panel -->
-          <div class="admin-list-panel">
-            <!-- Search & Filters -->
-            <div class="admin-filters">
-              <div class="search-box">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="11" cy="11" r="8"/>
-                  <path d="M21 21l-4.35-4.35"/>
-                </svg>
-                <input type="text" id="search-input" placeholder="Search users..." class="form-input" />
-              </div>
-              <div class="filter-row">
-                <select id="filter-plan" class="form-input form-select">
-                  <option value="all">All Plans</option>
-                  <option value="free">Free</option>
-                  <option value="pro">Pro</option>
-                </select>
-                <select id="filter-status" class="form-input form-select">
-                  <option value="all">All Status</option>
-                  <option value="active">Active</option>
-                  <option value="suspended">Suspended</option>
-                  <option value="banned">Banned</option>
-                </select>
-                <select id="filter-role" class="form-input form-select">
-                  <option value="all">All Roles</option>
-                  <option value="user">User</option>
-                  <option value="admin">Admin</option>
-                  <option value="support">Support</option>
-                </select>
-              </div>
-            </div>
+        <!-- Tabs -->
+        <div class="admin-tabs">
+          <button class="admin-tab active" data-tab="users">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+            Users
+          </button>
+          <button class="admin-tab" data-tab="global-agent">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M12 16v-4M12 8h.01"/>
+            </svg>
+            Global Agent
+          </button>
+          <button class="admin-tab" data-tab="chat">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+            Chat
+          </button>
+        </div>
 
-            <!-- User List -->
-            <div id="user-list" class="user-list">
-              <div class="loading-spinner">Loading users...</div>
-            </div>
-
-            <!-- Pagination -->
-            <div id="pagination" class="pagination"></div>
-          </div>
-
-          <!-- User Detail Panel -->
-          <div id="detail-panel" class="admin-detail-panel">
-            <div class="detail-placeholder">
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                <circle cx="12" cy="7" r="4"/>
-              </svg>
-              <p>Select a user to view details</p>
-            </div>
-          </div>
+        <!-- Tab Content -->
+        <div id="admin-tab-content" class="admin-tab-content">
+          <!-- Content rendered by switchTab() -->
         </div>
       </div>
     `;
 
     this.addStyles();
+    this.attachTabListeners();
+    await this.switchTab('users');
+  }
+
+  attachTabListeners() {
+    document.querySelectorAll('.admin-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        const tabName = tab.dataset.tab;
+        this.switchTab(tabName);
+      });
+    });
+  }
+
+  async switchTab(tabName) {
+    this.activeTab = tabName;
+
+    // Update tab button active states
+    document.querySelectorAll('.admin-tab').forEach(tab => {
+      tab.classList.toggle('active', tab.dataset.tab === tabName);
+    });
+
+    // Destroy previous omniChat if switching away
+    if (tabName !== 'chat' && this.omniChat) {
+      this.omniChat.destroy();
+      this.omniChat = null;
+    }
+
+    // Render appropriate content
+    if (tabName === 'users') {
+      await this.renderUsersTab();
+    } else if (tabName === 'global-agent') {
+      await this.renderGlobalAgentTab();
+    } else if (tabName === 'chat') {
+      await this.renderChatTab();
+    }
+  }
+
+  async renderUsersTab() {
+    const content = document.getElementById('admin-tab-content');
+    content.innerHTML = `
+      <div class="admin-content">
+        <!-- User List Panel -->
+        <div class="admin-list-panel">
+          <!-- Search & Filters -->
+          <div class="admin-filters">
+            <div class="search-box">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"/>
+                <path d="M21 21l-4.35-4.35"/>
+              </svg>
+              <input type="text" id="search-input" placeholder="Search users..." class="form-input" />
+            </div>
+            <div class="filter-row">
+              <select id="filter-status" class="form-input form-select">
+                <option value="all">All Status</option>
+                <option value="active">Active</option>
+                <option value="suspended">Suspended</option>
+                <option value="banned">Banned</option>
+              </select>
+              <select id="filter-role" class="form-input form-select">
+                <option value="all">All Roles</option>
+                <option value="user">User</option>
+                <option value="viewer">Viewer</option>
+                <option value="editor">Editor</option>
+                <option value="support">Support</option>
+                <option value="admin">Admin</option>
+                <option value="god">God</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- User List -->
+          <div id="user-list" class="user-list">
+            <div class="loading-spinner">Loading users...</div>
+          </div>
+
+          <!-- Pagination -->
+          <div id="pagination" class="pagination"></div>
+        </div>
+
+        <!-- User Detail Panel -->
+        <div id="detail-panel" class="admin-detail-panel">
+          <div class="detail-placeholder">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+            </svg>
+            <p>Select a user to view details</p>
+          </div>
+        </div>
+      </div>
+    `;
+
     this.attachEventListeners();
     await this.loadUsers();
+  }
+
+  async renderGlobalAgentTab() {
+    const content = document.getElementById('admin-tab-content');
+    content.innerHTML = `
+      <div class="admin-global-agent">
+        <div class="global-agent-header">
+          <h2>Global Platform Agent</h2>
+          <p class="text-muted">Configure the Magpipe chat widget agent that appears on the main platform.</p>
+        </div>
+        <div class="global-agent-form" id="global-agent-form">
+          <div class="loading-spinner">Loading configuration...</div>
+        </div>
+      </div>
+    `;
+
+    await this.loadGlobalAgent();
+  }
+
+  async loadGlobalAgent() {
+    const formContainer = document.getElementById('global-agent-form');
+
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-global-agent`,
+        {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${this.session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to load global agent');
+      }
+
+      const { agent } = await response.json();
+
+      formContainer.innerHTML = `
+        <form id="global-agent-config-form" class="config-form">
+          <div class="form-group">
+            <label for="global-agent-name">Agent Name</label>
+            <input type="text" id="global-agent-name" class="form-input"
+              value="${agent?.name || 'Magpipe Assistant'}"
+              placeholder="Magpipe Assistant" />
+          </div>
+
+          <div class="form-group">
+            <label for="global-agent-greeting">Greeting Message</label>
+            <input type="text" id="global-agent-greeting" class="form-input"
+              value="${agent?.greeting || 'Hi! How can I help you today?'}"
+              placeholder="Hi! How can I help you today?" />
+          </div>
+
+          <div class="form-group">
+            <label for="global-agent-voice">Voice</label>
+            <select id="global-agent-voice" class="form-input form-select">
+              <option value="shimmer" ${agent?.voice_id === 'shimmer' ? 'selected' : ''}>Shimmer (Female, Warm)</option>
+              <option value="alloy" ${agent?.voice_id === 'alloy' ? 'selected' : ''}>Alloy (Neutral)</option>
+              <option value="echo" ${agent?.voice_id === 'echo' ? 'selected' : ''}>Echo (Male)</option>
+              <option value="fable" ${agent?.voice_id === 'fable' ? 'selected' : ''}>Fable (British)</option>
+              <option value="onyx" ${agent?.voice_id === 'onyx' ? 'selected' : ''}>Onyx (Male, Deep)</option>
+              <option value="nova" ${agent?.voice_id === 'nova' ? 'selected' : ''}>Nova (Female)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="global-agent-prompt">System Prompt</label>
+            <textarea id="global-agent-prompt" class="form-input form-textarea" rows="12"
+              placeholder="You are the Magpipe AI assistant...">${agent?.system_prompt || 'You are the Magpipe AI assistant. Help users with their questions about the platform, features, and troubleshooting.\n\nBe friendly, helpful, and concise. If you don\'t know something, be honest about it.'}</textarea>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                <polyline points="17 21 17 13 7 13 7 21"/>
+                <polyline points="7 3 7 8 15 8"/>
+              </svg>
+              Save Configuration
+            </button>
+          </div>
+
+          <div id="global-agent-status" class="form-status" style="display: none;"></div>
+        </form>
+      `;
+
+      // Attach form submit handler
+      document.getElementById('global-agent-config-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await this.saveGlobalAgent();
+      });
+
+    } catch (error) {
+      console.error('Failed to load global agent:', error);
+      formContainer.innerHTML = `
+        <div class="error-message">
+          <p>Failed to load global agent configuration: ${error.message}</p>
+          <button class="btn btn-secondary" onclick="window.adminPage.loadGlobalAgent()">Retry</button>
+        </div>
+      `;
+    }
+  }
+
+  async saveGlobalAgent() {
+    const statusEl = document.getElementById('global-agent-status');
+    const submitBtn = document.querySelector('#global-agent-config-form button[type="submit"]');
+
+    try {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = 'Saving...';
+
+      const data = {
+        name: document.getElementById('global-agent-name').value,
+        greeting: document.getElementById('global-agent-greeting').value,
+        voice_id: document.getElementById('global-agent-voice').value,
+        system_prompt: document.getElementById('global-agent-prompt').value,
+      };
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-global-agent`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data),
+        }
+      );
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to save');
+      }
+
+      const result = await response.json();
+
+      statusEl.style.display = 'block';
+      statusEl.className = 'form-status success';
+      statusEl.textContent = result.message || 'Configuration saved successfully!';
+
+      setTimeout(() => {
+        statusEl.style.display = 'none';
+      }, 3000);
+
+    } catch (error) {
+      console.error('Failed to save global agent:', error);
+      statusEl.style.display = 'block';
+      statusEl.className = 'form-status error';
+      statusEl.textContent = 'Failed to save: ' + error.message;
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = `
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+          <polyline points="17 21 17 13 7 13 7 21"/>
+          <polyline points="7 3 7 8 15 8"/>
+        </svg>
+        Save Configuration
+      `;
+    }
+  }
+
+  async renderChatTab() {
+    const content = document.getElementById('admin-tab-content');
+    content.innerHTML = `
+      <div class="admin-chat-tab">
+        <div id="omni-chat-container" class="omni-chat-container">
+          <div class="loading-spinner">Loading chat interface...</div>
+        </div>
+      </div>
+    `;
+
+    try {
+      const { createOmniChatInterface, addOmniChatStyles } = await import('../components/OmniChatInterface.js');
+      addOmniChatStyles();
+
+      const container = document.getElementById('omni-chat-container');
+      container.innerHTML = '';
+      this.omniChat = createOmniChatInterface(container, this.session);
+    } catch (error) {
+      console.error('Failed to load OmniChatInterface:', error);
+      const container = document.getElementById('omni-chat-container');
+      container.innerHTML = `
+        <div class="detail-placeholder">
+          <p style="color: var(--error-color);">Failed to load chat interface: ${error.message}</p>
+        </div>
+      `;
+    }
   }
 
   addStyles() {
@@ -149,6 +415,143 @@ export default class AdminPage {
       .admin-header h1 {
         margin: 0;
         font-size: 1.5rem;
+      }
+
+      /* Tab Navigation */
+      .admin-tabs {
+        display: flex;
+        gap: 0;
+        padding: 0 1rem;
+        background: var(--bg-primary);
+        border-bottom: 1px solid var(--border-color);
+      }
+
+      .admin-tab {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.875rem 1.25rem;
+        background: none;
+        border: none;
+        border-bottom: 2px solid transparent;
+        color: var(--text-muted);
+        font-size: 0.875rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      .admin-tab:hover {
+        color: var(--text-primary);
+        background: var(--bg-secondary);
+      }
+
+      .admin-tab.active {
+        color: var(--primary-color);
+        border-bottom-color: var(--primary-color);
+      }
+
+      .admin-tab svg {
+        flex-shrink: 0;
+      }
+
+      .admin-tab-content {
+        flex: 1;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* Global Agent Tab */
+      .admin-global-agent {
+        flex: 1;
+        overflow-y: auto;
+        padding: 2rem;
+        max-width: 800px;
+      }
+
+      .global-agent-header {
+        margin-bottom: 2rem;
+      }
+
+      .global-agent-header h2 {
+        margin: 0 0 0.5rem 0;
+        font-size: 1.5rem;
+      }
+
+      .global-agent-form {
+        background: var(--bg-primary);
+        border-radius: 12px;
+        padding: 1.5rem;
+        border: 1px solid var(--border-color);
+      }
+
+      .config-form .form-group {
+        margin-bottom: 1.5rem;
+      }
+
+      .config-form label {
+        display: block;
+        font-weight: 500;
+        margin-bottom: 0.5rem;
+        color: var(--text-primary);
+      }
+
+      .config-form .form-textarea {
+        resize: vertical;
+        min-height: 200px;
+        font-family: monospace;
+        font-size: 0.9rem;
+        line-height: 1.5;
+      }
+
+      .config-form .form-actions {
+        display: flex;
+        gap: 1rem;
+        margin-top: 2rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid var(--border-color);
+      }
+
+      .config-form .form-actions .btn {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .form-status {
+        margin-top: 1rem;
+        padding: 0.75rem 1rem;
+        border-radius: 8px;
+        font-size: 0.9rem;
+      }
+
+      .form-status.success {
+        background: #dcfce7;
+        color: #166534;
+        border: 1px solid #bbf7d0;
+      }
+
+      .form-status.error {
+        background: #fee;
+        color: #c00;
+        border: 1px solid #fcc;
+      }
+
+      /* Chat Tab */
+      .admin-chat-tab {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      .omni-chat-container {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        background: var(--bg-primary);
       }
 
       .admin-content {
@@ -264,14 +667,15 @@ export default class AdminPage {
         font-weight: 500;
       }
 
-      .badge-free { background: #e5e7eb; color: #374151; }
-      .badge-pro { background: #dbeafe; color: #1d4ed8; }
       .badge-active { background: #d1fae5; color: #059669; }
       .badge-suspended { background: #fef3c7; color: #d97706; }
       .badge-banned { background: #fee2e2; color: #dc2626; }
       .badge-admin { background: #ede9fe; color: #7c3aed; }
       .badge-support { background: #fce7f3; color: #db2777; }
       .badge-user { background: #e5e7eb; color: #374151; }
+      .badge-viewer { background: #e0f2fe; color: #0284c7; }
+      .badge-editor { background: #dcfce7; color: #16a34a; }
+      .badge-god { background: #fef3c7; color: #b45309; }
 
       .pagination {
         display: flex;
@@ -508,12 +912,6 @@ export default class AdminPage {
     });
 
     // Filters
-    document.getElementById('filter-plan').addEventListener('change', (e) => {
-      this.filters.plan = e.target.value;
-      this.pagination.page = 1;
-      this.loadUsers();
-    });
-
     document.getElementById('filter-status').addEventListener('change', (e) => {
       this.filters.status = e.target.value;
       this.pagination.page = 1;
@@ -539,7 +937,6 @@ export default class AdminPage {
         page: this.pagination.page.toString(),
         limit: this.pagination.limit.toString(),
         ...(this.filters.search && { search: this.filters.search }),
-        ...(this.filters.plan !== 'all' && { plan: this.filters.plan }),
         ...(this.filters.status !== 'all' && { status: this.filters.status }),
         ...(this.filters.role !== 'all' && { role: this.filters.role })
       });
@@ -589,7 +986,6 @@ export default class AdminPage {
           <div class="user-email">${user.email}</div>
         </div>
         <div class="user-badges">
-          <span class="badge badge-${user.plan}">${user.plan}</span>
           <span class="badge badge-${user.account_status}">${user.account_status}</span>
         </div>
       </div>
@@ -676,7 +1072,6 @@ export default class AdminPage {
           <div class="user-email">${user.email}</div>
           <div class="user-badges" style="margin-top: 0.5rem;">
             <span class="badge badge-${user.role}">${user.role}</span>
-            <span class="badge badge-${user.plan}">${user.plan}</span>
             <span class="badge badge-${user.account_status}">${user.account_status}</span>
           </div>
         </div>
@@ -772,23 +1167,16 @@ export default class AdminPage {
           </button>
         </div>
 
-        <!-- Plan -->
-        <div class="action-group">
-          <label>Plan</label>
-          <select id="select-plan" class="form-input form-select" style="width: auto;">
-            <option value="free" ${user.plan === 'free' ? 'selected' : ''}>Free</option>
-            <option value="pro" ${user.plan === 'pro' ? 'selected' : ''}>Pro</option>
-          </select>
-          <button class="btn btn-sm btn-primary" id="btn-save-plan">Save</button>
-        </div>
-
         <!-- Role -->
         <div class="action-group">
           <label>Role</label>
           <select id="select-role" class="form-input form-select" style="width: auto;">
             <option value="user" ${user.role === 'user' ? 'selected' : ''}>User</option>
+            <option value="viewer" ${user.role === 'viewer' ? 'selected' : ''}>Viewer</option>
+            <option value="editor" ${user.role === 'editor' ? 'selected' : ''}>Editor</option>
             <option value="support" ${user.role === 'support' ? 'selected' : ''}>Support</option>
             <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Admin</option>
+            <option value="god" ${user.role === 'god' ? 'selected' : ''}>God</option>
           </select>
           <button class="btn btn-sm btn-primary" id="btn-save-role">Save</button>
         </div>
@@ -815,12 +1203,6 @@ export default class AdminPage {
     // Impersonate
     document.getElementById('btn-impersonate')?.addEventListener('click', () => {
       this.impersonateUser(user.id);
-    });
-
-    // Save Plan
-    document.getElementById('btn-save-plan')?.addEventListener('click', async () => {
-      const plan = document.getElementById('select-plan').value;
-      await this.updateUser(user.id, { plan });
     });
 
     // Save Role
@@ -894,7 +1276,7 @@ export default class AdminPage {
             'Authorization': `Bearer ${this.session.access_token}`,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ userId })
+          body: JSON.stringify({ userId, baseUrl: window.location.origin })
         }
       );
 

@@ -112,13 +112,18 @@ class IndexedDBStorage {
 
 const customStorage = new IndexedDBStorage();
 
-// Initialize Supabase client with IndexedDB storage for better iOS PWA persistence
+// Check if this tab is an impersonation session (uses sessionStorage)
+const isImpersonating = sessionStorage.getItem('isImpersonating') === 'true';
+
+// Initialize Supabase client
+// - Impersonation tabs use sessionStorage (tab-isolated)
+// - Normal tabs use IndexedDB/localStorage (shared across tabs)
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: true,
-    storage: customStorage,
+    detectSessionInUrl: !isImpersonating, // Don't detect URL tokens in impersonation mode
+    storage: isImpersonating ? sessionStorage : customStorage,
     storageKey: 'magpipe-auth-token',
   },
 });

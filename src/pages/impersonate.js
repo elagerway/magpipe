@@ -1,9 +1,9 @@
 /**
  * Impersonate Page
- * Consumes impersonation token and creates a session
+ * Consumes impersonation token and creates a session in sessionStorage (tab-isolated)
  */
 
-import { supabase } from '../lib/supabase.js';
+import { createClient } from '@supabase/supabase-js';
 
 export default class ImpersonatePage {
   constructor() {
@@ -123,7 +123,7 @@ export default class ImpersonatePage {
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ token: this.token })
+          body: JSON.stringify({ token: this.token, baseUrl: window.location.origin })
         }
       );
 
@@ -133,23 +133,47 @@ export default class ImpersonatePage {
         throw new Error(data.error || 'Failed to authenticate');
       }
 
+      if (!data.otpToken || !data.email) {
+        throw new Error('Invalid response from server');
+      }
+
+      // Create a Supabase client that uses sessionStorage (tab-isolated)
+      // This prevents the impersonation from affecting other tabs
+      const impersonateSupabase = createClient(
+        import.meta.env.VITE_SUPABASE_URL,
+        import.meta.env.VITE_SUPABASE_ANON_KEY,
+        {
+          auth: {
+            autoRefreshToken: true,
+            persistSession: true,
+            storage: sessionStorage,
+            storageKey: 'magpipe-auth-token', // Same key but in sessionStorage
+          }
+        }
+      );
+
+      // Verify OTP to create session in sessionStorage
+      const { data: authData, error: authError } = await impersonateSupabase.auth.verifyOtp({
+        email: data.email,
+        token: data.otpToken,
+        type: 'email'
+      });
+
+      if (authError) {
+        throw new Error(authError.message);
+      }
+
       // Store impersonation info in session storage for the banner
       sessionStorage.setItem('impersonation', JSON.stringify({
-        impersonatedBy: data.session.impersonatedBy.email,
-        user: data.session.user
+        impersonatedBy: data.impersonatedBy.email,
+        user: data.user
       }));
 
-      // Use the magic link URL to sign in
-      if (data.magicLinkUrl) {
-        // Extract the token from the magic link and use it
-        const magicUrl = new URL(data.magicLinkUrl);
-        const tokenHash = magicUrl.hash || magicUrl.search;
+      // Mark this tab as using impersonation (sessionStorage-based auth)
+      sessionStorage.setItem('isImpersonating', 'true');
 
-        // Navigate to the magic link which will handle the auth
-        window.location.href = data.magicLinkUrl;
-      } else {
-        throw new Error('No authentication link received');
-      }
+      // Navigate to the app
+      window.location.href = '/agent';
     } catch (error) {
       console.error('Impersonation error:', error);
 
