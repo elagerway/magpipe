@@ -15,7 +15,7 @@ interface UserListParams {
   search?: string
   plan?: 'free' | 'pro' | 'all'
   status?: 'active' | 'suspended' | 'banned' | 'all'
-  role?: 'user' | 'admin' | 'support' | 'all'
+  role?: 'user' | 'viewer' | 'editor' | 'support' | 'admin' | 'god' | 'all'
   sortBy?: 'created_at' | 'email' | 'name'
   sortOrder?: 'asc' | 'desc'
 }
