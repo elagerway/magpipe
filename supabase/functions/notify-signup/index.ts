@@ -1,4 +1,4 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'npm:@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -21,6 +21,12 @@ Deno.serve(async (req) => {
       })
     }
 
+    // Get IP address from request headers
+    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+               req.headers.get('x-real-ip') ||
+               req.headers.get('cf-connecting-ip') ||
+               null
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const signalwireProjectId = Deno.env.get('SIGNALWIRE_PROJECT_ID')!
@@ -28,6 +34,44 @@ Deno.serve(async (req) => {
     const signalwireSpaceUrl = Deno.env.get('SIGNALWIRE_SPACE_URL')!
 
     const supabase = createClient(supabaseUrl, supabaseKey)
+
+    // Update user with IP address and try to get geolocation
+    if (ip) {
+      let city = null
+      let country = null
+
+      // Try to get geolocation from IP (using free ip-api.com)
+      try {
+        const geoResponse = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,city`, {
+          signal: AbortSignal.timeout(3000)
+        })
+        if (geoResponse.ok) {
+          const geoData = await geoResponse.json()
+          if (geoData.status === 'success') {
+            city = geoData.city
+            country = geoData.country
+          }
+        }
+      } catch (geoError) {
+        console.log('Geolocation lookup failed:', geoError.message)
+      }
+
+      // Update user record with IP and location
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({
+          signup_ip: ip,
+          signup_city: city,
+          signup_country: country
+        })
+        .eq('email', email)
+
+      if (updateError) {
+        console.error('Failed to update user IP:', updateError)
+      } else {
+        console.log(`Captured signup IP for ${email}: ${ip} (${city || 'unknown'}, ${country || 'unknown'})`)
+      }
+    }
 
     // Get a service number to use as sender
     const { data: serviceNumber } = await supabase
@@ -45,8 +89,24 @@ Deno.serve(async (req) => {
       })
     }
 
+    // Get location info from DB (in case we just updated it)
+    let locationInfo = ''
+    if (ip) {
+      const { data: userData } = await supabase
+        .from('users')
+        .select('signup_city, signup_country')
+        .eq('email', email)
+        .single()
+
+      if (userData?.signup_city && userData?.signup_country) {
+        locationInfo = `\nLocation: ${userData.signup_city}, ${userData.signup_country}`
+      } else if (ip) {
+        locationInfo = `\nIP: ${ip}`
+      }
+    }
+
     // Build SMS
-    const smsBody = `New Signup!\n${name ? `Name: ${name}\n` : ''}Email: ${email}`
+    const smsBody = `New Signup!\n${name ? `Name: ${name}\n` : ''}Email: ${email}${locationInfo}`
 
     const smsData = new URLSearchParams({
       From: serviceNumber.phone_number,
