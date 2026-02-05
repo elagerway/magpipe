@@ -49,7 +49,7 @@ export class Router {
     this.addRoute('/bulk-calling', () => import('./pages/bulk-calling.js'), true);
 
     // Admin routes (role-protected)
-    this.addRoute('/admin', () => import('./pages/admin.js'), true, ['admin', 'support']);
+    this.addRoute('/admin', () => import('./pages/admin.js'), true, ['admin', 'support', 'god']);
 
     // Agents routes (multi-agent support)
     this.addRoute('/agents', () => import('./pages/agents.js'), true);

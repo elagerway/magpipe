@@ -3,6 +3,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import {
   requireAdmin,
   isAdmin,
+  isGod,
+  isSuperuser,
   logAdminAction,
   handleCors,
   errorResponse,
@@ -11,8 +13,7 @@ import {
 
 interface UpdateUserRequest {
   userId: string
-  plan?: 'free' | 'pro'
-  role?: 'user' | 'admin' | 'support'
+  role?: 'user' | 'viewer' | 'editor' | 'support' | 'admin' | 'god'
   action?: 'suspend' | 'ban' | 'reactivate'
   reason?: string
 }
@@ -75,6 +76,13 @@ serve(async (req) => {
       return errorResponse('User not found', 404)
     }
 
+    // Protect superuser/god account - only god can modify god
+    if (isSuperuser(targetUser.email) || targetUser.role === 'god') {
+      if (!isGod(adminUser)) {
+        return errorResponse('Cannot modify the superuser account', 403)
+      }
+    }
+
     // Prevent demoting another admin unless you're also an admin
     if (targetUser.role === 'admin' && body.role && body.role !== 'admin' && !isAdmin(adminUser)) {
       return errorResponse('Only admins can demote other admins', 403)
@@ -85,13 +93,12 @@ serve(async (req) => {
       updated_at: new Date().toISOString()
     }
 
-    // Handle plan change
-    if (body.plan && body.plan !== targetUser.plan) {
-      updates.plan = body.plan
-    }
-
     // Handle role change
     if (body.role && body.role !== targetUser.role) {
+      // Only god can assign or remove god role
+      if ((body.role === 'god' || targetUser.role === 'god') && !isGod(adminUser)) {
+        return errorResponse('Only god can assign or remove god role', 403)
+      }
       updates.role = body.role
     }
 
@@ -153,7 +160,6 @@ serve(async (req) => {
       action: body.action || 'update_user',
       details: {
         previousState: {
-          plan: targetUser.plan,
           role: targetUser.role,
           status: targetUser.account_status
         },
