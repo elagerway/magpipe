@@ -1,5 +1,4 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -7,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
 };
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
@@ -50,19 +49,19 @@ serve(async (req) => {
     }
 
     if (req.method === 'GET') {
-      // Get the global agent config
-      const { data: globalAgent, error } = await supabase
-        .from('agent_configs')
-        .select('*')
-        .eq('is_global', true)
-        .single();
+      // Get all users with their permission status for global agent editing
+      const { data: users, error } = await supabase
+        .from('users')
+        .select('id, email, name, role, can_edit_global_agent')
+        .order('role', { ascending: false })
+        .order('name', { ascending: true });
 
-      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows
+      if (error) {
         throw error;
       }
 
       return new Response(
-        JSON.stringify({ agent: globalAgent || null }),
+        JSON.stringify({ users: users || [] }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -70,67 +69,64 @@ serve(async (req) => {
     if (req.method === 'POST') {
       const body = await req.json();
 
-      // Check if global agent exists
-      const { data: existingGlobal } = await supabase
-        .from('agent_configs')
-        .select('id')
-        .eq('is_global', true)
-        .single();
+      // Expect { userIds: string[], grant: boolean } to grant/revoke permission
+      // Or { userId: string, grant: boolean } for single user update
+      if (body.userId !== undefined) {
+        // Single user update
+        const { userId, grant } = body;
 
-      if (existingGlobal) {
-        // Update existing global agent
         const { data: updated, error: updateError } = await supabase
-          .from('agent_configs')
+          .from('users')
           .update({
-            name: body.name,
-            system_prompt: body.system_prompt,
-            voice_id: body.voice_id,
-            greeting: body.greeting,
+            can_edit_global_agent: grant,
             updated_at: new Date().toISOString(),
           })
-          .eq('id', existingGlobal.id)
-          .select()
+          .eq('id', userId)
+          .select('id, email, name, role, can_edit_global_agent')
           .single();
 
         if (updateError) throw updateError;
 
         return new Response(
-          JSON.stringify({ agent: updated, message: 'Global agent updated' }),
+          JSON.stringify({
+            user: updated,
+            message: grant ? 'Permission granted' : 'Permission revoked'
+          }),
           { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
-      } else {
-        // Create new global agent (owned by the god user)
-        const { data: godUser } = await supabase
+      } else if (body.userIds !== undefined) {
+        // Batch update - set can_edit_global_agent to true for these users, false for others
+        const { userIds } = body;
+
+        // First, set all to false
+        await supabase
           .from('users')
-          .select('id')
-          .eq('role', 'god')
-          .limit(1)
-          .single();
+          .update({ can_edit_global_agent: false })
+          .neq('role', 'god'); // Don't touch god users
 
-        const ownerId = godUser?.id || user.id;
+        // Then set the specified ones to true
+        if (userIds.length > 0) {
+          const { error: updateError } = await supabase
+            .from('users')
+            .update({
+              can_edit_global_agent: true,
+              updated_at: new Date().toISOString(),
+            })
+            .in('id', userIds);
 
-        const { data: created, error: createError } = await supabase
-          .from('agent_configs')
-          .insert({
-            user_id: ownerId,
-            name: body.name || 'Magpipe Assistant',
-            system_prompt: body.system_prompt || 'You are the Magpipe AI assistant. Help users with their questions about the platform.',
-            voice_id: body.voice_id || 'shimmer',
-            greeting: body.greeting || 'Hi! How can I help you today?',
-            is_global: true,
-            is_default: false,
-            agent_type: 'inbound',
-          })
-          .select()
-          .single();
-
-        if (createError) throw createError;
+          if (updateError) throw updateError;
+        }
 
         return new Response(
-          JSON.stringify({ agent: created, message: 'Global agent created' }),
-          { status: 201, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          JSON.stringify({ message: 'Permissions updated successfully' }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
+
+      return new Response(
+        JSON.stringify({ error: 'Invalid request body. Expected userId or userIds.' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     return new Response(
