@@ -89,6 +89,7 @@ navItems.push({ path: '/new', label: 'New' });
 - **NEVER commit without testing first**: Test the change works AND doesn't break other elements
 - **Do NOT include Co-Authored-By footer**: Keep commit messages clean
 - **Format**: Brief summary, then details of what/why/how
+- **Update session notes after every commit**: Add a summary of completed work to `.claude/session-notes.md`
 
 ### Vercel (Frontend)
 - **Production**: https://magpipe.ai
@@ -190,7 +191,9 @@ const sessionResult = await page.evaluate(async ({ email, otp }) => {
   ```
 - Do NOT use `npx supabase db push` (migration tracking conflicts with old numbered migrations)
 - Migration files still go in `supabase/migrations/` for version control
-- An `exec_sql(query)` function also exists for programmatic SQL execution via service role
+- **NO `exec_sql()` function exists** - do NOT try to use `supabase.rpc('exec_sql', ...)` in edge functions
+  - For raw SQL, use the Supabase Management API endpoint instead
+  - Or refactor queries to use standard Supabase client queries (`.from().select()` etc.)
 
 ## SignalWire API
 
@@ -225,6 +228,11 @@ External webhooks (SignalWire, etc.) don't send auth headers. Use:
 Deno.serve(async (req) => { ... });  // NOT imported serve()
 ```
 Deploy with: `npx supabase functions deploy <name> --no-verify-jwt`
+
+### Import Style (IMPORTANT)
+- **Use `npm:` imports**, not `https://esm.sh/` - the esm.sh imports cause "Bundle generation timed out" errors during deployment
+- Example: `import { createClient } from 'npm:@supabase/supabase-js@2'` (correct)
+- NOT: `import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'` (causes timeout)
 
 ### CLI Limitations
 - `npx supabase functions logs` is NOT available - use Dashboard or database queries
