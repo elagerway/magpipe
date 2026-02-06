@@ -692,7 +692,7 @@ export default class ManageNumbersPage {
     try {
       const number = this.serviceNumbers.find(n => n.id === numberId);
 
-      // If activating, ensure agent is created and phone is registered with Retell
+      // If activating, ensure agent exists and configure webhooks
       if (newStatus) {
         successMessage.className = 'alert alert-info';
         successMessage.textContent = 'Setting up AI assistant for this number...';
@@ -703,13 +703,9 @@ export default class ManageNumbersPage {
         // Configure SignalWire webhooks for this number
         await this.configureSignalWireNumber(number.phone_number);
       } else {
-        // If deactivating, disassociate phone from agent in Retell
+        // Deactivating
         successMessage.className = 'alert alert-info';
         successMessage.textContent = 'Deactivating AI assistant for this number...';
-
-        if (number.retell_phone_id) {
-          await this.deactivatePhoneInRetell(number.phone_number);
-        }
       }
 
       // Update the number status
@@ -1083,11 +1079,6 @@ export default class ManageNumbersPage {
         // If activating the paired US number, configure it first
         if (newStatus) {
           await this.configureSignalWireNumber(pairedNumber.phone_number);
-        } else {
-          // If deactivating, deactivate in Retell
-          if (pairedNumber.retell_phone_id) {
-            await this.deactivatePhoneInRetell(pairedNumber.phone_number);
-          }
         }
 
         // Update the paired number status
@@ -1115,35 +1106,32 @@ export default class ManageNumbersPage {
       .select('*')
       .single();
 
-    if (agentConfig && agentConfig.retell_agent_id) {
-      console.log('Agent already exists:', agentConfig.retell_agent_id);
+    if (agentConfig) {
+      console.log('Agent already exists:', agentConfig.id);
       return agentConfig;
     }
 
-    // Create agent
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    // Create agent directly in database
     const { data: { session } } = await supabase.auth.getSession();
 
-    const response = await fetch(`${supabaseUrl}/functions/v1/create-retell-agent`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify({
-        agentConfig: {
-          name: 'AI Assistant',
-          prompt: 'You are a helpful AI assistant answering calls for the user. Be friendly, professional, and helpful. Take messages and provide information as needed.',
-        }
-      }),
-    });
+    const { data: newConfig, error: createError } = await supabase
+      .from('agent_configs')
+      .insert({
+        user_id: session.user.id,
+        name: 'AI Assistant',
+        voice_id: '11labs-21m00Tcm4TlvDq8ikWAM',
+        system_prompt: 'You are a helpful AI assistant answering calls for the user. Be friendly, professional, and helpful. Take messages and provide information as needed.',
+        active_voice_stack: 'livekit',
+        is_default: true,
+      })
+      .select()
+      .single();
 
-    if (!response.ok) {
-      const error = await response.json();
+    if (createError) {
       throw new Error('Failed to set up AI assistant');
     }
 
-    return await response.json();
+    return newConfig;
   }
 
   async configureSignalWireNumber(phoneNumber) {
@@ -1166,27 +1154,6 @@ export default class ManageNumbersPage {
       error.details = errorData.details;
       error.status = errorData.status;
       throw error;
-    }
-
-    return await response.json();
-  }
-
-  async deactivatePhoneInRetell(phoneNumber) {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const { data: { session } } = await supabase.auth.getSession();
-
-    const response = await fetch(`${supabaseUrl}/functions/v1/deactivate-phone-in-retell`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify({ phoneNumber }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error('Failed to deactivate number');
     }
 
     return await response.json();

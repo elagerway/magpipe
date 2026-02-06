@@ -144,146 +144,17 @@ serve(async (req) => {
 
     console.log('Using agent:', agentConfig.id, agentConfig.name || 'Unnamed')
 
-    // Route based on active Voice AI stack
-    const activeStack = agentConfig.active_voice_stack || 'retell'
-    console.log('Routing call to Voice AI stack:', activeStack)
+    // Route to LiveKit voice AI stack
+    console.log('=== ROUTING TO LIVEKIT ===')
 
-    // LIVEKIT STACK
-    if (activeStack === 'livekit') {
-      console.log('=== LIVEKIT STACK SELECTED ===')
-      console.log('Processing call with LiveKit stack')
+    // LiveKit SIP trunk domain (from LiveKit dashboard SIP URI)
+    const livekitSipDomain = '378ads1njtd.sip.livekit.cloud'
 
-      // LiveKit SIP trunk domain (from LiveKit dashboard SIP URI)
-      const livekitSipDomain = '378ads1njtd.sip.livekit.cloud'
-
-      // Dial the called number directly - dispatch rule handles routing
-      // Note: Use transport=tls to match working call configuration
-      const sipUri = `sip:${to}@${livekitSipDomain};transport=tls`
-
-      console.log('Dialing SIP URI:', sipUri)
-
-      // Log the call to database with agent_id
-      const { error: insertError } = await supabase
-        .from('call_records')
-        .insert({
-          user_id: serviceNumber.user_id,
-          agent_id: agentConfig.id,             // Track which agent handled the call
-          caller_number: from,
-          contact_phone: from,
-          service_number: to,
-          vendor_call_id: callSid,              // SignalWire's CallSid
-          telephony_vendor: 'signalwire',       // Track which vendor
-          voice_platform: 'livekit',            // Track which AI platform
-          livekit_call_id: null,                // Will be set by LiveKit agent
-          call_sid: callSid,                    // DEPRECATED: backward compatibility
-          direction: 'inbound',
-          status: 'in-progress',
-          disposition: 'answered_by_pat',
-          started_at: new Date().toISOString(),
-        })
-
-      if (insertError) {
-        console.error('Error logging call:', insertError)
-      } else {
-        // Auto-enrich contact if not exists (fire and forget)
-        autoEnrichContact(serviceNumber.user_id, from, supabase)
-          .catch(err => console.error('Auto-enrich error:', err))
-      }
-
-      // Return TwiML to connect to LiveKit via SIP
-      const response = `<?xml version="1.0" encoding="UTF-8"?>
-      <Response>
-        <Dial>
-          <Sip>${sipUri}</Sip>
-        </Dial>
-      </Response>`
-
-      return new Response(response, {
-        headers: { 'Content-Type': 'text/xml' },
-        status: 200,
-      })
-    }
-
-    // RETELL STACK (default)
-    if (!agentConfig.retell_agent_id) {
-      console.log('No Retell agent configured for user')
-      const response = `<?xml version="1.0" encoding="UTF-8"?>
-      <Response>
-        <Say voice="alice">Hello! This is Pat. The AI assistant is not configured yet. Please contact the account owner.</Say>
-        <Hangup/>
-      </Response>`
-
-      return new Response(response, {
-        headers: { 'Content-Type': 'text/xml' },
-        status: 200,
-      })
-    }
-
-    // Register Retell phone call for inbound
-    const retellApiKey = Deno.env.get('RETELL_API_KEY')!
-
-    // Dynamic webhook URL for this specific call
-    const webhookUrl = `${supabaseUrl}/functions/v1/webhook-retellai-analysis`
-
-    const callData = {
-      agent_id: agentConfig.retell_agent_id,
-      from_number: from,
-      to_number: to,
-      direction: 'inbound',
-      webhook_override: webhookUrl,
-      metadata: {
-        user_id: serviceNumber.user_id,
-        service_number_id: serviceNumber.id,
-      }
-    }
-
-    console.log('Registering Retell inbound call with data:', callData)
-
-    const retellResponse = await fetch('https://api.retellai.com/v2/register-phone-call', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${retellApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(callData),
-    })
-
-    console.log('Retell response status:', retellResponse.status)
-
-    if (!retellResponse.ok) {
-      const errorText = await retellResponse.text()
-      console.error('Retell API error - Status:', retellResponse.status)
-      console.error('Retell API error - Body:', errorText)
-      console.error('Retell API error - Request was:', JSON.stringify(callData))
-
-      const response = `<?xml version="1.0" encoding="UTF-8"?>
-      <Response>
-        <Say voice="alice">We're sorry, there was an error connecting to Pat. Please try again later.</Say>
-        <Hangup/>
-      </Response>`
-
-      return new Response(response, {
-        headers: { 'Content-Type': 'text/xml' },
-        status: 200,
-      })
-    }
-
-    const retellCall = await retellResponse.json()
-    console.log('Retell call registered successfully:', retellCall)
-
-    // Retell uses LiveKit for SIP - dial the called number (to) at the LiveKit SIP domain
-    const retellSipDomain = '5t4n6j0wnrl.sip.livekit.cloud'
-    const sipUri = `sip:${to}@${retellSipDomain}`
+    // Dial the called number directly - dispatch rule handles routing
+    // Note: Use transport=tls to match working call configuration
+    const sipUri = `sip:${to}@${livekitSipDomain};transport=tls`
 
     console.log('Dialing SIP URI:', sipUri)
-
-    // Return TwiML to connect to Retell via SIP
-    const response = `<?xml version="1.0" encoding="UTF-8"?>
-    <Response>
-      <Dial>
-        <Sip>${sipUri}</Sip>
-      </Dial>
-    </Response>`
 
     // Log the call to database with agent_id
     const { error: insertError } = await supabase
@@ -294,7 +165,11 @@ serve(async (req) => {
         caller_number: from,
         contact_phone: from,
         service_number: to,
-        call_sid: callSid,
+        vendor_call_id: callSid,              // SignalWire's CallSid
+        telephony_vendor: 'signalwire',       // Track which vendor
+        voice_platform: 'livekit',            // Track which AI platform
+        livekit_call_id: null,                // Will be set by LiveKit agent
+        call_sid: callSid,                    // DEPRECATED: backward compatibility
         direction: 'inbound',
         status: 'in-progress',
         disposition: 'answered_by_pat',
@@ -308,6 +183,14 @@ serve(async (req) => {
       autoEnrichContact(serviceNumber.user_id, from, supabase)
         .catch(err => console.error('Auto-enrich error:', err))
     }
+
+    // Return TwiML to connect to LiveKit via SIP
+    const response = `<?xml version="1.0" encoding="UTF-8"?>
+    <Response>
+      <Dial>
+        <Sip>${sipUri}</Sip>
+      </Dial>
+    </Response>`
 
     return new Response(response, {
       headers: { 'Content-Type': 'text/xml' },

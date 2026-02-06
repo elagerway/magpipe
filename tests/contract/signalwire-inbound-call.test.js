@@ -95,27 +95,23 @@ describe('SignalWire Inbound Call Webhook Contract', () => {
     expect(twimlResponse).toContain('</Response>');
   });
 
-  it('should generate valid TwiML response to transfer call to Retell.ai', async () => {
-    // Expected TwiML structure for AI agent handling
-    const retellAgentId = 'agent_1234567890';
+  it('should generate valid TwiML response to route call to LiveKit SIP', async () => {
+    // Expected TwiML structure for LiveKit SIP routing
+    const toNumber = '+15551234567';
+    const livekitSipDomain = '378ads1njtd.sip.livekit.cloud';
     const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Connect>
-    <Stream url="wss://api.retellai.com/v1/ws">
-      <Parameter name="agent_id" value="${retellAgentId}"/>
-      <Parameter name="call_sid" value="CA1234567890abcdef"/>
-      <Parameter name="from" value="+14155551234"/>
-    </Stream>
-  </Connect>
+  <Dial>
+    <Sip>sip:${toNumber}@${livekitSipDomain};transport=tls</Sip>
+  </Dial>
 </Response>`;
 
-    // Validate TwiML structure for WebSocket streaming
+    // Validate TwiML structure for SIP dialing
     expect(twimlResponse).toContain('<Response>');
-    expect(twimlResponse).toContain('<Connect>');
-    expect(twimlResponse).toContain('<Stream');
-    expect(twimlResponse).toContain('wss://api.retellai.com');
-    expect(twimlResponse).toContain('<Parameter');
-    expect(twimlResponse).toContain('agent_id');
+    expect(twimlResponse).toContain('<Dial>');
+    expect(twimlResponse).toContain('<Sip>');
+    expect(twimlResponse).toContain('sip.livekit.cloud');
+    expect(twimlResponse).toContain('transport=tls');
     expect(twimlResponse).toContain('</Response>');
   });
 

@@ -1081,9 +1081,6 @@ export default class AgentConfigPage {
 
     this.renderTransferNumbers();
 
-    // Update Retell transfer tools
-    await this.updateRetellTransferTools();
-
     // Show deleted message
     const successMessage = document.getElementById('success-message');
     if (successMessage) {
@@ -1146,13 +1143,6 @@ export default class AgentConfigPage {
 
     const { user } = await getCurrentUser();
 
-    // Get agent config for agent_id and llm_id
-    const { data: agentConfig } = await supabase
-      .from('agent_configs')
-      .select('retell_agent_id, retell_llm_id')
-      .eq('user_id', user.id)
-      .single();
-
     if (transfer.id) {
       // Update existing
       await supabase
@@ -1161,8 +1151,6 @@ export default class AgentConfigPage {
           label: transfer.label,
           phone_number: transfer.phone_number,
           transfer_secret: transfer.transfer_secret || null,
-          agent_id: agentConfig?.retell_agent_id,
-          llm_id: agentConfig?.retell_llm_id,
         })
         .eq('id', transfer.id);
     } else {
@@ -1175,8 +1163,6 @@ export default class AgentConfigPage {
           phone_number: transfer.phone_number,
           transfer_secret: transfer.transfer_secret || null,
           is_default: index === 0,
-          agent_id: agentConfig?.retell_agent_id,
-          llm_id: agentConfig?.retell_llm_id,
         })
         .select()
         .single();
@@ -1186,34 +1172,10 @@ export default class AgentConfigPage {
       }
     }
 
-    // Update Retell transfer tools
-    await this.updateRetellTransferTools();
-
     // Show success message
     const successMessage = document.getElementById('success-message');
     if (successMessage) {
       // Success message removed - saving is implied
-    }
-  }
-
-  async updateRetellTransferTools() {
-    console.log('Updating Retell transfer tools...');
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const { data: { session } } = await supabase.auth.getSession();
-
-    const response = await fetch(`${supabaseUrl}/functions/v1/update-retell-transfer-tool`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${session.access_token}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    const result = await response.json();
-    console.log('Update Retell transfer tools result:', result);
-
-    if (!response.ok) {
-      console.error('Failed to update transfer tools:', result);
     }
   }
 
@@ -1498,7 +1460,7 @@ export default class AgentConfigPage {
         noise_suppression: document.getElementById('adv-noise-suppression').value,
       };
 
-      // Handle global agent save separately (simpler, no Retell integration)
+      // Handle global agent save separately
       if (this.isEditingGlobalAgent) {
         const { data, error } = await supabase
           .from('agent_configs')
@@ -1533,7 +1495,7 @@ export default class AgentConfigPage {
       // Get current config to check for changes
       const { data: currentConfig } = await supabase
         .from('agent_configs')
-        .select('system_prompt, outbound_system_prompt, retell_llm_id, retell_agent_id, temperature, max_tokens, agent_volume, ambient_sound, ambient_sound_volume, noise_suppression')
+        .select('system_prompt, outbound_system_prompt, temperature, max_tokens, agent_volume, ambient_sound, ambient_sound_volume, noise_suppression')
         .eq('user_id', user.id)
         .single();
 
@@ -1554,163 +1516,12 @@ export default class AgentConfigPage {
 
       if (error) throw error;
 
-      // If system prompt or LLM settings changed, update Retell LLM
-      const llmSettingsChanged = promptChanged ||
-        (currentConfig && (
-          currentConfig.temperature !== configData.temperature ||
-          currentConfig.max_tokens !== configData.max_tokens
-        ));
+      // If voice changed, fetch new avatar and reload
+      if (voiceChanged) {
+        successMessage.className = 'alert alert-info';
+        successMessage.classList.remove('hidden');
+        successMessage.textContent = 'Updating voice...';
 
-      if (currentConfig?.retell_llm_id && (promptChanged || llmSettingsChanged)) {
-        const retellApiKey = 'key_0a5961a05d130a9ba00d5766f081';
-
-        const llmUpdatePayload = {};
-
-        if (promptChanged) {
-          llmUpdatePayload.general_prompt = configData.system_prompt;
-        }
-
-        // Always update temperature and max_tokens if settings changed
-        if (llmSettingsChanged) {
-          llmUpdatePayload.temperature = configData.temperature;
-          llmUpdatePayload.max_tokens = configData.max_tokens;
-        }
-
-        const llmResponse = await fetch(
-          `https://api.retellai.com/update-retell-llm/${currentConfig.retell_llm_id}`,
-          {
-            method: 'PATCH',
-            headers: {
-              'Authorization': `Bearer ${retellApiKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(llmUpdatePayload),
-          }
-        );
-
-        if (!llmResponse.ok) {
-          console.error('Failed to update Retell LLM settings');
-        } else {
-          console.log('Retell LLM settings updated successfully');
-        }
-      }
-
-      // If transfer settings changed, update Retell transfer tool
-      if (transferChanged) {
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-        const { data: { session } } = await supabase.auth.getSession();
-
-        await fetch(`${supabaseUrl}/functions/v1/update-retell-transfer-tool`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-          },
-        });
-      }
-
-      // If voice or agent settings changed, update Retell agent directly
-      if (voiceChanged || agentSettingsChanged) {
-        if (voiceChanged) {
-          successMessage.className = 'alert alert-info';
-          successMessage.classList.remove('hidden');
-          successMessage.textContent = 'Updating voice...';
-        }
-
-        const retellApiKey = 'key_0a5961a05d130a9ba00d5766f081'; // Retell API key
-
-        if (currentConfig?.retell_agent_id) {
-          // Update Retell agent with new settings
-          const updatePayload = {};
-
-          // Add voice if changed
-          if (voiceChanged) {
-            updatePayload.voice_id = configData.voice_id;
-          }
-
-          // Add ambient sound settings
-          if (configData.ambient_sound && configData.ambient_sound !== 'off') {
-            updatePayload.ambient_sound = configData.ambient_sound;
-            if (configData.ambient_sound_volume) {
-              updatePayload.ambient_sound_volume = configData.ambient_sound_volume;
-            }
-          } else {
-            updatePayload.ambient_sound = null;
-          }
-
-          // Add other settings
-          if (configData.agent_volume) {
-            updatePayload.agent_volume = configData.agent_volume;
-          }
-          if (configData.noise_suppression) {
-            updatePayload.enable_backchannel = configData.noise_suppression === 'enabled';
-          }
-          if (configData.temperature) {
-            updatePayload.responsiveness = configData.temperature;
-          }
-
-          console.log('Updating Retell agent:', currentConfig.retell_agent_id);
-          console.log('Update payload:', updatePayload);
-          console.log('Request URL:', `https://api.retellai.com/update-agent/${currentConfig.retell_agent_id}`);
-
-          // Try updating the agent first
-          let retellResponse = await fetch(
-            `https://api.retellai.com/update-agent/${currentConfig.retell_agent_id}`,
-            {
-              method: 'PATCH',
-              headers: {
-                'Authorization': `Bearer ${retellApiKey}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify(updatePayload),
-            }
-          );
-
-          console.log('Agent update response status:', retellResponse.status);
-          console.log('Agent update response headers:', Object.fromEntries(retellResponse.headers.entries()));
-
-          const responseText = await retellResponse.text();
-          console.log('Agent update response body:', responseText);
-
-          // Store logs in localStorage so they persist across page reload
-          const logEntry = {
-            timestamp: new Date().toISOString(),
-            status: retellResponse.status,
-            url: `https://api.retellai.com/update-agent/${currentConfig.retell_agent_id}`,
-            payload: updatePayload,
-            response: responseText,
-            headers: Object.fromEntries(retellResponse.headers.entries())
-          };
-
-          const existingLogs = JSON.parse(localStorage.getItem('retell_update_logs') || '[]');
-          existingLogs.unshift(logEntry);
-          localStorage.setItem('retell_update_logs', JSON.stringify(existingLogs.slice(0, 10))); // Keep last 10
-          console.log('✅ LOG SAVED TO localStorage.retell_update_logs');
-
-          if (!retellResponse.ok && retellResponse.status !== 404) {
-            // Only fail on non-404 errors
-            console.error('Failed to update Retell agent. Status:', retellResponse.status);
-            console.error('Response:', responseText);
-            console.error('Agent ID was:', currentConfig.retell_agent_id);
-            errorMessage.className = 'alert alert-error';
-            errorMessage.classList.remove('hidden');
-            errorMessage.textContent = 'Failed to update voice settings';
-            setTimeout(() => {
-              errorMessage.classList.add('hidden');
-            }, 3000);
-            return;
-          }
-
-          if (retellResponse.ok) {
-            console.log('Retell agent updated successfully');
-            console.log('Update response:', responseText);
-          } else {
-            console.log('Agent update returned non-OK status');
-            console.log('Voice change saved to database, will be used for calls');
-          }
-        }
-
-        // Fetch new avatar
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
         const { data: { session } } = await supabase.auth.getSession();
 
@@ -1815,7 +1626,7 @@ export default class AgentConfigPage {
             .single();
 
           // Only create agent if it doesn't exist at all
-          if (!existingConfig || !existingConfig.retell_agent_id) {
+          if (!existingConfig) {
             successMessage.className = 'alert alert-info';
             successMessage.textContent = 'Creating your AI assistant...';
 
@@ -1847,33 +1658,28 @@ If spammy, ignore or politely decline.
 
 Always sound approachable, keep things simple, and update the user with a quick summary after each interaction.`;
 
-            // Always use LiveKit
-            const createResponse = await fetch(`${supabaseUrl}/functions/v1/create-retell-agent`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${session.access_token}`,
-              },
-              body: JSON.stringify({
-                agentConfig: {
-                  name: 'AI Assistant',
-                  voice_id: '21m00Tcm4TlvDq8ikWAM', // Rachel voice
-                  prompt: defaultPrompt,
-                },
-                voiceStack: 'livekit',
-              }),
-            });
+            // Create agent config directly in database
+            const { data: newConfig, error: createError } = await supabase
+              .from('agent_configs')
+              .insert({
+                user_id: session.user.id,
+                name: 'AI Assistant',
+                voice_id: '11labs-21m00Tcm4TlvDq8ikWAM',
+                system_prompt: defaultPrompt,
+                active_voice_stack: 'livekit',
+                is_default: true,
+              })
+              .select()
+              .single();
 
-            if (!createResponse.ok) {
-              const error = await createResponse.json();
-              throw new Error(error.error || 'Failed to create assistant');
+            if (createError) {
+              throw new Error(createError.message || 'Failed to create assistant');
             }
 
-            const createResult = await createResponse.json();
-            console.log('Agent created:', createResult);
+            console.log('Agent created:', newConfig);
 
             successMessage.className = 'alert alert-success';
-            successMessage.textContent = 'Assistant created with avatar! Reloading...';
+            successMessage.textContent = 'Assistant created! Reloading...';
           } else if (!existingConfig.avatar_url && existingConfig.voice_id) {
             // Agent exists but missing avatar - fetch it
             successMessage.className = 'alert alert-info';
@@ -2707,36 +2513,6 @@ Always sound approachable, keep things simple, and update the user with a quick 
       statusDiv.textContent = error.message || 'Failed to clone voice. Please try again.';
       submitBtn.disabled = false;
       submitBtn.textContent = 'Clone Voice';
-    }
-  }
-
-  async updateRetellTransferTool() {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        console.error('No active session');
-        return;
-      }
-
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const response = await fetch(`${supabaseUrl}/functions/v1/update-retell-transfer-tool`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        console.error('Failed to update transfer tool:', error);
-        return;
-      }
-
-      const result = await response.json();
-      console.log('Transfer tool updated:', result);
-    } catch (error) {
-      console.error('Error updating transfer tool:', error);
     }
   }
 
