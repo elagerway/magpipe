@@ -2246,7 +2246,6 @@ export default class InboxPage {
                 <span style="font-size: 1.5rem;">${this.getCountryFlag(num.phone_number)}</span>
                 <div style="flex: 1; text-align: left;">
                   <div style="font-weight: 600; font-size: 0.95rem;">${this.formatPhoneNumber(num.phone_number)}</div>
-                  ${num.friendly_name ? `<div style="font-size: 0.8rem; color: var(--text-secondary);">${num.friendly_name}</div>` : ''}
                 </div>
               </button>
             `).join('') || '<p class="text-muted">No active numbers</p>'}
@@ -2653,7 +2652,6 @@ Examples:
                 <span style="font-size: 1.5rem;">${this.getCountryFlag(num.phone_number)}</span>
                 <div style="flex: 1; text-align: left;">
                   <div style="font-weight: 600; font-size: 0.95rem;">${this.formatPhoneNumber(num.phone_number)}</div>
-                  ${num.friendly_name ? `<div style="font-size: 0.8rem; color: var(--text-secondary);">${num.friendly_name}</div>` : ''}
                 </div>
               </button>
             `).join('') || '<p class="text-muted">No active numbers</p>'}
