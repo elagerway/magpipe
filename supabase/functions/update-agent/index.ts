@@ -1,5 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -7,7 +6,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -49,8 +48,8 @@ serve(async (req) => {
 
     // Allowed fields to update
     const allowedFields = [
-      "name", "greeting", "system_prompt", "voice_id", "voice_provider",
-      "voice_speed", "language", "max_call_duration", "end_call_phrases",
+      "name", "greeting", "system_prompt", "voice_id", "llm_model",
+      "language", "max_call_duration", "end_call_phrases",
       "transfer_number", "is_active", "organization_name", "owner_name",
       "agent_role", "agent_type"
     ];

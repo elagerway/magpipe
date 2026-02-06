@@ -1634,6 +1634,14 @@ CALL CONTEXT:
     else:
         assistant = Agent(instructions=system_prompt)
 
+    # Get LLM model from config (default to gpt-4.1-nano for lowest latency)
+    llm_model = user_config.get("llm_model", "gpt-4.1-nano") if user_config else "gpt-4.1-nano"
+
+    # Get voice settings from voice_config (or use defaults)
+    tts_voice_id = voice_config.get("voice_id", "21m00Tcm4TlvDq8ikWAM") if voice_config else "21m00Tcm4TlvDq8ikWAM"
+
+    logger.info(f"🎙️ Using LLM: {llm_model}, Voice: {tts_voice_id}")
+
     # Initialize AgentSession with low-latency configuration
     # VAD tuning: instant response with background noise filtering
     session = AgentSession(
@@ -1647,12 +1655,12 @@ CALL CONTEXT:
             language="en-US",
         ),
         llm=lkopenai.LLM(
-            model="gpt-4.1-nano",  # Nano for minimum latency (fastest OpenAI model)
+            model=llm_model,
             temperature=0.7,
         ),
         tts=elevenlabs.TTS(
             model="eleven_flash_v2_5",  # Fastest ElevenLabs model
-            voice_id="21m00Tcm4TlvDq8ikWAM",  # Rachel
+            voice_id=tts_voice_id,
             api_key=os.getenv("ELEVENLABS_API_KEY") or os.getenv("ELEVEN_API_KEY"),
             chunk_length_schedule=[50, 80, 120, 150],  # Smaller chunks for faster first audio
         ),
@@ -2104,7 +2112,7 @@ ADMIN MODE ACTIVATED:
                                     "Content-Type": "application/json",
                                 },
                                 json={
-                                    "model": "gpt-4.1-nano",
+                                    "model": llm_model,
                                     "messages": [{"role": "user", "content": "hi"}],
                                     "max_tokens": 1,
                                 },

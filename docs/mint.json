@@ -181,6 +181,12 @@
       ]
     },
     {
+      "group": "Models",
+      "pages": [
+        "api-reference/endpoints/list-models"
+      ]
+    },
+    {
       "group": "Calendar",
       "pages": [
         "api-reference/endpoints/get-calendar-slots",

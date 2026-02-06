@@ -34,12 +34,8 @@ Get the full configuration and details of an AI agent.
   Voice identifier for text-to-speech.
 </ResponseField>
 
-<ResponseField name="voice_provider" type="string">
-  TTS provider: `openai` or `elevenlabs`.
-</ResponseField>
-
-<ResponseField name="voice_speed" type="number">
-  Speech speed multiplier (0.5 to 2.0).
+<ResponseField name="llm_model" type="string">
+  LLM model for conversation: `gpt-4.1-nano` (fastest), `gpt-4o`, `gpt-4o-mini`, etc.
 </ResponseField>
 
 <ResponseField name="language" type="string">
@@ -142,8 +138,7 @@ print(f"Agent: {agent['name']}")
   "greeting": "Hello, thank you for calling Acme Dental. This is Sarah, how can I help you today?",
   "system_prompt": "You are Sarah, a friendly receptionist for Acme Dental Clinic...",
   "voice_id": "21m00Tcm4TlvDq8ikWAM",
-  "voice_provider": "elevenlabs",
-  "voice_speed": 1.0,
+  "llm_model": "gpt-4.1-nano",
   "language": "en-US",
   "agent_type": "both",
   "max_call_duration": 1800,
