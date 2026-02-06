@@ -133,6 +133,8 @@ export async function recalculateUnreads(userId = null) {
       .eq('direction', 'inbound')
       .order('created_at', { ascending: false });
 
+    console.log('📱 Found', messages?.length || 0, 'inbound SMS messages');
+
     if (messages?.length > 0) {
       const unreadByConv = {};
 
@@ -148,6 +150,7 @@ export async function recalculateUnreads(userId = null) {
       });
 
       smsUnread = Object.values(unreadByConv).reduce((sum, count) => sum + count, 0);
+      console.log('📱 SMS unread by conversation:', unreadByConv);
     }
   } catch (e) {
     console.error('Error counting SMS unreads:', e);
@@ -221,6 +224,7 @@ export async function recalculateUnreads(userId = null) {
     total: smsUnread + chatUnread + callsUnread
   };
 
+  console.log('📊 Unread counts recalculated:', unreadCounts);
   updateBadgeDOM();
   notifyListeners();
 
@@ -341,11 +345,35 @@ export function setUnreadCount(count) {
 /**
  * Initialize real-time subscriptions
  */
+let initInProgress = false;
+
 export async function initUnreadTracking() {
+  // Prevent double initialization
+  if (initInProgress) {
+    console.log('📱 initUnreadTracking already in progress, skipping');
+    return;
+  }
+
+  // If already initialized with subscriptions, just recalculate
+  if (isInitialized && subscriptions.length > 0) {
+    console.log('📱 Already initialized, just recalculating');
+    const { user } = await getCurrentUser();
+    if (user) await recalculateUnreads(user.id);
+    return;
+  }
+
+  initInProgress = true;
+  console.log('📱 initUnreadTracking called');
+
   const { user } = await getCurrentUser();
-  if (!user) return;
+  if (!user) {
+    console.log('📱 No user found, skipping unread tracking');
+    initInProgress = false;
+    return;
+  }
 
   currentUserId = user.id;
+  console.log('📱 Setting up unread tracking for user:', user.id);
 
   // Calculate initial counts
   await recalculateUnreads(user.id);
@@ -354,21 +382,25 @@ export async function initUnreadTracking() {
   subscriptions.forEach(sub => sub.unsubscribe());
   subscriptions = [];
 
-  // Subscribe to new SMS messages
+  // Subscribe to new SMS messages with unique channel name
+  const channelId = `unread-sms-${user.id}-${Date.now()}`;
   const smsSubscription = supabase
-    .channel('unread-sms-service')
+    .channel(channelId)
     .on('postgres_changes', {
       event: 'INSERT',
       schema: 'public',
-      table: 'sms_messages',
-      filter: `user_id=eq.${user.id}`
+      table: 'sms_messages'
     }, (payload) => {
-      if (payload.new.direction === 'inbound') {
-        // New inbound message - recalculate
+      console.log('📱 SMS realtime event:', payload.new?.direction, payload.new?.user_id);
+      // Check user_id and direction in callback (filters can be unreliable)
+      if (payload.new?.user_id === user.id && payload.new?.direction === 'inbound') {
+        console.log('📱 New inbound SMS - recalculating unreads');
         recalculateUnreads(user.id);
       }
     })
-    .subscribe();
+    .subscribe((status, err) => {
+      console.log('📱 SMS subscription status:', status, err || '');
+    });
   subscriptions.push(smsSubscription);
 
   // Subscribe to new chat messages
@@ -405,6 +437,7 @@ export async function initUnreadTracking() {
   subscriptions.push(callSubscription);
 
   isInitialized = true;
+  initInProgress = false;
 }
 
 /**
