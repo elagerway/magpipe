@@ -7,6 +7,7 @@ import { getCurrentUser, supabase } from '../lib/supabase.js';
 import { renderBottomNav, attachBottomNav } from '../components/BottomNav.js';
 import { AgentConfig } from '../models/AgentConfig.js';
 import { ChatWidget } from '../models/ChatWidget.js';
+import { getAgentMemories, getMemory, updateMemory, clearMemory } from '../services/memoryService.js';
 
 /* global navigateTo */
 
@@ -52,6 +53,8 @@ export default class AgentDetailPage {
     this.serviceNumbers = [];
     this.chatWidget = null; // Chat widget for this agent
     this.knowledgeSources = []; // Knowledge bases for this user
+    this.memories = []; // Agent memory entries
+    this.memoryCount = 0; // Count of memory entries
     // Voice cloning state
     this.mediaRecorder = null;
     this.audioChunks = [];
@@ -224,6 +227,7 @@ export default class AgentDetailPage {
             <button class="agent-tab active" data-tab="configure">Configure</button>
             <button class="agent-tab" data-tab="prompt">Prompt</button>
             <button class="agent-tab" data-tab="knowledge">Knowledge</button>
+            <button class="agent-tab" data-tab="memory">Memory</button>
             <button class="agent-tab" data-tab="functions">Functions</button>
             <button class="agent-tab" data-tab="schedule">Schedule</button>
             <button class="agent-tab" data-tab="deployment">Deployment</button>
@@ -767,15 +771,130 @@ export default class AgentDetailPage {
           <label class="form-label">Inbound Prompt</label>
           <textarea id="system-prompt" class="form-textarea" rows="10" placeholder="Instructions for handling incoming calls...">${this.agent.system_prompt || ''}</textarea>
           <p class="form-help">How the agent handles incoming calls and messages</p>
+          <button type="button" id="preview-inbound-prompt-btn" class="btn btn-secondary btn-sm prompt-preview-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+            Preview Full Prompt
+          </button>
+        </div>
+
+        <div id="inbound-prompt-preview" class="full-prompt-preview hidden">
+          <div class="full-prompt-header">
+            <h4>Full Inbound Prompt (as sent to agent)</h4>
+            <button type="button" id="close-inbound-preview" class="btn-icon">&times;</button>
+          </div>
+          <pre class="full-prompt-content">${this.buildFullPromptPreview('inbound')}</pre>
         </div>
 
         <div class="form-group">
           <label class="form-label">Outbound Prompt</label>
           <textarea id="outbound-prompt" class="form-textarea" rows="10" placeholder="Instructions for making outbound calls...">${this.agent.outbound_system_prompt || ''}</textarea>
           <p class="form-help">How the agent behaves when making calls on your behalf</p>
+          <button type="button" id="preview-outbound-prompt-btn" class="btn btn-secondary btn-sm prompt-preview-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+            Preview Full Prompt
+          </button>
+        </div>
+
+        <div id="outbound-prompt-preview" class="full-prompt-preview hidden">
+          <div class="full-prompt-header">
+            <h4>Full Outbound Prompt (as sent to agent)</h4>
+            <button type="button" id="close-outbound-preview" class="btn-icon">&times;</button>
+          </div>
+          <pre class="full-prompt-content">${this.buildFullPromptPreview('outbound')}</pre>
         </div>
       </div>
     `;
+  }
+
+  buildFullPromptPreview(type = 'inbound') {
+    if (type === 'outbound') {
+      return this.buildOutboundPromptPreview();
+    }
+
+    const callerPhone = "+1XXXXXXXXXX"; // Placeholder
+    const basePrompt = this.agent.system_prompt || "No system prompt configured";
+
+    const rolePrefix = `CRITICAL - UNDERSTAND YOUR ROLE:
+The person on this call is a CALLER/CUSTOMER calling in - they are NOT the business owner.
+- You work for the business owner (your boss) who configured you
+- The CALLER is a customer/client reaching out to the business
+- Do NOT treat the caller as your boss or as if they set you up
+- Do NOT say "your assistant" or "your number" to them - you're not THEIR assistant
+- Treat every caller professionally as a potential customer
+- The caller's phone number is: ${callerPhone}
+
+YOUR CONFIGURED PERSONALITY:
+`;
+
+    const contextSuffix = `
+
+CALL CONTEXT:
+- This is a LIVE VOICE CALL with a customer calling in
+- Speak naturally and conversationally
+- Be warm, friendly, and professional
+- You can transfer calls, take messages, or help customers directly`;
+
+    let fullPrompt = rolePrefix + basePrompt + contextSuffix;
+
+    if (this.agent.memory_enabled) {
+      fullPrompt += `
+
+## CALLER MEMORY
+[If caller has previous history, their conversation summary and key topics will appear here]`;
+    }
+
+    if (this.agent.semantic_memory_enabled) {
+      fullPrompt += `
+
+## SIMILAR PAST CONVERSATIONS
+[If enabled, similar conversations from other callers will appear here to help identify patterns]`;
+    }
+
+    return fullPrompt.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  buildOutboundPromptPreview() {
+    const agentName = this.agent.agent_name || this.agent.name || "Pat";
+    const basePrompt = this.agent.outbound_system_prompt;
+
+    if (basePrompt) {
+      // User has a custom outbound prompt
+      let fullPrompt = basePrompt;
+
+      if (this.agent.memory_enabled) {
+        fullPrompt += `
+
+## CALLER MEMORY
+[If contact has previous history, their conversation summary and key topics will appear here]`;
+      }
+
+      return fullPrompt.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    // Default outbound prompt when user hasn't configured one
+    let fullPrompt = `You are ${agentName}, an AI assistant making an outbound phone call on behalf of your owner.
+
+THIS IS AN OUTBOUND CALL:
+- You called them, they did not call you
+- They will answer with "Hello?" - then you introduce yourself and explain why you're calling
+- Do NOT ask "how can I help you" - you called them, not the other way around
+- Be conversational, professional, and respectful of their time
+- If they're busy or not interested, be gracious and end the call politely`;
+
+    if (this.agent.memory_enabled) {
+      fullPrompt += `
+
+## CALLER MEMORY
+[If contact has previous history, their conversation summary and key topics will appear here]`;
+    }
+
+    return fullPrompt.replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
   renderKnowledgeTab() {
@@ -904,6 +1023,517 @@ export default class AgentDetailPage {
         `).join('')}
       </div>
     `;
+  }
+
+  renderMemoryTab() {
+    const memoryEnabled = this.agent.memory_enabled || false;
+    const memoryConfig = this.agent.memory_config || {
+      max_history_calls: 5,
+      include_summaries: true,
+      include_key_topics: true,
+      include_preferences: true
+    };
+    const semanticEnabled = this.agent.semantic_memory_enabled || false;
+    const semanticConfig = this.agent.semantic_memory_config || {
+      max_results: 3,
+      similarity_threshold: 0.75,
+      include_other_callers: true
+    };
+
+    return `
+      <div class="config-section">
+        <h3>Memory Settings</h3>
+        <p class="section-desc">Enable your agent to remember past conversations with callers.</p>
+
+        <div class="memory-status-container ${memoryEnabled ? 'enabled' : 'disabled'}">
+          <div class="memory-status-content">
+            <div class="memory-status-icon">
+              ${memoryEnabled ? `
+                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+              ` : `
+                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+              `}
+            </div>
+            <div class="memory-status-text">
+              <span class="memory-status-title">${memoryEnabled ? 'Memory Enabled' : 'Memory Disabled'}</span>
+              <span class="memory-status-desc">${memoryEnabled ? 'Agent remembers past conversations with callers' : 'Agent treats each call as a new conversation'}</span>
+            </div>
+          </div>
+          <button type="button" id="memory-toggle-btn" class="memory-toggle-btn ${memoryEnabled ? 'btn-disable' : 'btn-enable'}">
+            ${memoryEnabled ? 'Disable' : 'Enable'}
+          </button>
+        </div>
+
+        <div id="memory-config-section" class="${memoryEnabled ? '' : 'hidden'}" style="margin-top: 1rem;">
+          <div class="form-group">
+            <label class="form-label">Max History Calls</label>
+            <select id="memory-max-calls" class="form-select">
+              <option value="3" ${memoryConfig.max_history_calls === 3 ? 'selected' : ''}>Last 3 calls</option>
+              <option value="5" ${memoryConfig.max_history_calls === 5 ? 'selected' : ''}>Last 5 calls</option>
+              <option value="10" ${memoryConfig.max_history_calls === 10 ? 'selected' : ''}>Last 10 calls</option>
+            </select>
+            <p class="form-help">How many recent calls to consider for context.</p>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Include in Context</label>
+            <div class="memory-context-options">
+              <label class="memory-option-item">
+                <input type="checkbox" id="memory-summaries" ${memoryConfig.include_summaries !== false ? 'checked' : ''} />
+                <span>Conversation summaries</span>
+              </label>
+              <label class="memory-option-item">
+                <input type="checkbox" id="memory-topics" ${memoryConfig.include_key_topics !== false ? 'checked' : ''} />
+                <span>Key topics discussed</span>
+              </label>
+              <label class="memory-option-item">
+                <input type="checkbox" id="memory-preferences" ${memoryConfig.include_preferences !== false ? 'checked' : ''} />
+                <span>Caller preferences</span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="config-section">
+        <h3>Semantic Memory</h3>
+        <p class="section-desc">Find patterns across conversations using AI-powered similarity search.</p>
+
+        <div class="memory-status-container semantic ${semanticEnabled ? 'enabled' : 'disabled'}">
+          <div class="memory-status-content">
+            <div class="memory-status-icon semantic-icon">
+              ${semanticEnabled ? `
+                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                </svg>
+              ` : `
+                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                </svg>
+              `}
+            </div>
+            <div class="memory-status-text">
+              <span class="memory-status-title">${semanticEnabled ? 'Semantic Memory Enabled' : 'Semantic Memory Disabled'}</span>
+              <span class="memory-status-desc">${semanticEnabled ? 'Agent finds similar past conversations to identify patterns' : 'Agent only uses individual caller history'}</span>
+            </div>
+          </div>
+          <button type="button" id="semantic-toggle-btn" class="memory-toggle-btn ${semanticEnabled ? 'btn-disable' : 'btn-enable'}">
+            ${semanticEnabled ? 'Disable' : 'Enable'}
+          </button>
+        </div>
+
+        <div id="semantic-config-section" class="${semanticEnabled ? '' : 'hidden'}" style="margin-top: 1rem;">
+          <div class="form-group">
+            <label class="form-label">Similar Conversations to Show</label>
+            <select id="semantic-max-results" class="form-select">
+              <option value="2" ${semanticConfig.max_results === 2 ? 'selected' : ''}>2 similar conversations</option>
+              <option value="3" ${semanticConfig.max_results === 3 ? 'selected' : ''}>3 similar conversations</option>
+              <option value="5" ${semanticConfig.max_results === 5 ? 'selected' : ''}>5 similar conversations</option>
+            </select>
+            <p class="form-help">Maximum number of similar past conversations to include.</p>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Similarity Threshold</label>
+            <select id="semantic-threshold" class="form-select">
+              <option value="0.6" ${semanticConfig.similarity_threshold === 0.6 ? 'selected' : ''}>Low (60%) - More results, less accurate</option>
+              <option value="0.75" ${semanticConfig.similarity_threshold === 0.75 ? 'selected' : ''}>Medium (75%) - Balanced</option>
+              <option value="0.85" ${semanticConfig.similarity_threshold === 0.85 ? 'selected' : ''}>High (85%) - Fewer results, more accurate</option>
+            </select>
+            <p class="form-help">How similar conversations must be to be included.</p>
+          </div>
+        </div>
+
+        <div class="semantic-info-box">
+          <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          <span>Semantic memory helps identify common issues across callers. For example, if multiple customers report the same problem, your agent will recognize the pattern.</span>
+        </div>
+      </div>
+
+      <div class="config-section" id="memory-list-section">
+        <div class="memory-section-header">
+          <h3>Caller Memory <span id="memory-count-badge" class="memory-count-badge">${this.memoryCount}</span></h3>
+          ${this.memoryCount > 0 ? `
+            <button type="button" id="clear-all-memories-btn" class="btn-text-danger">Clear All</button>
+          ` : ''}
+        </div>
+        <div id="memories-container" class="memories-container">
+          <div class="memory-loading">Loading memories...</div>
+        </div>
+      </div>
+    `;
+  }
+
+  renderMemoryList() {
+    if (this.memories.length === 0) {
+      return `
+        <div class="memory-empty-state">
+          <div class="memory-empty-icon">
+            <svg width="32" height="32" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+            </svg>
+          </div>
+          <p class="memory-empty-title">No caller memories yet</p>
+          <p class="memory-empty-desc">Memories will appear here after conversations when memory is enabled.</p>
+        </div>
+      `;
+    }
+
+    return this.memories.map(mem => `
+      <div class="memory-card" data-memory-id="${mem.id}">
+        <div class="memory-card-header">
+          <div class="memory-contact">
+            <div class="memory-contact-avatar">
+              <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+              </svg>
+            </div>
+            <div class="memory-contact-details">
+              <span class="memory-contact-phone">${mem.contact?.phone_number || 'Unknown'}</span>
+              ${mem.contact?.name ? `<span class="memory-contact-name">${mem.contact.name}</span>` : ''}
+            </div>
+          </div>
+          <span class="memory-call-count">${mem.interactionCount} call${mem.interactionCount !== 1 ? 's' : ''}</span>
+        </div>
+        <p class="memory-card-summary">${mem.summary || 'No summary available'}</p>
+        ${mem.keyTopics && mem.keyTopics.length > 0 ? `
+          <div class="memory-card-topics">
+            ${mem.keyTopics.slice(0, 4).map(t => `<span class="memory-topic-tag">${t}</span>`).join('')}
+          </div>
+        ` : ''}
+        <div class="memory-card-actions">
+          <button type="button" class="memory-action-btn view-memory-btn" data-memory-id="${mem.id}">
+            <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+            </svg>
+            View
+          </button>
+          <button type="button" class="memory-action-btn memory-action-danger clear-memory-btn" data-memory-id="${mem.id}">
+            <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+            </svg>
+            Clear
+          </button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  async loadMemories() {
+    try {
+      this.memories = await getAgentMemories(this.agentId);
+      this.memoryCount = this.memories.length;
+
+      const container = document.getElementById('memories-container');
+      if (container) {
+        container.innerHTML = this.renderMemoryList();
+        this.attachMemoryListListeners();
+      }
+
+      // Update count badge
+      const badge = document.getElementById('memory-count-badge');
+      if (badge) {
+        badge.textContent = this.memoryCount;
+      }
+
+      // Show/hide clear all button
+      const clearAllBtn = document.getElementById('clear-all-memories-btn');
+      if (clearAllBtn) {
+        clearAllBtn.style.display = this.memoryCount > 0 ? 'inline-flex' : 'none';
+      }
+    } catch (error) {
+      console.error('Failed to load memories:', error);
+      const container = document.getElementById('memories-container');
+      if (container) {
+        container.innerHTML = `<div class="memory-error-state">Failed to load memories. Please try again.</div>`;
+      }
+    }
+  }
+
+  attachMemoryTabListeners() {
+    // Memory toggle button
+    const memoryToggleBtn = document.getElementById('memory-toggle-btn');
+    const memoryConfigSection = document.getElementById('memory-config-section');
+    const memoryStatusContainer = document.querySelector('.memory-status-container');
+
+    if (memoryToggleBtn) {
+      memoryToggleBtn.addEventListener('click', async () => {
+        const currentlyEnabled = this.agent.memory_enabled || false;
+        const newEnabled = !currentlyEnabled;
+
+        // Update local state
+        this.agent.memory_enabled = newEnabled;
+
+        // Update UI immediately
+        if (memoryConfigSection) {
+          memoryConfigSection.classList.toggle('hidden', !newEnabled);
+        }
+
+        // Update the status container appearance
+        if (memoryStatusContainer) {
+          memoryStatusContainer.classList.toggle('enabled', newEnabled);
+          memoryStatusContainer.classList.toggle('disabled', !newEnabled);
+
+          // Update icon
+          const iconContainer = memoryStatusContainer.querySelector('.memory-status-icon');
+          if (iconContainer) {
+            iconContainer.innerHTML = newEnabled ? `
+              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+            ` : `
+              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+            `;
+          }
+
+          // Update text
+          const titleEl = memoryStatusContainer.querySelector('.memory-status-title');
+          const descEl = memoryStatusContainer.querySelector('.memory-status-desc');
+          if (titleEl) titleEl.textContent = newEnabled ? 'Memory Enabled' : 'Memory Disabled';
+          if (descEl) descEl.textContent = newEnabled ? 'Agent remembers past conversations with callers' : 'Agent treats each call as a new conversation';
+        }
+
+        // Update button
+        memoryToggleBtn.textContent = newEnabled ? 'Disable' : 'Enable';
+        memoryToggleBtn.classList.toggle('btn-disable', newEnabled);
+        memoryToggleBtn.classList.toggle('btn-enable', !newEnabled);
+
+        await this.updateAgentField('memory_enabled', newEnabled);
+      });
+    }
+
+    // Memory config options
+    const maxCallsSelect = document.getElementById('memory-max-calls');
+    const summariesCheck = document.getElementById('memory-summaries');
+    const topicsCheck = document.getElementById('memory-topics');
+    const preferencesCheck = document.getElementById('memory-preferences');
+
+    const updateMemoryConfig = async () => {
+      const config = {
+        max_history_calls: parseInt(maxCallsSelect?.value || '5'),
+        include_summaries: summariesCheck?.checked ?? true,
+        include_key_topics: topicsCheck?.checked ?? true,
+        include_preferences: preferencesCheck?.checked ?? true,
+      };
+      await this.updateAgentField('memory_config', config);
+    };
+
+    maxCallsSelect?.addEventListener('change', updateMemoryConfig);
+    summariesCheck?.addEventListener('change', updateMemoryConfig);
+    topicsCheck?.addEventListener('change', updateMemoryConfig);
+    preferencesCheck?.addEventListener('change', updateMemoryConfig);
+
+    // Clear all memories button
+    const clearAllBtn = document.getElementById('clear-all-memories-btn');
+    if (clearAllBtn) {
+      clearAllBtn.addEventListener('click', () => {
+        this.showConfirmModal(
+          'Clear All Memories',
+          'Are you sure you want to clear all caller memories for this agent? This cannot be undone.',
+          async () => {
+            try {
+              const { clearAllAgentMemories } = await import('../services/memoryService.js');
+              await clearAllAgentMemories(this.agentId);
+              await this.loadMemories();
+            } catch (error) {
+              console.error('Failed to clear memories:', error);
+            }
+          }
+        );
+      });
+    }
+
+    // Semantic Memory toggle
+    const semanticToggleBtn = document.getElementById('semantic-toggle-btn');
+    const semanticConfigSection = document.getElementById('semantic-config-section');
+    if (semanticToggleBtn) {
+      semanticToggleBtn.addEventListener('click', async () => {
+        const newEnabled = !this.agent.semantic_memory_enabled;
+
+        // Show/hide config section
+        if (semanticConfigSection) {
+          semanticConfigSection.classList.toggle('hidden', !newEnabled);
+        }
+
+        // Update UI immediately
+        const semanticStatusContainer = document.querySelector('.memory-status-container.semantic');
+        if (semanticStatusContainer) {
+          semanticStatusContainer.classList.toggle('enabled', newEnabled);
+          semanticStatusContainer.classList.toggle('disabled', !newEnabled);
+
+          // Update icon
+          const iconEl = semanticStatusContainer.querySelector('.memory-status-icon');
+          if (iconEl) {
+            iconEl.innerHTML = newEnabled ? `
+              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+              </svg>
+            ` : `
+              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+            `;
+          }
+
+          // Update text
+          const titleEl = semanticStatusContainer.querySelector('.memory-status-title');
+          const descEl = semanticStatusContainer.querySelector('.memory-status-desc');
+          if (titleEl) titleEl.textContent = newEnabled ? 'Semantic Memory Enabled' : 'Semantic Memory Disabled';
+          if (descEl) descEl.textContent = newEnabled ? 'Agent finds patterns across all callers' : 'Agent only uses individual caller memory';
+        }
+
+        // Update button
+        semanticToggleBtn.textContent = newEnabled ? 'Disable' : 'Enable';
+        semanticToggleBtn.classList.toggle('btn-disable', newEnabled);
+        semanticToggleBtn.classList.toggle('btn-enable', !newEnabled);
+
+        // Update local state
+        this.agent.semantic_memory_enabled = newEnabled;
+
+        await this.updateAgentField('semantic_memory_enabled', newEnabled);
+      });
+    }
+
+    // Semantic Memory config options
+    const semanticMaxResults = document.getElementById('semantic-max-results');
+    const semanticThreshold = document.getElementById('semantic-threshold');
+
+    const updateSemanticConfig = async () => {
+      const config = {
+        max_results: parseInt(semanticMaxResults?.value || '3'),
+        similarity_threshold: parseFloat(semanticThreshold?.value || '0.75'),
+        include_other_callers: true,
+      };
+      await this.updateAgentField('semantic_memory_config', config);
+    };
+
+    semanticMaxResults?.addEventListener('change', updateSemanticConfig);
+    semanticThreshold?.addEventListener('change', updateSemanticConfig);
+  }
+
+  attachMemoryListListeners() {
+    // View memory buttons
+    document.querySelectorAll('.view-memory-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const memoryId = btn.dataset.memoryId;
+        await this.showMemoryDetailModal(memoryId);
+      });
+    });
+
+    // Clear memory buttons
+    document.querySelectorAll('.clear-memory-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const memoryId = btn.dataset.memoryId;
+        const mem = this.memories.find(m => m.id === memoryId);
+        const contactName = mem?.contact?.name || mem?.contact?.phone_number || 'this caller';
+
+        this.showConfirmModal(
+          'Clear Memory',
+          `Are you sure you want to clear the memory for ${contactName}? This cannot be undone.`,
+          async () => {
+            try {
+              await clearMemory(memoryId);
+              await this.loadMemories();
+            } catch (error) {
+              console.error('Failed to clear memory:', error);
+            }
+          }
+        );
+      });
+    });
+  }
+
+  async showMemoryDetailModal(memoryId) {
+    try {
+      const memory = await getMemory(memoryId);
+
+      const modalHtml = `
+        <div class="modal-overlay" id="memory-detail-modal">
+          <div class="modal memory-detail-modal">
+            <div class="modal-header">
+              <h3>Caller Memory: ${memory.contact?.name || 'Unknown'}</h3>
+              <button type="button" class="modal-close" id="close-memory-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+              <div class="memory-detail-phone">${memory.contact?.phone_number || ''}</div>
+
+              <div class="memory-detail-section">
+                <label class="form-label">Summary</label>
+                <textarea id="memory-summary-edit" class="form-textarea" rows="3">${memory.summary || ''}</textarea>
+              </div>
+
+              <div class="memory-detail-section">
+                <label class="form-label">Key Topics</label>
+                <div class="memory-topics-display">
+                  ${(memory.keyTopics || []).map(t => `<span class="topic-tag">${t}</span>`).join('') || '<span class="text-muted">No topics</span>'}
+                </div>
+              </div>
+
+              ${memory.preferences && Object.keys(memory.preferences).length > 0 ? `
+                <div class="memory-detail-section">
+                  <label class="form-label">Preferences</label>
+                  <pre class="memory-prefs-display">${JSON.stringify(memory.preferences, null, 2)}</pre>
+                </div>
+              ` : ''}
+
+              <div class="memory-detail-section">
+                <label class="form-label">Call History (${memory.callHistory?.length || 0} calls)</label>
+                <div class="call-history-list">
+                  ${memory.callHistory && memory.callHistory.length > 0 ? memory.callHistory.map(call => `
+                    <div class="call-history-item">
+                      <span class="call-date">${new Date(call.started_at).toLocaleDateString()}</span>
+                      <span class="call-duration">${Math.floor((call.duration_seconds || 0) / 60)} min</span>
+                      <span class="call-summary-preview">${call.call_summary || 'No summary'}</span>
+                    </div>
+                  `).join('') : '<div class="text-muted">No call history available</div>'}
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn-secondary" id="close-memory-detail">Close</button>
+              <button type="button" class="btn-primary" id="save-memory-changes">Save Changes</button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+      // Close modal handlers
+      const closeModal = () => {
+        document.getElementById('memory-detail-modal')?.remove();
+      };
+
+      document.getElementById('close-memory-modal')?.addEventListener('click', closeModal);
+      document.getElementById('close-memory-detail')?.addEventListener('click', closeModal);
+      document.getElementById('memory-detail-modal')?.addEventListener('click', (e) => {
+        if (e.target.id === 'memory-detail-modal') closeModal();
+      });
+
+      // Save changes handler
+      document.getElementById('save-memory-changes')?.addEventListener('click', async () => {
+        const newSummary = document.getElementById('memory-summary-edit')?.value;
+        try {
+          await updateMemory(memoryId, { summary: newSummary });
+          closeModal();
+          await this.loadMemories();
+        } catch (error) {
+          console.error('Failed to save memory:', error);
+        }
+      });
+
+    } catch (error) {
+      console.error('Failed to load memory detail:', error);
+    }
   }
 
   renderFunctionsTab() {
@@ -1674,6 +2304,48 @@ export default class AgentDetailPage {
         this.scheduleAutoSave({ outbound_system_prompt: outboundPrompt.value });
       });
     }
+
+    // Preview inbound prompt button
+    const previewInboundBtn = document.getElementById('preview-inbound-prompt-btn');
+    const inboundPreviewPanel = document.getElementById('inbound-prompt-preview');
+    const closeInboundBtn = document.getElementById('close-inbound-preview');
+
+    if (previewInboundBtn && inboundPreviewPanel) {
+      previewInboundBtn.addEventListener('click', () => {
+        const contentEl = inboundPreviewPanel.querySelector('.full-prompt-content');
+        if (contentEl) {
+          contentEl.innerHTML = this.buildFullPromptPreview('inbound');
+        }
+        inboundPreviewPanel.classList.remove('hidden');
+      });
+    }
+
+    if (closeInboundBtn && inboundPreviewPanel) {
+      closeInboundBtn.addEventListener('click', () => {
+        inboundPreviewPanel.classList.add('hidden');
+      });
+    }
+
+    // Preview outbound prompt button
+    const previewOutboundBtn = document.getElementById('preview-outbound-prompt-btn');
+    const outboundPreviewPanel = document.getElementById('outbound-prompt-preview');
+    const closeOutboundBtn = document.getElementById('close-outbound-preview');
+
+    if (previewOutboundBtn && outboundPreviewPanel) {
+      previewOutboundBtn.addEventListener('click', () => {
+        const contentEl = outboundPreviewPanel.querySelector('.full-prompt-content');
+        if (contentEl) {
+          contentEl.innerHTML = this.buildFullPromptPreview('outbound');
+        }
+        outboundPreviewPanel.classList.remove('hidden');
+      });
+    }
+
+    if (closeOutboundBtn && outboundPreviewPanel) {
+      closeOutboundBtn.addEventListener('click', () => {
+        outboundPreviewPanel.classList.add('hidden');
+      });
+    }
   }
 
   attachKnowledgeTabListeners() {
@@ -2279,6 +2951,11 @@ export default class AgentDetailPage {
         tabContent.innerHTML = this.renderKnowledgeTab();
         this.attachKnowledgeTabListeners();
         break;
+      case 'memory':
+        tabContent.innerHTML = this.renderMemoryTab();
+        this.attachMemoryTabListeners();
+        this.loadMemories();
+        break;
       case 'functions':
         tabContent.innerHTML = this.renderFunctionsTab();
         this.attachFunctionsTabListeners();
@@ -2367,6 +3044,10 @@ export default class AgentDetailPage {
     } catch (err) {
       console.error('Error saving agent:', err);
     }
+  }
+
+  async updateAgentField(field, value) {
+    await this.saveAgent({ [field]: value });
   }
 
   async setAsDefault() {
@@ -4442,6 +5123,66 @@ export default class AgentDetailPage {
         color: var(--text-tertiary) !important;
       }
 
+      /* Full Prompt Preview */
+      .prompt-preview-btn {
+        margin-top: 0.5rem;
+      }
+
+      .full-prompt-preview {
+        margin-top: 1rem;
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-md);
+        background: #1e293b;
+        overflow: hidden;
+      }
+
+      .full-prompt-preview.hidden {
+        display: none;
+      }
+
+      .full-prompt-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.75rem 1rem;
+        background: #334155;
+        border-bottom: 1px solid #475569;
+      }
+
+      .full-prompt-header h4 {
+        margin: 0;
+        font-size: 0.85rem;
+        color: #e2e8f0;
+        font-weight: 500;
+      }
+
+      .full-prompt-header .btn-icon {
+        background: none;
+        border: none;
+        color: #94a3b8;
+        font-size: 1.25rem;
+        cursor: pointer;
+        padding: 0.25rem;
+        line-height: 1;
+      }
+
+      .full-prompt-header .btn-icon:hover {
+        color: #f1f5f9;
+      }
+
+      .full-prompt-content {
+        padding: 1rem;
+        margin: 0;
+        font-size: 0.8rem;
+        line-height: 1.6;
+        color: #e2e8f0;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        max-height: 400px;
+        overflow-y: auto;
+        font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      }
+
       .agent-type-selector {
         display: flex;
         flex-direction: column;
@@ -5078,6 +5819,506 @@ export default class AgentDetailPage {
         margin-top: 0.25rem;
       }
 
+      /* Memory Tab Styles */
+      .memory-status-container {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1rem 1.25rem;
+        border-radius: var(--radius-md);
+        border: 1px solid var(--border-color);
+        transition: all 0.2s;
+      }
+
+      .memory-status-container.enabled {
+        background: linear-gradient(135deg, rgba(34, 197, 94, 0.08), rgba(34, 197, 94, 0.03));
+        border-color: #86efac;
+      }
+
+      .memory-status-container.disabled {
+        background: var(--bg-secondary, #f9fafb);
+        border-color: var(--border-color);
+      }
+
+      .memory-status-content {
+        display: flex;
+        align-items: center;
+        gap: 0.875rem;
+      }
+
+      .memory-status-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+
+      .memory-status-container.enabled .memory-status-icon {
+        background: #dcfce7;
+        color: #16a34a;
+      }
+
+      .memory-status-container.disabled .memory-status-icon {
+        background: #f3f4f6;
+        color: #9ca3af;
+      }
+
+      .memory-status-text {
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem;
+      }
+
+      .memory-status-title {
+        font-weight: 600;
+        font-size: 0.95rem;
+        color: var(--text-primary);
+      }
+
+      .memory-status-desc {
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+      }
+
+      .memory-toggle-btn {
+        padding: 0.5rem 1.25rem;
+        border-radius: var(--radius-md);
+        font-size: 0.85rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+        border: none;
+      }
+
+      .memory-toggle-btn.btn-enable {
+        background: var(--primary-color);
+        color: white;
+      }
+
+      .memory-toggle-btn.btn-enable:hover {
+        background: #4f46e5;
+      }
+
+      .memory-toggle-btn.btn-disable {
+        background: white;
+        color: #dc2626;
+        border: 1px solid #fecaca;
+      }
+
+      .memory-toggle-btn.btn-disable:hover {
+        background: #fef2f2;
+        border-color: #dc2626;
+      }
+
+      .memory-context-options {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        padding: 0.75rem;
+        background: var(--bg-secondary, #f9fafb);
+        border-radius: var(--radius-md);
+        border: 1px solid var(--border-color);
+      }
+
+      .memory-option-item {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        cursor: pointer;
+        font-size: 0.9rem;
+      }
+
+      .memory-option-item input[type="checkbox"] {
+        width: 16px;
+        height: 16px;
+        cursor: pointer;
+      }
+
+      .memory-section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+      }
+
+      .memory-section-header h3 {
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .memory-count-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 22px;
+        height: 22px;
+        padding: 0 7px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        background: var(--primary-color);
+        color: white;
+        border-radius: 11px;
+      }
+
+      .btn-text-danger {
+        background: none;
+        border: none;
+        color: #dc2626;
+        font-size: 0.85rem;
+        cursor: pointer;
+        padding: 0.4rem 0.75rem;
+        border-radius: var(--radius-sm);
+        transition: background 0.2s;
+      }
+
+      .btn-text-danger:hover {
+        background: #fef2f2;
+      }
+
+      .memories-container {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+
+      .memory-loading {
+        text-align: center;
+        padding: 2rem;
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+      }
+
+      .memory-card {
+        padding: 1rem;
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-md);
+        background: white;
+        transition: border-color 0.2s, box-shadow 0.2s;
+      }
+
+      .memory-card:hover {
+        border-color: #d1d5db;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+      }
+
+      .memory-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 0.75rem;
+      }
+
+      .memory-contact {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+      }
+
+      .memory-contact-avatar {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        flex-shrink: 0;
+      }
+
+      .memory-contact-details {
+        display: flex;
+        flex-direction: column;
+        gap: 0.1rem;
+      }
+
+      .memory-contact-phone {
+        font-weight: 600;
+        font-size: 0.9rem;
+        color: var(--text-primary);
+      }
+
+      .memory-contact-name {
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+      }
+
+      .memory-call-count {
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+        background: var(--bg-secondary, #f3f4f6);
+        padding: 0.25rem 0.6rem;
+        border-radius: 12px;
+        font-weight: 500;
+      }
+
+      .memory-card-summary {
+        font-size: 0.85rem;
+        color: #4b5563;
+        line-height: 1.5;
+        margin: 0 0 0.75rem 0;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+
+      .memory-card-topics {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        margin-bottom: 0.75rem;
+      }
+
+      .memory-topic-tag {
+        font-size: 0.7rem;
+        padding: 0.25rem 0.6rem;
+        background: #eef2ff;
+        color: #4f46e5;
+        border-radius: 12px;
+        font-weight: 500;
+      }
+
+      .memory-card-actions {
+        display: flex;
+        gap: 0.5rem;
+        padding-top: 0.75rem;
+        border-top: 1px solid var(--border-color);
+      }
+
+      .memory-action-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        background: none;
+        border: 1px solid var(--border-color);
+        color: var(--text-secondary);
+        font-size: 0.8rem;
+        cursor: pointer;
+        padding: 0.4rem 0.75rem;
+        border-radius: var(--radius-sm);
+        transition: all 0.2s;
+      }
+
+      .memory-action-btn:hover {
+        border-color: var(--primary-color);
+        color: var(--primary-color);
+        background: rgba(99, 102, 241, 0.05);
+      }
+
+      .memory-action-btn.memory-action-danger:hover {
+        border-color: #dc2626;
+        color: #dc2626;
+        background: #fef2f2;
+      }
+
+      .memory-empty-state {
+        text-align: center;
+        padding: 2.5rem 1rem;
+        background: var(--bg-secondary, #f9fafb);
+        border-radius: var(--radius-md);
+        border: 1px dashed var(--border-color);
+      }
+
+      .memory-empty-icon {
+        width: 56px;
+        height: 56px;
+        margin: 0 auto 1rem;
+        border-radius: 50%;
+        background: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--text-secondary);
+        border: 1px solid var(--border-color);
+      }
+
+      .memory-empty-title {
+        font-size: 0.95rem;
+        font-weight: 500;
+        color: var(--text-primary);
+        margin: 0 0 0.35rem 0;
+      }
+
+      .memory-empty-desc {
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+        margin: 0;
+      }
+
+      .memory-error-state {
+        text-align: center;
+        padding: 1.5rem;
+        color: #dc2626;
+        background: #fef2f2;
+        border-radius: var(--radius-md);
+        border: 1px solid #fecaca;
+      }
+
+      /* Memory Detail Modal */
+      .memory-detail-modal {
+        max-width: 500px;
+        max-height: 90vh;
+        overflow-y: auto;
+      }
+
+      .memory-detail-phone {
+        font-size: 0.9rem;
+        color: var(--text-secondary);
+        margin-bottom: 1rem;
+      }
+
+      .memory-detail-section {
+        margin-bottom: 1.25rem;
+      }
+
+      .memory-detail-section:last-child {
+        margin-bottom: 0;
+      }
+
+      .memory-topics-display {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+      }
+
+      .memory-prefs-display {
+        font-size: 0.8rem;
+        background: var(--bg-secondary, #f3f4f6);
+        padding: 0.75rem;
+        border-radius: var(--radius-md);
+        overflow-x: auto;
+        margin: 0;
+      }
+
+      .call-history-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      .call-history-item {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        font-size: 0.85rem;
+        padding: 0.5rem;
+        background: var(--bg-secondary, #f3f4f6);
+        border-radius: var(--radius-sm);
+      }
+
+      .call-date {
+        color: var(--text-secondary);
+        flex-shrink: 0;
+      }
+
+      .call-duration {
+        color: var(--text-secondary);
+        flex-shrink: 0;
+      }
+
+      .call-summary-preview {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .text-muted {
+        color: var(--text-secondary);
+      }
+
+      /* Semantic Memory Styles */
+      .memory-section {
+        margin-bottom: 1.5rem;
+      }
+
+      .memory-section:last-child {
+        margin-bottom: 0;
+      }
+
+      .memory-section-title {
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin: 0 0 0.75rem 0;
+      }
+
+      .memory-status-container.semantic.enabled {
+        background: linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(59, 130, 246, 0.03));
+        border-color: #93c5fd;
+      }
+
+      .memory-status-container.semantic.enabled .memory-status-icon {
+        background: #dbeafe;
+        color: #2563eb;
+      }
+
+      .semantic-config-options {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 1rem;
+        padding: 1rem;
+        background: var(--bg-secondary, #f9fafb);
+        border-radius: var(--radius-md);
+        border: 1px solid var(--border-color);
+      }
+
+      .semantic-config-item {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+      }
+
+      .semantic-config-item label {
+        font-size: 0.8rem;
+        font-weight: 500;
+        color: var(--text-secondary);
+      }
+
+      .semantic-config-item select {
+        padding: 0.5rem 0.75rem;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--border-color);
+        font-size: 0.85rem;
+        background: white;
+        cursor: pointer;
+      }
+
+      .semantic-config-item select:focus {
+        outline: none;
+        border-color: var(--primary-color);
+      }
+
+      .semantic-info-box {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.75rem;
+        padding: 0.875rem 1rem;
+        background: #eff6ff;
+        border-radius: var(--radius-md);
+        border: 1px solid #bfdbfe;
+      }
+
+      .semantic-info-icon {
+        width: 18px;
+        height: 18px;
+        flex-shrink: 0;
+        color: #3b82f6;
+        margin-top: 1px;
+      }
+
+      .semantic-info-text {
+        font-size: 0.82rem;
+        color: #1e40af;
+        line-height: 1.45;
+      }
+
       @media (max-width: 600px) {
         .mobile-toggle.agent-status-toggle {
           display: flex;
@@ -5117,6 +6358,47 @@ export default class AgentDetailPage {
         .agent-tab {
           padding: 0.6rem 0.75rem;
           font-size: 0.8rem;
+        }
+
+        /* Memory Tab Mobile */
+        .memory-status-container {
+          flex-direction: column;
+          align-items: stretch;
+          gap: 1rem;
+          padding: 1rem;
+        }
+
+        .memory-status-content {
+          justify-content: flex-start;
+        }
+
+        .memory-toggle-btn {
+          width: 100%;
+          padding: 0.65rem;
+        }
+
+        .memory-section-header {
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 0.75rem;
+        }
+
+        .memory-card-header {
+          flex-direction: column;
+          gap: 0.5rem;
+        }
+
+        .memory-call-count {
+          align-self: flex-start;
+        }
+
+        .memory-card-actions {
+          flex-wrap: wrap;
+        }
+
+        .memory-action-btn {
+          flex: 1;
+          justify-content: center;
         }
 
         .config-section {
