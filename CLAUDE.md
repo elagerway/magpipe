@@ -162,7 +162,7 @@ const sessionResult = await page.evaluate(async ({ email, otp }) => {
 - **SIP registration slow**: Wait 15+ seconds before making calls
 
 ## UI Guidelines
-- **Never expose vendor names** (Retell, SignalWire, OpenAI) in user-facing messages
+- **Never expose vendor names** (SignalWire, OpenAI, ElevenLabs) in user-facing messages
 - **NEVER use "Pat" or "Pat AI"** - this product name is deprecated. Use generic language like "AI assistant", "your assistant", or "the agent"
 - **Be mindful of mobile vs desktop styling differences**:
   - Back buttons: typically only needed on mobile (desktop has persistent sidebar nav)
@@ -239,9 +239,8 @@ Deploy with: `npx supabase functions deploy <name> --no-verify-jwt`
 
 ## Voice AI Architecture
 
-### Providers
-- **LiveKit** (current): Custom voices, full ElevenLabs integration
-- **Retell**: Preset voices only, no custom/cloned voices
+### Provider
+- **LiveKit** with ElevenLabs: Custom voices, full ElevenLabs integration
 
 ### Outbound Calls
 - **LiveKit SIP trunk does NOT work** for direct outbound
@@ -250,10 +249,6 @@ Deploy with: `npx supabase functions deploy <name> --no-verify-jwt`
 
 ### LiveKit Agent Dispatch
 Agent dispatch rules are configured in **LiveKit Cloud dashboard**, NOT via code. Don't retry code-based solutions for agent dispatch.
-
-## Retell Custom Tools
-- **Naming**: `{user_id_no_dashes}_{function_name}` (max 63 chars)
-- Example: `abc123def4567890abcdef12345678_transfer`
 
 ## HubSpot Integration
 - **NOT MCP-based**: HubSpot uses direct API calls via `executeNativeTool()`, not MCP servers

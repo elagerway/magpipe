@@ -48,55 +48,15 @@ serve(async (req) => {
 
     console.log('Found agent config:', {
       user_id: agentConfig.user_id,
-      retell_agent_id: agentConfig.retell_agent_id,
       voice_id: agentConfig.voice_id,
       has_avatar: !!agentConfig.avatar_url
     })
 
-    const retellApiKey = Deno.env.get('RETELL_API_KEY')!
+    const voiceId = agentConfig.voice_id || 'kate'
+    console.log('Generating avatar for voice:', voiceId)
 
-    // Map voice names to Retell voice IDs
-    const voiceMap: Record<string, string> = {
-      'kate': '11labs-Kate',
-      'alloy': '11labs-Alloy',
-      'nova': '11labs-Nova',
-      'shimmer': '11labs-Shimmer',
-      'echo': '11labs-Echo',
-      'fable': '11labs-Fable'
-    }
-
-    let voiceId = agentConfig.voice_id || 'kate'
-    // Convert short name to full Retell ID if needed
-    if (voiceMap[voiceId]) {
-      voiceId = voiceMap[voiceId]
-    }
-
-    console.log('Fetching avatar for voice:', voiceId)
-    let avatarUrl = null
-
-    // Fetch avatar from Retell API
-    try {
-      const voiceResponse = await fetch(`https://api.retellai.com/get-voice/${voiceId}`, {
-        headers: {
-          'Authorization': `Bearer ${retellApiKey}`,
-        },
-      })
-
-      if (voiceResponse.ok) {
-        const voiceData = await voiceResponse.json()
-        avatarUrl = voiceData.avatar_url || voiceData.preview_url
-        console.log('Voice avatar URL:', avatarUrl)
-      } else if (voiceResponse.status === 404) {
-        // Voice not found in Retell (likely a cloned voice)
-        // Use a default avatar for cloned voices
-        console.log('Voice not found in Retell API, using default avatar for cloned voice')
-        avatarUrl = 'https://api.dicebear.com/7.x/bottts/svg?seed=cloned-voice&backgroundColor=3b82f6'
-      }
-    } catch (error) {
-      console.error('Error fetching voice avatar:', error)
-      // Use default avatar on error
-      avatarUrl = 'https://api.dicebear.com/7.x/bottts/svg?seed=default-voice&backgroundColor=3b82f6'
-    }
+    // Generate avatar based on voice ID
+    const avatarUrl = `https://api.dicebear.com/7.x/bottts/svg?seed=${voiceId}&backgroundColor=3b82f6`
 
     // Update agent config with avatar
     const { error: updateError } = await supabase

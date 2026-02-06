@@ -39,8 +39,7 @@
     "livekit-client": "^2.15.13",
     "livekit-server-sdk": "^2.14.0",
     "node-fetch": "^3.3.2",
-    "postmark": "^4.0.5",
-    "retell-client-js-sdk": "^2.0.7"
+    "postmark": "^4.0.5"
   },
   "devDependencies": {
     "@playwright/test": "^1.40.1",

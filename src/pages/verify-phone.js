@@ -461,27 +461,25 @@ Example SMS Reply:
 
 "Hey! Erik's tied up at the moment but I'll make sure he sees your message."`;
 
-    const response = await fetch(`${supabaseUrl}/functions/v1/create-retell-agent`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify({
-        agentConfig: {
-          name: 'AI Assistant',
-          voice_id: '21m00Tcm4TlvDq8ikWAM', // Rachel voice
-          prompt: defaultPrompt,
-        }
-      }),
-    });
+    // Create agent config directly in database
+    const { data: newConfig, error: createError } = await supabase
+      .from('agent_configs')
+      .insert({
+        user_id: session.user.id,
+        name: 'AI Assistant',
+        voice_id: '11labs-21m00Tcm4TlvDq8ikWAM',
+        system_prompt: defaultPrompt,
+        active_voice_stack: 'livekit',
+        is_default: true,
+      })
+      .select()
+      .single();
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to create agent');
+    if (createError) {
+      throw new Error(createError.message || 'Failed to create agent');
     }
 
-    return await response.json();
+    return newConfig;
   }
 
   /**

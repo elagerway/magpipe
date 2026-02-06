@@ -33,9 +33,9 @@ async function debug() {
 
     console.log('\n2. Agent Config:', agentConfig ? '✅ Found' : '❌ Not found')
     if (agentConfig) {
-      console.log('   - Voice Stack:', agentConfig.active_voice_stack || 'retell (default)')
+      console.log('   - Voice Stack:', agentConfig.active_voice_stack || 'livekit')
       console.log('   - Voice ID:', agentConfig.voice_id)
-      console.log('   - Retell Agent ID:', agentConfig.retell_agent_id || 'none')
+      console.log('   - Agent ID:', agentConfig.id)
     }
   }
 

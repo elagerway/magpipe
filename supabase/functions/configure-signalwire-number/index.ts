@@ -91,86 +91,23 @@ serve(async (req) => {
     const result = await signalwireResponse.json()
     console.log('SignalWire number configured:', result)
 
-    // Get user's agent config to determine which voice AI stack to use
+    // Verify user has an agent configured
     const { data: agentConfig } = await supabase
       .from('agent_configs')
-      .select('retell_agent_id, active_voice_stack')
+      .select('id')
       .eq('user_id', user.id)
       .single()
 
     if (!agentConfig) {
       console.error('No agent configured for user')
       return new Response(
-        JSON.stringify({ error: 'Pat not configured. Please set up your assistant first.' }),
+        JSON.stringify({ error: 'AI assistant not configured. Please set up your assistant first.' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    const voiceStack = agentConfig.active_voice_stack || 'retell'
-    console.log('Configuring number for voice stack:', voiceStack)
-
-    // RETELL STACK - Import number to Retell
-    if (voiceStack === 'retell') {
-      if (!agentConfig.retell_agent_id) {
-        return new Response(
-          JSON.stringify({ error: 'Pat not configured. Please set up your assistant first.' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
-      }
-
-      // SignalWire SIP termination URI for Retell
-      const terminationUri = 'erik-4f437f3c6530.sip.signalwire.com'
-
-      const retellApiKey = Deno.env.get('RETELL_API_KEY')!
-      const importData = {
-        phone_number: phoneNumber,
-        termination_uri: terminationUri,
-        inbound_agent_id: agentConfig.retell_agent_id,
-        outbound_agent_id: agentConfig.retell_agent_id,
-        nickname: phoneNumber,
-      }
-
-      console.log('Importing phone to Retell:', importData)
-
-      const retellResponse = await fetch('https://api.retellai.com/import-phone-number', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${retellApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(importData),
-      })
-
-      if (!retellResponse.ok) {
-        const errorText = await retellResponse.text()
-        console.error('Retell import error:', errorText)
-        return new Response(
-          JSON.stringify({ error: 'Failed to activate number', details: errorText }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
-      }
-
-      const retellResult = await retellResponse.json()
-      console.log('Phone imported to Retell:', retellResult)
-
-      // Update service_numbers with retell phone ID
-      await supabase
-        .from('service_numbers')
-        .update({
-          retell_phone_id: retellResult.phone_number_id,
-          termination_uri: terminationUri
-        })
-        .eq('phone_number', phoneNumber)
-        .eq('user_id', user.id)
-    }
-
-    // LIVEKIT STACK - No additional import needed
-    // The webhook will handle routing to LiveKit SIP domain
-    else if (voiceStack === 'livekit') {
-      console.log('Number configured for LiveKit stack - webhook will route to SIP')
-      // No Retell import needed for LiveKit
-      // SignalWire webhooks already configured above (lines 58-89)
-    }
+    // Using LiveKit stack - SignalWire webhooks handle routing to LiveKit SIP
+    console.log('Number configured for LiveKit - webhook will route to SIP')
 
     return new Response(
       JSON.stringify({
