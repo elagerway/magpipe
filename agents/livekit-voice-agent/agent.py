@@ -256,6 +256,355 @@ Provide only the 3-sentence summary, no additional text."""
         return ""
 
 
+async def get_caller_memory(caller_phone: str, user_id: str, agent_id: str, memory_config: dict) -> str:
+    """Retrieve conversation memory for a caller to inject into system prompt"""
+    if not caller_phone or not user_id or not agent_id:
+        return ""
+
+    try:
+        # Normalize phone number for lookup
+        normalized_phone = re.sub(r'[^\d+]', '', caller_phone)
+        if not normalized_phone.startswith('+'):
+            normalized_phone = '+' + normalized_phone
+
+        # Look up contact by phone number and user_id
+        contact_response = supabase.table("contacts") \
+            .select("id, name") \
+            .eq("phone_number", normalized_phone) \
+            .eq("user_id", user_id) \
+            .limit(1) \
+            .execute()
+
+        if not contact_response.data or len(contact_response.data) == 0:
+            logger.info(f"🧠 No contact found for {normalized_phone} - no memory to inject")
+            return ""
+
+        contact = contact_response.data[0]
+        contact_id = contact["id"]
+        contact_name = contact.get("name", "Unknown")
+
+        # Get conversation context for this contact and agent
+        context_response = supabase.table("conversation_contexts") \
+            .select("*") \
+            .eq("contact_id", contact_id) \
+            .eq("agent_id", agent_id) \
+            .limit(1) \
+            .execute()
+
+        if not context_response.data or len(context_response.data) == 0:
+            logger.info(f"🧠 No conversation context found for contact {contact_id} with agent {agent_id}")
+            return ""
+
+        ctx = context_response.data[0]
+        interaction_count = ctx.get("interaction_count", 0)
+
+        if interaction_count == 0:
+            logger.info(f"🧠 Contact {contact_name} has no previous interactions")
+            return ""
+
+        # Build memory context string based on config
+        memory_parts = []
+        memory_parts.append(f"## CALLER MEMORY")
+        memory_parts.append(f"You have spoken with this caller ({contact_name}) {interaction_count} time(s) before.")
+
+        # Include summary if configured
+        if memory_config.get("include_summaries", True) and ctx.get("summary"):
+            memory_parts.append(f"\nSummary of relationship: {ctx['summary']}")
+
+        # Include key topics if configured
+        if memory_config.get("include_key_topics", True) and ctx.get("key_topics"):
+            topics = ctx["key_topics"]
+            if isinstance(topics, list) and len(topics) > 0:
+                memory_parts.append(f"\nKey topics discussed: {', '.join(topics)}")
+
+        # Include preferences if configured
+        if memory_config.get("include_preferences", True) and ctx.get("preferences"):
+            prefs = ctx["preferences"]
+            if isinstance(prefs, dict) and len(prefs) > 0:
+                memory_parts.append(f"\nCaller preferences: {json.dumps(prefs)}")
+
+        memory_parts.append("\nUse this context to provide personalized service. Reference past conversations naturally when relevant, but don't be creepy about it.")
+
+        memory_context = "\n".join(memory_parts)
+        logger.info(f"🧠 Loaded memory for {contact_name}: {interaction_count} interactions")
+
+        return memory_context
+
+    except Exception as e:
+        logger.error(f"Failed to retrieve caller memory: {e}")
+        return ""
+
+
+async def generate_embedding(text: str) -> list:
+    """Generate embedding vector for text using OpenAI"""
+    if not text:
+        return None
+
+    try:
+        client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+        response = await client.embeddings.create(
+            model="text-embedding-ada-002",
+            input=text[:8000],  # Limit to ~8000 chars for ada-002
+        )
+
+        embedding = response.data[0].embedding
+        logger.info(f"🔮 Generated embedding vector ({len(embedding)} dimensions)")
+        return embedding
+
+    except Exception as e:
+        logger.error(f"Failed to generate embedding: {e}")
+        return None
+
+
+async def search_similar_memories(query_text: str, agent_id: str, user_id: str, exclude_contact_id: str = None, config: dict = None) -> list:
+    """Search for similar conversation memories using semantic similarity"""
+    if not query_text or not agent_id or not user_id:
+        return []
+
+    config = config or {}
+    max_results = config.get("max_results", 3)
+    threshold = config.get("similarity_threshold", 0.75)
+
+    try:
+        # Generate embedding for query
+        query_embedding = await generate_embedding(query_text)
+        if not query_embedding:
+            return []
+
+        # Call the match_similar_memories function via RPC
+        response = supabase.rpc("match_similar_memories", {
+            "query_embedding": query_embedding,
+            "match_agent_id": agent_id,
+            "match_user_id": user_id,
+            "exclude_contact_id": exclude_contact_id,
+            "match_threshold": threshold,
+            "match_count": max_results,
+        }).execute()
+
+        if response.data:
+            logger.info(f"🔮 Found {len(response.data)} similar memories")
+            return response.data
+        return []
+
+    except Exception as e:
+        logger.error(f"Failed to search similar memories: {e}")
+        return []
+
+
+async def get_semantic_context(transcript_text: str, agent_id: str, user_id: str, current_contact_id: str = None, config: dict = None) -> str:
+    """Get semantic context from similar past conversations"""
+    if not transcript_text:
+        return ""
+
+    try:
+        # Search for similar memories (excluding current caller)
+        similar = await search_similar_memories(
+            query_text=transcript_text,
+            agent_id=agent_id,
+            user_id=user_id,
+            exclude_contact_id=current_contact_id,
+            config=config
+        )
+
+        if not similar:
+            return ""
+
+        # Format similar memories for injection
+        context_parts = ["## SIMILAR PAST CONVERSATIONS"]
+        context_parts.append("Other callers have discussed similar topics:")
+
+        for i, mem in enumerate(similar, 1):
+            similarity_pct = int(mem.get("similarity", 0) * 100)
+            context_parts.append(f"\n{i}. {mem.get('contact_name', 'A caller')} ({similarity_pct}% similar):")
+            if mem.get("summary"):
+                context_parts.append(f"   Summary: {mem['summary']}")
+            if mem.get("key_topics"):
+                topics = mem["key_topics"]
+                if isinstance(topics, list) and len(topics) > 0:
+                    context_parts.append(f"   Topics: {', '.join(topics[:5])}")
+
+        context_parts.append("\nUse this context to identify patterns or common issues. Don't reference other callers directly.")
+
+        return "\n".join(context_parts)
+
+    except Exception as e:
+        logger.error(f"Failed to get semantic context: {e}")
+        return ""
+
+
+async def update_caller_memory(caller_phone: str, user_id: str, agent_id: str, call_summary: str, call_record_id: str, transcript_text: str, generate_embedding_flag: bool = True) -> bool:
+    """Update conversation memory for a caller after a call ends"""
+    if not caller_phone or not user_id or not agent_id or not call_summary:
+        logger.info(f"🧠 Skipping memory update - missing required data (phone={bool(caller_phone)}, user={bool(user_id)}, agent={bool(agent_id)}, summary={bool(call_summary)})")
+        return False
+
+    try:
+        # Normalize phone number for lookup
+        normalized_phone = re.sub(r'[^\d+]', '', caller_phone)
+        if not normalized_phone.startswith('+'):
+            normalized_phone = '+' + normalized_phone
+
+        # Look up or create contact by phone number
+        contact_response = supabase.table("contacts") \
+            .select("id, name") \
+            .eq("phone_number", normalized_phone) \
+            .eq("user_id", user_id) \
+            .limit(1) \
+            .execute()
+
+        if not contact_response.data or len(contact_response.data) == 0:
+            # Create new contact for this caller
+            logger.info(f"🧠 Creating new contact for {normalized_phone}")
+            create_response = supabase.table("contacts") \
+                .insert({
+                    "user_id": user_id,
+                    "phone_number": normalized_phone,
+                    "name": f"Caller {normalized_phone[-4:]}",  # Use last 4 digits as placeholder name
+                    "is_whitelisted": False,
+                }) \
+                .select() \
+                .execute()
+
+            if not create_response.data:
+                logger.error(f"🧠 Failed to create contact for {normalized_phone}")
+                return False
+            contact = create_response.data[0]
+        else:
+            contact = contact_response.data[0]
+
+        contact_id = contact["id"]
+        contact_name = contact.get("name", "Unknown")
+
+        # Extract key topics from transcript using OpenAI
+        key_topics = []
+        if transcript_text:
+            try:
+                client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+                topics_response = await client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[{
+                        "role": "user",
+                        "content": f"""Extract 3-5 key topics from this phone call transcript. Return ONLY a JSON array of short topic strings (2-4 words each).
+
+Transcript:
+{transcript_text[:3000]}
+
+Example output: ["pricing inquiry", "product demo request", "technical support"]"""
+                    }],
+                    temperature=0.1,
+                    max_tokens=100,
+                )
+                topics_text = topics_response.choices[0].message.content.strip()
+                key_topics = json.loads(topics_text)
+                logger.info(f"🧠 Extracted topics: {key_topics}")
+            except Exception as e:
+                logger.warning(f"🧠 Failed to extract topics: {e}")
+
+        # Get existing conversation context or create new one
+        context_response = supabase.table("conversation_contexts") \
+            .select("*") \
+            .eq("contact_id", contact_id) \
+            .eq("agent_id", agent_id) \
+            .limit(1) \
+            .execute()
+
+        if context_response.data and len(context_response.data) > 0:
+            # Update existing context
+            existing_ctx = context_response.data[0]
+            existing_topics = existing_ctx.get("key_topics") or []
+            existing_call_ids = existing_ctx.get("last_call_ids") or []
+
+            # Merge topics (keep unique, limit to 10 most recent)
+            merged_topics = list(dict.fromkeys(key_topics + existing_topics))[:10]
+
+            # Keep last 5 call IDs
+            updated_call_ids = ([call_record_id] + existing_call_ids)[:5] if call_record_id else existing_call_ids
+
+            # Update summary by appending new info
+            existing_summary = existing_ctx.get("summary") or ""
+            if existing_summary:
+                # Generate merged summary
+                try:
+                    client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+                    merge_response = await client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[{
+                            "role": "user",
+                            "content": f"""Merge these two relationship summaries into one concise paragraph (2-3 sentences max):
+
+Previous summary: {existing_summary}
+
+New call summary: {call_summary}
+
+Keep the most important information. Focus on the overall relationship and key needs."""
+                        }],
+                        temperature=0.3,
+                        max_tokens=150,
+                    )
+                    updated_summary = merge_response.choices[0].message.content.strip()
+                except Exception as e:
+                    logger.warning(f"🧠 Failed to merge summaries: {e}")
+                    updated_summary = call_summary
+            else:
+                updated_summary = call_summary
+
+            # Generate embedding for semantic search
+            embedding = None
+            if generate_embedding_flag and updated_summary:
+                embedding_text = f"{updated_summary}\n\nTopics: {', '.join(merged_topics)}"
+                embedding = await generate_embedding(embedding_text)
+
+            update_data = {
+                "summary": updated_summary,
+                "key_topics": merged_topics,
+                "interaction_count": (existing_ctx.get("interaction_count") or 0) + 1,
+                "last_call_ids": updated_call_ids,
+                "last_updated": datetime.datetime.now().isoformat(),
+            }
+
+            if embedding:
+                update_data["embedding"] = embedding
+
+            supabase.table("conversation_contexts") \
+                .update(update_data) \
+                .eq("id", existing_ctx["id"]) \
+                .execute()
+
+            logger.info(f"🧠 Updated memory for {contact_name}: now {(existing_ctx.get('interaction_count') or 0) + 1} interactions{' (with embedding)' if embedding else ''}")
+        else:
+            # Generate embedding for new context
+            embedding = None
+            if generate_embedding_flag and call_summary:
+                embedding_text = f"{call_summary}\n\nTopics: {', '.join(key_topics)}"
+                embedding = await generate_embedding(embedding_text)
+
+            insert_data = {
+                "contact_id": contact_id,
+                "agent_id": agent_id,
+                "summary": call_summary,
+                "key_topics": key_topics,
+                "interaction_count": 1,
+                "last_call_ids": [call_record_id] if call_record_id else [],
+            }
+
+            if embedding:
+                insert_data["embedding"] = embedding
+
+            # Create new conversation context
+            supabase.table("conversation_contexts") \
+                .insert(insert_data) \
+                .execute()
+
+            logger.info(f"🧠 Created new memory for {contact_name}{' (with embedding)' if embedding else ''}")
+
+        return True
+
+    except Exception as e:
+        logger.error(f"🧠 Failed to update caller memory: {e}")
+        return False
+
+
 def normalize_voice_to_digits(text: str) -> str:
     """Convert spoken numbers to digit string (e.g., 'one two three' -> '123')"""
     # Map of spoken numbers to digits
@@ -998,29 +1347,99 @@ THIS IS AN OUTBOUND CALL:
 
         caller_phone_info = f"\n- The caller's phone number is: {actual_caller_phone}" if actual_caller_phone else ""
 
-        INBOUND_CONTEXT_SUFFIX = f"""
+        # Put role clarification FIRST, then user's prompt, then call context
+        INBOUND_ROLE_PREFIX = f"""CRITICAL - UNDERSTAND YOUR ROLE:
+The person on this call is a CALLER/CUSTOMER calling in - they are NOT the business owner.
+- You work for the business owner (your boss) who configured you
+- The CALLER is a customer/client reaching out to the business
+- Do NOT treat the caller as your boss or as if they set you up
+- Do NOT say "your assistant" or "your number" to them - you're not THEIR assistant
+- Treat every caller professionally as a potential customer{caller_phone_info}
 
-CRITICAL - CALLER vs OWNER ROLES:
-- The person on this call is a CALLER/CUSTOMER - they are NOT the owner of this phone number
-- You are answering this call on behalf of the OWNER (your boss/the business)
-- Do NOT treat the caller as if they own this number or set you up
-- Do NOT say things like "your number" or "your assistant" to the caller
-- The caller is reaching out TO the business - treat them as a customer/prospect{caller_phone_info}
+YOUR CONFIGURED PERSONALITY:
+"""
 
-IMPORTANT CONTEXT - INBOUND CALL:
-- You are on a LIVE VOICE CALL with a customer calling in (not texting)
-- The customer is SPEAKING to you in real-time
-- Speak naturally and conversationally - use natural spoken language
-- You can ask clarifying questions and have back-and-forth dialogue
-- This is synchronous - they can hear you immediately and respond
-- Use spoken phrases like "Sure, I can help with that" not written phrases
-- Tools available: You can transfer calls, take messages, help customers
-- Be warm, friendly, and professional in your spoken tone"""
+        INBOUND_CONTEXT_SUFFIX = """
 
-        system_prompt = f"{base_prompt}{INBOUND_CONTEXT_SUFFIX}"
+CALL CONTEXT:
+- This is a LIVE VOICE CALL with a customer calling in
+- Speak naturally and conversationally
+- Be warm, friendly, and professional
+- You can transfer calls, take messages, or help customers directly"""
+
+        system_prompt = f"{INBOUND_ROLE_PREFIX}{base_prompt}{INBOUND_CONTEXT_SUFFIX}"
         logger.info("📥 Inbound call - Agent handling customer service")
 
     logger.info(f"Voice system prompt applied for {direction} call")
+
+    # Inject caller memory if memory is enabled for this agent
+    agent_id = user_config.get("id")
+    current_contact_id = None  # Will be set if we find the caller's contact
+
+    if user_config.get("memory_enabled"):
+        memory_config = user_config.get("memory_config") or {
+            "max_history_calls": 5,
+            "include_summaries": True,
+            "include_key_topics": True,
+            "include_preferences": True
+        }
+
+        # Get the remote party's phone number
+        # For outbound: use contact_phone (the person we're calling)
+        # For inbound: use actual_caller_phone (the person who called us)
+        if direction == "outbound":
+            memory_caller_phone = contact_phone
+        else:
+            # actual_caller_phone is set in the inbound block above
+            memory_caller_phone = locals().get('actual_caller_phone')
+
+        if memory_caller_phone and agent_id:
+            memory_context = await get_caller_memory(memory_caller_phone, user_id, agent_id, memory_config)
+            if memory_context:
+                system_prompt = f"{system_prompt}\n\n{memory_context}"
+                logger.info(f"🧠 Memory context injected into system prompt")
+
+                # Get contact_id for semantic search exclusion
+                normalized_phone = re.sub(r'[^\d+]', '', memory_caller_phone)
+                if not normalized_phone.startswith('+'):
+                    normalized_phone = '+' + normalized_phone
+                contact_lookup = supabase.table("contacts").select("id").eq("phone_number", normalized_phone).eq("user_id", user_id).limit(1).execute()
+                if contact_lookup.data:
+                    current_contact_id = contact_lookup.data[0]["id"]
+        else:
+            logger.info(f"🧠 Memory enabled but no caller phone available (phone={memory_caller_phone}, agent_id={agent_id})")
+
+    # Inject semantic memory context (similar past conversations) if enabled
+    if user_config.get("semantic_memory_enabled") and agent_id:
+        semantic_config = user_config.get("semantic_memory_config") or {
+            "max_results": 3,
+            "similarity_threshold": 0.75,
+            "include_other_callers": True
+        }
+
+        # For semantic search at call start, we use the caller's existing memory summary
+        # to find similar conversations with OTHER callers
+        if current_contact_id:
+            # Get this caller's memory to use as search query
+            ctx_response = supabase.table("conversation_contexts").select("summary, key_topics").eq("contact_id", current_contact_id).eq("agent_id", agent_id).limit(1).execute()
+            if ctx_response.data and ctx_response.data[0].get("summary"):
+                caller_summary = ctx_response.data[0]["summary"]
+                caller_topics = ctx_response.data[0].get("key_topics") or []
+                search_text = f"{caller_summary}\n\nTopics: {', '.join(caller_topics)}"
+
+                semantic_context = await get_semantic_context(
+                    transcript_text=search_text,
+                    agent_id=agent_id,
+                    user_id=user_id,
+                    current_contact_id=current_contact_id,
+                    config=semantic_config
+                )
+
+                if semantic_context:
+                    system_prompt = f"{system_prompt}\n\n{semantic_context}"
+                    logger.info(f"🔮 Semantic context injected into system prompt")
+        else:
+            logger.info(f"🔮 Semantic memory enabled but no existing caller context to search from")
 
     # Already connected earlier to get service number, don't connect again in session.start
 
@@ -1212,6 +1631,50 @@ IMPORTANT CONTEXT - INBOUND CALL:
                     .execute()
 
                 logger.info(f"✅ Call transcript saved to database{' with summary' if update_data.get('call_summary') else ''}{' with extracted_data' if update_data.get('extracted_data') else ''}")
+
+                # Update caller memory if enabled
+                if user_config and user_config.get("memory_enabled") and update_data.get("call_summary"):
+                    agent_id = user_config.get("id")
+                    # Get the remote party's phone number (same logic as memory retrieval)
+                    if direction == "outbound":
+                        memory_phone = contact_phone
+                    else:
+                        # For inbound, get caller phone from SIP participant
+                        memory_phone = None
+                        for participant in ctx.room.remote_participants.values():
+                            attrs = participant.attributes
+                            sip_phone = (
+                                attrs.get("sip.remoteUri") or
+                                attrs.get("sip.from") or
+                                attrs.get("sip.caller") or
+                                participant.identity
+                            )
+                            if sip_phone:
+                                if sip_phone.startswith("sip:"):
+                                    sip_phone = sip_phone[4:]
+                                if sip_phone.startswith("sip_"):
+                                    sip_phone = sip_phone[4:]
+                                if "@" in sip_phone:
+                                    sip_phone = sip_phone.split("@")[0]
+                                if sip_phone and not sip_phone.startswith("+"):
+                                    sip_phone = "+" + sip_phone
+                                memory_phone = sip_phone
+                                break
+
+                    if memory_phone and agent_id:
+                        # Generate embeddings if semantic memory is enabled
+                        should_generate_embedding = user_config.get("semantic_memory_enabled", False)
+                        await update_caller_memory(
+                            caller_phone=memory_phone,
+                            user_id=user_id,
+                            agent_id=agent_id,
+                            call_summary=update_data["call_summary"],
+                            call_record_id=call_record_id,
+                            transcript_text=transcript_text,
+                            generate_embedding_flag=should_generate_embedding
+                        )
+                    else:
+                        logger.info(f"🧠 Memory enabled but missing phone or agent_id (phone={memory_phone}, agent_id={agent_id})")
             else:
                 logger.warning("No call_record found - cannot save transcript")
 
