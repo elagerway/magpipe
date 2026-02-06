@@ -1,0 +1,88 @@
+---
+title: "Add Knowledge (Manual)"
+api: "POST /knowledge-source-manual"
+description: "Add content directly without a URL"
+---
+
+Add knowledge by uploading content directly, bypassing URL crawling. Useful for internal documentation, transcripts, or content not available on the web.
+
+## Request Body
+
+<ParamField body="title" type="string" required>
+  Title for the knowledge source
+</ParamField>
+
+<ParamField body="content" type="string">
+  Text content to add (minimum 50 characters). Required if not uploading a file.
+</ParamField>
+
+<ParamField body="file" type="file">
+  File to upload (PDF, TXT, or MD). Maximum 500KB. Required if not providing content.
+</ParamField>
+
+## Response
+
+<ResponseField name="id" type="string">
+  Unique knowledge source identifier
+</ResponseField>
+
+<ResponseField name="title" type="string">
+  The provided title
+</ResponseField>
+
+<ResponseField name="sync_status" type="string">
+  Status: `completed` on success
+</ResponseField>
+
+<ResponseField name="chunk_count" type="integer">
+  Number of text chunks created
+</ResponseField>
+
+<ResponseField name="crawl_mode" type="string">
+  Source type: `manual`, `pdf`, or `text`
+</ResponseField>
+
+<RequestExample>
+```bash cURL (Text Content)
+curl -X POST "https://api.magpipe.ai/functions/v1/knowledge-source-manual" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Company FAQ",
+    "content": "Q: What are your business hours?\nA: We are open Monday through Friday, 9 AM to 5 PM.\n\nQ: Where are you located?\nA: Our office is at 123 Main Street, San Francisco, CA."
+  }'
+```
+
+```bash cURL (File Upload)
+curl -X POST "https://api.magpipe.ai/functions/v1/knowledge-source-manual" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -F "title=Product Manual" \
+  -F "file=@manual.pdf"
+```
+</RequestExample>
+
+<ResponseExample>
+```json 200
+{
+  "id": "123e4567-e89b-12d3-a456-426614174000",
+  "title": "Company FAQ",
+  "sync_status": "completed",
+  "chunk_count": 2,
+  "crawl_mode": "manual",
+  "created_at": "2026-01-15T10:30:00Z"
+}
+```
+
+```json 400
+{
+  "error": "Content must be at least 50 characters"
+}
+```
+</ResponseExample>
+
+## Notes
+
+- Manual sources don't auto-sync (no `sync_period`)
+- PDF text extraction works best with text-based PDFs (not scanned images)
+- Supported file types: `.pdf`, `.txt`, `.md`
+- Maximum file size: 500KB

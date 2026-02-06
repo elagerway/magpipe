@@ -1,0 +1,115 @@
+---
+title: "Get Memory"
+api: "GET /conversation-contexts/{id}"
+description: "Get a specific caller memory by ID"
+---
+
+Retrieve detailed information about a specific caller's memory, including their call history.
+
+## Path Parameters
+
+<ParamField path="id" type="string" required>
+  UUID of the memory record
+</ParamField>
+
+## Response
+
+<ResponseField name="id" type="string">
+  UUID of the memory record
+</ResponseField>
+
+<ResponseField name="contact" type="object">
+  Contact information
+  - `id` - Contact UUID
+  - `name` - Contact name
+  - `phone_number` - Phone number
+</ResponseField>
+
+<ResponseField name="summary" type="string">
+  AI-generated relationship summary
+</ResponseField>
+
+<ResponseField name="keyTopics" type="array">
+  Key topics discussed
+</ResponseField>
+
+<ResponseField name="preferences" type="object">
+  Caller preferences
+</ResponseField>
+
+<ResponseField name="relationshipNotes" type="string">
+  Additional notes about the relationship
+</ResponseField>
+
+<ResponseField name="interactionCount" type="integer">
+  Number of conversations
+</ResponseField>
+
+<ResponseField name="callHistory" type="array">
+  Recent calls with this contact
+  - `id` - Call record ID
+  - `started_at` - Call start time
+  - `duration_seconds` - Call duration
+  - `call_summary` - AI summary of call
+  - `direction` - "inbound" or "outbound"
+</ResponseField>
+
+<ResponseField name="lastUpdated" type="string">
+  Last interaction timestamp
+</ResponseField>
+
+<ResponseField name="createdAt" type="string">
+  When memory was first created
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl "https://api.magpipe.ai/functions/v1/conversation-contexts/789e0123-e89b-12d3-a456-426614174000" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+</RequestExample>
+
+<ResponseExample>
+```json 200
+{
+  "id": "789e0123-e89b-12d3-a456-426614174000",
+  "contact": {
+    "id": "abc12345-e89b-12d3-a456-426614174000",
+    "name": "Sarah Johnson",
+    "phone_number": "+14155551234"
+  },
+  "summary": "Regular customer who had delivery issues with order #4521. Issue was resolved with a refund. Prefers email follow-ups.",
+  "keyTopics": ["orders", "delivery", "refunds"],
+  "preferences": {
+    "contact_method": "email",
+    "best_time": "afternoons"
+  },
+  "relationshipNotes": "VIP customer - escalate issues to manager if needed",
+  "interactionCount": 3,
+  "callHistory": [
+    {
+      "id": "call-001",
+      "started_at": "2024-01-15T14:30:00Z",
+      "duration_seconds": 245,
+      "call_summary": "Customer called to confirm refund was processed. Confirmed and thanked for patience.",
+      "direction": "inbound"
+    },
+    {
+      "id": "call-002",
+      "started_at": "2024-01-10T11:00:00Z",
+      "duration_seconds": 420,
+      "call_summary": "Customer reported missing package for order #4521. Initiated refund.",
+      "direction": "inbound"
+    }
+  ],
+  "lastUpdated": "2024-01-15T14:30:00Z",
+  "createdAt": "2024-01-05T09:00:00Z"
+}
+```
+
+```json 404
+{
+  "error": "Memory not found"
+}
+```
+</ResponseExample>

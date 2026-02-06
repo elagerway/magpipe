@@ -1,0 +1,177 @@
+---
+title: "Bulk Calling"
+description: "Make automated AI-powered calls to multiple contacts"
+---
+
+Bulk Calling lets you initiate outbound calls to multiple contacts using your AI agent. Each contact is called sequentially, with the agent handling each conversation according to your configuration.
+
+## Overview
+
+Instead of manually initiating calls one by one, Bulk Calling automates outreach to a list of contacts:
+
+- Select contacts from your contact list
+- Choose which phone number to call from
+- Start the campaign - your agent handles each call
+- Track results in your call history
+
+### Use Cases
+
+- **Appointment reminders** - Call patients/clients about upcoming appointments
+- **Follow-up campaigns** - Reach out to leads after an event or inquiry
+- **Survey calls** - Collect feedback from customers
+- **Notification calls** - Inform contacts about important updates
+- **Outreach campaigns** - Introduce new products or services
+
+## How It Works
+
+### 1. Select Contacts
+
+Navigate to **Phone → Bulk Calling** to access the feature.
+
+You'll see your contact list with checkboxes:
+- Click individual contacts to select them
+- Use "Select all" to choose everyone
+- Only contacts with valid phone numbers can be selected
+- The selected count displays in the top-right
+
+### 2. Choose Caller ID
+
+Select which of your Magpipe phone numbers to call from. The agent assigned to that number will handle all calls in the campaign.
+
+<Tip>
+Make sure your agent's system prompt is configured for outbound calls. Consider creating a dedicated outbound agent for bulk campaigns.
+</Tip>
+
+### 3. Start Campaign
+
+Click "Start Calling" to begin. Calls are made sequentially:
+
+```
+Contact 1 → Call completes → Contact 2 → Call completes → Contact 3 → ...
+```
+
+Each call follows the standard outbound call flow:
+1. Your agent joins the call
+2. The contact's phone rings
+3. When answered, the agent handles the conversation
+4. Call is recorded and transcribed
+5. Next contact is called
+
+### 4. Track Results
+
+All calls appear in your call history with full details:
+- Call duration
+- Recording and transcript
+- AI-generated summary
+- Call disposition (answered, voicemail, no answer, etc.)
+
+## Agent Configuration
+
+Your agent should be configured for outbound calling:
+
+### System Prompt Tips
+
+Include context for outbound conversations:
+
+```
+You are calling on behalf of [Company Name].
+
+Purpose: [Why you're calling]
+Goal: [What you want to achieve]
+
+Start by introducing yourself and confirming you're speaking with the right person.
+```
+
+### Call Templates
+
+Use outbound call templates to standardize your campaigns:
+
+1. Go to your agent settings
+2. Create a call template with:
+   - **Purpose** - Why you're calling (e.g., "appointment reminder")
+   - **Goal** - Desired outcome (e.g., "confirm attendance")
+3. Select the template when starting bulk calls
+
+## Best Practices
+
+### Contact Preparation
+
+- **Verify phone numbers** - Ensure all numbers are in E.164 format (+1XXXXXXXXXX)
+- **Segment your list** - Group contacts by campaign type
+- **Check consent** - Only call contacts who've opted in to receive calls
+
+### Timing
+
+- **Business hours** - Schedule calls during appropriate times
+- **Time zones** - Consider contact locations
+- **Spacing** - Sequential calling naturally spaces out calls
+
+### Compliance
+
+<Warning>
+Ensure your bulk calling campaigns comply with local regulations:
+- **TCPA** (US) - Requires prior express consent for automated calls
+- **Do Not Call** - Respect opt-out requests
+- **Local laws** - Check requirements in your jurisdiction
+</Warning>
+
+## Limits
+
+| Limit | Value |
+|-------|-------|
+| Contacts per campaign | Unlimited |
+| Concurrent calls | 1 (sequential) |
+| Call attempts per contact | 1 |
+
+<Info>
+Need parallel calling or higher throughput? Contact us about enterprise options.
+</Info>
+
+## API Integration
+
+You can also initiate bulk calls programmatically by calling the outbound call endpoint for each contact:
+
+```javascript
+const contacts = ['+14155551234', '+14155555678', '+14155559012'];
+
+for (const phone of contacts) {
+  await fetch('https://api.magpipe.ai/functions/v1/initiate-bridged-call', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      phone_number: phone,
+      caller_id: '+16045559876',  // Your Magpipe number
+      purpose: 'Appointment reminder',
+      goal: 'Confirm attendance'
+    })
+  });
+
+  // Wait for call to complete before next
+  await waitForCallCompletion();
+}
+```
+
+See the [Create Call](/api-reference/endpoints/create-call) endpoint for full details.
+
+## FAQ
+
+<AccordionGroup>
+  <Accordion title="Can I pause a bulk calling campaign?">
+    Currently, once started, calls proceed sequentially until all contacts are called. To stop, you can navigate away from the page.
+  </Accordion>
+
+  <Accordion title="What happens if a contact doesn't answer?">
+    The call is logged as "no answer" and the campaign moves to the next contact. Voicemail detection and messages depend on your agent configuration.
+  </Accordion>
+
+  <Accordion title="Can I retry failed calls?">
+    Failed calls are logged but not automatically retried. You can manually call those contacts later or start a new campaign with just those contacts.
+  </Accordion>
+
+  <Accordion title="How do I track campaign results?">
+    All calls appear in your call history. Filter by date and caller ID to see results from a specific campaign.
+  </Accordion>
+</AccordionGroup>

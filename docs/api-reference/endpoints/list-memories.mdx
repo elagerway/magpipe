@@ -1,0 +1,91 @@
+---
+title: "List Memories"
+api: "GET /conversation-contexts"
+description: "List all caller memories for an agent"
+---
+
+Retrieve all stored conversation memories for a specific agent. Each memory represents the relationship with a unique caller.
+
+## Query Parameters
+
+<ParamField query="agent_id" type="string" required>
+  UUID of the agent to list memories for
+</ParamField>
+
+## Response
+
+Returns an array of memory objects sorted by last interaction date.
+
+<ResponseField name="id" type="string">
+  UUID of the memory record
+</ResponseField>
+
+<ResponseField name="contact" type="object">
+  Contact information
+  - `id` - Contact UUID
+  - `name` - Contact name
+  - `phone_number` - Phone number in E.164 format
+</ResponseField>
+
+<ResponseField name="summary" type="string">
+  AI-generated summary of the relationship with this caller
+</ResponseField>
+
+<ResponseField name="keyTopics" type="array">
+  List of key topics discussed across conversations
+</ResponseField>
+
+<ResponseField name="preferences" type="object">
+  Caller's stated preferences (contact method, language, etc.)
+</ResponseField>
+
+<ResponseField name="interactionCount" type="integer">
+  Number of conversations with this caller
+</ResponseField>
+
+<ResponseField name="lastUpdated" type="string">
+  ISO 8601 timestamp of last interaction
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl "https://api.magpipe.ai/functions/v1/conversation-contexts?agent_id=123e4567-e89b-12d3-a456-426614174000" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+</RequestExample>
+
+<ResponseExample>
+```json 200
+[
+  {
+    "id": "789e0123-e89b-12d3-a456-426614174000",
+    "contact": {
+      "id": "abc12345-e89b-12d3-a456-426614174000",
+      "name": "Sarah Johnson",
+      "phone_number": "+14155551234"
+    },
+    "summary": "Regular customer who had delivery issues with order #4521. Issue was resolved. Prefers email follow-ups.",
+    "keyTopics": ["orders", "delivery", "refunds"],
+    "preferences": {
+      "contact_method": "email",
+      "best_time": "afternoons"
+    },
+    "interactionCount": 3,
+    "lastUpdated": "2024-01-15T14:30:00Z"
+  },
+  {
+    "id": "def67890-e89b-12d3-a456-426614174000",
+    "contact": {
+      "id": "ghi09876-e89b-12d3-a456-426614174000",
+      "name": "Mike Chen",
+      "phone_number": "+14155555678"
+    },
+    "summary": "New customer interested in premium plan. Scheduled demo for next week.",
+    "keyTopics": ["pricing", "demo", "enterprise features"],
+    "preferences": {},
+    "interactionCount": 1,
+    "lastUpdated": "2024-01-14T10:00:00Z"
+  }
+]
+```
+</ResponseExample>

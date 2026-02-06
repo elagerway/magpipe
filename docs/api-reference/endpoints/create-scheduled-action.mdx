@@ -1,0 +1,107 @@
+---
+title: "Create Scheduled Action"
+api: "POST /scheduled-actions"
+description: "Schedule an SMS or call for future delivery"
+---
+
+Create a new scheduled action to be executed at a specific time.
+
+## Request Body
+
+<ParamField body="action_type" type="string" required>
+  Type of action to schedule. Currently supported: `send_sms`
+</ParamField>
+
+<ParamField body="scheduled_at" type="string" required>
+  When to execute the action. Must be ISO 8601 format with timezone (e.g., `2026-01-15T10:00:00-08:00`)
+</ParamField>
+
+<ParamField body="parameters" type="object" required>
+  Action-specific parameters (see below)
+</ParamField>
+
+### SMS Parameters
+
+<ParamField body="parameters.recipient_phone" type="string" required>
+  Recipient phone number in E.164 format
+</ParamField>
+
+<ParamField body="parameters.recipient_name" type="string">
+  Recipient name for reference
+</ParamField>
+
+<ParamField body="parameters.message" type="string" required>
+  Message content to send
+</ParamField>
+
+<ParamField body="parameters.sender_number" type="string">
+  Your Magpipe number to send from. Defaults to your primary number.
+</ParamField>
+
+## Response
+
+<ResponseField name="id" type="string">
+  UUID of the scheduled action
+</ResponseField>
+
+<ResponseField name="action_type" type="string">
+  Type of action
+</ResponseField>
+
+<ResponseField name="scheduled_at" type="string">
+  Scheduled execution time
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Current status: `pending`
+</ResponseField>
+
+<ResponseField name="parameters" type="object">
+  Action parameters
+</ResponseField>
+
+<ResponseField name="created_at" type="string">
+  When the action was created
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl -X POST "https://api.magpipe.ai/functions/v1/scheduled-actions" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action_type": "send_sms",
+    "scheduled_at": "2026-01-15T10:00:00-08:00",
+    "parameters": {
+      "recipient_phone": "+14155551234",
+      "recipient_name": "John Smith",
+      "message": "Your appointment is in 1 hour!"
+    }
+  }'
+```
+</RequestExample>
+
+<ResponseExample>
+```json 201
+{
+  "id": "123e4567-e89b-12d3-a456-426614174000",
+  "action_type": "send_sms",
+  "scheduled_at": "2026-01-15T18:00:00.000Z",
+  "status": "pending",
+  "parameters": {
+    "recipient_phone": "+14155551234",
+    "recipient_name": "John Smith",
+    "message": "Your appointment is in 1 hour!",
+    "sender_number": "+16045559876"
+  },
+  "created_at": "2026-01-14T12:00:00.000Z",
+  "retry_count": 0
+}
+```
+
+```json 400
+{
+  "error": "scheduled_at must be in the future"
+}
+```
+</ResponseExample>
