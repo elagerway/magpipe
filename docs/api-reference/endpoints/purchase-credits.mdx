@@ -1,0 +1,71 @@
+---
+title: "Purchase Credits"
+api: "POST /stripe-add-credits"
+description: "Create a Stripe checkout session to purchase credits"
+---
+
+Create a checkout session to purchase credits. Returns a Stripe checkout URL where the user completes payment.
+
+## Request Body
+
+<ParamField body="amount" type="string" required>
+  Credit amount to purchase. Either a preset value (`small`, `medium`, `large`) or a number between 10 and 1000.
+
+  Preset values:
+  - `small` = $20
+  - `medium` = $50
+  - `large` = $100
+</ParamField>
+
+<ParamField body="success_url" type="string" required>
+  URL to redirect to after successful payment
+</ParamField>
+
+<ParamField body="cancel_url" type="string" required>
+  URL to redirect to if user cancels checkout
+</ParamField>
+
+## Response
+
+<ResponseField name="sessionId" type="string">
+  Stripe checkout session ID
+</ResponseField>
+
+<ResponseField name="url" type="string">
+  Stripe checkout URL - redirect user here to complete payment
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl -X POST "https://api.magpipe.ai/functions/v1/stripe-add-credits" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "amount": "50",
+    "success_url": "https://yourapp.com/billing?success=true",
+    "cancel_url": "https://yourapp.com/billing?canceled=true"
+  }'
+```
+</RequestExample>
+
+<ResponseExample>
+```json 200
+{
+  "sessionId": "cs_live_a1b2c3d4e5f6g7h8i9j0",
+  "url": "https://checkout.stripe.com/c/pay/cs_live_a1b2c3..."
+}
+```
+
+```json 400
+{
+  "error": "Invalid amount. Must be between 10 and 1000 or a preset value."
+}
+```
+</ResponseExample>
+
+## Notes
+
+- Credits are added to the account immediately after successful payment
+- The Stripe webhook handles the fulfillment automatically
+- Use presets (`small`, `medium`, `large`) for common amounts
+- Custom amounts must be between $10 and $1,000

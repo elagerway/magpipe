@@ -1,0 +1,58 @@
+---
+title: "Get Credit Balance"
+api: "GET /get-credits-info"
+description: "Get current credit balance and billing information"
+---
+
+Retrieve the current user's credit balance, usage, and auto-recharge settings.
+
+## Response
+
+<ResponseField name="credits_balance" type="number">
+  Current credit balance in USD
+</ResponseField>
+
+<ResponseField name="credits_used_this_period" type="number">
+  Credits used in the current billing period
+</ResponseField>
+
+<ResponseField name="has_payment_method" type="boolean">
+  Whether a payment method is saved
+</ResponseField>
+
+<ResponseField name="auto_recharge_enabled" type="boolean">
+  Whether auto-recharge is enabled
+</ResponseField>
+
+<ResponseField name="auto_recharge_amount" type="number">
+  Amount to add when auto-recharging (default: $50)
+</ResponseField>
+
+<ResponseField name="auto_recharge_threshold" type="number">
+  Balance threshold that triggers auto-recharge (default: $5)
+</ResponseField>
+
+<ResponseField name="received_signup_bonus" type="boolean">
+  Whether the $20 welcome bonus has been claimed
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl "https://api.magpipe.ai/functions/v1/get-credits-info" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+</RequestExample>
+
+<ResponseExample>
+```json 200
+{
+  "credits_balance": 45.23,
+  "credits_used_this_period": 74.77,
+  "has_payment_method": true,
+  "auto_recharge_enabled": true,
+  "auto_recharge_amount": 50.00,
+  "auto_recharge_threshold": 5.00,
+  "received_signup_bonus": true
+}
+```
+</ResponseExample>

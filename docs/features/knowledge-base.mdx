@@ -46,6 +46,20 @@ With knowledge base:
 
 ## Adding Knowledge Sources
 
+Magpipe offers three ways to add knowledge:
+
+<Tabs>
+  <Tab title="Website URL">
+    Crawl content from any public webpage or entire site.
+  </Tab>
+  <Tab title="Paste Content">
+    Paste text directly - no URL needed.
+  </Tab>
+  <Tab title="Upload File">
+    Upload PDF or text files.
+  </Tab>
+</Tabs>
+
 ### From URL
 
 Add content from any public webpage:
@@ -61,6 +75,9 @@ Add content from any public webpage:
     Paste the full URL of the webpage to import.
     Example: `https://yoursite.com/faq`
   </Step>
+  <Step title="Choose Crawl Mode">
+    Select how much content to fetch (see Crawl Modes below).
+  </Step>
   <Step title="Set Sync Schedule">
     Choose how often to re-fetch content:
     - Every 24 hours
@@ -72,6 +89,86 @@ Add content from any public webpage:
     Click **Add Source**. Processing begins immediately.
   </Step>
 </Steps>
+
+### Crawl Modes
+
+Choose how much of a website to crawl:
+
+| Mode | Description | Best For |
+|------|-------------|----------|
+| **Single Page** | Fetch one URL only | Individual pages, blog posts |
+| **Sitemap** | Crawl all URLs in sitemap.xml | Documentation sites, organized content |
+| **Recursive** | Follow links from starting URL | Sites without sitemaps |
+
+#### Single Page Mode
+
+- Fetches and processes one URL immediately
+- Fastest option - results in seconds
+- Good for FAQs, about pages, individual articles
+
+#### Sitemap Mode
+
+- Automatically discovers sitemap.xml
+- Crawls all pages listed in the sitemap
+- Handles sitemap indexes (nested sitemaps)
+- Respects robots.txt rules
+- Progress tracked in real-time
+
+<Info>
+Sitemap mode looks for sitemaps at common locations: `/sitemap.xml`, `/sitemap_index.xml`, and references in robots.txt.
+</Info>
+
+#### Recursive Mode
+
+- Starts from your URL and follows internal links
+- Configure **crawl depth** (1-5 levels)
+- Configure **max pages** (up to 500)
+- Only follows same-domain links
+- Skips login pages, file downloads, and non-content URLs
+
+**Advanced Options (Recursive/Sitemap):**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| Max Pages | Maximum pages to crawl | 100 |
+| Crawl Depth | How deep to follow links (recursive only) | 3 |
+| Respect robots.txt | Honor crawl restrictions | Yes |
+
+### Paste Content
+
+Add knowledge directly without a URL:
+
+1. Click **+ Add Source**
+2. Select the **Paste Content** tab
+3. Enter a **title** for the content
+4. Paste your text (minimum 50 characters)
+5. Click **Add Source**
+
+<Tip>
+Use paste for content that isn't on the web: internal documentation, transcripts, custom FAQs, or curated information.
+</Tip>
+
+### Upload File
+
+Upload PDF or text documents:
+
+1. Click **+ Add Source**
+2. Select the **Upload File** tab
+3. Enter a **title** for the file
+4. Click **Choose File** or drag and drop
+5. Click **Upload**
+
+**Supported Files:**
+
+| Type | Extension | Notes |
+|------|-----------|-------|
+| PDF | `.pdf` | Text extracted automatically |
+| Plain Text | `.txt` | Direct import |
+| Markdown | `.md` | Direct import |
+
+<Warning>
+Maximum file size is 500KB. Scanned PDFs (images of text) may not extract properly - use text-based PDFs when possible.
+</Warning>
 
 ### Protected Pages
 
@@ -138,6 +235,27 @@ To remove a knowledge source:
 <Warning>
 Deleting a source removes all associated content immediately. Your agent will no longer have access to this information.
 </Warning>
+
+### Crawl Progress Tracking
+
+For sitemap and recursive crawls, track progress in real-time:
+
+- **Progress bar** shows percentage complete
+- **Pages crawled** / **Pages discovered** counters
+- **Current URL** being processed
+- **Failed pages** count (with details)
+
+The page auto-refreshes every 5 seconds during active crawls. A notification appears when the crawl completes.
+
+#### Viewing Parsed URLs
+
+After a multi-page crawl completes:
+1. Click the source to expand
+2. Click **View Parsed URLs**
+3. See all crawled pages with:
+   - Page title
+   - URL
+   - Chunk count per page
 
 ## Content Best Practices
 
@@ -272,9 +390,13 @@ View what knowledge was used in each conversation:
 |----------|-------|
 | Knowledge sources | 50 per account |
 | Maximum page size | 1 MB |
+| Maximum file upload | 500 KB |
+| Pages per crawl | 500 max |
+| Crawl depth | 5 levels max |
 | Chunks per source | ~500 |
 | Total chunks | 10,000 per account |
 | Sync frequency | Minimum 24 hours |
+| Chunk size | ~3,000 characters |
 
 ## Troubleshooting
 
@@ -287,6 +409,20 @@ Common causes:
 - Content exceeds size limit
 
 **Solution:** Click the source to see the error message, fix the issue, and retry.
+
+### JavaScript-Rendered Pages
+
+Some websites require JavaScript to display content. Magpipe automatically tries multiple fallback strategies:
+
+1. Direct fetch (fastest)
+2. Firecrawl API (JavaScript rendering)
+3. Jina Reader API (fallback)
+4. Microlink API (final fallback)
+
+If your page still fails, the content may be:
+- Behind a login wall
+- Loaded dynamically after page load
+- Protected by bot detection
 
 ### Agent Not Using Knowledge
 

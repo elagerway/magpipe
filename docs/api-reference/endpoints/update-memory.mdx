@@ -1,0 +1,75 @@
+---
+title: "Update Memory"
+api: "PATCH /conversation-contexts/{id}"
+description: "Update a caller's memory"
+---
+
+Update a caller's memory record. Only include fields you want to change.
+
+## Path Parameters
+
+<ParamField path="id" type="string" required>
+  UUID of the memory record to update
+</ParamField>
+
+## Request Body
+
+<ParamField body="summary" type="string">
+  Updated relationship summary
+</ParamField>
+
+<ParamField body="keyTopics" type="array">
+  Updated list of key topics
+</ParamField>
+
+<ParamField body="preferences" type="object">
+  Updated caller preferences
+</ParamField>
+
+<ParamField body="relationshipNotes" type="string">
+  Updated relationship notes
+</ParamField>
+
+## Response
+
+Returns the updated memory object.
+
+<RequestExample>
+```bash cURL
+curl -X PATCH "https://api.magpipe.ai/functions/v1/conversation-contexts/789e0123-e89b-12d3-a456-426614174000" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "summary": "VIP customer, longtime buyer. Had delivery issue that was resolved.",
+    "preferences": {
+      "contact_method": "email",
+      "best_time": "afternoons",
+      "vip": true
+    },
+    "relationshipNotes": "Escalate any issues to manager immediately"
+  }'
+```
+</RequestExample>
+
+<ResponseExample>
+```json 200
+{
+  "id": "789e0123-e89b-12d3-a456-426614174000",
+  "summary": "VIP customer, longtime buyer. Had delivery issue that was resolved.",
+  "key_topics": ["orders", "delivery", "refunds"],
+  "preferences": {
+    "contact_method": "email",
+    "best_time": "afternoons",
+    "vip": true
+  },
+  "relationship_notes": "Escalate any issues to manager immediately",
+  "last_updated": "2024-01-15T16:00:00Z"
+}
+```
+
+```json 404
+{
+  "error": "Memory not found"
+}
+```
+</ResponseExample>

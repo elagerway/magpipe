@@ -1,0 +1,42 @@
+---
+title: "Delete Memory"
+api: "DELETE /conversation-contexts/{id}"
+description: "Delete a caller's memory"
+---
+
+Permanently delete a caller's memory. This removes all stored information about past conversations with this caller.
+
+<Warning>
+This action is irreversible. The agent will treat future calls from this contact as new conversations.
+</Warning>
+
+## Path Parameters
+
+<ParamField path="id" type="string" required>
+  UUID of the memory record to delete
+</ParamField>
+
+## Response
+
+Returns a success confirmation.
+
+<RequestExample>
+```bash cURL
+curl -X DELETE "https://api.magpipe.ai/functions/v1/conversation-contexts/789e0123-e89b-12d3-a456-426614174000" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+</RequestExample>
+
+<ResponseExample>
+```json 200
+{
+  "success": true
+}
+```
+
+```json 404
+{
+  "error": "Memory not found"
+}
+```
+</ResponseExample>

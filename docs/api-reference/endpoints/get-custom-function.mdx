@@ -1,0 +1,122 @@
+---
+title: "Get Custom Function"
+api: "GET /custom-functions/{id}"
+description: "Get a specific custom function by ID"
+---
+
+Retrieve details of a specific custom function.
+
+## Path Parameters
+
+<ParamField path="id" type="string" required>
+  UUID of the custom function
+</ParamField>
+
+## Response
+
+<ResponseField name="id" type="string">
+  UUID of the function
+</ResponseField>
+
+<ResponseField name="agent_id" type="string">
+  UUID of the agent this function belongs to
+</ResponseField>
+
+<ResponseField name="user_id" type="string">
+  UUID of the user who created this function
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Function name (snake_case)
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  Function description used by AI to decide when to call
+</ResponseField>
+
+<ResponseField name="http_method" type="string">
+  HTTP method (GET, POST, PUT, PATCH, DELETE)
+</ResponseField>
+
+<ResponseField name="endpoint_url" type="string">
+  Webhook URL
+</ResponseField>
+
+<ResponseField name="headers" type="array">
+  Custom headers included with requests
+</ResponseField>
+
+<ResponseField name="body_schema" type="array">
+  Parameter definitions for the function
+</ResponseField>
+
+<ResponseField name="response_variables" type="array">
+  Variables extracted from response
+</ResponseField>
+
+<ResponseField name="timeout_ms" type="integer">
+  Request timeout in milliseconds
+</ResponseField>
+
+<ResponseField name="max_retries" type="integer">
+  Number of retry attempts
+</ResponseField>
+
+<ResponseField name="is_active" type="boolean">
+  Whether the function is active
+</ResponseField>
+
+<ResponseField name="created_at" type="string">
+  ISO 8601 creation timestamp
+</ResponseField>
+
+<ResponseField name="updated_at" type="string">
+  ISO 8601 last update timestamp
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl "https://api.magpipe.ai/functions/v1/custom-functions/789e0123-e89b-12d3-a456-426614174000" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+</RequestExample>
+
+<ResponseExample>
+```json 200
+{
+  "id": "789e0123-e89b-12d3-a456-426614174000",
+  "agent_id": "123e4567-e89b-12d3-a456-426614174000",
+  "user_id": "456e7890-e89b-12d3-a456-426614174000",
+  "name": "check_order_status",
+  "description": "Look up customer order status by order ID",
+  "http_method": "POST",
+  "endpoint_url": "https://api.yourstore.com/orders/status",
+  "headers": [
+    {"name": "X-API-Key", "value": "your-key"}
+  ],
+  "body_schema": [
+    {
+      "name": "order_id",
+      "type": "string",
+      "description": "The customer order ID or confirmation number",
+      "required": true
+    }
+  ],
+  "response_variables": [
+    {"name": "status", "json_path": "$.data.status"},
+    {"name": "eta", "json_path": "$.data.estimated_delivery"}
+  ],
+  "timeout_ms": 120000,
+  "max_retries": 2,
+  "is_active": true,
+  "created_at": "2024-01-15T10:30:00Z",
+  "updated_at": "2024-01-15T10:30:00Z"
+}
+```
+
+```json 404
+{
+  "error": "Custom function not found"
+}
+```
+</ResponseExample>

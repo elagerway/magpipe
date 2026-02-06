@@ -65,14 +65,20 @@
       "group": "Features",
       "pages": [
         "features/agents",
+        "features/agent-memory",
+        "features/custom-functions",
         "features/phone-numbers",
         "features/inbox",
         "features/knowledge-base",
         "features/chat-widget",
         "features/apps",
+        "features/integrations",
         "features/contacts",
         "features/team-management",
         "features/white-labeling",
+        "features/billing",
+        "features/scheduled-actions",
+        "features/bulk-calling",
         "features/settings"
       ]
     },
@@ -100,6 +106,25 @@
         "api-reference/endpoints/update-agent",
         "api-reference/endpoints/list-agents",
         "api-reference/endpoints/delete-agent"
+      ]
+    },
+    {
+      "group": "Custom Functions",
+      "pages": [
+        "api-reference/endpoints/create-custom-function",
+        "api-reference/endpoints/get-custom-function",
+        "api-reference/endpoints/update-custom-function",
+        "api-reference/endpoints/list-custom-functions",
+        "api-reference/endpoints/delete-custom-function"
+      ]
+    },
+    {
+      "group": "Memory",
+      "pages": [
+        "api-reference/endpoints/list-memories",
+        "api-reference/endpoints/get-memory",
+        "api-reference/endpoints/update-memory",
+        "api-reference/endpoints/delete-memory"
       ]
     },
     {
@@ -142,6 +167,7 @@
       "group": "Knowledge Base",
       "pages": [
         "api-reference/endpoints/add-knowledge-source",
+        "api-reference/endpoints/add-knowledge-manual",
         "api-reference/endpoints/list-knowledge-sources",
         "api-reference/endpoints/delete-knowledge-source"
       ]
@@ -170,6 +196,21 @@
         "api-reference/endpoints/list-contacts",
         "api-reference/endpoints/update-contact",
         "api-reference/endpoints/delete-contact"
+      ]
+    },
+    {
+      "group": "Billing",
+      "pages": [
+        "api-reference/endpoints/get-balance",
+        "api-reference/endpoints/purchase-credits"
+      ]
+    },
+    {
+      "group": "Scheduled Actions",
+      "pages": [
+        "api-reference/endpoints/create-scheduled-action",
+        "api-reference/endpoints/list-scheduled-actions",
+        "api-reference/endpoints/cancel-scheduled-action"
       ]
     }
   ],

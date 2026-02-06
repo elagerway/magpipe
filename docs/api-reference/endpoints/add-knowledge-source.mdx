@@ -20,6 +20,27 @@ Add a webpage URL as a knowledge source. The content is scraped, processed into 
   **Options:** `24h`, `7d`, `1mo`, `3mo`
 </ParamField>
 
+<ParamField body="crawl_mode" type="string" default="single">
+  How much of the website to crawl.
+
+  **Options:**
+  - `single` - Fetch one page only (immediate)
+  - `sitemap` - Crawl all pages in sitemap.xml (async)
+  - `recursive` - Follow links from starting URL (async)
+</ParamField>
+
+<ParamField body="max_pages" type="integer" default="100">
+  Maximum pages to crawl (for sitemap/recursive modes). Range: 1-500.
+</ParamField>
+
+<ParamField body="crawl_depth" type="integer" default="3">
+  How deep to follow links (recursive mode only). Range: 1-5.
+</ParamField>
+
+<ParamField body="respect_robots_txt" type="boolean" default="true">
+  Whether to honor robots.txt crawl restrictions.
+</ParamField>
+
 <ParamField body="auth_headers" type="object">
   Authentication headers for protected pages.
 

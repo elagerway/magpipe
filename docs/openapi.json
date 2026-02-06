@@ -217,6 +217,57 @@
           "provider": { "type": "string", "enum": ["elevenlabs"] },
           "created_at": { "type": "string", "format": "date-time" }
         }
+      },
+      "CustomFunction": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid", "description": "Unique function identifier" },
+          "agent_id": { "type": "string", "format": "uuid", "description": "Agent this function belongs to" },
+          "user_id": { "type": "string", "format": "uuid", "description": "Owner user ID" },
+          "name": { "type": "string", "description": "Function name in snake_case", "pattern": "^[a-z][a-z0-9_]*$" },
+          "description": { "type": "string", "description": "Description of what the function does" },
+          "http_method": { "type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+          "endpoint_url": { "type": "string", "format": "uri", "description": "Webhook URL to call" },
+          "headers": { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "value": { "type": "string" } } } },
+          "body_schema": { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "type": { "type": "string", "enum": ["string", "number", "boolean"] }, "description": { "type": "string" }, "required": { "type": "boolean" } } } },
+          "response_variables": { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "json_path": { "type": "string" } } } },
+          "timeout_ms": { "type": "integer", "default": 120000, "description": "Request timeout in milliseconds" },
+          "max_retries": { "type": "integer", "default": 2, "description": "Number of retry attempts" },
+          "is_active": { "type": "boolean", "default": true },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Memory": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid", "description": "Memory record ID" },
+          "agent_id": { "type": "string", "format": "uuid", "description": "Agent this memory belongs to" },
+          "contact_id": { "type": "string", "format": "uuid", "description": "Associated contact ID" },
+          "contact": { "type": "object", "properties": { "id": { "type": "string" }, "name": { "type": "string" }, "phone_number": { "type": "string" } } },
+          "summary": { "type": "string", "description": "AI-generated relationship summary" },
+          "keyTopics": { "type": "array", "items": { "type": "string" }, "description": "Key topics discussed" },
+          "preferences": { "type": "object", "additionalProperties": true, "description": "Caller preferences" },
+          "relationshipNotes": { "type": "string", "description": "Additional notes" },
+          "interactionCount": { "type": "integer", "description": "Number of conversations" },
+          "lastUpdated": { "type": "string", "format": "date-time" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "ScheduledAction": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid", "description": "Scheduled action ID" },
+          "user_id": { "type": "string", "format": "uuid", "description": "Owner user ID" },
+          "action_type": { "type": "string", "enum": ["send_sms", "call_contact"], "description": "Type of action" },
+          "scheduled_at": { "type": "string", "format": "date-time", "description": "When to execute" },
+          "status": { "type": "string", "enum": ["pending", "processing", "completed", "failed", "cancelled"], "description": "Current status" },
+          "parameters": { "type": "object", "additionalProperties": true, "description": "Action-specific parameters" },
+          "executed_at": { "type": "string", "format": "date-time", "description": "When action was executed" },
+          "error_message": { "type": "string", "description": "Error details if failed" },
+          "retry_count": { "type": "integer", "description": "Number of retry attempts" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
       }
     }
   },
@@ -539,6 +590,31 @@
                     "default": "7d",
                     "description": "How often to re-sync content"
                   },
+                  "crawl_mode": {
+                    "type": "string",
+                    "enum": ["single", "sitemap", "recursive"],
+                    "default": "single",
+                    "description": "Crawl mode: single page, sitemap, or recursive"
+                  },
+                  "max_pages": {
+                    "type": "integer",
+                    "default": 100,
+                    "minimum": 1,
+                    "maximum": 500,
+                    "description": "Max pages to crawl (sitemap/recursive)"
+                  },
+                  "crawl_depth": {
+                    "type": "integer",
+                    "default": 3,
+                    "minimum": 1,
+                    "maximum": 5,
+                    "description": "Crawl depth (recursive mode only)"
+                  },
+                  "respect_robots_txt": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Honor robots.txt restrictions"
+                  },
                   "auth_headers": {
                     "type": "object",
                     "description": "Optional auth headers for protected pages",
@@ -559,6 +635,50 @@
             }
           },
           "422": { "description": "Could not fetch or parse URL", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/knowledge-source-manual": {
+      "post": {
+        "operationId": "addKnowledgeManual",
+        "summary": "Add Knowledge (Manual)",
+        "description": "Add content directly without a URL",
+        "tags": ["Knowledge Base"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["title"],
+                "properties": {
+                  "title": { "type": "string", "description": "Title for the knowledge source" },
+                  "content": { "type": "string", "minLength": 50, "description": "Text content (min 50 chars)" }
+                }
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["title", "file"],
+                "properties": {
+                  "title": { "type": "string", "description": "Title for the knowledge source" },
+                  "file": { "type": "string", "format": "binary", "description": "PDF, TXT, or MD file (max 500KB)" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Knowledge source added",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/KnowledgeSource" }
+              }
+            }
+          },
+          "400": { "description": "Invalid content or file" }
         }
       }
     },
@@ -850,10 +970,575 @@
           }
         }
       }
+    },
+    "/custom-functions": {
+      "get": {
+        "operationId": "listCustomFunctions",
+        "summary": "List Custom Functions",
+        "description": "List all custom functions for an agent",
+        "tags": ["Custom Functions"],
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" },
+            "description": "Agent ID to list functions for"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of custom functions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/CustomFunction" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createCustomFunction",
+        "summary": "Create Custom Function",
+        "description": "Create a new custom webhook function for an agent",
+        "tags": ["Custom Functions"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["agent_id", "name", "description", "http_method", "endpoint_url"],
+                "properties": {
+                  "agent_id": { "type": "string", "format": "uuid", "description": "Agent this function belongs to" },
+                  "name": { "type": "string", "description": "Function name in snake_case", "example": "check_order_status" },
+                  "description": { "type": "string", "description": "What the function does (AI uses this to decide when to call)" },
+                  "http_method": { "type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+                  "endpoint_url": { "type": "string", "format": "uri", "description": "Webhook URL to call" },
+                  "headers": { "type": "array", "items": { "type": "object" }, "description": "Custom headers" },
+                  "body_schema": { "type": "array", "items": { "type": "object" }, "description": "Parameter definitions" },
+                  "response_variables": { "type": "array", "items": { "type": "object" }, "description": "Response extraction config" },
+                  "timeout_ms": { "type": "integer", "default": 120000 },
+                  "max_retries": { "type": "integer", "default": 2 },
+                  "is_active": { "type": "boolean", "default": true }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Function created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CustomFunction" }
+              }
+            }
+          },
+          "400": { "description": "Invalid function name or configuration" },
+          "409": { "description": "Function with this name already exists for agent" }
+        }
+      }
+    },
+    "/custom-functions/{id}": {
+      "get": {
+        "operationId": "getCustomFunction",
+        "summary": "Get Custom Function",
+        "description": "Get a specific custom function by ID",
+        "tags": ["Custom Functions"],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" },
+            "description": "Function ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Function details",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CustomFunction" }
+              }
+            }
+          },
+          "404": { "description": "Function not found" }
+        }
+      },
+      "patch": {
+        "operationId": "updateCustomFunction",
+        "summary": "Update Custom Function",
+        "description": "Update an existing custom function",
+        "tags": ["Custom Functions"],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" },
+            "description": "Function ID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "description": { "type": "string" },
+                  "http_method": { "type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+                  "endpoint_url": { "type": "string", "format": "uri" },
+                  "headers": { "type": "array" },
+                  "body_schema": { "type": "array" },
+                  "response_variables": { "type": "array" },
+                  "timeout_ms": { "type": "integer" },
+                  "max_retries": { "type": "integer" },
+                  "is_active": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Function updated",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CustomFunction" }
+              }
+            }
+          },
+          "404": { "description": "Function not found" },
+          "409": { "description": "Function name already exists" }
+        }
+      },
+      "delete": {
+        "operationId": "deleteCustomFunction",
+        "summary": "Delete Custom Function",
+        "description": "Delete a custom function",
+        "tags": ["Custom Functions"],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" },
+            "description": "Function ID"
+          }
+        ],
+        "responses": {
+          "200": { "description": "Function deleted" },
+          "404": { "description": "Function not found" }
+        }
+      }
+    },
+    "/conversation-contexts": {
+      "get": {
+        "operationId": "listMemories",
+        "summary": "List Memories",
+        "description": "List all caller memories for an agent",
+        "tags": ["Memory"],
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" },
+            "description": "Agent ID to list memories for"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "integer", "default": 50, "maximum": 100 },
+            "description": "Maximum number of records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": { "type": "integer", "default": 0 },
+            "description": "Number of records to skip"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of caller memories",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/Memory" }
+                    },
+                    "total": { "type": "integer", "description": "Total number of memories" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Unauthorized" }
+        }
+      }
+    },
+    "/conversation-contexts/{id}": {
+      "get": {
+        "operationId": "getMemory",
+        "summary": "Get Memory",
+        "description": "Get a specific caller memory by ID, including call history",
+        "tags": ["Memory"],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" },
+            "description": "Memory record ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Memory details with call history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Memory" },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "callHistory": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": { "type": "string" },
+                              "started_at": { "type": "string", "format": "date-time" },
+                              "duration_seconds": { "type": "integer" },
+                              "call_summary": { "type": "string" },
+                              "direction": { "type": "string", "enum": ["inbound", "outbound"] }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": { "description": "Memory not found" }
+        }
+      },
+      "patch": {
+        "operationId": "updateMemory",
+        "summary": "Update Memory",
+        "description": "Update a caller's memory record",
+        "tags": ["Memory"],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" },
+            "description": "Memory record ID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "summary": { "type": "string", "description": "Updated relationship summary" },
+                  "keyTopics": { "type": "array", "items": { "type": "string" }, "description": "Updated key topics" },
+                  "preferences": { "type": "object", "additionalProperties": true, "description": "Updated preferences" },
+                  "relationshipNotes": { "type": "string", "description": "Updated relationship notes" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Memory updated",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Memory" }
+              }
+            }
+          },
+          "404": { "description": "Memory not found" }
+        }
+      },
+      "delete": {
+        "operationId": "deleteMemory",
+        "summary": "Delete Memory",
+        "description": "Permanently delete a caller's memory",
+        "tags": ["Memory"],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" },
+            "description": "Memory record ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Memory deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "description": "Memory not found" }
+        }
+      }
+    },
+    "/get-credits-info": {
+      "get": {
+        "operationId": "getCreditsInfo",
+        "summary": "Get Credit Balance",
+        "description": "Get current credit balance and billing information",
+        "tags": ["Billing"],
+        "responses": {
+          "200": {
+            "description": "Credit balance and settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "credits_balance": { "type": "number", "description": "Current credit balance in USD" },
+                    "credits_used_this_period": { "type": "number", "description": "Credits used this billing period" },
+                    "has_payment_method": { "type": "boolean", "description": "Whether a payment method is saved" },
+                    "auto_recharge_enabled": { "type": "boolean", "description": "Whether auto-recharge is enabled" },
+                    "auto_recharge_amount": { "type": "number", "description": "Amount to add when auto-recharging" },
+                    "auto_recharge_threshold": { "type": "number", "description": "Balance threshold for auto-recharge" },
+                    "received_signup_bonus": { "type": "boolean", "description": "Whether welcome bonus claimed" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Unauthorized" }
+        }
+      }
+    },
+    "/stripe-add-credits": {
+      "post": {
+        "operationId": "purchaseCredits",
+        "summary": "Purchase Credits",
+        "description": "Create a Stripe checkout session to purchase credits",
+        "tags": ["Billing"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["amount", "success_url", "cancel_url"],
+                "properties": {
+                  "amount": {
+                    "type": "string",
+                    "description": "Credit amount: 'small' ($20), 'medium' ($50), 'large' ($100), or number 10-1000"
+                  },
+                  "success_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Redirect URL after successful payment"
+                  },
+                  "cancel_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Redirect URL if user cancels"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Checkout session created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "sessionId": { "type": "string", "description": "Stripe checkout session ID" },
+                    "url": { "type": "string", "format": "uri", "description": "Stripe checkout URL" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Invalid amount" },
+          "401": { "description": "Unauthorized" }
+        }
+      }
+    },
+    "/scheduled-actions": {
+      "get": {
+        "operationId": "listScheduledActions",
+        "summary": "List Scheduled Actions",
+        "description": "List all scheduled actions for your account",
+        "tags": ["Scheduled Actions"],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": { "type": "string", "enum": ["pending", "processing", "completed", "failed", "cancelled"] },
+            "description": "Filter by status"
+          },
+          {
+            "name": "action_type",
+            "in": "query",
+            "schema": { "type": "string", "enum": ["send_sms", "call_contact"] },
+            "description": "Filter by action type"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "integer", "default": 50, "maximum": 100 },
+            "description": "Maximum results to return"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of scheduled actions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/ScheduledAction" }
+                    },
+                    "total": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createScheduledAction",
+        "summary": "Create Scheduled Action",
+        "description": "Schedule an SMS or call for future delivery",
+        "tags": ["Scheduled Actions"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["action_type", "scheduled_at", "parameters"],
+                "properties": {
+                  "action_type": {
+                    "type": "string",
+                    "enum": ["send_sms", "call_contact"],
+                    "description": "Type of action to schedule"
+                  },
+                  "scheduled_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "When to execute (ISO 8601 with timezone)"
+                  },
+                  "parameters": {
+                    "type": "object",
+                    "description": "Action-specific parameters",
+                    "properties": {
+                      "recipient_phone": { "type": "string", "description": "Recipient phone (E.164)" },
+                      "recipient_name": { "type": "string", "description": "Recipient name" },
+                      "message": { "type": "string", "description": "Message content (for SMS)" },
+                      "sender_number": { "type": "string", "description": "Your Magpipe number" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Action scheduled",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ScheduledAction" }
+              }
+            }
+          },
+          "400": { "description": "Invalid parameters or scheduled_at in past" }
+        }
+      }
+    },
+    "/scheduled-actions/{id}": {
+      "patch": {
+        "operationId": "cancelScheduledAction",
+        "summary": "Cancel Scheduled Action",
+        "description": "Cancel a pending scheduled action",
+        "tags": ["Scheduled Actions"],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" },
+            "description": "Scheduled action ID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["status"],
+                "properties": {
+                  "status": { "type": "string", "enum": ["cancelled"], "description": "Must be 'cancelled'" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Action cancelled",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ScheduledAction" }
+              }
+            }
+          },
+          "400": { "description": "Cannot cancel non-pending action" },
+          "404": { "description": "Action not found" }
+        }
+      }
     }
   },
   "tags": [
     { "name": "Agents", "description": "AI agent configuration and management" },
+    { "name": "Custom Functions", "description": "Custom webhook functions for agents" },
+    { "name": "Memory", "description": "Agent memory for caller context" },
     { "name": "Calls", "description": "Phone call management" },
     { "name": "Messages", "description": "SMS messaging" },
     { "name": "Chat", "description": "Website chat widget" },
@@ -861,6 +1546,8 @@
     { "name": "Knowledge Base", "description": "AI knowledge sources" },
     { "name": "Voice", "description": "Voice cloning and TTS" },
     { "name": "Calendar", "description": "Cal.com integration" },
-    { "name": "Contacts", "description": "Contact management" }
+    { "name": "Contacts", "description": "Contact management" },
+    { "name": "Billing", "description": "Credits and billing management" },
+    { "name": "Scheduled Actions", "description": "Schedule SMS and calls for future delivery" }
   ]
 }

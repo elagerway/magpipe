@@ -1,0 +1,117 @@
+---
+title: "List Custom Functions"
+api: "GET /custom-functions"
+description: "List all custom functions for an agent"
+---
+
+Retrieve all custom functions configured for a specific agent.
+
+## Query Parameters
+
+<ParamField query="agent_id" type="string" required>
+  UUID of the agent to list functions for
+</ParamField>
+
+## Response
+
+Returns an array of custom function objects.
+
+<ResponseField name="id" type="string">
+  UUID of the function
+</ResponseField>
+
+<ResponseField name="agent_id" type="string">
+  UUID of the agent
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Function name
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  Function description
+</ResponseField>
+
+<ResponseField name="http_method" type="string">
+  HTTP method (GET, POST, etc.)
+</ResponseField>
+
+<ResponseField name="endpoint_url" type="string">
+  Webhook URL
+</ResponseField>
+
+<ResponseField name="is_active" type="boolean">
+  Whether the function is active
+</ResponseField>
+
+<ResponseField name="created_at" type="string">
+  ISO 8601 timestamp
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl "https://api.magpipe.ai/functions/v1/custom-functions?agent_id=123e4567-e89b-12d3-a456-426614174000" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+</RequestExample>
+
+<ResponseExample>
+```json 200
+[
+  {
+    "id": "789e0123-e89b-12d3-a456-426614174000",
+    "agent_id": "123e4567-e89b-12d3-a456-426614174000",
+    "name": "check_order_status",
+    "description": "Look up customer order status by order ID",
+    "http_method": "POST",
+    "endpoint_url": "https://api.yourstore.com/orders/status",
+    "headers": [],
+    "body_schema": [
+      {
+        "name": "order_id",
+        "type": "string",
+        "description": "The customer order ID",
+        "required": true
+      }
+    ],
+    "response_variables": [
+      {"name": "status", "json_path": "$.data.status"}
+    ],
+    "timeout_ms": 120000,
+    "max_retries": 2,
+    "is_active": true,
+    "created_at": "2024-01-15T10:30:00Z",
+    "updated_at": "2024-01-15T10:30:00Z"
+  },
+  {
+    "id": "abc12345-e89b-12d3-a456-426614174000",
+    "agent_id": "123e4567-e89b-12d3-a456-426614174000",
+    "name": "get_account_balance",
+    "description": "Check customer account balance",
+    "http_method": "GET",
+    "endpoint_url": "https://api.yourservice.com/balance",
+    "headers": [],
+    "body_schema": [
+      {
+        "name": "account_number",
+        "type": "string",
+        "description": "Customer account number",
+        "required": true
+      }
+    ],
+    "response_variables": [
+      {"name": "balance", "json_path": "$.balance"}
+    ],
+    "timeout_ms": 120000,
+    "max_retries": 2,
+    "is_active": true,
+    "created_at": "2024-01-14T09:00:00Z",
+    "updated_at": "2024-01-14T09:00:00Z"
+  }
+]
+```
+
+```json 200
+[]
+```
+</ResponseExample>
