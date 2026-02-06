@@ -176,4 +176,24 @@ export class ChatWidget {
 
     return { widget: data, error: null };
   }
+
+  /**
+   * Get the global platform portal widget (the Magpipe default widget for all users)
+   * @returns {Promise<{widget: Object|null, error: Error|null}>}
+   */
+  static async getGlobalPortalWidget() {
+    // Get the global widget (marked with is_global = true)
+    const { data, error } = await supabase
+      .from('chat_widgets')
+      .select('*')
+      .eq('is_global', true)
+      .eq('is_active', true)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      return { widget: null, error };
+    }
+
+    return { widget: data, error: null };
+  }
 }

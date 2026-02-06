@@ -77,20 +77,27 @@ export async function addSource(url, syncPeriod = '7d', authHeaders = null, craw
       }
     }
 
-    const { data, error } = await supabase.functions.invoke('knowledge-source-add', {
+    const response = await supabase.functions.invoke('knowledge-source-add', {
       body: requestBody,
     });
 
-    if (error) {
-      // Parse user-friendly error messages
-      const errorMsg = error.message || '';
+    const { data, error } = response;
+    console.log('knowledge-source-add full response:', response);
+    console.log('knowledge-source-add data:', data);
+    console.log('knowledge-source-add error:', error);
 
-      if (errorMsg.includes('401')) {
+    // Check for errors - supabase.functions.invoke puts error response body in data when status is non-2xx
+    const errorMsg = error?.message || data?.error || '';
+
+    if (error || data?.error) {
+      console.log('Function error detected:', errorMsg);
+
+      if (errorMsg.includes('401') || errorMsg.includes('Invalid authorization')) {
         throw new Error('Authentication required. Please log in again.');
       } else if (errorMsg.includes('Maximum 50')) {
         throw new Error('You have reached the maximum of 50 knowledge sources.');
-      } else if (errorMsg.includes('Could not access')) {
-        throw new Error('Unable to access that URL. Please check the link and try again.');
+      } else if (errorMsg.includes('Could not access') || errorMsg.includes('Could not fetch')) {
+        throw new Error(errorMsg || 'Unable to access that URL. Please check the link and try again.');
       } else if (errorMsg.includes('Content too large')) {
         throw new Error('The page content is too large (max 1MB).');
       } else if (errorMsg.includes('No content extracted')) {
@@ -99,9 +106,18 @@ export async function addSource(url, syncPeriod = '7d', authHeaders = null, craw
         throw new Error('Could not find or parse the sitemap. Please check the URL.');
       } else if (errorMsg.includes('No crawlable URLs')) {
         throw new Error('No pages found to crawl. Please check the URL and try again.');
+      } else if (errorMsg) {
+        // Show the actual error message from the function
+        throw new Error(errorMsg);
       } else {
         throw new Error('Failed to add knowledge source. Please try again.');
       }
+    }
+
+    // Check if data is valid
+    if (!data || !data.id) {
+      console.error('Invalid response from knowledge-source-add:', data);
+      throw new Error('Invalid response from server. Please try again.');
     }
 
     return {
@@ -339,5 +355,98 @@ export async function getSourceDetails(id) {
   } catch (error) {
     console.error('Get source details error:', error);
     throw new Error('Failed to load knowledge source details');
+  }
+}
+
+/**
+ * Add a manual knowledge source (paste content or upload file)
+ * @param {string} title - Title for the knowledge source
+ * @param {Object} options - Options for the source
+ * @param {string} options.content - Text content (for manual paste)
+ * @param {string} options.fileData - Base64 encoded file data
+ * @param {string} options.fileType - 'pdf' or 'text'
+ * @param {string} options.fileName - Original file name
+ * @param {string} options.url - Optional URL reference
+ * @returns {Promise<{id: string, title: string, status: string, chunk_count: number}>}
+ */
+export async function addManualSource(title, options = {}) {
+  if (!title || typeof title !== 'string') {
+    throw new Error('Title is required');
+  }
+
+  const { content, fileData, fileType, fileName, url } = options;
+
+  if (!content && !fileData) {
+    throw new Error('Either content or file is required');
+  }
+
+  try {
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+    if (sessionError || !session) {
+      throw new Error('Not authenticated');
+    }
+
+    const requestBody = { title };
+
+    if (fileData && fileType) {
+      requestBody.file_data = fileData;
+      requestBody.file_type = fileType;
+      requestBody.file_name = fileName;
+    } else {
+      requestBody.content = content;
+    }
+
+    if (url) {
+      requestBody.url = url;
+    }
+
+    const response = await supabase.functions.invoke('knowledge-source-manual', {
+      body: requestBody,
+    });
+
+    const { data, error } = response;
+    console.log('knowledge-source-manual response:', { data, error });
+
+    const errorMsg = error?.message || data?.error || '';
+
+    if (error || data?.error) {
+      if (errorMsg.includes('401') || errorMsg.includes('Invalid authorization')) {
+        throw new Error('Authentication required. Please log in again.');
+      } else if (errorMsg.includes('Maximum 50')) {
+        throw new Error('You have reached the maximum of 50 knowledge sources.');
+      } else if (errorMsg.includes('Content must be')) {
+        throw new Error(errorMsg);
+      } else if (errorMsg.includes('Failed to parse PDF')) {
+        throw new Error(errorMsg);
+      } else if (errorMsg) {
+        throw new Error(errorMsg);
+      } else {
+        throw new Error('Failed to add knowledge source. Please try again.');
+      }
+    }
+
+    if (!data || !data.id) {
+      throw new Error('Invalid response from server. Please try again.');
+    }
+
+    return {
+      id: data.id,
+      url: data.url,
+      title: data.title,
+      description: data.description,
+      status: data.status,
+      chunkCount: data.chunk_count,
+      crawlMode: data.crawl_mode,
+    };
+
+  } catch (error) {
+    console.error('Add manual source error:', error);
+
+    if (error.message.includes('Not authenticated')) {
+      window.location.href = '/login';
+    }
+
+    throw error;
   }
 }

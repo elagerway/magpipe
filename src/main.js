@@ -166,10 +166,18 @@ class App {
 
   async loadPortalWidget(userId) {
     try {
-      const { widget, error } = await ChatWidget.getPortalWidget(userId);
+      // First try to get user's own portal widget
+      let { widget, error } = await ChatWidget.getPortalWidget(userId);
+
+      // If user doesn't have their own widget, fall back to global Magpipe widget
+      if (!widget) {
+        const globalResult = await ChatWidget.getGlobalPortalWidget();
+        widget = globalResult.widget;
+        error = globalResult.error;
+      }
 
       if (error || !widget) {
-        return; // No portal widget configured
+        return; // No portal widget available
       }
 
       // Store hidden pages for route change handling
