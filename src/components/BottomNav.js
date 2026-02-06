@@ -285,8 +285,43 @@ function updateNavLogoSection(userData) {
     <div class="nav-logo">
       <img src="${logoUrl}" alt="Logo" />
     </div>
+    <button class="sidebar-panel-toggle" id="sidebar-panel-toggle" title="Toggle chat history">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+        <line x1="9" y1="3" x2="9" y2="21"></line>
+      </svg>
+    </button>
   `;
-  logoSection.style.display = 'block';
+  logoSection.style.display = 'flex';
+
+  // Attach click handler for sidebar toggle
+  const toggleBtn = document.getElementById('sidebar-panel-toggle');
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', () => {
+      const chatSidebar = document.querySelector('.chat-sidebar');
+      if (chatSidebar) {
+        const isCollapsed = chatSidebar.classList.toggle('collapsed');
+        // Update icon based on state
+        if (isCollapsed) {
+          // Closed panel icon (line on right)
+          toggleBtn.innerHTML = `
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="15" y1="3" x2="15" y2="21"></line>
+            </svg>
+          `;
+        } else {
+          // Open panel icon (line on left)
+          toggleBtn.innerHTML = `
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="9" y1="3" x2="9" y2="21"></line>
+            </svg>
+          `;
+        }
+      }
+    });
+  }
 
   // Also update favicon if custom one is set
   if (userData?.favicon_url) {

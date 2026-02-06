@@ -106,9 +106,6 @@ export default class SelectNumberPage {
             Choose a phone number that callers will use to reach your AI assistant
           </p>
 
-          <div id="error-message" class="hidden"></div>
-          <div id="success-message" class="hidden"></div>
-
           <div id="search-form">
             <div class="form-group">
               <label class="form-label" for="search-query">Search by Area Code or Location</label>
@@ -124,6 +121,9 @@ export default class SelectNumberPage {
             <button class="btn btn-primary btn-full" id="search-btn">
               Search Available Numbers
             </button>
+
+            <div id="error-message" class="hidden" style="margin-top: 1rem;"></div>
+            <div id="success-message" class="hidden" style="margin-top: 1rem;"></div>
           </div>
 
           <div id="results-section" class="hidden" style="margin-top: 2rem;">

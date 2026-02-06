@@ -63,14 +63,36 @@ export function createAdminChatInterface(container) {
   const sidebar = document.createElement('div');
   sidebar.className = 'chat-sidebar';
 
-  // Sidebar header with close button
+  // Sidebar header
   const sidebarHeader = document.createElement('div');
   sidebarHeader.className = 'sidebar-header';
 
-  const sidebarTitle = document.createElement('span');
-  sidebarTitle.textContent = 'Chat History';
-  sidebarHeader.appendChild(sidebarTitle);
+  // Left side: title + new chat button
+  const headerLeft = document.createElement('div');
+  headerLeft.className = 'sidebar-header-left';
 
+  const sidebarTitle = document.createElement('span');
+  sidebarTitle.className = 'sidebar-title';
+  sidebarTitle.textContent = 'Chat History';
+  headerLeft.appendChild(sidebarTitle);
+
+  // New chat button (+ icon)
+  const newChatBtn = document.createElement('button');
+  newChatBtn.className = 'new-chat-button';
+  newChatBtn.innerHTML = `
+    <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+    </svg>
+  `;
+  newChatBtn.title = 'New chat';
+  newChatBtn.addEventListener('click', () => {
+    startNewChat();
+    sidebar.classList.remove('open');
+  });
+  headerLeft.appendChild(newChatBtn);
+  sidebarHeader.appendChild(headerLeft);
+
+  // Mobile close button
   const closeSidebarBtn = document.createElement('button');
   closeSidebarBtn.className = 'close-sidebar-btn';
   closeSidebarBtn.innerHTML = '&times;';
@@ -80,24 +102,10 @@ export function createAdminChatInterface(container) {
   sidebarHeader.appendChild(closeSidebarBtn);
   sidebar.appendChild(sidebarHeader);
 
-  // Toggle sidebar on history button click
+  // Toggle sidebar on history button click (mobile)
   historyBtn.addEventListener('click', () => {
     sidebar.classList.toggle('open');
   });
-
-  const newChatBtn = document.createElement('button');
-  newChatBtn.className = 'new-chat-button';
-  newChatBtn.innerHTML = `
-    <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-    </svg>
-    New chat
-  `;
-  newChatBtn.addEventListener('click', () => {
-    startNewChat();
-    sidebar.classList.remove('open');
-  });
-  sidebar.appendChild(newChatBtn);
 
   const conversationList = document.createElement('div');
   conversationList.className = 'conversation-list';
@@ -1916,31 +1924,44 @@ export function addAdminChatStyles() {
       border-right: 1px solid var(--border-color, #e5e7eb);
       display: flex;
       flex-direction: column;
+      overflow: visible;
+      position: relative;
+      transition: width 0.2s ease;
+      flex-shrink: 0;
+      padding-top: max(1rem, env(safe-area-inset-top));
+    }
+
+    .chat-sidebar.collapsed {
+      width: 0;
+      border-right: none;
       overflow: hidden;
     }
+
+    .chat-sidebar.collapsed .sidebar-header,
+    .chat-sidebar.collapsed .new-chat-button,
+    .chat-sidebar.collapsed .conversation-list {
+      display: none;
+    }
+
 
     .new-chat-button {
       display: flex;
       align-items: center;
-      gap: 8px;
-      padding: 12px 16px;
-      margin: 12px;
-      background: white;
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
-      color: #374151;
-      font-weight: 500;
-      font-size: 14px;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      background: transparent;
+      border: none;
+      border-radius: 6px;
+      color: var(--text-secondary, #6b7280);
       cursor: pointer;
-      transition: all 0.2s;
+      transition: all 0.15s;
     }
 
     .new-chat-button:hover {
-      background: #f3f4f6;
-    }
-
-    .new-chat-button svg {
-      flex-shrink: 0;
+      background: rgba(0, 0, 0, 0.05);
+      color: var(--text-primary, #374151);
     }
 
     .conversation-list {
@@ -2463,7 +2484,25 @@ export function addAdminChatStyles() {
     }
 
     .sidebar-header {
-      display: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 12px;
+      height: 48px;
+    }
+
+    .sidebar-header-left {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex: 1;
+      height: 100%;
+    }
+
+    .sidebar-title {
+      font-weight: 600;
+      font-size: 14px;
+      color: #374151;
     }
 
     .close-sidebar-btn {
@@ -2523,8 +2562,12 @@ export function addAdminChatStyles() {
         color: #374151;
       }
 
-      .close-sidebar-btn {
-        display: block;
+      .desktop-only {
+        display: none !important;
+      }
+
+      .mobile-only {
+        display: block !important;
       }
 
       .chat-bubble {

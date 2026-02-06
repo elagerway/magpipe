@@ -1633,17 +1633,15 @@ THIS IS AN OUTBOUND CALL:
         ${assignedNumbers.length > 0 ? `
           <div class="assigned-numbers">
             ${assignedNumbers.map(num => {
-              // Clean up friendly_name - remove "Magpipe - email" format
-              let displayName = '';
-              if (num.friendly_name && !num.friendly_name.startsWith('AI Assistant')) {
-                displayName = num.friendly_name;
-              }
-              const label = num.isSipTrunk ? (num.trunkName || displayName || 'SIP Trunk') : displayName;
+              // For SIP trunks, show agent name + trunk name; for regular numbers, show agent name
+              const label = num.isSipTrunk
+                ? `${this.agent.name} - ${num.trunkName || 'SIP Trunk'}`
+                : this.agent.name;
               return `
               <div class="assigned-number">
                 <div class="number-info">
                   <span class="number-value">${this.formatPhoneNumber(num.phone_number)}</span>
-                  ${label ? `<span class="number-name">(${label})</span>` : ''}
+                  <span class="number-name">(${label})</span>
                 </div>
                 <button class="btn btn-sm btn-secondary detach-btn" data-number-id="${num.id}" data-is-sip="${num.isSipTrunk || false}">Detach</button>
               </div>
@@ -3440,11 +3438,8 @@ THIS IS AN OUTBOUND CALL:
           </p>
           <div class="number-list" style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 300px; overflow-y: auto;">
             ${availableNumbers.map(num => {
-              let displayName = '';
-              if (num.friendly_name && !num.friendly_name.startsWith('AI Assistant')) {
-                displayName = num.friendly_name;
-              }
-              const label = num.isSipTrunk ? (num.trunkName || displayName || 'SIP Trunk') : displayName;
+              // Only show label for SIP trunks
+              const label = num.isSipTrunk ? (num.trunkName || 'SIP Trunk') : '';
               return `
                 <label class="number-option" style="
                   display: flex;
