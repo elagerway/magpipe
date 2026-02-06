@@ -40,7 +40,7 @@ Retrieve all chat sessions from your chat widgets with pagination support.
 
 <RequestExample>
 ```bash cURL
-curl -X POST https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/list-chat-sessions \
+curl -X POST https://api.magpipe.ai/functions/v1/list-chat-sessions \
   -H "Authorization: Bearer YOUR_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"limit": 20, "status": "active"}'
@@ -48,7 +48,7 @@ curl -X POST https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/list-chat-ses
 
 ```javascript Node.js
 const response = await fetch(
-  'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/list-chat-sessions',
+  'https://api.magpipe.ai/functions/v1/list-chat-sessions',
   {
     method: 'POST',
     headers: {
@@ -67,7 +67,7 @@ console.log(`Found ${total} active sessions`);
 import requests
 
 response = requests.post(
-    'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/list-chat-sessions',
+    'https://api.magpipe.ai/functions/v1/list-chat-sessions',
     headers={
         'Authorization': 'Bearer YOUR_API_TOKEN',
         'Content-Type': 'application/json',

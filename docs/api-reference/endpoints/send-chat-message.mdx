@@ -52,7 +52,7 @@ Send a visitor message to a chat session and receive an AI response. This endpoi
 
 <RequestExample>
 ```bash cURL
-curl -X POST https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/webhook-chat-message \
+curl -X POST https://api.magpipe.ai/functions/v1/webhook-chat-message \
   -H "Content-Type: application/json" \
   -d '{
     "widget_key": "wgt_a1b2c3d4e5f6789012345678",
@@ -64,7 +64,7 @@ curl -X POST https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/webhook-chat-
 
 ```javascript Node.js
 const response = await fetch(
-  'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/webhook-chat-message',
+  'https://api.magpipe.ai/functions/v1/webhook-chat-message',
   {
     method: 'POST',
     headers: {
@@ -89,7 +89,7 @@ console.log('AI:', aiResponse);
 import requests
 
 response = requests.post(
-    'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/webhook-chat-message',
+    'https://api.magpipe.ai/functions/v1/webhook-chat-message',
     headers={
         'Content-Type': 'application/json',
     },

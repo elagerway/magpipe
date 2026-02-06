@@ -1,7 +1,7 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
 
-const SUPABASE_URL = 'https://mtxbiyilvgwhbdptysex.supabase.co';
+const SUPABASE_URL = 'https://api.magpipe.ai';
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 test.describe('External SIP Trunk UX', () => {

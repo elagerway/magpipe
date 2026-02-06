@@ -17,4 +17,4 @@ jobs:
           curl -X POST \
             -H "Authorization: Bearer ${{ secrets.SYNC_SECRET }}" \
             -H "Content-Type: application/json" \
-            https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/sync-area-codes
+            https://api.magpipe.ai/functions/v1/sync-area-codes

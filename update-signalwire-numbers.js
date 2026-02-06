@@ -5,7 +5,7 @@ const SIGNALWIRE_PROJECT_ID = '1049f605-5865-4e01-af71-1a3fd7f20179';
 const SIGNALWIRE_TOKEN = 'YOUR_SIGNALWIRE_API_TOKEN';
 const SIGNALWIRE_SPACE_URL = 'erik.signalwire.com';
 
-const SUPABASE_URL = 'https://mtxbiyilvgwhbdptysex.supabase.co';
+const SUPABASE_URL = 'https://api.magpipe.ai';
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 const USER_EMAIL = 'elagerway@gmail.com';

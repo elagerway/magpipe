@@ -4,7 +4,7 @@
 
 const { test, expect } = require('@playwright/test');
 
-const SUPABASE_URL = 'https://mtxbiyilvgwhbdptysex.supabase.co';
+const SUPABASE_URL = 'https://api.magpipe.ai';
 const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_KEY';
 
 test.describe('Agent Page Layout', () => {

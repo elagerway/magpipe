@@ -37,7 +37,7 @@ test.describe('Outbound Agent Call Test', () => {
 
     // Get magic link via Supabase admin API
     console.log('🔐 Generating magic link...');
-    const magicLinkCmd = `source .env && curl -s -X POST "https://mtxbiyilvgwhbdptysex.supabase.co/auth/v1/admin/generate_link" -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" -H "Content-Type: application/json" -d '{"type":"magiclink","email":"erik@snapsonic.com"}'`;
+    const magicLinkCmd = `source .env && curl -s -X POST "https://api.magpipe.ai/auth/v1/admin/generate_link" -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" -H "Content-Type: application/json" -d '{"type":"magiclink","email":"erik@snapsonic.com"}'`;
     const result = execSync(magicLinkCmd, { cwd: process.cwd(), shell: '/bin/bash' }).toString();
     const magicLinkData = JSON.parse(result);
 
@@ -56,7 +56,7 @@ test.describe('Outbound Agent Call Test', () => {
       // Use the app's supabase client if available, otherwise create new one
       const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
       const supabase = createClient(
-        'https://mtxbiyilvgwhbdptysex.supabase.co',
+        'https://api.magpipe.ai',
         'YOUR_SUPABASE_KEY',
         { auth: { storageKey: 'magpipe-auth-token' } }
       );
@@ -96,7 +96,7 @@ test.describe('Outbound Agent Call Test', () => {
     const sessionCheck = await page.evaluate(async () => {
       const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
       const supabase = createClient(
-        'https://mtxbiyilvgwhbdptysex.supabase.co',
+        'https://api.magpipe.ai',
         'YOUR_SUPABASE_KEY',
         { auth: { storageKey: 'magpipe-auth-token' } }
       );

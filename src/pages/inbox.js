@@ -2848,7 +2848,7 @@ Examples:
       const { data: { session } } = await supabase.auth.getSession();
 
       // Step 1: Generate the message
-      const generateResponse = await fetch(`${window.SUPABASE_URL || 'https://mtxbiyilvgwhbdptysex.supabase.co'}/functions/v1/generate-agent-message`, {
+      const generateResponse = await fetch(`${window.SUPABASE_URL || 'https://api.magpipe.ai'}/functions/v1/generate-agent-message`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -2871,7 +2871,7 @@ Examples:
       const generatedText = result.message;
 
       // Step 2: Send the message
-      const sendResponse = await fetch(`${window.SUPABASE_URL || 'https://mtxbiyilvgwhbdptysex.supabase.co'}/functions/v1/send-user-sms`, {
+      const sendResponse = await fetch(`${window.SUPABASE_URL || 'https://api.magpipe.ai'}/functions/v1/send-user-sms`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -3040,7 +3040,7 @@ Examples:
         normalizedPhone = '+1' + normalizedPhone;
       }
 
-      const response = await fetch(`${window.SUPABASE_URL || 'https://mtxbiyilvgwhbdptysex.supabase.co'}/functions/v1/send-sms`, {
+      const response = await fetch(`${window.SUPABASE_URL || 'https://api.magpipe.ai'}/functions/v1/send-sms`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -5909,7 +5909,7 @@ Examples:
       const contact = this.conversations.find(c => c.phone === this.selectedContact && c.serviceNumber === this.selectedServiceNumber);
       const recipientName = contact?.name || null;
 
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || window.SUPABASE_URL || 'https://mtxbiyilvgwhbdptysex.supabase.co';
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || window.SUPABASE_URL || 'https://api.magpipe.ai';
 
       // Step 1: Generate the message
       const generateResponse = await fetch(`${supabaseUrl}/functions/v1/generate-agent-message`, {

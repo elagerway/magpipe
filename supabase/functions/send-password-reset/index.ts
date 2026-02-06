@@ -24,7 +24,7 @@ serve(async (req) => {
     }
 
     // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? 'https://mtxbiyilvgwhbdptysex.supabase.co'
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? 'https://api.magpipe.ai'
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
       auth: {

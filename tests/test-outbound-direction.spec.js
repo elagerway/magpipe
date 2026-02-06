@@ -19,7 +19,7 @@ test('Test outbound call direction detection', async ({ page, context }) => {
   console.log('🔐 Logging in via API and injecting session...');
 
   // Generate magic link and get OTP
-  const response = await fetch('https://mtxbiyilvgwhbdptysex.supabase.co/auth/v1/admin/generate_link', {
+  const response = await fetch('https://api.magpipe.ai/auth/v1/admin/generate_link', {
     method: 'POST',
     headers: {
       'Authorization': 'Bearer YOUR_SUPABASE_KEY',
@@ -33,7 +33,7 @@ test('Test outbound call direction detection', async ({ page, context }) => {
   console.log('Got OTP:', otp);
 
   // Verify OTP to get session
-  const verifyResponse = await fetch('https://mtxbiyilvgwhbdptysex.supabase.co/auth/v1/verify', {
+  const verifyResponse = await fetch('https://api.magpipe.ai/auth/v1/verify', {
     method: 'POST',
     headers: {
       'apikey': 'YOUR_SUPABASE_KEY',
@@ -163,7 +163,7 @@ test('Test outbound call direction detection', async ({ page, context }) => {
   await page.waitForTimeout(3000);
 
   // Query database for call result
-  const checkResponse = await fetch('https://mtxbiyilvgwhbdptysex.supabase.co/rest/v1/call_records?user_id=eq.77873635-9f5a-4eee-90f3-d145aed0c2c4&order=created_at.desc&limit=1', {
+  const checkResponse = await fetch('https://api.magpipe.ai/rest/v1/call_records?user_id=eq.77873635-9f5a-4eee-90f3-d145aed0c2c4&order=created_at.desc&limit=1', {
     headers: {
       'apikey': 'YOUR_SUPABASE_KEY',
       'Authorization': 'Bearer YOUR_SUPABASE_KEY'

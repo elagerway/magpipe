@@ -49,7 +49,7 @@ Deno.serve(async (req) => {
     // 2. Bridge to PSTN number with recording
     const cxml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Dial callerId="${fromNumber}" record="record-from-answer" recordingStatusCallback="https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/sip-recording-callback">
+  <Dial callerId="${fromNumber}" record="record-from-answer" recordingStatusCallback="https://api.magpipe.ai/functions/v1/sip-recording-callback">
     <Sip>${sipUri}</Sip>
     <Number>${toNumber}</Number>
   </Dial>

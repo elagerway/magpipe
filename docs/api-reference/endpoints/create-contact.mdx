@@ -93,7 +93,7 @@ Returns the created contact object.
 
 <RequestExample>
 ```bash cURL
-curl -X POST https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/create-contact \
+curl -X POST https://api.magpipe.ai/functions/v1/create-contact \
   -H "Authorization: Bearer YOUR_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -107,7 +107,7 @@ curl -X POST https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/create-contac
 
 ```javascript Node.js
 const response = await fetch(
-  'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/create-contact',
+  'https://api.magpipe.ai/functions/v1/create-contact',
   {
     method: 'POST',
     headers: {
@@ -132,7 +132,7 @@ console.log('Created:', contact.id);
 import requests
 
 response = requests.post(
-    'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/create-contact',
+    'https://api.magpipe.ai/functions/v1/create-contact',
     headers={
         'Authorization': 'Bearer YOUR_API_TOKEN',
         'Content-Type': 'application/json',

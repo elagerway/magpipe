@@ -17,8 +17,8 @@
   'use strict';
 
   // Configuration
-  const API_URL = 'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/webhook-chat-message';
-  const SUPABASE_URL = 'https://mtxbiyilvgwhbdptysex.supabase.co';
+  const API_URL = 'https://api.magpipe.ai/functions/v1/webhook-chat-message';
+  const SUPABASE_URL = 'https://api.magpipe.ai';
   const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_KEY';
 
   // State

@@ -9,7 +9,7 @@ dotenv.config();
 // Mobile viewport
 test.use({ viewport: { width: 375, height: 812 } }); // iPhone X size
 
-const SUPABASE_URL = 'https://mtxbiyilvgwhbdptysex.supabase.co';
+const SUPABASE_URL = 'https://api.magpipe.ai';
 const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_KEY';
 const TEST_EMAIL = 'erik@snapsonic.com';
 
