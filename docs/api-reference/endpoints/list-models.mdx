@@ -1,0 +1,121 @@
+---
+title: "List Models"
+api: "POST /list-models"
+description: "List available LLM models for AI agents"
+---
+
+Retrieve all LLM models available for your AI agents to use during conversations.
+
+## Request Body
+
+<ParamField body="provider" type="string">
+  Filter by provider: `openai`.
+</ParamField>
+
+## Response
+
+<ResponseField name="models" type="array">
+  Array of model objects.
+</ResponseField>
+
+### Model Object
+
+<ResponseField name="id" type="string">
+  Model identifier to use in agent configuration.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Model display name.
+</ResponseField>
+
+<ResponseField name="provider" type="string">
+  Model provider: `openai`.
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  Brief description of the model's characteristics.
+</ResponseField>
+
+<ResponseField name="latency" type="string">
+  Expected latency level: `lowest`, `low`, or `medium`.
+</ResponseField>
+
+<ResponseField name="is_default" type="boolean">
+  Whether this is the default model for new agents.
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl -X POST https://api.magpipe.ai/functions/v1/list-models \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+```javascript Node.js
+const response = await fetch(
+  'https://api.magpipe.ai/functions/v1/list-models',
+  {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer YOUR_API_TOKEN',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({}),
+  }
+);
+
+const { models } = await response.json();
+console.log('Available models:', models.length);
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'https://api.magpipe.ai/functions/v1/list-models',
+    headers={
+        'Authorization': 'Bearer YOUR_API_TOKEN',
+        'Content-Type': 'application/json',
+    },
+    json={}
+)
+
+data = response.json()
+for model in data['models']:
+    print(f"{model['name']} - {model['description']}")
+```
+</RequestExample>
+
+<ResponseExample>
+```json Success Response
+{
+  "models": [
+    {
+      "id": "gpt-4.1-nano",
+      "name": "GPT-4.1 Nano",
+      "provider": "openai",
+      "description": "Fastest response time, optimized for voice",
+      "latency": "lowest",
+      "is_default": true
+    },
+    {
+      "id": "gpt-4o-mini",
+      "name": "GPT-4o Mini",
+      "provider": "openai",
+      "description": "Fast and cost-effective",
+      "latency": "low",
+      "is_default": false
+    },
+    {
+      "id": "gpt-4o",
+      "name": "GPT-4o",
+      "provider": "openai",
+      "description": "Most capable, higher latency",
+      "latency": "medium",
+      "is_default": false
+    }
+  ]
+}
+```
+</ResponseExample>

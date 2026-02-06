@@ -25,15 +25,11 @@ Update any configuration fields for an existing AI agent. Only include fields yo
 </ParamField>
 
 <ParamField body="voice_id" type="string">
-  Voice identifier for text-to-speech.
+  Voice identifier for text-to-speech. Use IDs from the list-voices endpoint.
 </ParamField>
 
-<ParamField body="voice_provider" type="string">
-  TTS provider: `openai` or `elevenlabs`.
-</ParamField>
-
-<ParamField body="voice_speed" type="number">
-  Speech speed multiplier (0.5 to 2.0).
+<ParamField body="llm_model" type="string">
+  LLM model for conversation: `gpt-4.1-nano` (fastest, default), `gpt-4o`, `gpt-4o-mini`.
 </ParamField>
 
 <ParamField body="language" type="string">
@@ -68,7 +64,7 @@ curl -X POST https://api.magpipe.ai/functions/v1/update-agent \
   -d '{
     "agent_id": "550e8400-e29b-41d4-a716-446655440000",
     "greeting": "Hi there! Thanks for calling Acme Dental. How can I help you?",
-    "voice_speed": 1.1
+    "llm_model": "gpt-4o"
   }'
 ```
 
@@ -84,7 +80,7 @@ const response = await fetch(
     body: JSON.stringify({
       agent_id: '550e8400-e29b-41d4-a716-446655440000',
       greeting: 'Hi there! Thanks for calling Acme Dental. How can I help you?',
-      voice_speed: 1.1
+      llm_model: 'gpt-4o'
     }),
   }
 );
@@ -105,7 +101,7 @@ response = requests.post(
     json={
         'agent_id': '550e8400-e29b-41d4-a716-446655440000',
         'greeting': 'Hi there! Thanks for calling Acme Dental. How can I help you?',
-        'voice_speed': 1.1
+        'llm_model': 'gpt-4o'
     }
 )
 
@@ -120,7 +116,7 @@ print(f"Updated: {agent['updated_at']}")
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "name": "Sarah - Receptionist",
   "greeting": "Hi there! Thanks for calling Acme Dental. How can I help you?",
-  "voice_speed": 1.1,
+  "llm_model": "gpt-4o",
   "updated_at": "2024-01-16T09:15:00Z"
 }
 ```
