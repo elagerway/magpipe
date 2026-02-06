@@ -7,12 +7,15 @@ Handles real-time voice conversations with STT, LLM, and TTS pipeline
 import aiohttp
 import asyncio
 import datetime
+import hashlib
+import hmac
 import json
 import logging
 import os
 import re
 import sys
 import threading
+import time as time_module
 from typing import Annotated
 
 # Force unbuffered output for immediate log visibility in Render
@@ -878,6 +881,169 @@ def create_voice_clone_tool(user_id: str):
     return clone_voice_from_sample
 
 
+# ============================================
+# Custom Function Factory
+# ============================================
+
+async def get_custom_functions(agent_id: str) -> list:
+    """Fetch active custom functions for an agent from database"""
+    try:
+        response = supabase.table("custom_functions") \
+            .select("*") \
+            .eq("agent_id", agent_id) \
+            .eq("is_active", True) \
+            .execute()
+        return response.data or []
+    except Exception as e:
+        logger.error(f"Error fetching custom functions: {e}")
+        return []
+
+
+def extract_json_path(data: dict, path: str):
+    """Simple JSON path extraction (supports $.key.subkey format)"""
+    try:
+        if not path or not path.startswith('$'):
+            return None
+
+        # Remove leading $. and split by dots
+        keys = path.lstrip('$.').split('.')
+        result = data
+
+        for key in keys:
+            if isinstance(result, dict):
+                result = result.get(key)
+            elif isinstance(result, list) and key.isdigit():
+                result = result[int(key)]
+            else:
+                return None
+
+        return result
+    except Exception:
+        return None
+
+
+def create_custom_function_tool(func_config: dict, webhook_secret: str = None):
+    """Create a LiveKit function_tool from custom function configuration"""
+    func_name = func_config['name']
+    func_description = func_config['description']
+    http_method = func_config['http_method']
+    endpoint_url = func_config['endpoint_url']
+    headers_config = func_config.get('headers') or []
+    body_schema = func_config.get('body_schema') or []
+    response_variables = func_config.get('response_variables') or []
+    timeout_ms = func_config.get('timeout_ms') or 120000
+    max_retries = func_config.get('max_retries') or 2
+
+    # Build parameter annotations for the function based on body_schema
+    # For now, we'll accept kwargs and validate against schema
+    param_descriptions = []
+    for param in body_schema:
+        required_str = " (required)" if param.get('required') else ""
+        param_descriptions.append(f"- {param['name']}: {param.get('description', 'No description')}{required_str}")
+
+    full_description = func_description
+    if param_descriptions:
+        full_description += "\n\nParameters:\n" + "\n".join(param_descriptions)
+
+    @function_tool(description=full_description)
+    async def custom_function(
+        parameters: Annotated[str, "JSON string of parameters to pass to the function"]
+    ):
+        """Execute a custom webhook function"""
+        logger.info(f"🔧 Custom function '{func_name}' called with parameters: {parameters}")
+
+        try:
+            # Parse parameters
+            params = {}
+            if parameters:
+                try:
+                    params = json.loads(parameters)
+                except json.JSONDecodeError:
+                    # Try to extract key-value pairs from natural language
+                    logger.warning(f"Failed to parse parameters as JSON: {parameters}")
+                    params = {"raw_input": parameters}
+
+            # Validate required parameters
+            missing_required = []
+            for param_def in body_schema:
+                if param_def.get('required') and param_def['name'] not in params:
+                    missing_required.append(param_def['name'])
+
+            if missing_required:
+                return f"Missing required information: {', '.join(missing_required)}. Please provide these values."
+
+            # Build headers
+            headers = {'Content-Type': 'application/json'}
+
+            # Add request signing if webhook_secret is provided
+            if webhook_secret:
+                timestamp = str(int(time_module.time()))
+                payload_str = json.dumps(params, sort_keys=True)
+                signature = hmac.new(
+                    webhook_secret.encode(),
+                    f"{timestamp}.{payload_str}".encode(),
+                    hashlib.sha256
+                ).hexdigest()
+                headers['X-Magpipe-Timestamp'] = timestamp
+                headers['X-Magpipe-Signature'] = signature
+
+            # Add custom headers from config
+            for h in headers_config:
+                if h.get('name') and h.get('value'):
+                    headers[h['name']] = h['value']
+
+            # Make HTTP request with retries
+            timeout = aiohttp.ClientTimeout(total=timeout_ms / 1000)
+
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                for attempt in range(max_retries + 1):
+                    try:
+                        if http_method == 'GET':
+                            async with session.get(endpoint_url, params=params, headers=headers) as resp:
+                                result = await resp.json()
+                        else:
+                            async with session.request(http_method, endpoint_url, json=params, headers=headers) as resp:
+                                result = await resp.json()
+
+                        logger.info(f"🔧 Custom function '{func_name}' response: {result}")
+
+                        # Extract response variables if configured
+                        if response_variables:
+                            extracted = {}
+                            for var in response_variables:
+                                value = extract_json_path(result, var.get('json_path', ''))
+                                if value is not None:
+                                    extracted[var['name']] = value
+
+                            if extracted:
+                                return f"Function completed successfully. Results: {json.dumps(extracted)}"
+
+                        # Return full response if no variables to extract
+                        if isinstance(result, dict):
+                            # Try to find a message or status in the response
+                            for key in ['message', 'result', 'status', 'data']:
+                                if key in result:
+                                    return f"Function completed. {key.capitalize()}: {result[key]}"
+                            return f"Function completed successfully."
+                        return f"Function completed. Response: {result}"
+
+                    except aiohttp.ClientError as e:
+                        logger.error(f"Request attempt {attempt + 1} failed: {e}")
+                        if attempt == max_retries:
+                            return "I'm having trouble completing that request. Please try again later."
+                        await asyncio.sleep(1)  # Brief delay before retry
+
+        except Exception as e:
+            logger.error(f"Custom function '{func_name}' error: {e}")
+            return "I encountered an error processing that request."
+
+    # Set the function name for the tool registry
+    custom_function.__name__ = func_name
+    custom_function.__qualname__ = func_name
+
+    return custom_function
+
+
 async def prewarm(proc: JobProcess):
     """
     Prewarm function for explicit agent dispatch.
@@ -1443,9 +1609,30 @@ CALL CONTEXT:
 
     # Already connected earlier to get service number, don't connect again in session.start
 
-    # Create Agent instance - start with no tools, just basic conversation
-    # TODO: Add transfer and data collection tools once basic calling works
-    assistant = Agent(instructions=system_prompt)
+    # Load custom functions for this agent
+    custom_tools = []
+    if agent_id:
+        custom_function_configs = await get_custom_functions(agent_id)
+        if custom_function_configs:
+            logger.info(f"🔧 Loading {len(custom_function_configs)} custom functions for agent {agent_id}")
+            # Get webhook secret from environment (optional)
+            webhook_secret = os.getenv("CUSTOM_FUNCTION_WEBHOOK_SECRET")
+            for func_config in custom_function_configs:
+                try:
+                    tool = create_custom_function_tool(func_config, webhook_secret)
+                    custom_tools.append(tool)
+                    logger.info(f"🔧 Registered custom function: {func_config['name']}")
+                except Exception as e:
+                    logger.error(f"Failed to create custom function '{func_config['name']}': {e}")
+        else:
+            logger.info(f"🔧 No custom functions configured for agent {agent_id}")
+
+    # Create Agent instance with custom function tools
+    if custom_tools:
+        assistant = Agent(instructions=system_prompt, tools=custom_tools)
+        logger.info(f"🔧 Agent created with {len(custom_tools)} custom function tools")
+    else:
+        assistant = Agent(instructions=system_prompt)
 
     # Initialize AgentSession with low-latency configuration
     # VAD tuning: instant response with background noise filtering

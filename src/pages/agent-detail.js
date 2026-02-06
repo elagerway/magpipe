@@ -7,6 +7,7 @@ import { getCurrentUser, supabase } from '../lib/supabase.js';
 import { renderBottomNav, attachBottomNav } from '../components/BottomNav.js';
 import { AgentConfig } from '../models/AgentConfig.js';
 import { ChatWidget } from '../models/ChatWidget.js';
+import { CustomFunction } from '../models/CustomFunction.js';
 import { getAgentMemories, getMemory, updateMemory, clearMemory } from '../services/memoryService.js';
 
 /* global navigateTo */
@@ -55,6 +56,7 @@ export default class AgentDetailPage {
     this.knowledgeSources = []; // Knowledge bases for this user
     this.memories = []; // Agent memory entries
     this.memoryCount = 0; // Count of memory entries
+    this.customFunctions = []; // Custom webhook functions for this agent
     // Voice cloning state
     this.mediaRecorder = null;
     this.audioChunks = [];
@@ -164,6 +166,10 @@ export default class AgentDetailPage {
     // Load chat widget for this agent
     const { widget } = await ChatWidget.getByAgentId(this.agent.id);
     this.chatWidget = widget;
+
+    // Load custom functions for this agent
+    const { functions: customFunctions } = await CustomFunction.listByAgent(this.agent.id);
+    this.customFunctions = customFunctions || [];
 
     // Add styles
     this.addStyles();
@@ -1598,6 +1604,26 @@ THIS IS AN OUTBOUND CALL:
       </div>
 
       <div class="config-section">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+          <h3 style="margin: 0;">Custom Functions</h3>
+          <button class="btn btn-primary btn-sm" id="add-custom-function-btn" style="display: flex; align-items: center;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.4rem;">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            Add Function
+          </button>
+        </div>
+        <p class="section-desc">Define custom webhooks your agent can call during conversations.</p>
+
+        <div id="custom-functions-list">
+          ${this.customFunctions.length === 0 ? `
+            <div class="no-numbers-message">No custom functions configured</div>
+          ` : this.customFunctions.map(func => this.renderCustomFunctionCard(func)).join('')}
+        </div>
+      </div>
+
+      <div class="config-section">
         <h3>MCP Servers</h3>
         <p class="section-desc">Connect MCP servers to extend your agent's capabilities.</p>
         <div class="placeholder-message">
@@ -2627,6 +2653,49 @@ THIS IS AN OUTBOUND CALL:
         this.showTransferModal();
       });
     }
+
+    // Custom Functions listeners
+    const addCustomFunctionBtn = document.getElementById('add-custom-function-btn');
+    if (addCustomFunctionBtn) {
+      addCustomFunctionBtn.addEventListener('click', () => {
+        this.showCustomFunctionModal();
+      });
+    }
+
+    // Edit/Delete buttons for existing custom functions
+    this.attachCustomFunctionListeners();
+  }
+
+  attachCustomFunctionListeners() {
+    document.querySelectorAll('.edit-custom-function-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const functionId = btn.dataset.functionId;
+        const func = this.customFunctions.find(f => f.id === functionId);
+        if (func) {
+          this.showCustomFunctionModal(func);
+        }
+      });
+    });
+
+    document.querySelectorAll('.delete-custom-function-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const functionId = btn.dataset.functionId;
+        const func = this.customFunctions.find(f => f.id === functionId);
+        if (func) {
+          this.deleteCustomFunction(func);
+        }
+      });
+    });
+
+    document.querySelectorAll('.toggle-custom-function-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const functionId = btn.dataset.functionId;
+        const func = this.customFunctions.find(f => f.id === functionId);
+        if (func) {
+          await this.toggleCustomFunctionActive(func);
+        }
+      });
+    });
   }
 
   attachDeploymentTabListeners() {
@@ -4222,6 +4291,523 @@ THIS IS AN OUTBOUND CALL:
     } catch (err) {
       console.error('Error saving SMS templates:', err);
       alert('Failed to save templates. Please try again.');
+    }
+  }
+
+  // ============================================
+  // Custom Functions Methods
+  // ============================================
+
+  renderCustomFunctionCard(func) {
+    const methodColors = {
+      'GET': '#22c55e',
+      'POST': '#3b82f6',
+      'PUT': '#f59e0b',
+      'PATCH': '#8b5cf6',
+      'DELETE': '#ef4444'
+    };
+    const methodColor = methodColors[func.http_method] || '#6b7280';
+
+    return `
+      <div class="custom-function-card" data-function-id="${func.id}" style="
+        background: var(--bg-secondary, #f9fafb);
+        border: 1px solid var(--border-color, #e5e7eb);
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 0.75rem;
+      ">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem;">
+          <div style="flex: 1; min-width: 0;">
+            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
+              <span style="
+                background: ${methodColor};
+                color: white;
+                font-size: 0.625rem;
+                font-weight: 600;
+                padding: 0.125rem 0.375rem;
+                border-radius: 4px;
+                font-family: monospace;
+              ">${func.http_method}</span>
+              <span style="font-weight: 600; font-size: 0.9rem; font-family: monospace;">${func.name}</span>
+              <span style="
+                background: ${func.is_active ? '#dcfce7' : '#f3f4f6'};
+                color: ${func.is_active ? '#15803d' : '#6b7280'};
+                font-size: 0.625rem;
+                font-weight: 500;
+                padding: 0.125rem 0.375rem;
+                border-radius: 4px;
+              ">${func.is_active ? 'Active' : 'Inactive'}</span>
+            </div>
+            <p style="margin: 0.25rem 0; font-size: 0.875rem; color: var(--text-secondary);">${func.description}</p>
+            <p style="margin: 0; font-size: 0.75rem; color: var(--text-tertiary, #9ca3af); word-break: break-all;">${func.endpoint_url}</p>
+          </div>
+          <div style="display: flex; gap: 0.25rem; flex-shrink: 0;">
+            <button class="toggle-custom-function-btn btn btn-sm ${func.is_active ? 'btn-secondary' : 'btn-primary'}" data-function-id="${func.id}" title="${func.is_active ? 'Disable' : 'Enable'}">
+              ${func.is_active ? `
+                <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+              ` : `
+                <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+              `}
+            </button>
+            <button class="edit-custom-function-btn btn btn-sm btn-secondary" data-function-id="${func.id}" title="Edit">
+              <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+              </svg>
+            </button>
+            <button class="delete-custom-function-btn btn btn-sm btn-secondary" data-function-id="${func.id}" title="Delete" style="color: #ef4444;">
+              <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  showCustomFunctionModal(existingFunction = null) {
+    const isEdit = !!existingFunction;
+    const func = existingFunction || {
+      name: '',
+      description: '',
+      http_method: 'POST',
+      endpoint_url: '',
+      headers: [],
+      body_schema: [],
+      response_variables: [],
+      timeout_ms: 120000,
+      max_retries: 2,
+      is_active: true
+    };
+
+    const modal = document.createElement('div');
+    modal.className = 'voice-modal-overlay';
+    modal.id = 'custom-function-modal';
+    modal.innerHTML = `
+      <div class="voice-modal" style="max-width: 600px; max-height: 90vh; display: flex; flex-direction: column;">
+        <div class="voice-modal-header">
+          <h3>${isEdit ? 'Edit' : 'Add'} Custom Function</h3>
+          <button class="close-modal-btn">&times;</button>
+        </div>
+        <div class="voice-modal-content" style="padding: 1rem; flex: 1; overflow-y: auto;">
+          <!-- Basic Info -->
+          <div class="form-group">
+            <label class="form-label">Function Name <span style="color: #ef4444;">*</span></label>
+            <input type="text" id="cf-name" class="form-input" placeholder="e.g., check_order_status" value="${func.name}" style="font-family: monospace;">
+            <p class="form-help">Use snake_case (lowercase letters, numbers, underscores). This is how the LLM will call the function.</p>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Description <span style="color: #ef4444;">*</span></label>
+            <textarea id="cf-description" class="form-textarea" rows="2" placeholder="Look up customer order status by order ID">${func.description}</textarea>
+            <p class="form-help">Describe what this function does. The AI uses this to decide when to call it.</p>
+          </div>
+
+          <!-- HTTP Config -->
+          <div style="display: flex; gap: 0.75rem; margin-bottom: 1rem;">
+            <div class="form-group" style="width: 120px; margin: 0;">
+              <label class="form-label">Method</label>
+              <select id="cf-method" class="form-select">
+                <option value="GET" ${func.http_method === 'GET' ? 'selected' : ''}>GET</option>
+                <option value="POST" ${func.http_method === 'POST' ? 'selected' : ''}>POST</option>
+                <option value="PUT" ${func.http_method === 'PUT' ? 'selected' : ''}>PUT</option>
+                <option value="PATCH" ${func.http_method === 'PATCH' ? 'selected' : ''}>PATCH</option>
+                <option value="DELETE" ${func.http_method === 'DELETE' ? 'selected' : ''}>DELETE</option>
+              </select>
+            </div>
+            <div class="form-group" style="flex: 1; margin: 0;">
+              <label class="form-label">Endpoint URL <span style="color: #ef4444;">*</span></label>
+              <input type="url" id="cf-url" class="form-input" placeholder="https://api.example.com/webhook" value="${func.endpoint_url}">
+            </div>
+          </div>
+
+          <!-- Headers -->
+          <div class="form-group" style="border-top: 1px solid var(--border-color, #e5e7eb); padding-top: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <label class="form-label" style="margin: 0;">Headers</label>
+              <button type="button" id="add-header-btn" class="btn btn-sm btn-secondary">+ Add Header</button>
+            </div>
+            <div id="cf-headers-list" style="margin-top: 0.5rem;">
+              ${(func.headers || []).map((h, i) => this.renderHeaderRow(h, i)).join('')}
+            </div>
+          </div>
+
+          <!-- Parameters -->
+          <div class="form-group" style="border-top: 1px solid var(--border-color, #e5e7eb); padding-top: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <label class="form-label" style="margin: 0;">Parameters</label>
+              <button type="button" id="add-param-btn" class="btn btn-sm btn-secondary">+ Add Parameter</button>
+            </div>
+            <p class="form-help" style="margin-top: 0.25rem;">Define parameters the AI should collect from the conversation.</p>
+            <div id="cf-params-list" style="margin-top: 0.5rem;">
+              ${(func.body_schema || []).map((p, i) => this.renderParamRow(p, i)).join('')}
+            </div>
+          </div>
+
+          <!-- Response Variables -->
+          <div class="form-group" style="border-top: 1px solid var(--border-color, #e5e7eb); padding-top: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <label class="form-label" style="margin: 0;">Response Variables</label>
+              <button type="button" id="add-response-var-btn" class="btn btn-sm btn-secondary">+ Add Variable</button>
+            </div>
+            <p class="form-help" style="margin-top: 0.25rem;">Extract specific values from the response using JSON paths.</p>
+            <div id="cf-response-vars-list" style="margin-top: 0.5rem;">
+              ${(func.response_variables || []).map((v, i) => this.renderResponseVarRow(v, i)).join('')}
+            </div>
+          </div>
+
+          <!-- Advanced Settings -->
+          <details style="border-top: 1px solid var(--border-color, #e5e7eb); padding-top: 1rem; margin-top: 0.5rem;">
+            <summary style="cursor: pointer; font-weight: 500; color: var(--text-secondary);">Advanced Settings</summary>
+            <div style="margin-top: 0.75rem; display: flex; gap: 1rem;">
+              <div class="form-group" style="flex: 1; margin: 0;">
+                <label class="form-label">Timeout (ms)</label>
+                <input type="number" id="cf-timeout" class="form-input" value="${func.timeout_ms}" min="1000" max="300000">
+              </div>
+              <div class="form-group" style="flex: 1; margin: 0;">
+                <label class="form-label">Max Retries</label>
+                <input type="number" id="cf-retries" class="form-input" value="${func.max_retries}" min="0" max="5">
+              </div>
+            </div>
+          </details>
+        </div>
+        <div style="padding: 1rem; border-top: 1px solid var(--border-color, #e5e7eb);">
+          <button id="save-custom-function-btn" class="btn btn-primary" style="width: 100%;">
+            ${isEdit ? 'Save Changes' : 'Create Function'}
+          </button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // Store temp data for manipulation
+    this.modalHeaders = [...(func.headers || [])];
+    this.modalParams = [...(func.body_schema || [])];
+    this.modalResponseVars = [...(func.response_variables || [])];
+
+    // Close button
+    modal.querySelector('.close-modal-btn').addEventListener('click', () => modal.remove());
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) modal.remove();
+    });
+
+    // Add header button
+    modal.querySelector('#add-header-btn').addEventListener('click', () => {
+      this.modalHeaders.push({ name: '', value: '' });
+      this.refreshModalHeaders();
+    });
+
+    // Add param button
+    modal.querySelector('#add-param-btn').addEventListener('click', () => {
+      this.modalParams.push({ name: '', type: 'string', description: '', required: false });
+      this.refreshModalParams();
+    });
+
+    // Add response var button
+    modal.querySelector('#add-response-var-btn').addEventListener('click', () => {
+      this.modalResponseVars.push({ name: '', json_path: '' });
+      this.refreshModalResponseVars();
+    });
+
+    // Save button
+    modal.querySelector('#save-custom-function-btn').addEventListener('click', async () => {
+      await this.saveCustomFunction(existingFunction?.id);
+    });
+
+    // Attach remove listeners for existing rows
+    this.attachModalRowListeners();
+  }
+
+  renderHeaderRow(header, index) {
+    return `
+      <div class="cf-row" data-index="${index}" style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+        <input type="text" class="form-input cf-header-name" placeholder="Header Name" value="${header.name || ''}" style="flex: 1;">
+        <input type="text" class="form-input cf-header-value" placeholder="Header Value" value="${header.value || ''}" style="flex: 1;">
+        <button type="button" class="btn btn-sm btn-secondary cf-remove-header" style="padding: 0.5rem;">
+          <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+    `;
+  }
+
+  renderParamRow(param, index) {
+    return `
+      <div class="cf-row" data-index="${index}" style="border: 1px solid var(--border-color, #e5e7eb); border-radius: 6px; padding: 0.75rem; margin-bottom: 0.5rem;">
+        <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+          <input type="text" class="form-input cf-param-name" placeholder="Parameter name" value="${param.name || ''}" style="flex: 1; font-family: monospace;">
+          <select class="form-select cf-param-type" style="width: 100px;">
+            <option value="string" ${param.type === 'string' ? 'selected' : ''}>String</option>
+            <option value="number" ${param.type === 'number' ? 'selected' : ''}>Number</option>
+            <option value="boolean" ${param.type === 'boolean' ? 'selected' : ''}>Boolean</option>
+          </select>
+          <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.75rem; white-space: nowrap;">
+            <input type="checkbox" class="cf-param-required" ${param.required ? 'checked' : ''}>
+            Required
+          </label>
+          <button type="button" class="btn btn-sm btn-secondary cf-remove-param" style="padding: 0.5rem;">
+            <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+        <input type="text" class="form-input cf-param-desc" placeholder="Description for the AI (e.g., 'The customer's order ID')" value="${param.description || ''}" style="font-size: 0.875rem;">
+      </div>
+    `;
+  }
+
+  renderResponseVarRow(variable, index) {
+    return `
+      <div class="cf-row" data-index="${index}" style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+        <input type="text" class="form-input cf-var-name" placeholder="Variable name" value="${variable.name || ''}" style="flex: 1; font-family: monospace;">
+        <input type="text" class="form-input cf-var-path" placeholder="JSON path (e.g., $.data.status)" value="${variable.json_path || ''}" style="flex: 1; font-family: monospace;">
+        <button type="button" class="btn btn-sm btn-secondary cf-remove-var" style="padding: 0.5rem;">
+          <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+    `;
+  }
+
+  refreshModalHeaders() {
+    const container = document.getElementById('cf-headers-list');
+    if (container) {
+      container.innerHTML = this.modalHeaders.map((h, i) => this.renderHeaderRow(h, i)).join('');
+      this.attachModalRowListeners();
+    }
+  }
+
+  refreshModalParams() {
+    const container = document.getElementById('cf-params-list');
+    if (container) {
+      container.innerHTML = this.modalParams.map((p, i) => this.renderParamRow(p, i)).join('');
+      this.attachModalRowListeners();
+    }
+  }
+
+  refreshModalResponseVars() {
+    const container = document.getElementById('cf-response-vars-list');
+    if (container) {
+      container.innerHTML = this.modalResponseVars.map((v, i) => this.renderResponseVarRow(v, i)).join('');
+      this.attachModalRowListeners();
+    }
+  }
+
+  attachModalRowListeners() {
+    // Header remove buttons
+    document.querySelectorAll('.cf-remove-header').forEach((btn, i) => {
+      btn.addEventListener('click', () => {
+        this.modalHeaders.splice(i, 1);
+        this.refreshModalHeaders();
+      });
+    });
+
+    // Param remove buttons
+    document.querySelectorAll('.cf-remove-param').forEach((btn, i) => {
+      btn.addEventListener('click', () => {
+        this.modalParams.splice(i, 1);
+        this.refreshModalParams();
+      });
+    });
+
+    // Response var remove buttons
+    document.querySelectorAll('.cf-remove-var').forEach((btn, i) => {
+      btn.addEventListener('click', () => {
+        this.modalResponseVars.splice(i, 1);
+        this.refreshModalResponseVars();
+      });
+    });
+
+    // Update header values on input
+    document.querySelectorAll('.cf-header-name').forEach((input, i) => {
+      input.addEventListener('input', () => {
+        this.modalHeaders[i].name = input.value;
+      });
+    });
+    document.querySelectorAll('.cf-header-value').forEach((input, i) => {
+      input.addEventListener('input', () => {
+        this.modalHeaders[i].value = input.value;
+      });
+    });
+
+    // Update param values on input
+    document.querySelectorAll('.cf-param-name').forEach((input, i) => {
+      input.addEventListener('input', () => {
+        this.modalParams[i].name = input.value;
+      });
+    });
+    document.querySelectorAll('.cf-param-type').forEach((select, i) => {
+      select.addEventListener('change', () => {
+        this.modalParams[i].type = select.value;
+      });
+    });
+    document.querySelectorAll('.cf-param-desc').forEach((input, i) => {
+      input.addEventListener('input', () => {
+        this.modalParams[i].description = input.value;
+      });
+    });
+    document.querySelectorAll('.cf-param-required').forEach((checkbox, i) => {
+      checkbox.addEventListener('change', () => {
+        this.modalParams[i].required = checkbox.checked;
+      });
+    });
+
+    // Update response var values on input
+    document.querySelectorAll('.cf-var-name').forEach((input, i) => {
+      input.addEventListener('input', () => {
+        this.modalResponseVars[i].name = input.value;
+      });
+    });
+    document.querySelectorAll('.cf-var-path').forEach((input, i) => {
+      input.addEventListener('input', () => {
+        this.modalResponseVars[i].json_path = input.value;
+      });
+    });
+  }
+
+  async saveCustomFunction(existingId = null) {
+    const name = document.getElementById('cf-name').value.trim();
+    const description = document.getElementById('cf-description').value.trim();
+    const http_method = document.getElementById('cf-method').value;
+    const endpoint_url = document.getElementById('cf-url').value.trim();
+    const timeout_ms = parseInt(document.getElementById('cf-timeout').value) || 120000;
+    const max_retries = parseInt(document.getElementById('cf-retries').value) || 2;
+
+    // Validation
+    if (!name) {
+      alert('Function name is required');
+      return;
+    }
+    if (!CustomFunction.isValidName(name)) {
+      alert('Function name must be snake_case (lowercase letters, numbers, underscores only)');
+      return;
+    }
+    if (!description) {
+      alert('Description is required');
+      return;
+    }
+    if (!endpoint_url) {
+      alert('Endpoint URL is required');
+      return;
+    }
+    try {
+      new URL(endpoint_url);
+    } catch {
+      alert('Please enter a valid URL');
+      return;
+    }
+
+    const functionData = {
+      name,
+      description,
+      http_method,
+      endpoint_url,
+      headers: this.modalHeaders.filter(h => h.name),
+      body_schema: this.modalParams.filter(p => p.name),
+      response_variables: this.modalResponseVars.filter(v => v.name && v.json_path),
+      timeout_ms,
+      max_retries
+    };
+
+    try {
+      let result;
+      if (existingId) {
+        result = await CustomFunction.update(existingId, functionData);
+      } else {
+        result = await CustomFunction.create(this.userId, this.agent.id, functionData);
+      }
+
+      if (result.error) {
+        console.error('Error saving custom function:', result.error);
+        if (result.error.message?.includes('unique_function_name_per_agent')) {
+          alert('A function with this name already exists for this agent');
+        } else {
+          alert('Failed to save function. Please try again.');
+        }
+        return;
+      }
+
+      // Refresh the list
+      const { functions } = await CustomFunction.listByAgent(this.agent.id);
+      this.customFunctions = functions || [];
+
+      // Update the UI
+      const listContainer = document.getElementById('custom-functions-list');
+      if (listContainer) {
+        listContainer.innerHTML = this.customFunctions.length === 0
+          ? '<div class="no-numbers-message">No custom functions configured</div>'
+          : this.customFunctions.map(f => this.renderCustomFunctionCard(f)).join('');
+        this.attachCustomFunctionListeners();
+      }
+
+      // Close modal
+      document.getElementById('custom-function-modal')?.remove();
+    } catch (err) {
+      console.error('Error saving custom function:', err);
+      alert('Failed to save function. Please try again.');
+    }
+  }
+
+  async deleteCustomFunction(func) {
+    this.showConfirmModal({
+      title: 'Delete Function',
+      message: `Are you sure you want to delete <strong>${func.name}</strong>? This cannot be undone.`,
+      confirmText: 'Delete',
+      onConfirm: async () => {
+        try {
+          const { error } = await CustomFunction.delete(func.id);
+          if (error) {
+            console.error('Error deleting custom function:', error);
+            alert('Failed to delete function');
+            return;
+          }
+
+          // Refresh the list
+          this.customFunctions = this.customFunctions.filter(f => f.id !== func.id);
+
+          // Update the UI
+          const listContainer = document.getElementById('custom-functions-list');
+          if (listContainer) {
+            listContainer.innerHTML = this.customFunctions.length === 0
+              ? '<div class="no-numbers-message">No custom functions configured</div>'
+              : this.customFunctions.map(f => this.renderCustomFunctionCard(f)).join('');
+            this.attachCustomFunctionListeners();
+          }
+        } catch (err) {
+          console.error('Error deleting custom function:', err);
+          alert('Failed to delete function');
+        }
+      }
+    });
+  }
+
+  async toggleCustomFunctionActive(func) {
+    try {
+      const { error } = await CustomFunction.toggleActive(func.id, !func.is_active);
+      if (error) {
+        console.error('Error toggling custom function:', error);
+        return;
+      }
+
+      // Update local state
+      func.is_active = !func.is_active;
+
+      // Update the card UI
+      const card = document.querySelector(`.custom-function-card[data-function-id="${func.id}"]`);
+      if (card) {
+        card.outerHTML = this.renderCustomFunctionCard(func);
+        this.attachCustomFunctionListeners();
+      }
+    } catch (err) {
+      console.error('Error toggling custom function:', err);
     }
   }
 

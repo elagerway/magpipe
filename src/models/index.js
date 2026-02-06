@@ -13,3 +13,4 @@ export { Organization } from './Organization.js';
 export { OrganizationMember } from './OrganizationMember.js';
 export { ChatWidget } from './ChatWidget.js';
 export { ChatSession } from './ChatSession.js';
+export { CustomFunction } from './CustomFunction.js';
