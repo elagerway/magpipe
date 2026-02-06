@@ -99,7 +99,7 @@ Sends an SMS text message to a phone number using one of your Magpipe numbers as
 <CodeGroup>
 
 ```bash cURL
-curl -X POST "https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/send-sms" \
+curl -X POST "https://api.magpipe.ai/functions/v1/send-sms" \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -111,7 +111,7 @@ curl -X POST "https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/send-sms" \
 
 ```javascript JavaScript
 const response = await fetch(
-  'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/send-sms',
+  'https://api.magpipe.ai/functions/v1/send-sms',
   {
     method: 'POST',
     headers: {
@@ -134,7 +134,7 @@ console.log(data.message_id);
 import requests
 
 response = requests.post(
-    'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/send-sms',
+    'https://api.magpipe.ai/functions/v1/send-sms',
     headers={
         'Authorization': f'Bearer {access_token}',
         'Content-Type': 'application/json',

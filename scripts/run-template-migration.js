@@ -3,7 +3,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const supabase = createClient(
-  'https://mtxbiyilvgwhbdptysex.supabase.co',
+  'https://api.magpipe.ai',
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 

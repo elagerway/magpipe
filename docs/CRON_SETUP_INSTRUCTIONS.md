@@ -22,7 +22,7 @@
    - Go to Project Settings → Database → Custom Postgres configuration
    - Add these settings:
      ```
-     app.settings.supabase_url = 'https://mtxbiyilvgwhbdptysex.supabase.co'
+     app.settings.supabase_url = 'https://api.magpipe.ai'
      app.settings.supabase_anon_key = 'YOUR_ANON_KEY'
      ```
 
@@ -75,7 +75,7 @@ If you don't have Supabase Pro, use GitHub Actions to call the Edge Function dai
          - name: Call Supabase Edge Function
            run: |
              curl -X POST \
-               https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/process-scheduled-deletions \
+               https://api.magpipe.ai/functions/v1/process-scheduled-deletions \
                -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
                -H "Content-Type: application/json"
    ```
@@ -100,7 +100,7 @@ Use a free external cron service.
 1. Sign up at https://www.easycron.com (free tier: 1 cron job)
 
 2. Create new cron job:
-   - **URL**: `https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/process-scheduled-deletions`
+   - **URL**: `https://api.magpipe.ai/functions/v1/process-scheduled-deletions`
    - **Cron Expression**: `0 2 * * *` (daily 2 AM)
    - **HTTP Method**: POST
    - **Headers**:
@@ -128,7 +128,7 @@ If you deploy to Vercel, use Vercel Cron.
      }
 
      const response = await fetch(
-       'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/process-scheduled-deletions',
+       'https://api.magpipe.ai/functions/v1/process-scheduled-deletions',
        {
          method: 'POST',
          headers: {
@@ -191,7 +191,7 @@ After setting up cron, verify it's working:
 
 3. **Manual test**:
    ```bash
-   curl -X POST https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/process-scheduled-deletions \
+   curl -X POST https://api.magpipe.ai/functions/v1/process-scheduled-deletions \
      -H "Authorization: Bearer YOUR_ANON_KEY"
    ```
 

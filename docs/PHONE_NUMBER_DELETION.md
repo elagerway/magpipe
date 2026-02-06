@@ -67,7 +67,7 @@ This function should be called daily via cron job or manually when needed.
 
 **Manual Invocation:**
 ```bash
-curl -X POST https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/process-scheduled-deletions \
+curl -X POST https://api.magpipe.ai/functions/v1/process-scheduled-deletions \
   -H "Authorization: Bearer ANON_KEY"
 ```
 
@@ -131,7 +131,7 @@ SELECT cron.schedule(
   '0 2 * * *',
   $$
   SELECT net.http_post(
-    url := 'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/process-scheduled-deletions',
+    url := 'https://api.magpipe.ai/functions/v1/process-scheduled-deletions',
     headers := '{"Content-Type": "application/json", "Authorization": "Bearer YOUR_ANON_KEY"}'::jsonb
   );
   $$
@@ -155,7 +155,7 @@ jobs:
     steps:
       - name: Call Supabase Function
         run: |
-          curl -X POST https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/process-scheduled-deletions \
+          curl -X POST https://api.magpipe.ai/functions/v1/process-scheduled-deletions \
             -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}"
 ```
 
@@ -171,7 +171,7 @@ jobs:
 node scripts/queue-numbers-for-deletion.js
 
 # Via API
-curl -X POST https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/queue-number-deletion \
+curl -X POST https://api.magpipe.ai/functions/v1/queue-number-deletion \
   -H "Authorization: Bearer ANON_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -190,7 +190,7 @@ ORDER BY scheduled_deletion_date;
 
 ### Manually trigger deletion processing
 ```bash
-curl -X POST https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/process-scheduled-deletions \
+curl -X POST https://api.magpipe.ai/functions/v1/process-scheduled-deletions \
   -H "Authorization: Bearer ANON_KEY"
 ```
 

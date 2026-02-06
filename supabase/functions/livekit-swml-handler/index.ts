@@ -48,7 +48,7 @@ serve(async (req) => {
           // Send webhook at call start
           {
             execute: {
-              dest: 'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/signalwire-status-webhook',
+              dest: 'https://api.magpipe.ai/functions/v1/signalwire-status-webhook',
               method: 'POST',
               params: {
                 call_id: CallSid || 'unknown',
@@ -72,7 +72,7 @@ serve(async (req) => {
               on_answered: [
                 {
                   execute: {
-                    dest: 'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/signalwire-status-webhook',
+                    dest: 'https://api.magpipe.ai/functions/v1/signalwire-status-webhook',
                     method: 'POST',
                     params: {
                       call_id: CallSid || 'unknown',
@@ -88,7 +88,7 @@ serve(async (req) => {
               on_ended: [
                 {
                   execute: {
-                    dest: 'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/signalwire-status-webhook',
+                    dest: 'https://api.magpipe.ai/functions/v1/signalwire-status-webhook',
                     method: 'POST',
                     params: {
                       call_id: CallSid || 'unknown',

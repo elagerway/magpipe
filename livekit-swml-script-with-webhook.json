@@ -4,7 +4,7 @@
     "main": [
       {
         "execute": {
-          "dest": "https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/signalwire-status-webhook",
+          "dest": "https://api.magpipe.ai/functions/v1/signalwire-status-webhook",
           "method": "POST",
           "params": {
             "call_id": "%{call.call_id}",
@@ -30,7 +30,7 @@
           "on_answered": [
             {
               "execute": {
-                "dest": "https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/signalwire-status-webhook",
+                "dest": "https://api.magpipe.ai/functions/v1/signalwire-status-webhook",
                 "method": "POST",
                 "params": {
                   "call_id": "%{call.call_id}",
@@ -46,7 +46,7 @@
           "on_ended": [
             {
               "execute": {
-                "dest": "https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/signalwire-status-webhook",
+                "dest": "https://api.magpipe.ai/functions/v1/signalwire-status-webhook",
                 "method": "POST",
                 "params": {
                   "call_id": "%{call.call_id}",

@@ -9,7 +9,7 @@ dotenv.config();
 // Mobile viewport
 test.use({ viewport: { width: 375, height: 812 } }); // iPhone X size
 
-const SUPABASE_URL = 'https://mtxbiyilvgwhbdptysex.supabase.co';
+const SUPABASE_URL = 'https://api.magpipe.ai';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im10eGJpeWlsdmd3aGJkcHR5c2V4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjkyNzUzNzMsImV4cCI6MjA0NDg1MTM3M30.6OZFpNqVdDnfSxkSevZKI5VsXdjnc6V1VMVH4Qa-_g8';
 const TEST_EMAIL = 'erik@snapsonic.com';
 

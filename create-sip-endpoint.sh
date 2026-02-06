@@ -12,6 +12,6 @@ read -p "Enter your access token: " AUTH_TOKEN
 
 # Call the Edge Function
 curl -X POST \
-  "https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/create-user-sip-endpoint" \
+  "https://api.magpipe.ai/functions/v1/create-user-sip-endpoint" \
   -H "Authorization: Bearer $AUTH_TOKEN" \
   -H "Content-Type: application/json" | python3 -m json.tool

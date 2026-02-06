@@ -8,7 +8,7 @@
   "favicon": "favicon.svg",
   "openapi": "openapi.json",
   "api": {
-    "baseUrl": "https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1",
+    "baseUrl": "https://api.magpipe.ai/functions/v1",
     "auth": {
       "method": "bearer"
     },

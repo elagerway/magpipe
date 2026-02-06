@@ -3,7 +3,7 @@ sections:
   main:
     # Send webhook at call start
     - execute:
-        dest: https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/signalwire-status-webhook
+        dest: https://api.magpipe.ai/functions/v1/signalwire-status-webhook
         method: POST
         params:
           call_id: "%{call.call_id}"
@@ -31,7 +31,7 @@ sections:
         # Send webhooks on state changes
         on_answered:
           - execute:
-              dest: https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/signalwire-status-webhook
+              dest: https://api.magpipe.ai/functions/v1/signalwire-status-webhook
               method: POST
               params:
                 call_id: "%{call.call_id}"
@@ -42,7 +42,7 @@ sections:
                 answered_at: "%{call.answered_at}"
         on_ended:
           - execute:
-              dest: https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/signalwire-status-webhook
+              dest: https://api.magpipe.ai/functions/v1/signalwire-status-webhook
               method: POST
               params:
                 call_id: "%{call.call_id}"

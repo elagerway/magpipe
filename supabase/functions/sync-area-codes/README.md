@@ -47,7 +47,7 @@ You can also trigger the sync manually:
 ```bash
 curl -X POST \
   -H "Authorization: Bearer your_sync_secret" \
-  https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/sync-area-codes
+  https://api.magpipe.ai/functions/v1/sync-area-codes
 ```
 
 ## Data Source

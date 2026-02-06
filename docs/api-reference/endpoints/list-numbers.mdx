@@ -36,7 +36,7 @@ Retrieve all phone numbers provisioned in your account with their current config
 
 <RequestExample>
 ```bash cURL
-curl -X POST https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/list-phone-numbers \
+curl -X POST https://api.magpipe.ai/functions/v1/list-phone-numbers \
   -H "Authorization: Bearer YOUR_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{}'
@@ -44,7 +44,7 @@ curl -X POST https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/list-phone-nu
 
 ```javascript Node.js
 const response = await fetch(
-  'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/list-phone-numbers',
+  'https://api.magpipe.ai/functions/v1/list-phone-numbers',
   {
     method: 'POST',
     headers: {
@@ -63,7 +63,7 @@ console.log(`You have ${total} numbers`);
 import requests
 
 response = requests.post(
-    'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/list-phone-numbers',
+    'https://api.magpipe.ai/functions/v1/list-phone-numbers',
     headers={
         'Authorization': 'Bearer YOUR_API_TOKEN',
         'Content-Type': 'application/json',

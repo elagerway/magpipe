@@ -4,7 +4,7 @@
 
 const { test, expect } = require('@playwright/test');
 
-const SUPABASE_URL = 'https://mtxbiyilvgwhbdptysex.supabase.co';
+const SUPABASE_URL = 'https://api.magpipe.ai';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im10eGJpeWlsdmd3aGJkcHR5c2V4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjgxNzA2NTYsImV4cCI6MjA0Mzc0NjY1Nn0.lBjrdWJnxHJSFVtJsUaKqWrXUNeOpaYXyODqXsCABFI';
 
 test.describe('Agent Page Layout', () => {

@@ -28,7 +28,7 @@ This action is irreversible. All chunks and embeddings from this source will be 
 
 <RequestExample>
 ```bash cURL
-curl -X POST https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/delete-knowledge-source \
+curl -X POST https://api.magpipe.ai/functions/v1/delete-knowledge-source \
   -H "Authorization: Bearer YOUR_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"source_id": "f7a8b9c0-d1e2-3f4a-5b6c-789012def345"}'
@@ -36,7 +36,7 @@ curl -X POST https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/delete-knowle
 
 ```javascript Node.js
 const response = await fetch(
-  'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/delete-knowledge-source',
+  'https://api.magpipe.ai/functions/v1/delete-knowledge-source',
   {
     method: 'POST',
     headers: {
@@ -57,7 +57,7 @@ console.log(`Deleted ${result.chunks_deleted} chunks`);
 import requests
 
 response = requests.post(
-    'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/delete-knowledge-source',
+    'https://api.magpipe.ai/functions/v1/delete-knowledge-source',
     headers={
         'Authorization': 'Bearer YOUR_API_TOKEN',
         'Content-Type': 'application/json',

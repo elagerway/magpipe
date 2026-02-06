@@ -28,7 +28,7 @@ This action is irreversible. The number will be immediately released and you may
 
 <RequestExample>
 ```bash cURL
-curl -X POST https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/release-phone-number \
+curl -X POST https://api.magpipe.ai/functions/v1/release-phone-number \
   -H "Authorization: Bearer YOUR_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"number_id": "a1b2c3d4-5678-9012-3456-789012345678"}'
@@ -36,7 +36,7 @@ curl -X POST https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/release-phone
 
 ```javascript Node.js
 const response = await fetch(
-  'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/release-phone-number',
+  'https://api.magpipe.ai/functions/v1/release-phone-number',
   {
     method: 'POST',
     headers: {
@@ -57,7 +57,7 @@ console.log('Released:', result.phone_number);
 import requests
 
 response = requests.post(
-    'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/release-phone-number',
+    'https://api.magpipe.ai/functions/v1/release-phone-number',
     headers={
         'Authorization': 'Bearer YOUR_API_TOKEN',
         'Content-Type': 'application/json',

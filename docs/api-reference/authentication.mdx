@@ -25,7 +25,7 @@ Treat your API token like a password. Never share it or commit it to source cont
 You can also authenticate using email/password to get a session token:
 
 ```bash
-curl -X POST "https://mtxbiyilvgwhbdptysex.supabase.co/auth/v1/token?grant_type=password" \
+curl -X POST "https://api.magpipe.ai/auth/v1/token?grant_type=password" \
   -H "apikey: YOUR_ANON_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -49,7 +49,7 @@ Response:
 Include the token in the `Authorization` header:
 
 ```bash
-curl -X GET "https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/endpoint" \
+curl -X GET "https://api.magpipe.ai/functions/v1/endpoint" \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
   -H "Content-Type: application/json"
 ```
@@ -63,7 +63,7 @@ curl -X GET "https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/endpoint" \
 ### Refreshing Tokens
 
 ```bash
-curl -X POST "https://mtxbiyilvgwhbdptysex.supabase.co/auth/v1/token?grant_type=refresh_token" \
+curl -X POST "https://api.magpipe.ai/auth/v1/token?grant_type=refresh_token" \
   -H "apikey: YOUR_ANON_KEY" \
   -H "Content-Type: application/json" \
   -d '{

@@ -17,8 +17,8 @@
   'use strict';
 
   // Configuration
-  const API_URL = 'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/webhook-chat-message';
-  const SUPABASE_URL = 'https://mtxbiyilvgwhbdptysex.supabase.co';
+  const API_URL = 'https://api.magpipe.ai/functions/v1/webhook-chat-message';
+  const SUPABASE_URL = 'https://api.magpipe.ai';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im10eGJpeWlsdmd3aGJkcHR5c2V4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzM3OTExMDIsImV4cCI6MjA0OTM2NzEwMn0.uVgXMvhXIjMnLPa7lNNTaEFBqnCV_0yRD6L5s9HZROI';
 
   // State

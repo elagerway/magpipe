@@ -17,7 +17,7 @@ Deno.serve(async (req) => {
   }
 
   // Build recording callback URL
-  const supabaseUrl = Deno.env.get('SUPABASE_URL') || 'https://mtxbiyilvgwhbdptysex.supabase.co';
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') || 'https://api.magpipe.ai';
   const recordingCallbackUrl = `${supabaseUrl}/functions/v1/sip-recording-callback`;
 
   // Return cXML that dials the transfer target with recording

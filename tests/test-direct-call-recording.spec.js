@@ -128,7 +128,7 @@ test('Test direct outbound call with recording and transcription', async ({ page
   await page.waitForTimeout(5000);
 
   // Query database via Supabase
-  const supabaseUrl = 'https://mtxbiyilvgwhbdptysex.supabase.co';
+  const supabaseUrl = 'https://api.magpipe.ai';
   const supabaseKey = 'your-supabase-service-role-key';
 
   const response = await fetch(

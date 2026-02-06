@@ -24,7 +24,7 @@ BEGIN
   SELECT * INTO response
   FROM http((
     'POST',
-    'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/process-scheduled-deletions',
+    'https://api.magpipe.ai/functions/v1/process-scheduled-deletions',
     ARRAY[
       http_header('Content-Type', 'application/json'),
       http_header('Authorization', 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im10eGJpeWlsdmd3aGJkcHR5c2V4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkxNzE2OTksImV4cCI6MjA3NDc0NzY5OX0.VpOfuXl7S_ZdSpRjD8DGkSbbT4Y5g4rsezYNYGdtNPs')
