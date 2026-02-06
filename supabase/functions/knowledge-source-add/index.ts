@@ -240,6 +240,155 @@ Deno.serve(async (req) => {
 });
 
 /**
+ * Fetch content using Jina Reader API (handles JS-rendered pages)
+ */
+async function fetchWithJinaReader(url: string): Promise<{ title: string; text: string } | null> {
+  try {
+    console.log('Trying Jina Reader for JS-rendered page:', url);
+    const jinaUrl = `https://r.jina.ai/${url}`;
+
+    const response = await fetch(jinaUrl, {
+      headers: {
+        'Accept': 'text/plain',
+        'X-Return-Format': 'text',
+      },
+      signal: AbortSignal.timeout(30000), // Longer timeout for JS rendering
+    });
+
+    if (!response.ok) {
+      console.log('Jina Reader failed:', response.status, response.statusText);
+      return null;
+    }
+
+    const content = await response.text();
+
+    // Parse the Jina response - it returns markdown with Title and content
+    const titleMatch = content.match(/^Title:\s*(.+)$/m);
+    const title = titleMatch ? titleMatch[1].trim() : 'Untitled';
+
+    // Remove metadata lines and get the actual content
+    const textContent = content
+      .replace(/^Title:.*$/m, '')
+      .replace(/^URL Source:.*$/m, '')
+      .replace(/^Warning:.*$/m, '')
+      .replace(/^Markdown Content:$/m, '')
+      .replace(/!\[.*?\]\(.*?\)/g, '') // Remove image markdown
+      .trim();
+
+    if (textContent.length < 100) {
+      console.log('Jina Reader returned too little content:', textContent.length);
+      return null;
+    }
+
+    console.log('Jina Reader extracted content:', textContent.length, 'chars');
+    return { title, text: textContent };
+  } catch (error) {
+    console.error('Jina Reader error:', error);
+    return null;
+  }
+}
+
+/**
+ * Fetch content using Microlink API (free 250 req/day, handles JS rendering)
+ */
+async function fetchWithMicrolink(url: string): Promise<{ title: string; text: string } | null> {
+  try {
+    console.log('Trying Microlink for JS-rendered page:', url);
+    const microlinkUrl = `https://api.microlink.io/?url=${encodeURIComponent(url)}&meta=true`;
+
+    const response = await fetch(microlinkUrl, {
+      signal: AbortSignal.timeout(30000),
+    });
+
+    if (!response.ok) {
+      console.log('Microlink failed:', response.status, response.statusText);
+      return null;
+    }
+
+    const data = await response.json();
+
+    if (data.status !== 'success' || !data.data) {
+      console.log('Microlink returned error:', data.status, data.message);
+      return null;
+    }
+
+    const title = data.data.title || 'Untitled';
+    let text = data.data.description || '';
+
+    // Microlink's free tier doesn't include full page content, but we can
+    // try to get any available text from the metadata
+    if (data.data.text) {
+      text = data.data.text;
+    }
+
+    // If we got reasonable content, return it
+    if (text.length >= 50) {
+      console.log('Microlink extracted content:', text.length, 'chars');
+      return { title, text };
+    }
+
+    console.log('Microlink returned insufficient content:', text.length);
+    return null;
+  } catch (error) {
+    console.error('Microlink error:', error);
+    return null;
+  }
+}
+
+/**
+ * Fetch content using Firecrawl API (500 free credits/month, great JS rendering)
+ */
+async function fetchWithFirecrawl(url: string): Promise<{ title: string; text: string } | null> {
+  try {
+    const firecrawlApiKey = Deno.env.get('FIRECRAWL_API_KEY');
+    if (!firecrawlApiKey) {
+      console.log('Firecrawl API key not configured, skipping');
+      return null;
+    }
+
+    console.log('Trying Firecrawl for JS-rendered page:', url);
+    const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${firecrawlApiKey}`,
+      },
+      body: JSON.stringify({
+        url,
+        formats: ['markdown'],
+      }),
+      signal: AbortSignal.timeout(60000), // Longer timeout for full rendering
+    });
+
+    if (!response.ok) {
+      console.log('Firecrawl failed:', response.status, response.statusText);
+      return null;
+    }
+
+    const data = await response.json();
+
+    if (!data.success || !data.data) {
+      console.log('Firecrawl returned error:', data.error);
+      return null;
+    }
+
+    const title = data.data.metadata?.title || 'Untitled';
+    const text = data.data.markdown || data.data.content || '';
+
+    if (text.length >= 100) {
+      console.log('Firecrawl extracted content:', text.length, 'chars');
+      return { title, text };
+    }
+
+    console.log('Firecrawl returned insufficient content:', text.length);
+    return null;
+  } catch (error) {
+    console.error('Firecrawl error:', error);
+    return null;
+  }
+}
+
+/**
  * Handle single page mode (existing immediate processing)
  */
 async function handleSingleMode(
@@ -251,6 +400,8 @@ async function handleSingleMode(
 ): Promise<Response> {
   // Fetch URL
   let htmlContent: string;
+  let useJinaFallback = false;
+
   try {
     const fetchResponse = await fetch(url, {
       headers: fetchHeaders,
@@ -280,15 +431,45 @@ async function handleSingleMode(
   }
 
   // Extract content
-  const { title, description, text } = extractContent(htmlContent);
-  const chunks = chunkText(text);
+  let { title, description, text } = extractContent(htmlContent);
+  let chunks = chunkText(text);
+
+  // If no content extracted, try JS rendering fallbacks in order
+  if (chunks.length === 0) {
+    console.log('No content from direct fetch, trying JS rendering fallbacks');
+
+    // Try Firecrawl first (best quality, if API key configured)
+    let fallbackResult = await fetchWithFirecrawl(url);
+
+    // Try Jina Reader second
+    if (!fallbackResult) {
+      fallbackResult = await fetchWithJinaReader(url);
+    }
+
+    // Try Microlink last (free, no key needed)
+    if (!fallbackResult) {
+      fallbackResult = await fetchWithMicrolink(url);
+    }
+
+    if (fallbackResult) {
+      title = fallbackResult.title;
+      text = fallbackResult.text;
+      description = text.substring(0, 200);
+      chunks = chunkText(text);
+      useJinaFallback = true; // Keep the flag for logging
+    }
+  }
 
   if (chunks.length === 0) {
     return new Response(
-      JSON.stringify({ error: 'No content extracted from URL' }),
+      JSON.stringify({
+        error: 'No content extracted from URL. This may be a JavaScript-rendered page. Try using "Paste Content" to manually add the content.'
+      }),
       { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
+
+  console.log(`Extracted ${chunks.length} chunks from ${url}${useJinaFallback ? ' (via Jina Reader)' : ''}`)
 
   // Create knowledge source record
   const { data: source, error: sourceError } = await supabase

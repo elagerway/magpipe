@@ -1,5 +1,4 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'npm:@supabase/supabase-js@2'
 import {
   isOptOutMessage,
   isOptInMessage,
@@ -11,7 +10,120 @@ import {
 } from '../_shared/sms-compliance.ts'
 import { analyzeSentiment } from '../_shared/sentiment-analysis.ts'
 
-serve(async (req) => {
+/**
+ * Generate embedding for text using OpenAI
+ */
+async function generateEmbedding(text: string): Promise<number[] | null> {
+  const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
+  if (!openaiApiKey) {
+    console.error('OPENAI_API_KEY not set')
+    return null
+  }
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/embeddings', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${openaiApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'text-embedding-3-small',
+        input: text,
+      }),
+    })
+
+    if (!response.ok) {
+      console.error('OpenAI embedding error:', await response.text())
+      return null
+    }
+
+    const data = await response.json()
+    return data.data[0].embedding
+  } catch (error) {
+    console.error('Error generating embedding:', error)
+    return null
+  }
+}
+
+/**
+ * Search knowledge base for relevant content
+ */
+async function searchKnowledgeBase(
+  supabase: any,
+  knowledgeSourceIds: string[],
+  query: string,
+  limit: number = 3
+): Promise<string | null> {
+  if (!knowledgeSourceIds || knowledgeSourceIds.length === 0) {
+    return null
+  }
+
+  // Generate embedding for the query
+  const embedding = await generateEmbedding(query)
+  if (!embedding) {
+    console.log('Could not generate embedding for KB search')
+    return null
+  }
+
+  try {
+    // Query knowledge_chunks with vector similarity
+    // Using raw SQL via rpc to do the vector search
+    const { data: chunks, error } = await supabase.rpc('match_knowledge_chunks', {
+      query_embedding: embedding,
+      source_ids: knowledgeSourceIds,
+      match_count: limit,
+      similarity_threshold: 0.5
+    })
+
+    if (error) {
+      // If RPC doesn't exist, fall back to direct query
+      console.log('RPC match_knowledge_chunks not found, trying direct query')
+
+      // Direct query approach - may be slower but works without RPC
+      const { data: directChunks, error: directError } = await supabase
+        .from('knowledge_chunks')
+        .select('content, metadata')
+        .in('knowledge_source_id', knowledgeSourceIds)
+        .limit(limit * 2) // Get more and filter by relevance client-side
+
+      if (directError) {
+        console.error('Error querying knowledge chunks:', directError)
+        return null
+      }
+
+      if (!directChunks || directChunks.length === 0) {
+        console.log('No knowledge chunks found for source IDs:', knowledgeSourceIds)
+        return null
+      }
+
+      // Return all content (without vector filtering - fallback)
+      const context = directChunks
+        .slice(0, limit)
+        .map((c: any) => c.content)
+        .join('\n\n---\n\n')
+
+      console.log(`📚 Found ${Math.min(directChunks.length, limit)} KB chunks (fallback mode)`)
+      return context
+    }
+
+    if (!chunks || chunks.length === 0) {
+      console.log('No relevant KB chunks found')
+      return null
+    }
+
+    // Combine relevant chunks
+    const context = chunks.map((c: any) => c.content).join('\n\n---\n\n')
+    console.log(`📚 Found ${chunks.length} relevant KB chunks`)
+    return context
+
+  } catch (error) {
+    console.error('Error searching knowledge base:', error)
+    return null
+  }
+}
+
+Deno.serve(async (req) => {
   try {
     const formData = await req.formData()
     const to = formData.get('To') as string
@@ -116,6 +228,8 @@ serve(async (req) => {
 
     if (insertError) {
       console.error('Error logging SMS:', insertError)
+      // Still process the message even if logging failed
+      processAndReplySMS(serviceNumber.user_id, from, to, body, supabase, agentConfig, null)
     } else {
       // Auto-enrich contact if not exists (fire and forget)
       autoEnrichContact(serviceNumber.user_id, from, supabase)
@@ -201,14 +315,19 @@ serve(async (req) => {
         body: JSON.stringify(notificationData)
       }).catch(err => console.error('Failed to send push notification:', err))
 
-      // Send Slack notification (fire and forget)
+      // Send Slack notification and get thread info for reply
+      // Pass to processAndReplySMS so agent response can be added as thread reply
       sendSlackNotification(serviceNumber.user_id, from, body, supabase)
-        .catch(err => console.error('Failed to send Slack notification:', err))
+        .then(slackThread => {
+          // Process SMS and add agent reply to Slack thread
+          processAndReplySMS(serviceNumber.user_id, from, to, body, supabase, agentConfig, slackThread)
+        })
+        .catch(err => {
+          console.error('Failed to send Slack notification:', err)
+          // Still process SMS even if Slack fails
+          processAndReplySMS(serviceNumber.user_id, from, to, body, supabase, agentConfig, null)
+        })
     }
-
-    // Respond immediately to SignalWire to avoid timeout
-    // Process the SMS asynchronously with the agent config
-    processAndReplySMS(serviceNumber.user_id, from, to, body, supabase, agentConfig)
 
     // Return empty TwiML response (no auto-reply, we'll send async)
     const twiml = `<?xml version="1.0" encoding="UTF-8"?><Response></Response>`
@@ -232,7 +351,8 @@ async function processAndReplySMS(
   to: string,
   body: string,
   supabase: any,
-  agentConfig: any
+  agentConfig: any,
+  slackThread: { channel: string; ts: string; accessToken: string } | null
 ) {
   try {
     // Check if sender has opted out (USA SMS compliance)
@@ -313,6 +433,17 @@ async function processAndReplySMS(
     const hasExistingConversation = conversationHistory.length > 0
     console.log('Conversation history found:', hasExistingConversation, 'messages:', conversationHistory.length)
 
+    // Search Knowledge Base for relevant context
+    let kbContext: string | null = null
+    const knowledgeSourceIds = agentConfig.knowledge_source_ids || []
+    if (knowledgeSourceIds.length > 0) {
+      console.log('Searching KB for agent with', knowledgeSourceIds.length, 'knowledge sources')
+      kbContext = await searchKnowledgeBase(supabase, knowledgeSourceIds, body, 3)
+      if (kbContext) {
+        console.log('📚 KB context found, length:', kbContext.length)
+      }
+    }
+
     // For SMS, use OpenAI to generate intelligent responses
     // Use SMS-specific prompt or fall back to system_prompt adapted for SMS
 
@@ -330,9 +461,18 @@ IMPORTANT CONTEXT:
 - This is asynchronous messaging - they may not respond immediately
 ${hasExistingConversation ? '- This is an ONGOING conversation - respond naturally to continue it, do NOT give a welcome/intro message' : ''}`
 
+    // Build KB context section if available
+    const KB_CONTEXT_SECTION = kbContext ? `
+
+KNOWLEDGE BASE - USE THIS INFORMATION TO ANSWER QUESTIONS:
+${kbContext}
+
+IMPORTANT: Base your answers on the knowledge base information above. If the question is not covered in the knowledge base, you can provide a general helpful response, but prefer the KB content when relevant.
+` : ''
+
     const smsPrompt = agentConfig.system_prompt
-      ? `${agentConfig.system_prompt}${SMS_CONTEXT_SUFFIX}`
-      : `You are Pat, a helpful AI assistant. You are responding to an SMS text message. Reply in a friendly and concise way. Keep responses brief (1-2 sentences max). Do not reference phone calls - this is a text message conversation.${SMS_CONTEXT_SUFFIX}`
+      ? `${agentConfig.system_prompt}${KB_CONTEXT_SECTION}${SMS_CONTEXT_SUFFIX}`
+      : `You are Pat, a helpful AI assistant. You are responding to an SMS text message. Reply in a friendly and concise way. Keep responses brief (1-2 sentences max). Do not reference phone calls - this is a text message conversation.${KB_CONTEXT_SECTION}${SMS_CONTEXT_SUFFIX}`
 
     const systemPrompt = smsPrompt
 
@@ -376,6 +516,12 @@ ${hasExistingConversation ? '- This is an ONGOING conversation - respond natural
 
     // Send the reply
     await sendSMS(userId, from, to, reply, supabase)
+
+    // Send agent reply to Slack thread if we have thread info
+    if (slackThread) {
+      const agentName = agentConfig?.name || 'AI Assistant'
+      await sendSlackAgentReply(slackThread, agentName, reply)
+    }
   } catch (error) {
     console.error('Error in processAndReplySMS:', error)
   }
@@ -664,13 +810,14 @@ function isWithinSchedule(
 
 /**
  * Send Slack notification for incoming SMS
+ * Returns thread info so agent response can be added as reply
  */
 async function sendSlackNotification(
   userId: string,
   senderPhone: string,
   messageContent: string,
   supabase: any
-) {
+): Promise<{ channel: string; ts: string; accessToken: string } | null> {
   try {
     // Check if user has Slack connected
     const { data: integration, error: integrationError } = await supabase
@@ -689,7 +836,7 @@ async function sendSlackNotification(
 
     if (integrationError || !integration?.access_token) {
       // User doesn't have Slack connected - silently skip
-      return
+      return null
     }
 
     // Get contact name if available
@@ -717,7 +864,7 @@ async function sendSlackNotification(
 
       if (!authResult.ok) {
         console.error('Slack auth.test failed:', authResult.error)
-        return
+        return null
       }
 
       // Open a DM - we'll use a special channel for notifications
@@ -738,7 +885,7 @@ async function sendSlackNotification(
 
     if (!channelId) {
       console.log('No Slack channel available for notification')
-      return
+      return null
     }
 
     // Try to join the channel first (in case not a member)
@@ -787,10 +934,61 @@ async function sendSlackNotification(
     const result = await response.json()
     if (!result.ok) {
       console.error('Slack notification failed:', result.error)
+      return null
     } else {
-      console.log('Slack notification sent for SMS from', senderPhone)
+      console.log('Slack notification sent for SMS from', senderPhone, 'ts:', result.ts)
+      return {
+        channel: channelId,
+        ts: result.ts,
+        accessToken: integration.access_token
+      }
     }
   } catch (error) {
     console.error('Error sending Slack notification:', error)
+    return null
+  }
+}
+
+/**
+ * Send agent response as a thread reply to the Slack notification
+ */
+async function sendSlackAgentReply(
+  slackThread: { channel: string; ts: string; accessToken: string },
+  agentName: string,
+  agentReply: string
+) {
+  try {
+    const slackMessage = {
+      channel: slackThread.channel,
+      thread_ts: slackThread.ts,
+      text: `🤖 ${agentName} replied`,
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `🤖 *${agentName} replied:*\n>${agentReply.replace(/\n/g, '\n>')}`
+          }
+        }
+      ]
+    }
+
+    const response = await fetch('https://slack.com/api/chat.postMessage', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${slackThread.accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(slackMessage),
+    })
+
+    const result = await response.json()
+    if (!result.ok) {
+      console.error('Slack agent reply failed:', result.error)
+    } else {
+      console.log('Slack agent reply sent in thread')
+    }
+  } catch (error) {
+    console.error('Error sending Slack agent reply:', error)
   }
 }

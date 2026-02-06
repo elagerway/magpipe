@@ -3,7 +3,7 @@
  * Manage knowledge sources for AI assistant
  */
 
-import { addSource, listSources, deleteSource, getCrawlStatus, getCrawledUrls } from '../services/knowledgeService.js';
+import { addSource, addManualSource, listSources, deleteSource, getCrawlStatus, getCrawledUrls } from '../services/knowledgeService.js';
 
 /**
  * Create knowledge source manager
@@ -439,7 +439,23 @@ export function createKnowledgeSourceManager(container) {
     formTitle.textContent = 'Add Knowledge Source';
     form.appendChild(formTitle);
 
-    // URL input
+    // Source type selector
+    const sourceTypeLabel = document.createElement('label');
+    sourceTypeLabel.textContent = 'Source Type:';
+    const sourceTypeSelect = document.createElement('select');
+    sourceTypeSelect.name = 'source_type';
+    sourceTypeSelect.innerHTML = `
+      <option value="url">Website URL</option>
+      <option value="paste">Paste Content</option>
+      <option value="file">Upload File (PDF/Text)</option>
+    `;
+    sourceTypeLabel.appendChild(sourceTypeSelect);
+    form.appendChild(sourceTypeLabel);
+
+    // URL section
+    const urlSection = document.createElement('div');
+    urlSection.className = 'url-section';
+
     const urlLabel = document.createElement('label');
     urlLabel.textContent = 'URL:';
     const urlInput = document.createElement('input');
@@ -448,7 +464,65 @@ export function createKnowledgeSourceManager(container) {
     urlInput.placeholder = 'https://example.com/documentation';
     urlInput.required = true;
     urlLabel.appendChild(urlInput);
-    form.appendChild(urlLabel);
+    urlSection.appendChild(urlLabel);
+    form.appendChild(urlSection);
+
+    // Paste content section (hidden by default)
+    const pasteSection = document.createElement('div');
+    pasteSection.className = 'paste-section';
+    pasteSection.style.display = 'none';
+
+    const titleLabel = document.createElement('label');
+    titleLabel.textContent = 'Title:';
+    const titleInput = document.createElement('input');
+    titleInput.type = 'text';
+    titleInput.name = 'title';
+    titleInput.placeholder = 'My Knowledge Base';
+    titleLabel.appendChild(titleInput);
+    pasteSection.appendChild(titleLabel);
+
+    const contentLabel = document.createElement('label');
+    contentLabel.textContent = 'Content:';
+    const contentInput = document.createElement('textarea');
+    contentInput.name = 'content';
+    contentInput.placeholder = 'Paste your content here...';
+    contentInput.style.cssText = 'min-height: 200px; resize: vertical;';
+    contentLabel.appendChild(contentInput);
+    pasteSection.appendChild(contentLabel);
+    form.appendChild(pasteSection);
+
+    // File upload section (hidden by default)
+    const fileSection = document.createElement('div');
+    fileSection.className = 'file-section';
+    fileSection.style.display = 'none';
+
+    const fileTitleLabel = document.createElement('label');
+    fileTitleLabel.textContent = 'Title:';
+    const fileTitleInput = document.createElement('input');
+    fileTitleInput.type = 'text';
+    fileTitleInput.name = 'file_title';
+    fileTitleInput.placeholder = 'Document title';
+    fileTitleLabel.appendChild(fileTitleInput);
+    fileSection.appendChild(fileTitleLabel);
+
+    const fileLabel = document.createElement('label');
+    fileLabel.textContent = 'File (PDF or Text):';
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.name = 'file';
+    fileInput.accept = '.pdf,.txt,.md,.text';
+    fileLabel.appendChild(fileInput);
+    fileSection.appendChild(fileLabel);
+
+    const fileInfo = document.createElement('p');
+    fileInfo.style.cssText = 'color: #6b7280; font-size: 12px; margin: 6px 0 0 0;';
+    fileInfo.textContent = 'Supported: PDF, TXT, MD files (max 500KB)';
+    fileSection.appendChild(fileInfo);
+    form.appendChild(fileSection);
+
+    // URL options container (sync period, crawl mode, etc.)
+    const urlOptionsSection = document.createElement('div');
+    urlOptionsSection.className = 'url-options-section';
 
     // Sync period dropdown
     const periodLabel = document.createElement('label');
@@ -474,7 +548,7 @@ export function createKnowledgeSourceManager(container) {
     });
 
     periodLabel.appendChild(periodSelect);
-    form.appendChild(periodLabel);
+    urlOptionsSection.appendChild(periodLabel);
 
     // Crawl mode section
     const crawlModeLabel = document.createElement('label');
@@ -499,7 +573,7 @@ export function createKnowledgeSourceManager(container) {
     });
 
     crawlModeLabel.appendChild(crawlModeSelect);
-    form.appendChild(crawlModeLabel);
+    urlOptionsSection.appendChild(crawlModeLabel);
 
     // Advanced crawl options container (hidden by default)
     const advancedOptions = document.createElement('div');
@@ -571,7 +645,7 @@ export function createKnowledgeSourceManager(container) {
     robotsLabel.appendChild(robotsText);
     advancedOptions.appendChild(robotsLabel);
 
-    form.appendChild(advancedOptions);
+    urlOptionsSection.appendChild(advancedOptions);
 
     // Toggle advanced options based on crawl mode
     crawlModeSelect.addEventListener('change', () => {
@@ -702,7 +776,26 @@ export function createKnowledgeSourceManager(container) {
       }
     });
 
-    form.appendChild(authContainer);
+    urlOptionsSection.appendChild(authContainer);
+
+    // Add URL options section to form
+    form.appendChild(urlOptionsSection);
+
+    // Toggle sections based on source type
+    sourceTypeSelect.addEventListener('change', () => {
+      const type = sourceTypeSelect.value;
+      urlSection.style.display = type === 'url' ? 'block' : 'none';
+      urlOptionsSection.style.display = type === 'url' ? 'block' : 'none';
+      pasteSection.style.display = type === 'paste' ? 'block' : 'none';
+      fileSection.style.display = type === 'file' ? 'block' : 'none';
+
+      // Update required fields
+      urlInput.required = type === 'url';
+      titleInput.required = type === 'paste';
+      contentInput.required = type === 'paste';
+      fileTitleInput.required = type === 'file';
+      fileInput.required = type === 'file';
+    });
 
     // Buttons
     const buttonContainer = document.createElement('div');
@@ -723,66 +816,142 @@ export function createKnowledgeSourceManager(container) {
     buttonContainer.appendChild(submitBtn);
     form.appendChild(buttonContainer);
 
+    // Inline error message container (shows errors directly in modal)
+    const errorContainer = document.createElement('div');
+    errorContainer.className = 'modal-error-message';
+    errorContainer.style.cssText = 'display: none; margin-top: 12px; padding: 12px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; color: #dc2626; font-size: 14px;';
+    form.appendChild(errorContainer);
+
     // Form submit handler
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
 
-      const url = urlInput.value.trim();
-      const syncPeriod = periodSelect.value;
-      const crawlMode = crawlModeSelect.value;
-      const useAuth = authCheckbox.checked;
-      const authType = authTypeSelect.value;
-      const authHeaderValue = authHeaderInput.value.trim();
-      const username = usernameInput.value.trim();
-      const password = passwordInput.value;
+      const sourceType = sourceTypeSelect.value;
 
       try {
         submitBtn.disabled = true;
-        submitBtn.textContent = crawlMode === 'single' ? 'Adding...' : 'Starting crawl...';
+        submitBtn.textContent = 'Adding...';
 
-        // Build auth headers based on auth type
-        let authHeaders = null;
-        if (useAuth) {
-          if (authType === 'bearer' && authHeaderValue) {
-            authHeaders = {
-              'Authorization': authHeaderValue
-            };
-          } else if (authType === 'basic' && username && password) {
-            // Encode username:password as base64 for Basic auth
-            const credentials = btoa(`${username}:${password}`);
-            authHeaders = {
-              'Authorization': `Basic ${credentials}`
-            };
+        let result;
+
+        if (sourceType === 'url') {
+          // URL-based source
+          const url = urlInput.value.trim();
+          const syncPeriod = periodSelect.value;
+          const crawlMode = crawlModeSelect.value;
+          const useAuth = authCheckbox.checked;
+          const authType = authTypeSelect.value;
+          const authHeaderValue = authHeaderInput.value.trim();
+          const username = usernameInput.value.trim();
+          const password = passwordInput.value;
+
+          submitBtn.textContent = crawlMode === 'single' ? 'Adding...' : 'Starting crawl...';
+
+          // Build auth headers based on auth type
+          let authHeaders = null;
+          if (useAuth) {
+            if (authType === 'bearer' && authHeaderValue) {
+              authHeaders = { 'Authorization': authHeaderValue };
+            } else if (authType === 'basic' && username && password) {
+              const credentials = btoa(`${username}:${password}`);
+              authHeaders = { 'Authorization': `Basic ${credentials}` };
+            }
           }
-        }
 
-        // Build crawl options
-        const crawlOptions = {
-          crawlMode,
-        };
-        if (crawlMode !== 'single') {
-          crawlOptions.maxPages = parseInt(maxPagesInput.value, 10) || 100;
-          crawlOptions.respectRobotsTxt = robotsCheckbox.checked;
-          if (crawlMode === 'recursive') {
-            crawlOptions.crawlDepth = parseInt(depthInput.value, 10) || 2;
+          // Build crawl options
+          const crawlOptions = { crawlMode };
+          if (crawlMode !== 'single') {
+            crawlOptions.maxPages = parseInt(maxPagesInput.value, 10) || 100;
+            crawlOptions.respectRobotsTxt = robotsCheckbox.checked;
+            if (crawlMode === 'recursive') {
+              crawlOptions.crawlDepth = parseInt(depthInput.value, 10) || 2;
+            }
           }
-        }
 
-        const result = await addSource(url, syncPeriod, authHeaders, crawlOptions);
+          result = await addSource(url, syncPeriod, authHeaders, crawlOptions);
 
-        modal.remove();
-        await loadSources();
+          modal.remove();
+          await loadSources();
 
-        if (crawlMode === 'single') {
-          showSuccess('Knowledge source added successfully');
-        } else {
-          showSuccess(`Crawl started! Found ${result.pagesDiscovered || 0} pages to process.`);
-          // Start polling for crawl status
-          startCrawlPolling();
+          if (crawlMode === 'single') {
+            showSuccess('Knowledge source added successfully');
+          } else {
+            showSuccess(`Crawl started! Found ${result.pagesDiscovered || 0} pages to process.`);
+            startCrawlPolling();
+          }
+
+        } else if (sourceType === 'paste') {
+          // Paste content
+          const title = titleInput.value.trim();
+          const content = contentInput.value.trim();
+
+          if (!title) {
+            throw new Error('Title is required');
+          }
+          if (!content || content.length < 50) {
+            throw new Error('Content must be at least 50 characters');
+          }
+
+          submitBtn.textContent = 'Processing content...';
+          result = await addManualSource(title, { content });
+
+          modal.remove();
+          await loadSources();
+          showSuccess(`Knowledge source "${title}" added with ${result.chunkCount} chunks`);
+
+        } else if (sourceType === 'file') {
+          // File upload
+          const title = fileTitleInput.value.trim();
+          const file = fileInput.files[0];
+
+          if (!title) {
+            throw new Error('Title is required');
+          }
+          if (!file) {
+            throw new Error('Please select a file');
+          }
+          if (file.size > 500 * 1024) {
+            throw new Error('File too large (max 500KB)');
+          }
+
+          submitBtn.textContent = 'Reading file...';
+
+          // Read file as base64
+          const fileData = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = () => reject(new Error('Failed to read file'));
+            reader.readAsDataURL(file);
+          });
+
+          // Determine file type
+          let fileType;
+          if (file.name.endsWith('.pdf')) {
+            fileType = 'pdf';
+          } else if (file.name.endsWith('.txt') || file.name.endsWith('.md') || file.name.endsWith('.text')) {
+            fileType = 'text';
+          } else {
+            throw new Error('Unsupported file type. Use PDF or text files.');
+          }
+
+          submitBtn.textContent = 'Processing file...';
+          result = await addManualSource(title, {
+            fileData,
+            fileType,
+            fileName: file.name
+          });
+
+          modal.remove();
+          await loadSources();
+          showSuccess(`File "${file.name}" added with ${result.chunkCount} chunks`);
         }
 
       } catch (error) {
         console.error('Add source error:', error);
+        // Show error inline in modal
+        errorContainer.textContent = error.message || 'Failed to add knowledge source';
+        errorContainer.style.display = 'block';
+        // Also show toast
         showError(error.message || 'Failed to add knowledge source');
         submitBtn.disabled = false;
         submitBtn.textContent = 'Add Source';
@@ -792,7 +961,7 @@ export function createKnowledgeSourceManager(container) {
     modal.appendChild(form);
     document.body.appendChild(modal);
 
-    // Focus URL input
+    // Focus based on source type
     urlInput.focus();
   }
 
@@ -1465,6 +1634,44 @@ export function addKnowledgeSourceManagerStyles() {
       }
       to {
         opacity: 0;
+      }
+    }
+
+    /* Toast notification styles */
+    .toast {
+      position: fixed;
+      bottom: 100px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      z-index: 10001;
+      animation: slide-up 0.3s ease;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    .toast-error {
+      background: #fef2f2;
+      color: #dc2626;
+      border: 1px solid #fecaca;
+    }
+
+    .toast-success {
+      background: #f0fdf4;
+      color: #16a34a;
+      border: 1px solid #bbf7d0;
+    }
+
+    @keyframes slide-up {
+      from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
       }
     }
   `;

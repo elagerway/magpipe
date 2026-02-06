@@ -239,6 +239,44 @@ export default class AdminPage {
     // Update footer with timestamp
     const checkedAt = new Date(data.checkedAt);
     statusFooter.innerHTML = `Last checked: ${checkedAt.toLocaleTimeString()}`;
+
+    // Check for Firecrawl credit issues and show warning banner
+    const firecrawl = data.services.find(s => s.name === 'Firecrawl');
+    this.updateFirecrawlWarning(firecrawl);
+  }
+
+  updateFirecrawlWarning(firecrawl) {
+    // Remove existing warning if any
+    const existingWarning = document.querySelector('.firecrawl-warning-banner');
+    if (existingWarning) {
+      existingWarning.remove();
+    }
+
+    // Show warning if Firecrawl is down or degraded
+    if (firecrawl && (firecrawl.status === 'down' || firecrawl.status === 'degraded')) {
+      const warningBanner = document.createElement('div');
+      warningBanner.className = `firecrawl-warning-banner ${firecrawl.status === 'down' ? 'error' : 'warning'}`;
+      warningBanner.innerHTML = `
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+          <line x1="12" y1="9" x2="12" y2="13"/>
+          <line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+        <span>
+          ${firecrawl.status === 'down'
+            ? `<strong>KB Scraping Disabled:</strong> ${firecrawl.message || 'Firecrawl is unavailable'}. JS-rendered sites cannot be crawled.`
+            : `<strong>KB Scraping Limited:</strong> ${firecrawl.message || 'Low credits'}. Consider upgrading at firecrawl.dev.`
+          }
+        </span>
+        <button class="warning-dismiss" onclick="this.parentElement.remove()">×</button>
+      `;
+
+      // Insert after header
+      const header = document.querySelector('.admin-header');
+      if (header) {
+        header.insertAdjacentElement('afterend', warningBanner);
+      }
+    }
   }
 
   async switchTab(tabName) {
@@ -1717,6 +1755,59 @@ export default class AdminPage {
         font-size: 0.75rem;
         color: var(--text-muted);
         text-align: center;
+      }
+
+      /* Firecrawl Warning Banner */
+      .firecrawl-warning-banner {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.75rem 1rem;
+        background: #fef3c7;
+        border-bottom: 1px solid #f59e0b;
+        color: #92400e;
+        font-size: 0.875rem;
+        position: relative;
+        z-index: 10;
+      }
+
+      .firecrawl-warning-banner.error {
+        background: #fee2e2;
+        border-bottom-color: #ef4444;
+        color: #991b1b;
+      }
+
+      .firecrawl-warning-banner svg {
+        flex-shrink: 0;
+      }
+
+      .firecrawl-warning-banner span {
+        flex: 1;
+      }
+
+      .firecrawl-warning-banner strong {
+        font-weight: 600;
+      }
+
+      .warning-dismiss {
+        background: none;
+        border: none;
+        font-size: 1.25rem;
+        cursor: pointer;
+        opacity: 0.6;
+        padding: 0 0.25rem;
+        color: inherit;
+      }
+
+      .warning-dismiss:hover {
+        opacity: 1;
+      }
+
+      @media (max-width: 480px) {
+        .firecrawl-warning-banner {
+          font-size: 0.8125rem;
+          padding: 0.625rem 0.75rem;
+        }
       }
 
       /* Tab Navigation */

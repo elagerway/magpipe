@@ -67,7 +67,7 @@ export default class ChatWidgetSettingsPage {
             <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
             </svg>
-            Agent Settings
+            Agents / Deployment
           </button>
           <div id="save-status" style="font-size: 0.75rem; color: var(--text-tertiary);"></div>
         </div>
@@ -488,7 +488,7 @@ export default class ChatWidgetSettingsPage {
 
   navigateBack() {
     if (this.agentId) {
-      window.router.navigate(`/agents/${this.agentId}`);
+      window.router.navigate(`/agents/${this.agentId}?tab=deployment`);
     } else {
       window.router.navigate('/agents');
     }

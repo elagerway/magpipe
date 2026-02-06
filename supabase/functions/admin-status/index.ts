@@ -45,16 +45,17 @@ Deno.serve(async (req) => {
     }
 
     // Check all services in parallel
-    const [supabaseStatus, signalwireStatus, livekitStatus, postmarkStatus, renderStatus, vercelStatus] = await Promise.all([
+    const [supabaseStatus, signalwireStatus, livekitStatus, postmarkStatus, renderStatus, vercelStatus, firecrawlStatus] = await Promise.all([
       checkSupabase(supabase),
       checkSignalWire(),
       checkLiveKit(),
       checkPostmark(),
       checkRender(),
-      checkVercel()
+      checkVercel(),
+      checkFirecrawl()
     ])
 
-    const services = [supabaseStatus, signalwireStatus, livekitStatus, postmarkStatus, renderStatus, vercelStatus]
+    const services = [supabaseStatus, signalwireStatus, livekitStatus, postmarkStatus, renderStatus, vercelStatus, firecrawlStatus]
     const allOperational = services.every(s => s.status === 'operational')
     const anyDown = services.some(s => s.status === 'down')
 
@@ -284,5 +285,68 @@ async function checkVercel(): Promise<ServiceStatus> {
     }
   } catch (error) {
     return { name: 'Vercel', status: 'down', latency: Date.now() - start, message: error.message, statusUrl }
+  }
+}
+
+async function checkFirecrawl(): Promise<ServiceStatus> {
+  const start = Date.now()
+  const statusUrl = 'https://firecrawl.dev/'
+  const apiKey = Deno.env.get('FIRECRAWL_API_KEY')
+
+  if (!apiKey) {
+    return { name: 'Firecrawl', status: 'down', message: 'Not configured', statusUrl }
+  }
+
+  try {
+    // Use credit usage endpoint instead of wasting credits on test scrape
+    const response = await fetch('https://api.firecrawl.dev/v2/team/credit-usage', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`
+      },
+      signal: AbortSignal.timeout(10000)
+    })
+
+    const latency = Date.now() - start
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        return { name: 'Firecrawl', status: 'down', latency, message: 'Invalid API key', statusUrl }
+      }
+      return { name: 'Firecrawl', status: 'down', latency, message: `HTTP ${response.status}`, statusUrl }
+    }
+
+    const data = await response.json()
+    const remaining = data.data?.remainingCredits ?? 0
+    const total = data.data?.planCredits ?? 500
+
+    // Determine status based on remaining credits
+    if (remaining <= 0) {
+      return {
+        name: 'Firecrawl',
+        status: 'down',
+        latency,
+        message: `0 credits - KB scraping disabled`,
+        statusUrl
+      }
+    } else if (remaining < 50) {
+      return {
+        name: 'Firecrawl',
+        status: 'degraded',
+        latency,
+        message: `${remaining} credits left`,
+        statusUrl
+      }
+    } else {
+      return {
+        name: 'Firecrawl',
+        status: 'operational',
+        latency,
+        message: `${remaining}/${total} credits`,
+        statusUrl
+      }
+    }
+  } catch (error) {
+    return { name: 'Firecrawl', status: 'down', latency: Date.now() - start, message: error.message, statusUrl }
   }
 }
