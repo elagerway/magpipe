@@ -95,23 +95,52 @@ livekit_api_secret = os.getenv("LIVEKIT_API_SECRET")
 async def get_user_config(room_metadata: dict) -> dict:
     """Fetch user's agent configuration from Supabase"""
     user_id = room_metadata.get("user_id")
+    agent_id = room_metadata.get("agent_id")
 
     if not user_id:
         logger.error("No user_id in room metadata")
         return None
 
     try:
+        # If specific agent_id is provided (from service_number lookup), use that
+        if agent_id:
+            response = supabase.table("agent_configs") \
+                .select("*") \
+                .eq("id", agent_id) \
+                .eq("user_id", user_id) \
+                .limit(1) \
+                .execute()
+
+            if response.data and len(response.data) > 0:
+                logger.info(f"Using specific agent: {response.data[0].get('name')} (id: {agent_id})")
+                return response.data[0]
+
+        # Otherwise, get the default agent for this user
         response = supabase.table("agent_configs") \
             .select("*") \
             .eq("user_id", user_id) \
+            .eq("is_default", True) \
             .limit(1) \
             .execute()
 
         if response.data and len(response.data) > 0:
+            logger.info(f"Using default agent: {response.data[0].get('name')}")
             return response.data[0]
-        else:
-            logger.warning(f"No agent_config found for user_id: {user_id}")
-            return None
+
+        # Fallback: get any active agent for this user
+        response = supabase.table("agent_configs") \
+            .select("*") \
+            .eq("user_id", user_id) \
+            .eq("is_active", True) \
+            .limit(1) \
+            .execute()
+
+        if response.data and len(response.data) > 0:
+            logger.info(f"Using fallback agent: {response.data[0].get('name')}")
+            return response.data[0]
+
+        logger.warning(f"No agent_config found for user_id: {user_id}")
+        return None
     except Exception as e:
         logger.error(f"Failed to fetch user config: {e}")
         return None
@@ -1211,9 +1240,9 @@ async def entrypoint(ctx: JobContext):
                 logger.error("Timeout waiting for SIP participant")
 
         if service_number:
-            # Look up user from service_numbers table (SignalWire numbers)
+            # Look up user and agent from service_numbers table (SignalWire numbers)
             response = supabase.table("service_numbers") \
-                .select("user_id") \
+                .select("user_id, agent_id") \
                 .eq("phone_number", service_number) \
                 .eq("is_active", True) \
                 .limit(1) \
@@ -1221,8 +1250,13 @@ async def entrypoint(ctx: JobContext):
 
             if response.data and len(response.data) > 0:
                 user_id = response.data[0]["user_id"]
+                agent_id = response.data[0].get("agent_id")
                 room_metadata["user_id"] = user_id
-                logger.info(f"Looked up user_id from service_numbers: {user_id}")
+                if agent_id:
+                    room_metadata["agent_id"] = agent_id
+                    logger.info(f"Looked up user_id: {user_id}, agent_id: {agent_id} from service_numbers")
+                else:
+                    logger.info(f"Looked up user_id from service_numbers: {user_id} (no specific agent)")
             else:
                 # Not found in service_numbers - check external_sip_numbers (Twilio, etc.)
                 logger.info(f"Number not in service_numbers, checking external_sip_numbers: {service_number}")
