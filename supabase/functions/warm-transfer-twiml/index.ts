@@ -2,33 +2,32 @@
  * Warm Transfer TwiML - Returns TwiML for various warm transfer states
  *
  * Actions:
- * - hold: Play hold music for caller
+ * - hold: Play hold music for caller (with announcement)
  * - unhold: Reconnect caller to LiveKit room
  * - consult: Connect transferee to LiveKit room for private consultation
- * - conference: Join caller/transferee to a SignalWire conference
+ * - conference: Join all parties to a SignalWire conference
  */
 
 const LIVEKIT_SIP_DOMAIN = Deno.env.get('LIVEKIT_SIP_DOMAIN') || '378ads1njtd.sip.livekit.cloud'
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 
-// Hold music URL - SignalWire's default or a custom one
+// Hold music URL - pleasant hold music
 const HOLD_MUSIC_URL = 'http://com.twilio.sounds.music.s3.amazonaws.com/MARKOVICHAMP-B4.mp3'
 
 Deno.serve(async (req) => {
   const url = new URL(req.url)
   const action = url.searchParams.get('action')
-  const roomName = url.searchParams.get('room')
   const confName = url.searchParams.get('conf_name')
   const serviceNumber = url.searchParams.get('service_number')
   const targetLabel = url.searchParams.get('target_label')
 
-  console.log('🎵 Warm Transfer TwiML:', { action, roomName, confName, targetLabel })
+  console.log('🎵 Warm Transfer TwiML:', { action, confName, serviceNumber, targetLabel })
 
   let twiml = ''
 
   switch (action) {
     case 'hold':
-      // Announce transfer destination, then play hold music
+      // Announce where they're being transferred, then play hold music
       const announcement = targetLabel
         ? `Please hold while I transfer you to ${targetLabel}.`
         : 'Please hold while I transfer your call.'
@@ -40,11 +39,11 @@ Deno.serve(async (req) => {
       break
 
     case 'unhold':
-      // Reconnect to LiveKit room
-      // Use the original service number as the SIP URI target
+      // Reconnect to LiveKit room via SIP
       const unholdSipUri = `sip:${serviceNumber || '+16042566768'}@${LIVEKIT_SIP_DOMAIN};transport=tls`
       twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
+  <Say voice="Polly.Joanna">Thank you for holding. Reconnecting you now.</Say>
   <Dial>
     <Sip>${unholdSipUri}</Sip>
   </Dial>
@@ -57,7 +56,7 @@ Deno.serve(async (req) => {
       const consultSipUri = `sip:${serviceNumber || '+16042566768'}@${LIVEKIT_SIP_DOMAIN};transport=tls`
       twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say>Please hold while we connect you.</Say>
+  <Say voice="Polly.Joanna">Please hold while we connect you.</Say>
   <Dial>
     <Sip>${consultSipUri}</Sip>
   </Dial>
@@ -66,12 +65,12 @@ Deno.serve(async (req) => {
 
     case 'conference':
       // Join SignalWire conference for final bridged call
-      // Record the conference for call recording
+      // All parties (caller, transferee, optionally agent) are now connected
       const recordingCallbackUrl = `${SUPABASE_URL}/functions/v1/sip-recording-callback`
       twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Dial>
-    <Conference record="record-from-start" recordingStatusCallback="${recordingCallbackUrl}" recordingStatusCallbackMethod="POST" beep="false" startConferenceOnEnter="true" endConferenceOnExit="true">${confName}</Conference>
+    <Conference record="record-from-start" recordingStatusCallback="${recordingCallbackUrl}" recordingStatusCallbackMethod="POST" beep="false" startConferenceOnEnter="true" endConferenceOnExit="true">${confName || 'default_conference'}</Conference>
   </Dial>
 </Response>`
       break
@@ -79,7 +78,7 @@ Deno.serve(async (req) => {
     default:
       twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say>An error occurred.</Say>
+  <Say voice="Polly.Joanna">An error occurred with the transfer.</Say>
   <Hangup/>
 </Response>`
   }
