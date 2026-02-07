@@ -1,5 +1,4 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'npm:@supabase/supabase-js@2'
 
 // This webhook is called by SignalWire, which doesn't send auth headers
 // We handle auth by validating the phone number exists in our database
@@ -8,7 +7,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   // Handle OPTIONS for CORS
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -30,13 +29,13 @@ serve(async (req) => {
     // Get the service number with its assigned agent
     const { data: serviceNumber, error } = await supabase
       .from('service_numbers')
-      .select('*, users!inner(*)')
+      .select('*')
       .eq('phone_number', to)
       .eq('is_active', true)
       .single()
 
     if (error || !serviceNumber) {
-      console.log('Number not found or inactive:', to)
+      console.log('Number not found or inactive:', to, error?.message)
       // This shouldn't happen - all numbers should be active with system agent as default
       // Use TwiML fallback only for truly unknown numbers
       return new Response(
@@ -52,7 +51,7 @@ serve(async (req) => {
       )
     }
 
-    console.log('Number is active, processing call for user:', serviceNumber.users.email)
+    console.log('Number is active, processing call for user:', serviceNumber.user_id)
 
     // Get agent config - prioritize number-specific agent, then default agent
     let agentConfig = null
