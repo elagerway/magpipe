@@ -175,8 +175,23 @@ async def speak_error_and_disconnect(ctx: JobContext, message: str):
         # Wait for message to complete before disconnecting
         await asyncio.sleep(3)
 
-        # Actually disconnect the room to hang up the call
+        # Hang up the SIP call by removing all participants
         logger.info("📞 Hanging up call...")
+
+        # Get LiveKit API client to kick the SIP participant
+        livekit_url = os.getenv("LIVEKIT_URL")
+        livekit_api_key = os.getenv("LIVEKIT_API_KEY")
+        livekit_api_secret = os.getenv("LIVEKIT_API_SECRET")
+        livekit_api = api.LiveKitAPI(livekit_url, livekit_api_key, livekit_api_secret)
+
+        # Remove all remote participants (kicks the SIP caller, ending the call)
+        for participant in ctx.room.remote_participants.values():
+            logger.info(f"📞 Kicking participant: {participant.identity}")
+            await livekit_api.room.remove_participant(
+                api.RoomParticipantIdentity(room=ctx.room.name, identity=participant.identity)
+            )
+
+        # Now disconnect agent from room
         await ctx.room.disconnect()
         logger.info("✅ Call disconnected")
 
