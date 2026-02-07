@@ -1798,12 +1798,14 @@ THIS IS AN OUTBOUND CALL:
     const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
     const dayLabels = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
+    // Default when no schedule saved = always available (all days unchecked)
+    // User enables specific days to RESTRICT availability
     const defaultSchedule = {
-      monday: { enabled: true, start: '09:00', end: '17:00' },
-      tuesday: { enabled: true, start: '09:00', end: '17:00' },
-      wednesday: { enabled: true, start: '09:00', end: '17:00' },
-      thursday: { enabled: true, start: '09:00', end: '17:00' },
-      friday: { enabled: true, start: '09:00', end: '17:00' },
+      monday: { enabled: false, start: '09:00', end: '17:00' },
+      tuesday: { enabled: false, start: '09:00', end: '17:00' },
+      wednesday: { enabled: false, start: '09:00', end: '17:00' },
+      thursday: { enabled: false, start: '09:00', end: '17:00' },
+      friday: { enabled: false, start: '09:00', end: '17:00' },
       saturday: { enabled: false, start: '09:00', end: '17:00' },
       sunday: { enabled: false, start: '09:00', end: '17:00' },
     };
@@ -1877,6 +1879,24 @@ THIS IS AN OUTBOUND CALL:
         </div>
         <p class="section-desc">When your agent will answer phone calls.</p>
 
+        ${!callsSchedule ? `
+        <div class="schedule-status-banner schedule-status-24-7">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12 6 12 12 16 14"/>
+          </svg>
+          <span><strong>Always Available</strong> - No schedule restrictions. Toggle days below to set specific hours.</span>
+        </div>
+        ` : `
+        <div class="schedule-status-banner schedule-status-active">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+            <polyline points="22 4 12 14.01 9 11.01"/>
+          </svg>
+          <span><strong>Schedule Active</strong> - Calls outside these hours will hear a message.</span>
+        </div>
+        `}
+
         <div class="schedule-grid" id="calls-schedule-grid">
           ${days.map((day, i) => renderDayRow(day, dayLabels[i], callsSchedule, 'calls')).join('')}
         </div>
@@ -1897,6 +1917,24 @@ THIS IS AN OUTBOUND CALL:
           <button type="button" class="btn btn-sm btn-secondary" id="apply-texts-to-all">Apply to All Days</button>
         </div>
         <p class="section-desc">When your agent will respond to text messages.</p>
+
+        ${!textsSchedule ? `
+        <div class="schedule-status-banner schedule-status-24-7">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12 6 12 12 16 14"/>
+          </svg>
+          <span><strong>Always Available</strong> - No schedule restrictions. Toggle days below to set specific hours.</span>
+        </div>
+        ` : `
+        <div class="schedule-status-banner schedule-status-active">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+            <polyline points="22 4 12 14.01 9 11.01"/>
+          </svg>
+          <span><strong>Schedule Active</strong> - Texts outside these hours will be queued.</span>
+        </div>
+        `}
 
         <div class="schedule-grid" id="texts-schedule-grid">
           ${days.map((day, i) => renderDayRow(day, dayLabels[i], textsSchedule, 'texts')).join('')}
@@ -2800,17 +2838,21 @@ THIS IS AN OUTBOUND CALL:
       return schedule;
     };
 
-    // Helper to save schedule
+    // Helper to save schedule - if no days enabled, save null (always available)
     const saveCallsSchedule = () => {
       const schedule = buildSchedule('calls');
-      this.agent.calls_schedule = schedule;
-      this.scheduleAutoSave({ calls_schedule: schedule });
+      const hasEnabledDays = Object.values(schedule).some(day => day.enabled);
+      const scheduleToSave = hasEnabledDays ? schedule : null;
+      this.agent.calls_schedule = scheduleToSave;
+      this.scheduleAutoSave({ calls_schedule: scheduleToSave });
     };
 
     const saveTextsSchedule = () => {
       const schedule = buildSchedule('texts');
-      this.agent.texts_schedule = schedule;
-      this.scheduleAutoSave({ texts_schedule: schedule });
+      const hasEnabledDays = Object.values(schedule).some(day => day.enabled);
+      const scheduleToSave = hasEnabledDays ? schedule : null;
+      this.agent.texts_schedule = scheduleToSave;
+      this.scheduleAutoSave({ texts_schedule: scheduleToSave });
     };
 
     // Attach listeners for calls schedule
@@ -7124,6 +7166,49 @@ THIS IS AN OUTBOUND CALL:
         .voice-grid {
           grid-template-columns: repeat(2, 1fr);
         }
+      }
+
+      /* Schedule Status Banners */
+      .schedule-status-banner {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.875rem 1rem;
+        border-radius: var(--radius-md);
+        margin-bottom: 1rem;
+        font-size: 0.9rem;
+      }
+
+      .schedule-status-banner svg {
+        flex-shrink: 0;
+      }
+
+      .schedule-status-24-7 {
+        background: linear-gradient(135deg, rgba(34, 197, 94, 0.08), rgba(16, 185, 129, 0.08));
+        border: 1px solid rgba(34, 197, 94, 0.25);
+        color: #16a34a;
+      }
+
+      .schedule-status-24-7 span {
+        color: var(--text-primary);
+      }
+
+      .schedule-status-24-7 strong {
+        color: #16a34a;
+      }
+
+      .schedule-status-active {
+        background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.08));
+        border: 1px solid rgba(99, 102, 241, 0.25);
+        color: var(--primary-color);
+      }
+
+      .schedule-status-active span {
+        color: var(--text-primary);
+      }
+
+      .schedule-status-active strong {
+        color: var(--primary-color);
       }
     `;
 
