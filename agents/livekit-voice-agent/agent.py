@@ -967,7 +967,7 @@ def create_warm_transfer_tools(user_id: str, transfer_numbers: list, room_name: 
 
         return False
 
-    @function_tool(description="Start a warm transfer - puts caller on hold so you can speak privately with the transfer destination first. IMPORTANT: Before calling this, tell the caller 'Please hold while I transfer you to [name]' - they will hear hold music after you speak.")
+    @function_tool(description="Start a warm transfer. CRITICAL REQUIREMENT: You MUST speak to the caller BEFORE calling this function. Say something like 'One moment, let me transfer you to Erik' or 'Please hold while I connect you with sales.' The caller will hear hold music immediately after this function is called - they won't hear you after that. Once called, the transferee joins your room for a private conversation.")
     async def start_warm_transfer(
         transfer_to: Annotated[str, "The label or name of who to transfer to (e.g., 'Sales', 'Rick', 'mobile')"]
     ):

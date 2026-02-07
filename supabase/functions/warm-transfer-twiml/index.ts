@@ -35,8 +35,19 @@ Deno.serve(async (req) => {
       break
 
     case 'unhold':
-      // Reconnect to LiveKit room via SIP - agent speaks any announcements
-      const unholdSipUri = `sip:${serviceNumber || '+16042566768'}@${LIVEKIT_SIP_DOMAIN};transport=tls`
+      // Reconnect to EXISTING LiveKit room via SIP - use room_name in URI
+      const unholdRoomName = url.searchParams.get('room_name')
+      if (!unholdRoomName) {
+        console.error('❌ Unhold action requires room_name parameter')
+        twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Joanna">Unable to reconnect. Please call back.</Say>
+  <Hangup/>
+</Response>`
+        break
+      }
+      const unholdSipUri = `sip:${unholdRoomName}@${LIVEKIT_SIP_DOMAIN};transport=tls`
+      console.log('📞 Unhold SIP URI:', unholdSipUri)
       twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Dial>
@@ -46,8 +57,21 @@ Deno.serve(async (req) => {
       break
 
     case 'consult':
-      // Connect transferee to LiveKit room silently - agent speaks to them directly
-      const consultSipUri = `sip:${serviceNumber || '+16042566768'}@${LIVEKIT_SIP_DOMAIN};transport=tls`
+      // Connect transferee to the EXISTING LiveKit room - use room_name in SIP URI
+      // Using room_name ensures they join the same room where agent/caller are
+      const roomName = url.searchParams.get('room_name')
+      if (!roomName) {
+        console.error('❌ Consult action requires room_name parameter')
+        twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Joanna">Transfer error. Please try again.</Say>
+  <Hangup/>
+</Response>`
+        break
+      }
+      // Use room name as the SIP destination - this joins the existing room
+      const consultSipUri = `sip:${roomName}@${LIVEKIT_SIP_DOMAIN};transport=tls`
+      console.log('📞 Consult SIP URI:', consultSipUri)
       twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Dial>
