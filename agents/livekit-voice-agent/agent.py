@@ -93,7 +93,11 @@ livekit_api_secret = os.getenv("LIVEKIT_API_SECRET")
 
 
 async def get_user_config(room_metadata: dict) -> dict:
-    """Fetch user's agent configuration from Supabase"""
+    """Fetch user's agent configuration from Supabase.
+
+    Requires agent_id to be set in room_metadata (from service_number lookup).
+    Returns None if no agent is assigned - caller handles with 'not assigned' message.
+    """
     user_id = room_metadata.get("user_id")
     agent_id = room_metadata.get("agent_id")
 
@@ -101,49 +105,64 @@ async def get_user_config(room_metadata: dict) -> dict:
         logger.error("No user_id in room metadata")
         return None
 
+    # No agent assigned to this number
+    if not agent_id:
+        logger.warning(f"No agent assigned to this number")
+        return None
+
     try:
-        # If specific agent_id is provided (from service_number lookup), use that
-        if agent_id:
-            response = supabase.table("agent_configs") \
-                .select("*") \
-                .eq("id", agent_id) \
-                .eq("user_id", user_id) \
-                .limit(1) \
-                .execute()
-
-            if response.data and len(response.data) > 0:
-                logger.info(f"Using specific agent: {response.data[0].get('name')} (id: {agent_id})")
-                return response.data[0]
-
-        # Otherwise, get the default agent for this user
         response = supabase.table("agent_configs") \
             .select("*") \
+            .eq("id", agent_id) \
             .eq("user_id", user_id) \
-            .eq("is_default", True) \
             .limit(1) \
             .execute()
 
         if response.data and len(response.data) > 0:
-            logger.info(f"Using default agent: {response.data[0].get('name')}")
+            logger.info(f"Using agent: {response.data[0].get('name')} (id: {agent_id})")
             return response.data[0]
 
-        # Fallback: get any active agent for this user
-        response = supabase.table("agent_configs") \
-            .select("*") \
-            .eq("user_id", user_id) \
-            .eq("is_active", True) \
-            .limit(1) \
-            .execute()
-
-        if response.data and len(response.data) > 0:
-            logger.info(f"Using fallback agent: {response.data[0].get('name')}")
-            return response.data[0]
-
-        logger.warning(f"No agent_config found for user_id: {user_id}")
+        logger.warning(f"Agent {agent_id} not found for user {user_id}")
         return None
     except Exception as e:
         logger.error(f"Failed to fetch user config: {e}")
         return None
+
+
+async def speak_error_and_disconnect(ctx: JobContext, message: str):
+    """Create a minimal session to speak an error message and disconnect."""
+    try:
+        # Create minimal TTS-only session
+        error_session = AgentSession(
+            vad=silero.VAD.load(),
+            stt=deepgram.STT(model="nova-2-phonecall", language="en-US"),
+            llm=lkopenai.LLM(model="gpt-4.1-nano"),
+            tts=elevenlabs.TTS(
+                model="eleven_flash_v2_5",
+                voice_id="21m00Tcm4TlvDq8ikWAM",  # Rachel
+                api_key=os.getenv("ELEVENLABS_API_KEY") or os.getenv("ELEVEN_API_KEY"),
+            ),
+        )
+
+        # Create a minimal agent just to speak the message
+        error_agent = Agent(instructions="You are a system message agent.")
+
+        # Start session
+        await error_session.start(ctx.room, agent=error_agent)
+
+        # Wait for participant
+        await asyncio.sleep(1)
+
+        # Speak the error message
+        await error_session.say(message, allow_interruptions=False)
+
+        # Wait for message to complete
+        await asyncio.sleep(3)
+
+        logger.info(f"📢 Spoke error message: {message}")
+
+    except Exception as e:
+        logger.error(f"Failed to speak error message: {e}")
 
 
 async def get_voice_config(voice_id: str, user_id: str) -> dict:
@@ -1152,7 +1171,8 @@ async def entrypoint(ctx: JobContext):
 
         user_config = await user_config_task
         if not user_config:
-            logger.error(f"No user config found for user_id: {user_id}")
+            logger.warning(f"No agent assigned for this number")
+            await speak_error_and_disconnect(ctx, "A Magpipe agent has not been assigned to this number.")
             return
 
         # Get voice config, transfer numbers, and dynamic variables in parallel
@@ -1453,7 +1473,8 @@ async def entrypoint(ctx: JobContext):
     if not fast_path_complete:
         user_config = await get_user_config(room_metadata)
         if not user_config:
-            logger.error(f"No user config found for user_id: {user_id}")
+            logger.warning(f"No agent assigned for this number")
+            await speak_error_and_disconnect(ctx, "A Magpipe agent has not been assigned to this number.")
             return
 
         user_id = user_config["user_id"]
