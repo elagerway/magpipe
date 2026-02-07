@@ -99,8 +99,8 @@ navItems.push({ path: '/new', label: 'New' });
 
 ### Render (LiveKit Agent)
 - **DO NOT use Pat-AI branch**: Work on `master` only, Pat-AI is outdated
-- **Deploy manually**: Push to master, then manually deploy on Render dashboard
-- **Verify deployment after pushing**: Check Render started a new deploy
+- **Auto-deploys on push to master**: No manual deploy needed
+- Agent changes take effect after Render finishes building (~2-3 min)
 
 ## Test Credentials
 - **Email**: `erik@snapsonic.com`
