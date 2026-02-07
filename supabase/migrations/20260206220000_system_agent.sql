@@ -25,6 +25,7 @@ BEGIN
     llm_model,
     is_active,
     is_default,
+    active_voice_stack,
     created_at,
     updated_at
   )
@@ -38,12 +39,14 @@ BEGIN
     'gpt-4.1-nano',
     true,
     false,
+    'livekit',
     NOW(),
     NOW()
   )
   ON CONFLICT (id) DO UPDATE SET
     greeting = EXCLUDED.greeting,
     system_prompt = EXCLUDED.system_prompt,
+    active_voice_stack = 'livekit',
     updated_at = NOW();
 
   -- Update all existing unassigned phone numbers to use the system agent

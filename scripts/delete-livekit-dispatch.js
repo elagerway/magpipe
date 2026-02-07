@@ -16,7 +16,7 @@ async function recreateDispatchRule() {
 
   const sipClient = new SipClient(livekitUrl, apiKey, apiSecret)
 
-  const oldRuleId = 'SDR_sC9C3GJwhQCj'
+  const oldRuleId = 'SDR_54Qko9XVTP8Z'
 
   try {
     // Delete old rule
@@ -29,7 +29,7 @@ async function recreateDispatchRule() {
 
   // Create new rule with correct settings
   const dispatchRule = {
-    trunkIds: ['ST_U2b9K7oAqVmF'],
+    trunkIds: ['ST_zHW9LbppnrBR'],
     hidePhoneNumber: false,
     inboundNumbers: ['+1'], // Match all US/Canada numbers
     name: 'SW-calls',
