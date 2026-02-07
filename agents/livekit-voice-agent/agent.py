@@ -175,31 +175,25 @@ async def speak_error_and_disconnect(ctx: JobContext, message: str):
         # Wait for message to complete before disconnecting
         await asyncio.sleep(3)
 
-        # Hang up the SIP call by removing all participants
-        logger.info("📞 Hanging up call...")
-
-        # Get LiveKit API client to kick the SIP participant
+        # Hang up the SIP call by deleting the room
+        logger.info("📞 Hanging up call - deleting room...")
         livekit_url = os.getenv("LIVEKIT_URL")
         livekit_api_key = os.getenv("LIVEKIT_API_KEY")
         livekit_api_secret = os.getenv("LIVEKIT_API_SECRET")
         livekit_api = api.LiveKitAPI(livekit_url, livekit_api_key, livekit_api_secret)
 
-        # Remove all remote participants (kicks the SIP caller, ending the call)
-        for participant in ctx.room.remote_participants.values():
-            logger.info(f"📞 Kicking participant: {participant.identity}")
-            await livekit_api.room.remove_participant(
-                api.RoomParticipantIdentity(room=ctx.room.name, identity=participant.identity)
-            )
-
-        # Now disconnect agent from room
-        await ctx.room.disconnect()
-        logger.info("✅ Call disconnected")
+        await livekit_api.room.delete_room(api.DeleteRoomRequest(room=ctx.room.name))
+        logger.info("✅ Room deleted - call ended")
 
     except Exception as e:
         logger.error(f"Failed to speak error message: {e}", exc_info=True)
-        # Try to disconnect even on error
+        # Try to delete room even on error
         try:
-            await ctx.room.disconnect()
+            livekit_url = os.getenv("LIVEKIT_URL")
+            livekit_api_key = os.getenv("LIVEKIT_API_KEY")
+            livekit_api_secret = os.getenv("LIVEKIT_API_SECRET")
+            livekit_api = api.LiveKitAPI(livekit_url, livekit_api_key, livekit_api_secret)
+            await livekit_api.room.delete_room(api.DeleteRoomRequest(room=ctx.room.name))
         except Exception:
             pass
 
