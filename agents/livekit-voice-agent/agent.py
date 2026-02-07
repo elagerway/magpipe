@@ -1520,8 +1520,12 @@ async def entrypoint(ctx: JobContext):
         # Check if this is the system agent (for unassigned numbers)
         SYSTEM_AGENT_ID = "00000000-0000-0000-0000-000000000002"
         agent_id_str = str(user_config.get("id", "")).lower()
-        logger.info(f"🔍 Checking agent ID: '{agent_id_str}' vs system agent: '{SYSTEM_AGENT_ID}'")
-        if agent_id_str == SYSTEM_AGENT_ID:
+        agent_name = user_config.get("name", "")
+        logger.info(f"🔍 Agent loaded: name='{agent_name}', id='{agent_id_str}'")
+        logger.info(f"🔍 Comparing to system agent: '{SYSTEM_AGENT_ID}'")
+        # Check by ID or by name (System - Not Assigned)
+        is_system_agent = agent_id_str == SYSTEM_AGENT_ID or agent_name == "System - Not Assigned"
+        if is_system_agent:
             logger.info("🔔 System agent detected - speaking greeting and disconnecting")
             greeting = user_config.get("greeting_template", "This number is not currently assigned.")
             await speak_error_and_disconnect(ctx, greeting)
