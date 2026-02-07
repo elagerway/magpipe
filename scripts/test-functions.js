@@ -161,19 +161,58 @@ async function testWarmTransfer() {
 async function testWarmTransferTwiml() {
   log('\n🎵 Testing warm-transfer-twiml...', 'blue');
 
-  const actions = ['hold', 'unhold', 'consult', 'conference'];
   let allPassed = true;
+  const testRoomName = 'call-test-room-123';
 
-  for (const action of actions) {
-    const result = await fetch(
-      `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=${action}&service_number=${encodeURIComponent(TEST_SERVICE_NUMBER)}&conf_name=test_conf`,
-      { method: 'GET' }
-    );
-    const text = await result.text();
-    const hasTwiml = text.includes('<?xml') && text.includes('<Response>');
-    logTest(`action: ${action}`, hasTwiml, hasTwiml ? 'valid TwiML' : 'invalid response');
-    if (!hasTwiml) allPassed = false;
-  }
+  // Test hold action (doesn't require room_name)
+  let result = await fetch(
+    `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=hold`,
+    { method: 'GET' }
+  );
+  let text = await result.text();
+  let hasTwiml = text.includes('<?xml') && text.includes('<Play');
+  logTest('action: hold', hasTwiml, hasTwiml ? 'valid TwiML with hold music' : 'invalid response');
+  if (!hasTwiml) allPassed = false;
+
+  // Test unhold action (requires room_name)
+  result = await fetch(
+    `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=unhold&room_name=${encodeURIComponent(testRoomName)}`,
+    { method: 'GET' }
+  );
+  text = await result.text();
+  hasTwiml = text.includes('<?xml') && text.includes('<Sip>') && text.includes(testRoomName);
+  logTest('action: unhold', hasTwiml, hasTwiml ? `valid TwiML with room: ${testRoomName}` : `got: ${text.substring(0, 100)}`);
+  if (!hasTwiml) allPassed = false;
+
+  // Test consult action (requires room_name)
+  result = await fetch(
+    `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=consult&room_name=${encodeURIComponent(testRoomName)}`,
+    { method: 'GET' }
+  );
+  text = await result.text();
+  hasTwiml = text.includes('<?xml') && text.includes('<Sip>') && text.includes(testRoomName);
+  logTest('action: consult', hasTwiml, hasTwiml ? `valid TwiML with room: ${testRoomName}` : `got: ${text.substring(0, 100)}`);
+  if (!hasTwiml) allPassed = false;
+
+  // Test conference action
+  result = await fetch(
+    `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=conference&conf_name=test_conf`,
+    { method: 'GET' }
+  );
+  text = await result.text();
+  hasTwiml = text.includes('<?xml') && text.includes('<Conference');
+  logTest('action: conference', hasTwiml, hasTwiml ? 'valid TwiML' : 'invalid response');
+  if (!hasTwiml) allPassed = false;
+
+  // Test unhold WITHOUT room_name (should error)
+  result = await fetch(
+    `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=unhold`,
+    { method: 'GET' }
+  );
+  text = await result.text();
+  const hasError = text.includes('error') || text.includes('Hangup');
+  logTest('action: unhold (no room)', hasError, hasError ? 'correctly requires room_name' : 'should have errored');
+  if (!hasError) allPassed = false;
 
   return { passed: allPassed };
 }
@@ -494,42 +533,62 @@ async function testTransferNumbers() {
 // ============================================
 
 async function testLiveCall() {
-  log('\n📞 Testing LIVE outbound call (LiveKit SIP)...', 'yellow');
-  log('    This will call Erik\'s cell phone!', 'yellow');
+  log('\n📞 Testing LIVE call via SignalWire → LiveKit → PSTN...', 'yellow');
+  log('    This will connect to agent, then bridge to Erik\'s cell!', 'yellow');
 
   try {
-    // Use the livekit-outbound-call edge function which uses proper LiveKit SIP
-    const response = await fetch(`${SUPABASE_URL}/functions/v1/livekit-outbound-call`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        phoneNumber: TEST_PHONE,
-        callerIdNumber: TEST_SERVICE_NUMBER,
-        userId: TEST_USER_ID_ALT,
-        recordCall: false,
-      }),
-    });
+    // Flow: SignalWire calls LiveKit SIP → Agent answers → CXML bridges to Erik's cell
+    const SIGNALWIRE_PROJECT_ID = process.env.SIGNALWIRE_PROJECT_ID;
+    const SIGNALWIRE_API_TOKEN = process.env.SIGNALWIRE_API_TOKEN;
+    const SIGNALWIRE_SPACE_URL = process.env.SIGNALWIRE_SPACE_URL || 'erik.signalwire.com';
+    const LIVEKIT_SIP_DOMAIN = process.env.LIVEKIT_SIP_DOMAIN || '378ads1njtd.sip.livekit.cloud';
+
+    const signalwireAuth = Buffer.from(`${SIGNALWIRE_PROJECT_ID}:${SIGNALWIRE_API_TOKEN}`).toString('base64');
+
+    // Call LiveKit SIP first, then CXML will bridge to Erik's phone
+    const livekitSipUri = `sip:${TEST_SERVICE_NUMBER}@${LIVEKIT_SIP_DOMAIN};transport=tls`;
+    const cxmlUrl = `${SUPABASE_URL}/functions/v1/outbound-call-swml?destination=${encodeURIComponent(TEST_PHONE)}&from=${encodeURIComponent(TEST_SERVICE_NUMBER)}&direction=outbound&user_id=${encodeURIComponent(TEST_USER_ID_ALT)}`;
+
+    log(`    → Calling LiveKit SIP: ${livekitSipUri}`, 'dim');
+    log(`    → Will bridge to: ${TEST_PHONE}`, 'dim');
+
+    const formBody = [
+      `To=${encodeURIComponent(livekitSipUri)}`,
+      `From=${encodeURIComponent(TEST_SERVICE_NUMBER)}`,
+      `Url=${encodeURIComponent(cxmlUrl)}`,
+      `Method=POST`,
+    ].join('&');
+
+    const response = await fetch(
+      `https://${SIGNALWIRE_SPACE_URL}/api/laml/2010-04-01/Accounts/${SIGNALWIRE_PROJECT_ID}/Calls.json`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Basic ${signalwireAuth}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: formBody,
+      }
+    );
 
     const data = await response.json();
-    const callCreated = response.ok && data.success;
-    logTest('call initiated', callCreated, callCreated ? `Room: ${data.roomName}` : `error: ${JSON.stringify(data)}`);
+    const callCreated = response.ok && data.sid;
+    logTest('call initiated', callCreated, callCreated ? `SID: ${data.sid}` : `error: ${JSON.stringify(data)}`);
 
     if (callCreated) {
-      log(`    → Call ID: ${data.callId}`, 'dim');
-      log(`    → Participant: ${data.participantId}`, 'dim');
+      log(`    → Call SID: ${data.sid}`, 'dim');
+      log(`    → Status: ${data.status}`, 'dim');
 
       // Wait for agent to fully initialize
       await new Promise(r => setTimeout(r, 12000));
 
-      // Check call state logs with details
+      // Check call state logs - find by recent timestamp since we don't have room name
       const logsResult = await queryDB(`
-        SELECT state, component, details, created_at
+        SELECT state, component, details, room_name, created_at
         FROM call_state_logs
-        WHERE room_name = '${data.roomName}'
-        ORDER BY created_at ASC
+        WHERE created_at > NOW() - INTERVAL '2 minutes'
+        ORDER BY created_at DESC
+        LIMIT 20
       `);
 
       if (Array.isArray(logsResult) && logsResult.length > 0) {

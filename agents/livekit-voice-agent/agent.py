@@ -161,8 +161,8 @@ async def speak_error_and_disconnect(ctx: JobContext, message: str):
         # Create a minimal agent just to speak the message
         error_agent = Agent(instructions="You are a system message agent.")
 
-        # Start session
-        await error_session.start(ctx.room, agent=error_agent)
+        # Start session (use keyword args to avoid signature issues)
+        await error_session.start(room=ctx.room, agent=error_agent)
         logger.info("✅ Error session started")
 
         # Wait for participant to be subscribed
