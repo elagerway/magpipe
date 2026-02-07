@@ -92,22 +92,32 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get user from JWT
+    // Get user - either from JWT or from x-user-id header (for internal service calls)
     const jwt = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: userError } = await supabase.auth.getUser(jwt);
+    const internalUserId = req.headers.get('x-user-id');
 
-    if (userError || !user) {
-      return new Response(
-        JSON.stringify({ error: 'Invalid authorization token' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    let userId: string;
+
+    // Check if this is an internal service call (using service role key + x-user-id)
+    if (jwt === supabaseServiceKey && internalUserId) {
+      userId = internalUserId;
+    } else {
+      // Regular user JWT auth
+      const { data: { user }, error: userError } = await supabase.auth.getUser(jwt);
+      if (userError || !user) {
+        return new Response(
+          JSON.stringify({ error: 'Invalid authorization token' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      userId = user.id;
     }
 
     // Get user's Cal.com credentials
     const { data: userData, error: userDataError } = await supabase
       .from('users')
       .select('cal_com_access_token, cal_com_refresh_token, cal_com_token_expires_at, cal_com_default_event_type_id, name, email')
-      .eq('id', user.id)
+      .eq('id', userId)
       .single();
 
     if (userDataError || !userData?.cal_com_access_token) {
@@ -120,7 +130,7 @@ serve(async (req) => {
     // Refresh token if needed
     const accessToken = await refreshTokenIfNeeded(
       supabase,
-      user.id,
+      userId,
       userData.cal_com_access_token,
       userData.cal_com_refresh_token,
       userData.cal_com_token_expires_at

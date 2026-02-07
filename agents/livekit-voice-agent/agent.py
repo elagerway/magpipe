@@ -933,6 +933,252 @@ def create_end_call_tool(room_name: str, description: str = None):
     return end_call
 
 
+def create_sms_tool(user_id: str, service_number: str, description: str = None):
+    """Create SMS tool that allows the agent to send text messages during calls"""
+
+    tool_description = description or "Send an SMS text message to a phone number. Use this to send confirmations, follow-up information, or any text the caller requests."
+
+    @function_tool(description=tool_description)
+    async def send_sms(
+        to_number: Annotated[str, "The phone number to send the SMS to (e.g., '+14155551234' or the caller's number)"],
+        message: Annotated[str, "The text message content to send"],
+    ):
+        """Send an SMS message via SignalWire"""
+        logger.info(f"📱 Sending SMS to {to_number}: {message[:50]}...")
+
+        try:
+            signalwire_space = os.getenv("SIGNALWIRE_SPACE_URL", "erik.signalwire.com")
+            signalwire_project = os.getenv("SIGNALWIRE_PROJECT_ID")
+            signalwire_token = os.getenv("SIGNALWIRE_API_TOKEN")
+
+            # Normalize phone number
+            digits = ''.join(filter(str.isdigit, to_number))
+            if len(digits) == 10:
+                to_number = f"+1{digits}"
+            elif len(digits) == 11 and digits.startswith('1'):
+                to_number = f"+{digits}"
+
+            async with aiohttp.ClientSession() as session:
+                auth = aiohttp.BasicAuth(signalwire_project, signalwire_token)
+                sms_url = f"https://{signalwire_space}/api/laml/2010-04-01/Accounts/{signalwire_project}/Messages.json"
+
+                async with session.post(
+                    sms_url,
+                    auth=auth,
+                    data={
+                        "From": service_number,
+                        "To": to_number,
+                        "Body": message,
+                    }
+                ) as resp:
+                    result = await resp.json()
+
+                    if resp.status == 201:
+                        logger.info(f"SMS sent successfully to {to_number}")
+
+                        # Save to database
+                        try:
+                            supabase.table("sms_messages").insert({
+                                "user_id": user_id,
+                                "direction": "outgoing",
+                                "service_number": service_number,
+                                "contact_phone": to_number,
+                                "message_body": message,
+                                "is_ai_generated": True,
+                                "status": "sent",
+                            }).execute()
+                        except Exception as db_err:
+                            logger.error(f"Failed to save SMS to database: {db_err}")
+
+                        return f"I've sent the text message to {to_number}."
+                    else:
+                        error_msg = result.get('message', 'Unknown error')
+                        logger.error(f"SMS send failed: {error_msg}")
+                        return "I had trouble sending that text message. Let me note the information instead."
+
+        except Exception as e:
+            logger.error(f"SMS error: {e}")
+            return "I wasn't able to send the text message right now."
+
+    return send_sms
+
+
+def create_get_availability_tool(user_id: str, description: str = None):
+    """Create tool to check calendar availability via Cal.com"""
+
+    tool_description = description or "Check available appointment times. Use this when the caller wants to know when appointments are available."
+
+    @function_tool(description=tool_description)
+    async def get_availability(
+        date: Annotated[str, "The date to check availability for (e.g., 'tomorrow', 'next Monday', '2024-01-15')"],
+    ):
+        """Get available appointment slots from Cal.com"""
+        logger.info(f"📅 Checking availability for: {date}")
+
+        try:
+            supabase_url = os.getenv("SUPABASE_URL")
+            supabase_service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+            # Parse the date - for simplicity, we'll check the next 7 days if relative
+            today = datetime.datetime.now()
+
+            # Simple date parsing
+            if 'tomorrow' in date.lower():
+                start_date = today + datetime.timedelta(days=1)
+            elif 'next week' in date.lower():
+                start_date = today + datetime.timedelta(days=7)
+            else:
+                # Try to parse as ISO date
+                try:
+                    start_date = datetime.datetime.fromisoformat(date.replace('Z', '+00:00'))
+                except:
+                    start_date = today + datetime.timedelta(days=1)
+
+            end_date = start_date + datetime.timedelta(days=1)
+
+            # Call our Cal.com edge function
+            async with aiohttp.ClientSession() as session:
+                # Get user's access token from database
+                user_data = supabase.table("users").select("cal_com_access_token").eq("id", user_id).single().execute()
+
+                if not user_data.data or not user_data.data.get("cal_com_access_token"):
+                    return "I don't have access to the calendar right now. Would you like to leave your contact information instead?"
+
+                # Use internal service call (bypasses JWT auth)
+                async with session.post(
+                    f"{supabase_url}/functions/v1/cal-com-get-slots",
+                    headers={
+                        "Authorization": f"Bearer {supabase_service_key}",
+                        "Content-Type": "application/json",
+                        "x-user-id": user_id,  # Pass user context
+                    },
+                    json={
+                        "start": start_date.isoformat(),
+                        "end": end_date.isoformat(),
+                        "duration": 30,
+                    }
+                ) as resp:
+                    if resp.status != 200:
+                        error_text = await resp.text()
+                        logger.error(f"Cal.com get-slots failed: {error_text}")
+                        return "I'm having trouble checking the calendar. Can I take your information and have someone call you back?"
+
+                    result = await resp.json()
+                    slots = result.get("slots", [])
+
+                    if not slots:
+                        return f"I don't see any available times on {start_date.strftime('%A, %B %d')}. Would you like me to check another day?"
+
+                    # Format slots for speech
+                    slot_times = []
+                    for slot in slots[:5]:  # Limit to 5 options
+                        slot_time = datetime.datetime.fromisoformat(slot["start"].replace('Z', '+00:00'))
+                        slot_times.append(slot_time.strftime("%-I:%M %p"))
+
+                    slots_text = ", ".join(slot_times[:-1]) + f" or {slot_times[-1]}" if len(slot_times) > 1 else slot_times[0]
+                    return f"On {start_date.strftime('%A, %B %d')}, I have openings at {slots_text}. Which time works best for you?"
+
+        except Exception as e:
+            logger.error(f"Get availability error: {e}")
+            return "I'm having trouble accessing the calendar right now. Can I take your contact information instead?"
+
+    return get_availability
+
+
+def create_book_appointment_tool(user_id: str, description: str = None):
+    """Create tool to book appointments via Cal.com"""
+
+    tool_description = description or "Book an appointment for the caller. Use this after confirming the time with the caller."
+
+    @function_tool(description=tool_description)
+    async def book_appointment(
+        date_time: Annotated[str, "The date and time for the appointment (e.g., '2024-01-15 2:00 PM' or 'tomorrow at 10am')"],
+        attendee_name: Annotated[str, "The caller's name for the booking"],
+        attendee_phone: Annotated[str, "The caller's phone number (optional)"] = "",
+        attendee_email: Annotated[str, "The caller's email address (optional)"] = "",
+        notes: Annotated[str, "Any notes or reason for the appointment (optional)"] = "",
+    ):
+        """Book an appointment in Cal.com"""
+        logger.info(f"📅 Booking appointment for {attendee_name} at {date_time}")
+
+        try:
+            supabase_url = os.getenv("SUPABASE_URL")
+            supabase_service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+            # Parse the datetime
+            today = datetime.datetime.now()
+
+            # Simple datetime parsing
+            try:
+                # Try ISO format first
+                start_time = datetime.datetime.fromisoformat(date_time.replace('Z', '+00:00'))
+            except:
+                # Try common formats
+                time_match = re.search(r'(\d{1,2}):?(\d{2})?\s*(am|pm)?', date_time.lower())
+                if time_match:
+                    hour = int(time_match.group(1))
+                    minute = int(time_match.group(2) or 0)
+                    ampm = time_match.group(3)
+                    if ampm == 'pm' and hour != 12:
+                        hour += 12
+                    elif ampm == 'am' and hour == 12:
+                        hour = 0
+
+                    if 'tomorrow' in date_time.lower():
+                        start_time = (today + datetime.timedelta(days=1)).replace(hour=hour, minute=minute, second=0, microsecond=0)
+                    else:
+                        start_time = today.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                        if start_time < today:
+                            start_time += datetime.timedelta(days=1)
+                else:
+                    return "I couldn't understand that time. Could you please specify the time again, like '2 PM tomorrow'?"
+
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{supabase_url}/functions/v1/cal-com-create-booking",
+                    headers={
+                        "Authorization": f"Bearer {supabase_service_key}",
+                        "Content-Type": "application/json",
+                        "x-user-id": user_id,
+                    },
+                    json={
+                        "start": start_time.isoformat(),
+                        "title": f"Appointment with {attendee_name}",
+                        "attendee_name": attendee_name,
+                        "attendee_phone": attendee_phone,
+                        "attendee_email": attendee_email,
+                        "notes": notes,
+                    }
+                ) as resp:
+                    if resp.status != 200:
+                        error_text = await resp.text()
+                        logger.error(f"Cal.com booking failed: {error_text}")
+                        try:
+                            error_json = json.loads(error_text)
+                            error_msg = error_json.get("error", "Unknown error")
+                            if "slot" in error_msg.lower() or "unavailable" in error_msg.lower():
+                                return "I'm sorry, that time slot is no longer available. Would you like to try a different time?"
+                        except:
+                            pass
+                        return "I had trouble booking that appointment. Would you like to try a different time?"
+
+                    result = await resp.json()
+                    booking = result.get("booking", {})
+
+                    # Format confirmation
+                    booked_time = datetime.datetime.fromisoformat(booking.get("start", start_time.isoformat()).replace('Z', '+00:00'))
+                    formatted_time = booked_time.strftime("%A, %B %d at %-I:%M %p")
+
+                    logger.info(f"Appointment booked: {booking.get('id')}")
+                    return f"I've booked your appointment for {formatted_time}. You're all set, {attendee_name}!"
+
+        except Exception as e:
+            logger.error(f"Book appointment error: {e}")
+            return "I wasn't able to complete the booking. Can I take your information and have someone confirm the appointment with you?"
+
+    return book_appointment
+
+
 def create_voice_clone_tool(user_id: str):
     """Create voice cloning tool for creating custom ElevenLabs voices"""
 
@@ -1786,6 +2032,45 @@ CALL CONTEXT:
             transfer_tool = create_transfer_tool(user_id, transfer_nums, ctx.room.name)
             custom_tools.append(transfer_tool)
             logger.info(f"📞 Registered transfer tool with {len(transfer_nums)} numbers")
+
+    # SMS function
+    sms_config = functions_config.get("sms", {})
+    sms_enabled = sms_config.get("enabled", False)
+    if sms_enabled and service_number:
+        sms_description = sms_config.get("description")
+        sms_tool = create_sms_tool(user_id, service_number, sms_description)
+        custom_tools.append(sms_tool)
+        logger.info(f"📱 Registered SMS tool for service number {service_number}")
+
+    # Booking function (get_availability + book_appointment)
+    booking_config = functions_config.get("booking", {})
+    booking_enabled = booking_config.get("enabled", False)
+    if booking_enabled:
+        # Check if user has Cal.com connected
+        user_cal_check = supabase.table("users").select("cal_com_access_token").eq("id", user_id).single().execute()
+        if user_cal_check.data and user_cal_check.data.get("cal_com_access_token"):
+            # Get availability tool
+            get_avail_config = booking_config.get("get_availability", {})
+            if get_avail_config.get("enabled", True):  # Default enabled if booking is enabled
+                availability_tool = create_get_availability_tool(user_id, get_avail_config.get("description"))
+                custom_tools.append(availability_tool)
+                logger.info(f"📅 Registered get_availability tool")
+
+            # Book appointment tool
+            book_description = booking_config.get("description")
+            book_tool = create_book_appointment_tool(user_id, book_description)
+            custom_tools.append(book_tool)
+            logger.info(f"📅 Registered book_appointment tool")
+        else:
+            logger.warning(f"⚠️ Booking enabled but Cal.com not connected for user {user_id}")
+
+    # Extract Data function
+    extract_config = functions_config.get("extract_data", {})
+    extract_enabled = extract_config.get("enabled", False)
+    if extract_enabled:
+        collect_data_tool = create_collect_data_tool(user_id)
+        custom_tools.append(collect_data_tool)
+        logger.info(f"📝 Registered extract_data/collect tool")
 
     # Create Agent instance with custom function tools
     if custom_tools:
