@@ -49,10 +49,12 @@ serve(async (req) => {
     // Now we dial the PSTN number and bridge the two legs together
     // IMPORTANT: callerId must be a valid E.164 phone number (not SIP URI)
     // PAUSE: Give agent 3 seconds to fully connect before dialing PSTN
+    // Added action callback to debug dial completion reason
+    const actionUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/outbound-dial-status?destination=${encodeURIComponent(destination)}&from=${encodeURIComponent(from || '')}`;
     const cxml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Pause length="3"/>
-  <Dial record="record-from-answer" recordingStatusCallback="${Deno.env.get("SUPABASE_URL")}/functions/v1/sip-recording-callback" callerId="${from}">
+  <Dial action="${actionUrl}" timeout="60" record="record-from-answer" recordingStatusCallback="${Deno.env.get("SUPABASE_URL")}/functions/v1/sip-recording-callback" callerId="${from}">
     <Number>${destination}</Number>
   </Dial>
 </Response>`;

@@ -877,6 +877,123 @@ def create_transfer_tool(user_id: str, transfer_numbers: list, room_name: str):
     return transfer_call
 
 
+def create_warm_transfer_tools(user_id: str, transfer_numbers: list, room_name: str, service_number: str, caller_call_sid: str):
+    """Create warm transfer tools for attended call transfers"""
+
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+    @function_tool(description="Start a warm transfer - puts the caller on hold and dials the transfer destination so you can speak privately with them first. Use this when the caller asks to speak with someone specific.")
+    async def start_warm_transfer(
+        transfer_to: Annotated[str, "The label or name of who to transfer to (e.g., 'Sales', 'Rick', 'mobile')"]
+    ):
+        """Start a warm transfer by putting caller on hold and dialing the destination"""
+        logger.info(f"🔄 Starting warm transfer to: {transfer_to}")
+
+        # Find matching transfer number
+        transfer_config = None
+        for num in transfer_numbers:
+            if num["label"].lower() == transfer_to.lower():
+                transfer_config = num
+                break
+
+        if not transfer_config:
+            available = ', '.join([n['label'] for n in transfer_numbers])
+            return f"I don't have a transfer option for '{transfer_to}'. Available options are: {available}"
+
+        phone_number = transfer_config.get('number') or transfer_config.get('phone_number')
+        if not phone_number:
+            return f"No phone number configured for {transfer_config['label']}."
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{supabase_url}/functions/v1/warm-transfer",
+                    headers={
+                        "Authorization": f"Bearer {supabase_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "operation": "start",
+                        "room_name": room_name,
+                        "target_number": phone_number,
+                        "target_label": transfer_config['label'],
+                        "caller_call_sid": caller_call_sid,
+                        "service_number": service_number,
+                    }
+                ) as resp:
+                    result = await resp.json()
+                    if result.get("success"):
+                        logger.info(f"✅ Warm transfer started: {result}")
+                        return f"The caller is now on hold. I'm connecting you with {transfer_config['label']}. Once they answer, you can brief them on the situation. Say 'complete transfer' when they're ready to take the call, or 'cancel transfer' if they can't take it."
+                    else:
+                        logger.error(f"Warm transfer failed: {result}")
+                        return "I had trouble starting the transfer. Let me take a message instead."
+        except Exception as e:
+            logger.error(f"Warm transfer error: {e}")
+            return "I'm having trouble with the transfer right now. Can I take a message instead?"
+
+    @function_tool(description="Complete the warm transfer - bridges the caller with the transferee. Use this after speaking with the transferee and they agree to take the call.")
+    async def complete_warm_transfer():
+        """Complete the warm transfer by bridging all parties"""
+        logger.info(f"🔄 Completing warm transfer for room: {room_name}")
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{supabase_url}/functions/v1/warm-transfer",
+                    headers={
+                        "Authorization": f"Bearer {supabase_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "operation": "complete",
+                        "room_name": room_name,
+                    }
+                ) as resp:
+                    result = await resp.json()
+                    if result.get("success"):
+                        logger.info(f"✅ Warm transfer completed: {result}")
+                        return "Transfer complete! The caller and transferee are now connected. You can end this call."
+                    else:
+                        logger.error(f"Complete transfer failed: {result}")
+                        return "I had trouble completing the transfer. The caller is still on hold."
+        except Exception as e:
+            logger.error(f"Complete transfer error: {e}")
+            return "I'm having trouble completing the transfer."
+
+    @function_tool(description="Cancel the warm transfer - hangs up on the transferee and brings the caller back from hold. Use this if the transferee can't take the call.")
+    async def cancel_warm_transfer():
+        """Cancel the warm transfer and bring caller back"""
+        logger.info(f"🔄 Cancelling warm transfer for room: {room_name}")
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{supabase_url}/functions/v1/warm-transfer",
+                    headers={
+                        "Authorization": f"Bearer {supabase_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "operation": "cancel",
+                        "room_name": room_name,
+                    }
+                ) as resp:
+                    result = await resp.json()
+                    if result.get("success"):
+                        logger.info(f"✅ Warm transfer cancelled: {result}")
+                        return "Transfer cancelled. The caller is back on the line. How else can I help them?"
+                    else:
+                        logger.error(f"Cancel transfer failed: {result}")
+                        return "I had trouble cancelling the transfer."
+        except Exception as e:
+            logger.error(f"Cancel transfer error: {e}")
+            return "I'm having trouble with the transfer."
+
+    return [start_warm_transfer, complete_warm_transfer, cancel_warm_transfer]
+
+
 def create_collect_data_tool(user_id: str):
     """Create dynamic data collection tool"""
 
@@ -2048,9 +2165,16 @@ CALL CONTEXT:
             # Fall back to transfer_numbers table (backwards compatibility)
             transfer_nums = [{"phone_number": n.get("phone_number"), "label": n.get("label", "Transfer"), "description": n.get("description", "")} for n in transfer_numbers]
         if transfer_nums:
-            transfer_tool = create_transfer_tool(user_id, transfer_nums, ctx.room.name)
-            custom_tools.append(transfer_tool)
-            logger.info(f"📞 Registered transfer tool with {len(transfer_nums)} numbers")
+            # Add warm transfer tools (for attended transfers)
+            warm_transfer_tools = create_warm_transfer_tools(
+                user_id=user_id,
+                transfer_numbers=transfer_nums,
+                room_name=ctx.room.name,
+                service_number=service_number or '',
+                caller_call_sid=call_sid or ''
+            )
+            custom_tools.extend(warm_transfer_tools)
+            logger.info(f"📞 Registered warm transfer tools with {len(transfer_nums)} numbers")
 
     # SMS function
     sms_config = functions_config.get("sms", {})

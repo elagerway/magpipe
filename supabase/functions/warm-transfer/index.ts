@@ -1,17 +1,10 @@
 /**
- * Warm Transfer - Orchestrates warm (attended) call transfers
- *
- * Operations:
- * - start: Put caller on hold, dial transferee to join LiveKit room
- * - complete: Bridge caller and transferee together
- * - cancel: Hang up transferee, bring caller back
+ * Warm Transfer - Orchestrates attended call transfers
  *
  * Flow:
- * 1. Caller is on SignalWire -> LiveKit SIP -> Agent
- * 2. Start: Update caller's call to play hold music, dial transferee to LiveKit
- * 3. Agent talks privately with transferee in LiveKit room
- * 4. Complete: Create SignalWire conference with caller + transferee + LiveKit (for recording)
- * 5. OR Cancel: Hang up transferee, update caller to rejoin LiveKit
+ * 1. start: Put caller on hold, dial transferee to join agent in LiveKit
+ * 2. complete: Bridge all parties together in a conference
+ * 3. cancel: Hang up transferee, bring caller back from hold
  */
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
@@ -27,11 +20,15 @@ const SIGNALWIRE_API_TOKEN = Deno.env.get('SIGNALWIRE_API_TOKEN')!
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const LIVEKIT_SIP_DOMAIN = Deno.env.get('LIVEKIT_SIP_DOMAIN') || '378ads1njtd.sip.livekit.cloud'
 
+// Hold music URL
+const HOLD_MUSIC_URL = 'http://com.twilio.sounds.music.s3.amazonaws.com/MARKOVICHAMP-B4.mp3'
+
 interface TransferState {
-  caller_call_sid: string
+  actualCallerCallSid: string
   transferee_call_sid?: string
   conference_name?: string
   target_number: string
+  target_label?: string
   caller_number: string
   service_number: string
   status: 'holding' | 'consulting' | 'bridged' | 'cancelled'
@@ -45,33 +42,60 @@ Deno.serve(async (req) => {
   try {
     const {
       operation,        // 'start' | 'complete' | 'cancel'
-      room_name,        // LiveKit room name (used as session key)
+      room_name,        // LiveKit room name
       target_number,    // Transfer destination number
       target_label,     // Optional human-readable label
-      caller_call_sid,  // Original caller's SignalWire call SID
-      caller_number,    // Caller's phone number (for context)
+      caller_call_sid,  // Original caller's SignalWire call SID (optional - will be looked up if not provided)
+      caller_number,    // Caller's phone number
       service_number,   // Our service number (caller ID for outbound)
     } = await req.json()
 
-    console.log(`🔄 Warm Transfer: ${operation}`, { room_name, target_number, caller_call_sid })
+    console.log(`🔄 Warm Transfer: ${operation}`, { room_name, target_number, actualCallerCallSid })
 
     const supabase = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
     const signalwireAuth = 'Basic ' + btoa(`${SIGNALWIRE_PROJECT_ID}:${SIGNALWIRE_API_TOKEN}`)
-
-    // Get/create transfer state from database
     const stateKey = `warm_transfer_${room_name}`
 
     if (operation === 'start') {
-      if (!caller_call_sid || !target_number || !room_name) {
-        return errorResponse('Missing required fields: caller_call_sid, target_number, room_name', 400)
+      if (!target_number || !room_name) {
+        return errorResponse('Missing required fields: target_number, room_name', 400)
       }
 
-      // Step 1: Put caller on hold by updating their call with hold music TwiML
+      // Look up the SignalWire call SID from call_records if not provided
+      let actualCallerCallSid = caller_call_sid
+      if (!actualCallerCallSid) {
+        console.log('📞 Looking up SignalWire call SID from database...')
+        const { data: callRecord } = await supabase
+          .from('call_records')
+          .select('vendor_call_id, call_sid')
+          .eq('service_number', service_number)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single()
+
+        if (callRecord) {
+          actualCallerCallSid = callRecord.vendor_call_id || callRecord.call_sid
+          console.log('📞 Found SignalWire call SID:', actualCallerCallSid)
+        }
+      }
+
+      if (!actualCallerCallSid) {
+        return errorResponse('Could not find the caller\'s call to transfer', 404)
+      }
+
+      // Step 1: Put caller on hold
       console.log('📞 Putting caller on hold...')
-      const holdTwimlUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=hold&room=${encodeURIComponent(room_name)}&target_label=${encodeURIComponent(target_label || '')}`
+      const holdTwiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Joanna">Please hold while I transfer you to ${target_label || 'our team'}.</Say>
+  <Play loop="0">${HOLD_MUSIC_URL}</Play>
+</Response>`
+
+      // Create a data URL for the hold TwiML
+      const holdTwimlUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=hold&target_label=${encodeURIComponent(target_label || '')}`
 
       const holdResponse = await fetch(
-        `https://${SIGNALWIRE_SPACE_URL}/api/laml/2010-04-01/Accounts/${SIGNALWIRE_PROJECT_ID}/Calls/${caller_call_sid}.json`,
+        `https://${SIGNALWIRE_SPACE_URL}/api/laml/2010-04-01/Accounts/${SIGNALWIRE_PROJECT_ID}/Calls/${actualCallerCallSid}.json`,
         {
           method: 'POST',
           headers: {
@@ -90,10 +114,9 @@ Deno.serve(async (req) => {
 
       console.log('✅ Caller on hold')
 
-      // Step 2: Dial transferee to join LiveKit room
+      // Step 2: Dial transferee to join the LiveKit room (agent can talk privately)
       console.log('📞 Dialing transferee:', target_number)
 
-      // Normalize target number
       let normalizedTarget = target_number.replace(/[^\d+]/g, '')
       if (!normalizedTarget.startsWith('+')) {
         if (normalizedTarget.length === 10) {
@@ -103,10 +126,9 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Create consultation room TwiML URL that connects to LiveKit
-      const consultTwimlUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=consult&room=${encodeURIComponent(room_name)}&service_number=${encodeURIComponent(service_number || '')}`
+      // TwiML to connect transferee to LiveKit room
+      const consultTwimlUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=consult&service_number=${encodeURIComponent(service_number || '')}`
 
-      // Dial the transferee
       const dialFormBody = [
         `To=${encodeURIComponent(normalizedTarget)}`,
         `From=${encodeURIComponent(service_number || '+16042566768')}`,
@@ -133,8 +155,8 @@ Deno.serve(async (req) => {
       if (!dialResponse.ok) {
         const error = await dialResponse.text()
         console.error('Failed to dial transferee:', error)
-        // Bring caller back off hold
-        await unholdCaller(caller_call_sid, room_name, signalwireAuth)
+        // Bring caller back from hold
+        await unholdCaller(actualCallerCallSid, room_name, signalwireAuth, service_number)
         return errorResponse('Failed to dial transferee', 500)
       }
 
@@ -143,26 +165,26 @@ Deno.serve(async (req) => {
 
       // Store transfer state
       const transferState: TransferState = {
-        caller_call_sid,
+        actualCallerCallSid,
         transferee_call_sid: dialResult.sid,
         target_number: normalizedTarget,
+        target_label,
         caller_number: caller_number || '',
         service_number: service_number || '',
         status: 'consulting',
       }
 
-      // Store in call_state_logs for tracking
-      await supabase.from('call_state_logs').insert({
-        room_name,
-        state: 'warm_transfer_started',
-        metadata: transferState,
-      })
-
-      // Also store in a simple key-value for retrieval
       await supabase.from('temp_state').upsert({
         key: stateKey,
         value: transferState,
-        expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(), // 30 min expiry
+        expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      })
+
+      await supabase.from('call_state_logs').insert({
+        room_name,
+        state: 'warm_transfer_started',
+        component: 'agent',
+        details: JSON.stringify(transferState),
       })
 
       return new Response(
@@ -170,13 +192,13 @@ Deno.serve(async (req) => {
           success: true,
           status: 'consulting',
           transferee_call_sid: dialResult.sid,
-          message: 'Caller on hold. Transferee being dialed. You can now speak with them privately.',
+          message: 'Caller on hold. You can now speak privately with the transferee.',
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
 
     } else if (operation === 'complete') {
-      // Retrieve transfer state
+      // Get transfer state
       const { data: stateData } = await supabase
         .from('temp_state')
         .select('value')
@@ -188,19 +210,16 @@ Deno.serve(async (req) => {
       }
 
       const state = stateData.value as TransferState
+      console.log('🔗 Completing warm transfer - bridging all parties')
 
-      console.log('🔗 Completing warm transfer - bridging calls')
-
-      // Create a unique conference name
-      const conferenceName = `warm_xfer_${room_name}_${Date.now()}`
-
-      // Update both calls to join the same conference
-      const conferenceUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=conference&conf_name=${encodeURIComponent(conferenceName)}&room=${encodeURIComponent(room_name)}`
+      // Create conference and move everyone in
+      const conferenceName = `warm_xfer_${Date.now()}`
+      const conferenceUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=conference&conf_name=${encodeURIComponent(conferenceName)}`
 
       // Move caller to conference
       console.log('📞 Moving caller to conference...')
-      const callerConfResponse = await fetch(
-        `https://${SIGNALWIRE_SPACE_URL}/api/laml/2010-04-01/Accounts/${SIGNALWIRE_PROJECT_ID}/Calls/${state.caller_call_sid}.json`,
+      await fetch(
+        `https://${SIGNALWIRE_SPACE_URL}/api/laml/2010-04-01/Accounts/${SIGNALWIRE_PROJECT_ID}/Calls/${state.actualCallerCallSid}.json`,
         {
           method: 'POST',
           headers: {
@@ -211,14 +230,10 @@ Deno.serve(async (req) => {
         }
       )
 
-      if (!callerConfResponse.ok) {
-        console.error('Failed to move caller to conference')
-      }
-
       // Move transferee to conference
       if (state.transferee_call_sid) {
         console.log('📞 Moving transferee to conference...')
-        const transfereeConfResponse = await fetch(
+        await fetch(
           `https://${SIGNALWIRE_SPACE_URL}/api/laml/2010-04-01/Accounts/${SIGNALWIRE_PROJECT_ID}/Calls/${state.transferee_call_sid}.json`,
           {
             method: 'POST',
@@ -229,10 +244,6 @@ Deno.serve(async (req) => {
             body: `Url=${encodeURIComponent(conferenceUrl)}&Method=GET`,
           }
         )
-
-        if (!transfereeConfResponse.ok) {
-          console.error('Failed to move transferee to conference')
-        }
       }
 
       // Update state
@@ -243,23 +254,24 @@ Deno.serve(async (req) => {
       await supabase.from('call_state_logs').insert({
         room_name,
         state: 'warm_transfer_completed',
-        metadata: { ...state, conference_name: conferenceName },
+        component: 'agent',
+        details: JSON.stringify({ ...state, conference_name: conferenceName }),
       })
 
-      console.log('✅ Warm transfer completed - all parties in conference:', conferenceName)
+      console.log('✅ All parties bridged in conference:', conferenceName)
 
       return new Response(
         JSON.stringify({
           success: true,
           status: 'bridged',
           conference_name: conferenceName,
-          message: 'Transfer complete. Caller and transferee are now connected.',
+          message: 'Transfer complete. All parties are now connected.',
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
 
     } else if (operation === 'cancel') {
-      // Retrieve transfer state
+      // Get transfer state
       const { data: stateData } = await supabase
         .from('temp_state')
         .select('value')
@@ -271,10 +283,9 @@ Deno.serve(async (req) => {
       }
 
       const state = stateData.value as TransferState
-
       console.log('❌ Cancelling warm transfer')
 
-      // Hang up transferee if still connected
+      // Hang up transferee
       if (state.transferee_call_sid) {
         console.log('📞 Hanging up transferee...')
         try {
@@ -290,13 +301,13 @@ Deno.serve(async (req) => {
             }
           )
         } catch (e) {
-          console.log('Transferee may have already hung up:', e)
+          console.log('Transferee may have already hung up')
         }
       }
 
-      // Bring caller back from hold
+      // Bring caller back
       console.log('📞 Bringing caller back from hold...')
-      await unholdCaller(state.caller_call_sid, room_name, signalwireAuth)
+      await unholdCaller(state.actualCallerCallSid, room_name, signalwireAuth, state.service_number)
 
       // Update state
       await supabase.from('temp_state').update({
@@ -306,10 +317,11 @@ Deno.serve(async (req) => {
       await supabase.from('call_state_logs').insert({
         room_name,
         state: 'warm_transfer_cancelled',
-        metadata: state,
+        component: 'agent',
+        details: JSON.stringify(state),
       })
 
-      console.log('✅ Warm transfer cancelled - caller back on line')
+      console.log('✅ Transfer cancelled - caller back on line')
 
       return new Response(
         JSON.stringify({
@@ -333,10 +345,11 @@ Deno.serve(async (req) => {
   }
 })
 
-async function unholdCaller(callerCallSid: string, roomName: string, signalwireAuth: string) {
-  const unholdUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=unhold&room=${encodeURIComponent(roomName)}`
+async function unholdCaller(callerCallSid: string, roomName: string, signalwireAuth: string, serviceNumber?: string) {
+  // Reconnect caller to LiveKit room
+  const unholdUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=unhold&service_number=${encodeURIComponent(serviceNumber || '')}`
 
-  const response = await fetch(
+  await fetch(
     `https://${SIGNALWIRE_SPACE_URL}/api/laml/2010-04-01/Accounts/${SIGNALWIRE_PROJECT_ID}/Calls/${callerCallSid}.json`,
     {
       method: 'POST',
@@ -347,10 +360,6 @@ async function unholdCaller(callerCallSid: string, roomName: string, signalwireA
       body: `Url=${encodeURIComponent(unholdUrl)}&Method=GET`,
     }
   )
-
-  if (!response.ok) {
-    console.error('Failed to unhold caller:', await response.text())
-  }
 }
 
 function errorResponse(message: string, status: number) {
