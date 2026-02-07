@@ -112,7 +112,11 @@
     {
       "group": "System Functions",
       "pages": [
-        "api-reference/endpoints/configure-system-functions",
+        "api-reference/endpoints/configure-end-call",
+        "api-reference/endpoints/configure-transfer",
+        "api-reference/endpoints/configure-sms",
+        "api-reference/endpoints/configure-extract-data",
+        "api-reference/endpoints/configure-booking",
         "api-reference/endpoints/end-call"
       ]
     },
