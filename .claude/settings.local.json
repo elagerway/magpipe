@@ -190,7 +190,8 @@
       "Bash(npm test:*)",
       "Bash(PROJECT=\"your-signalwire-project-id\")",
       "Bash(TOKEN=\"your-signalwire-api-token\")",
-      "Bash(STRIPE_KEY=\"your-stripe-test-key\")"
+      "Bash(STRIPE_KEY=\"your-stripe-test-key\")",
+      "Bash(TZ='America/Los_Angeles' date:*)"
     ],
     "deny": [],
     "ask": []

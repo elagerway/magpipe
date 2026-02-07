@@ -933,10 +933,16 @@ def create_end_call_tool(room_name: str, description: str = None):
     return end_call
 
 
-def create_sms_tool(user_id: str, service_number: str, description: str = None):
+def create_sms_tool(user_id: str, service_number: str, description: str = None, templates: list = None):
     """Create SMS tool that allows the agent to send text messages during calls"""
 
     tool_description = description or "Send an SMS text message to a phone number. Use this to send confirmations, follow-up information, or any text the caller requests."
+
+    # Add templates to description if available - agent MUST use these exact messages
+    if templates and len(templates) > 0:
+        tool_description += "\n\nIMPORTANT: Use these pre-configured SMS templates when sending messages. Do NOT make up URLs or information - use ONLY the content from these templates:"
+        for tmpl in templates:
+            tool_description += f"\n- '{tmpl.get('name', 'Template')}': \"{tmpl.get('content', '')}\""
 
     @function_tool(description=tool_description)
     async def send_sms(
@@ -2038,7 +2044,16 @@ CALL CONTEXT:
     sms_enabled = sms_config.get("enabled", False)
     if sms_enabled and service_number:
         sms_description = sms_config.get("description")
-        sms_tool = create_sms_tool(user_id, service_number, sms_description)
+        # Load SMS templates for this user
+        sms_templates = []
+        try:
+            templates_result = supabase.table("sms_templates").select("name, content").eq("user_id", user_id).execute()
+            if templates_result.data:
+                sms_templates = templates_result.data
+                logger.info(f"📱 Loaded {len(sms_templates)} SMS templates")
+        except Exception as e:
+            logger.warning(f"Could not load SMS templates: {e}")
+        sms_tool = create_sms_tool(user_id, service_number, sms_description, sms_templates)
         custom_tools.append(sms_tool)
         logger.info(f"📱 Registered SMS tool for service number {service_number}")
 
