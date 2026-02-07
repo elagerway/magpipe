@@ -1,0 +1,220 @@
+---
+title: "Configure System Functions"
+api: "POST /update-agent"
+description: "Enable, disable, and configure built-in agent functions"
+---
+
+Configure system functions (End Call, Transfer, SMS, Extract Data, Booking) by updating the agent's `custom_instructions` field.
+
+## Request Body
+
+<ParamField body="agent_id" type="string" required>
+  The unique identifier of the agent to configure.
+</ParamField>
+
+<ParamField body="custom_instructions" type="object" required>
+  Object containing function configurations.
+
+  <Expandable title="Function Settings">
+    <ParamField body="enable_end_call" type="boolean" default={true}>
+      Allow agent to end calls when conversation is complete.
+    </ParamField>
+
+    <ParamField body="end_call_description" type="string">
+      Custom condition for when to end calls. Default: "End the phone call. Use this when the conversation is complete, the caller says goodbye, or there is nothing more to discuss."
+    </ParamField>
+
+    <ParamField body="enable_transfer" type="boolean" default={true}>
+      Allow agent to transfer calls to configured numbers.
+    </ParamField>
+
+    <ParamField body="enable_sms" type="boolean" default={true}>
+      Allow agent to send SMS messages.
+    </ParamField>
+
+    <ParamField body="enable_extract" type="boolean" default={false}>
+      Enable data extraction from conversations.
+    </ParamField>
+
+    <ParamField body="enable_booking" type="boolean" default={false}>
+      Enable calendar appointment booking.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Response
+
+Returns the updated agent object with new function configuration.
+
+<RequestExample>
+```bash cURL
+curl -X POST https://api.magpipe.ai/functions/v1/update-agent \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_id": "550e8400-e29b-41d4-a716-446655440000",
+    "custom_instructions": {
+      "enable_end_call": true,
+      "end_call_description": "End the call after confirming the appointment and saying goodbye.",
+      "enable_transfer": true,
+      "enable_sms": true,
+      "enable_extract": true,
+      "enable_booking": false
+    }
+  }'
+```
+
+```javascript Node.js
+const response = await fetch(
+  'https://api.magpipe.ai/functions/v1/update-agent',
+  {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer YOUR_API_TOKEN',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      agent_id: '550e8400-e29b-41d4-a716-446655440000',
+      custom_instructions: {
+        enable_end_call: true,
+        end_call_description: 'End the call after confirming the appointment and saying goodbye.',
+        enable_transfer: true,
+        enable_sms: true,
+        enable_extract: true,
+        enable_booking: false
+      }
+    }),
+  }
+);
+
+const agent = await response.json();
+console.log('Functions configured:', agent.custom_instructions);
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'https://api.magpipe.ai/functions/v1/update-agent',
+    headers={
+        'Authorization': 'Bearer YOUR_API_TOKEN',
+        'Content-Type': 'application/json',
+    },
+    json={
+        'agent_id': '550e8400-e29b-41d4-a716-446655440000',
+        'custom_instructions': {
+            'enable_end_call': True,
+            'end_call_description': 'End the call after confirming the appointment and saying goodbye.',
+            'enable_transfer': True,
+            'enable_sms': True,
+            'enable_extract': True,
+            'enable_booking': False
+        }
+    }
+)
+
+agent = response.json()
+print(f"Functions configured: {agent['custom_instructions']}")
+```
+</RequestExample>
+
+<ResponseExample>
+```json Success Response
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "Sarah - Receptionist",
+  "custom_instructions": {
+    "enable_end_call": true,
+    "end_call_description": "End the call after confirming the appointment and saying goodbye.",
+    "enable_transfer": true,
+    "enable_sms": true,
+    "enable_extract": true,
+    "enable_booking": false
+  },
+  "updated_at": "2024-01-16T09:15:00Z"
+}
+```
+</ResponseExample>
+
+## Function Details
+
+### End Call
+
+When enabled, the agent can hang up the call when appropriate. Customize the condition to control when this happens.
+
+```json
+{
+  "custom_instructions": {
+    "enable_end_call": true,
+    "end_call_description": "End the call only after the customer explicitly says goodbye"
+  }
+}
+```
+
+### Transfer
+
+Requires transfer numbers to be configured separately via the [Transfer Numbers API](/api-reference/endpoints/create-transfer-number).
+
+```json
+{
+  "custom_instructions": {
+    "enable_transfer": true
+  }
+}
+```
+
+### SMS
+
+Allows the agent to send text messages during or after calls.
+
+```json
+{
+  "custom_instructions": {
+    "enable_sms": true
+  }
+}
+```
+
+### Extract Data
+
+Requires dynamic variables to be configured separately via the [Dynamic Variables API](/api-reference/endpoints/create-dynamic-variable).
+
+```json
+{
+  "custom_instructions": {
+    "enable_extract": true
+  }
+}
+```
+
+### Booking
+
+Requires calendar integration to be connected in the Apps section.
+
+```json
+{
+  "custom_instructions": {
+    "enable_booking": true
+  }
+}
+```
+
+## Disable All Functions
+
+To disable all system functions:
+
+```bash
+curl -X POST https://api.magpipe.ai/functions/v1/update-agent \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_id": "550e8400-e29b-41d4-a716-446655440000",
+    "custom_instructions": {
+      "enable_end_call": false,
+      "enable_transfer": false,
+      "enable_sms": false,
+      "enable_extract": false,
+      "enable_booking": false
+    }
+  }'
+```
