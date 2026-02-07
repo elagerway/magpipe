@@ -1787,6 +1787,13 @@ async def entrypoint(ctx: JobContext):
             logger.info(f"📱 Admin access possible for: {admin_check_info.get('full_name')}")
 
     # Get user configuration (skip if already fetched in fast path)
+    log_call_state(ctx.room.name, "getting_user_config", "agent", {
+        "fast_path_complete": fast_path_complete,
+        "room_metadata_keys": list(room_metadata.keys()),
+        "user_id_in_metadata": room_metadata.get("user_id"),
+        "agent_id_in_metadata": room_metadata.get("agent_id"),
+    })
+
     if not fast_path_complete:
         user_config = await get_user_config(room_metadata)
         if not user_config:
@@ -1810,6 +1817,12 @@ async def entrypoint(ctx: JobContext):
 
         user_id = user_config["user_id"]
         logger.info(f"Loaded config for user: {user_id}")
+
+        log_call_state(ctx.room.name, "user_config_loaded", "agent", {
+            "user_id": user_id,
+            "agent_name": user_config.get("name"),
+            "agent_id": str(user_config.get("id")),
+        })
 
         # Get voice configuration
         voice_id = user_config.get("voice_id", "11labs-Rachel")
@@ -2382,6 +2395,12 @@ CALL CONTEXT:
     await session.start(room=ctx.room, agent=assistant)
     logger.info("✅ Session started - agent is now listening")
 
+    log_call_state(ctx.room.name, "session_started", "agent", {
+        "direction": direction,
+        "has_greeting": bool(greeting),
+        "llm_model": llm_model,
+    })
+
     # Start recording in background (don't block the conversation)
     async def start_recording_background():
         nonlocal egress_id
@@ -2554,9 +2573,11 @@ ADMIN MODE ACTIVATED:
             # (don't use generate_reply() which adds LLM latency)
             await session.say(greeting, allow_interruptions=True)
             logger.info("📞 Inbound call - Agent greeted caller")
+            log_call_state(ctx.room.name, "greeting_spoken", "agent", {"direction": "inbound"})
         else:
             # Outbound call - don't greet, wait for user to speak
             logger.info("📞 Outbound call - Agent waiting for user to speak first")
+            log_call_state(ctx.room.name, "waiting_for_user", "agent", {"direction": "outbound"})
 
             # Warm up ALL connections in background (reduces first-response latency)
             async def warmup_connections():
