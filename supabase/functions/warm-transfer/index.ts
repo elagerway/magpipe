@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
 
       // Step 1: Put caller on hold by updating their call with hold music TwiML
       console.log('📞 Putting caller on hold...')
-      const holdTwimlUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=hold&room=${encodeURIComponent(room_name)}`
+      const holdTwimlUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=hold&room=${encodeURIComponent(room_name)}&target_label=${encodeURIComponent(target_label || '')}`
 
       const holdResponse = await fetch(
         `https://${SIGNALWIRE_SPACE_URL}/api/laml/2010-04-01/Accounts/${SIGNALWIRE_PROJECT_ID}/Calls/${caller_call_sid}.json`,
