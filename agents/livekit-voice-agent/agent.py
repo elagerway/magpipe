@@ -111,10 +111,11 @@ async def get_user_config(room_metadata: dict) -> dict:
         return None
 
     try:
+        # Fetch agent by ID only - agent_id is already unique
+        # This allows system agent (owned by admin) to work for any user's numbers
         response = supabase.table("agent_configs") \
             .select("*") \
             .eq("id", agent_id) \
-            .eq("user_id", user_id) \
             .limit(1) \
             .execute()
 
@@ -122,7 +123,7 @@ async def get_user_config(room_metadata: dict) -> dict:
             logger.info(f"Using agent: {response.data[0].get('name')} (id: {agent_id})")
             return response.data[0]
 
-        logger.warning(f"Agent {agent_id} not found for user {user_id}")
+        logger.warning(f"Agent {agent_id} not found")
         return None
     except Exception as e:
         logger.error(f"Failed to fetch user config: {e}")
