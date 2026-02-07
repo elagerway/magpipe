@@ -1,10 +1,10 @@
 ---
-title: "Configure Booking"
+title: "Transfer"
 api: "POST /update-agent"
-description: "Enable or disable calendar appointment booking"
+description: "Enable or disable call transfer functionality"
 ---
 
-Enable or disable the Booking function that allows your agent to schedule appointments via calendar integration.
+Enable or disable the Transfer function that allows your agent to transfer calls to other phone numbers.
 
 ## Request Body
 
@@ -13,9 +13,9 @@ Enable or disable the Booking function that allows your agent to schedule appoin
 </ParamField>
 
 <ParamField body="custom_instructions" type="object" required>
-  <Expandable title="Booking Settings">
-    <ParamField body="enable_booking" type="boolean" default={false}>
-      Enable appointment booking via connected calendar.
+  <Expandable title="Transfer Settings">
+    <ParamField body="enable_transfer" type="boolean" default={true}>
+      Allow agent to transfer calls to configured numbers.
     </ParamField>
   </Expandable>
 </ParamField>
@@ -32,7 +32,7 @@ curl -X POST https://api.magpipe.ai/functions/v1/update-agent \
   -d '{
     "agent_id": "550e8400-e29b-41d4-a716-446655440000",
     "custom_instructions": {
-      "enable_booking": true
+      "enable_transfer": true
     }
   }'
 ```
@@ -49,7 +49,7 @@ const response = await fetch(
     body: JSON.stringify({
       agent_id: '550e8400-e29b-41d4-a716-446655440000',
       custom_instructions: {
-        enable_booking: true
+        enable_transfer: true
       }
     }),
   }
@@ -68,7 +68,7 @@ response = requests.post(
     json={
         'agent_id': '550e8400-e29b-41d4-a716-446655440000',
         'custom_instructions': {
-            'enable_booking': True
+            'enable_transfer': True
         }
     }
 )
@@ -81,29 +81,24 @@ response = requests.post(
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "name": "Sarah - Receptionist",
   "custom_instructions": {
-    "enable_booking": true
+    "enable_transfer": true
   },
   "updated_at": "2024-01-16T09:15:00Z"
 }
 ```
 </ResponseExample>
 
-## Prerequisites
+## Transfer Numbers
 
-Before enabling booking, connect a calendar integration:
-- Google Calendar
-- Cal.com
-- Calendly (coming soon)
+Transfer destinations are configured separately. See the [Transfer Numbers API](/api-reference/endpoints/create-transfer-number) to add numbers the agent can transfer to.
 
-Configure integrations in **Apps** → **Integrations** or via the [Integrations API](/api-reference/endpoints/create-integration).
-
-## Disable Booking
+## Disable Transfer
 
 ```json
 {
   "agent_id": "550e8400-e29b-41d4-a716-446655440000",
   "custom_instructions": {
-    "enable_booking": false
+    "enable_transfer": false
   }
 }
 ```

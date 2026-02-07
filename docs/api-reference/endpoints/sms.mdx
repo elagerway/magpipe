@@ -1,10 +1,10 @@
 ---
-title: "Configure Extract Data"
+title: "SMS"
 api: "POST /update-agent"
-description: "Enable or disable data extraction from conversations"
+description: "Enable or disable SMS messaging functionality"
 ---
 
-Enable or disable the Extract Data function that allows your agent to collect structured information from conversations.
+Enable or disable the SMS function that allows your agent to send text messages during or after calls.
 
 ## Request Body
 
@@ -13,9 +13,9 @@ Enable or disable the Extract Data function that allows your agent to collect st
 </ParamField>
 
 <ParamField body="custom_instructions" type="object" required>
-  <Expandable title="Extract Data Settings">
-    <ParamField body="enable_extract" type="boolean" default={false}>
-      Enable extraction of structured data from conversations.
+  <Expandable title="SMS Settings">
+    <ParamField body="enable_sms" type="boolean" default={true}>
+      Allow agent to send SMS messages to callers.
     </ParamField>
   </Expandable>
 </ParamField>
@@ -32,7 +32,7 @@ curl -X POST https://api.magpipe.ai/functions/v1/update-agent \
   -d '{
     "agent_id": "550e8400-e29b-41d4-a716-446655440000",
     "custom_instructions": {
-      "enable_extract": true
+      "enable_sms": true
     }
   }'
 ```
@@ -49,7 +49,7 @@ const response = await fetch(
     body: JSON.stringify({
       agent_id: '550e8400-e29b-41d4-a716-446655440000',
       custom_instructions: {
-        enable_extract: true
+        enable_sms: true
       }
     }),
   }
@@ -68,7 +68,7 @@ response = requests.post(
     json={
         'agent_id': '550e8400-e29b-41d4-a716-446655440000',
         'custom_instructions': {
-            'enable_extract': True
+            'enable_sms': True
         }
     }
 )
@@ -81,30 +81,27 @@ response = requests.post(
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "name": "Sarah - Receptionist",
   "custom_instructions": {
-    "enable_extract": true
+    "enable_sms": true
   },
   "updated_at": "2024-01-16T09:15:00Z"
 }
 ```
 </ResponseExample>
 
-## Dynamic Variables
+## Use Cases
 
-To define what data to extract, configure dynamic variables using the [Dynamic Variables API](/api-reference/endpoints/create-dynamic-variable).
+When enabled, the agent can:
+- Send follow-up information after calls
+- Text links, addresses, or confirmation details
+- Respond to caller requests like "Can you text me that?"
 
-**Variable Types:**
-- `text` - Names, addresses, notes
-- `number` - Phone numbers, quantities
-- `boolean` - Yes/no confirmations
-- `enum` - Selection from predefined options
-
-## Disable Extract Data
+## Disable SMS
 
 ```json
 {
   "agent_id": "550e8400-e29b-41d4-a716-446655440000",
   "custom_instructions": {
-    "enable_extract": false
+    "enable_sms": false
   }
 }
 ```
