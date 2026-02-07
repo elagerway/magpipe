@@ -1,10 +1,10 @@
 ---
-title: "Configure End Call"
+title: "Booking"
 api: "POST /update-agent"
-description: "Configure when your agent automatically ends calls"
+description: "Enable or disable calendar appointment booking"
 ---
 
-Enable or disable the End Call function and customize when the agent should hang up.
+Enable or disable the Booking function that allows your agent to schedule appointments via calendar integration.
 
 ## Request Body
 
@@ -13,13 +13,9 @@ Enable or disable the End Call function and customize when the agent should hang
 </ParamField>
 
 <ParamField body="custom_instructions" type="object" required>
-  <Expandable title="End Call Settings">
-    <ParamField body="enable_end_call" type="boolean" default={true}>
-      Allow agent to end calls when conversation is complete.
-    </ParamField>
-
-    <ParamField body="end_call_description" type="string">
-      Custom condition describing when to end calls. The AI uses this to decide the right moment to hang up.
+  <Expandable title="Booking Settings">
+    <ParamField body="enable_booking" type="boolean" default={false}>
+      Enable appointment booking via connected calendar.
     </ParamField>
   </Expandable>
 </ParamField>
@@ -36,8 +32,7 @@ curl -X POST https://api.magpipe.ai/functions/v1/update-agent \
   -d '{
     "agent_id": "550e8400-e29b-41d4-a716-446655440000",
     "custom_instructions": {
-      "enable_end_call": true,
-      "end_call_description": "End the call after confirming the appointment and saying goodbye."
+      "enable_booking": true
     }
   }'
 ```
@@ -54,8 +49,7 @@ const response = await fetch(
     body: JSON.stringify({
       agent_id: '550e8400-e29b-41d4-a716-446655440000',
       custom_instructions: {
-        enable_end_call: true,
-        end_call_description: 'End the call after confirming the appointment and saying goodbye.'
+        enable_booking: true
       }
     }),
   }
@@ -74,8 +68,7 @@ response = requests.post(
     json={
         'agent_id': '550e8400-e29b-41d4-a716-446655440000',
         'custom_instructions': {
-            'enable_end_call': True,
-            'end_call_description': 'End the call after confirming the appointment and saying goodbye.'
+            'enable_booking': True
         }
     }
 )
@@ -88,32 +81,29 @@ response = requests.post(
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "name": "Sarah - Receptionist",
   "custom_instructions": {
-    "enable_end_call": true,
-    "end_call_description": "End the call after confirming the appointment and saying goodbye."
+    "enable_booking": true
   },
   "updated_at": "2024-01-16T09:15:00Z"
 }
 ```
 </ResponseExample>
 
-## Example Conditions
+## Prerequisites
 
-| Use Case | Description |
-|----------|-------------|
-| **Default** | "End the phone call. Use this when the conversation is complete, the caller says goodbye, or there is nothing more to discuss." |
-| **Appointment** | "End the call after confirming the appointment details and saying goodbye." |
-| **Support** | "End the call only when the customer confirms their issue is resolved." |
-| **Sales** | "End the call after the customer declines or completes a purchase." |
+Before enabling booking, connect a calendar integration:
+- Google Calendar
+- Cal.com
+- Calendly (coming soon)
 
-## Disable End Call
+Configure integrations in **Apps** → **Integrations** or via the [Integrations API](/api-reference/endpoints/create-integration).
 
-To prevent the agent from hanging up (caller must end the call):
+## Disable Booking
 
 ```json
 {
   "agent_id": "550e8400-e29b-41d4-a716-446655440000",
   "custom_instructions": {
-    "enable_end_call": false
+    "enable_booking": false
   }
 }
 ```
