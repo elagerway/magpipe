@@ -902,12 +902,10 @@ def create_collect_data_tool(user_id: str):
     return collect_caller_data
 
 
-def create_end_call_tool(room_name: str, description: str = None):
+def create_end_call_tool(room_name: str):
     """Create end call tool that allows the agent to hang up when appropriate"""
 
-    tool_description = description or "End the phone call. Use this when the conversation is complete, the caller says goodbye, or there's nothing more to discuss."
-
-    @function_tool(description=tool_description)
+    @function_tool(description="End the phone call. Use this when the conversation is complete, the caller says goodbye, or there's nothing more to discuss.")
     async def end_call():
         """End the current phone call by disconnecting all participants"""
         logger.info(f"📞 Agent ending call for room: {room_name}")
@@ -1756,11 +1754,11 @@ CALL CONTEXT:
         else:
             logger.info(f"🔧 No custom functions configured for agent {agent_id}")
 
-    # Add end_call tool if enabled for this agent (default: enabled)
-    end_call_enabled = user_config.get("end_call_enabled", True) if user_config else True
+    # Add end_call tool if enabled in custom_instructions (default: enabled)
+    custom_instructions = user_config.get("custom_instructions", {}) if user_config else {}
+    end_call_enabled = custom_instructions.get("enable_end_call", True)
     if end_call_enabled:
-        end_call_description = user_config.get("end_call_description") if user_config else None
-        end_call_tool = create_end_call_tool(ctx.room.name, end_call_description)
+        end_call_tool = create_end_call_tool(ctx.room.name)
         custom_tools.append(end_call_tool)
         logger.info(f"📞 Registered end_call tool for room {ctx.room.name}")
 
