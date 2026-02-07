@@ -490,53 +490,118 @@ async function testTransferNumbers() {
 }
 
 // ============================================
-// LIVE CALL TEST (Actually makes a call)
+// LIVE CALL TEST (Uses LiveKit SIP - proper outbound call)
 // ============================================
 
 async function testLiveCall() {
-  log('\n📞 Testing LIVE outbound call...', 'yellow');
+  log('\n📞 Testing LIVE outbound call (LiveKit SIP)...', 'yellow');
   log('    This will call Erik\'s cell phone!', 'yellow');
 
-  const auth = Buffer.from(`${SIGNALWIRE_PROJECT_ID}:${SIGNALWIRE_API_TOKEN}`).toString('base64');
-
-  // Simple TwiML that just says something and hangs up
-  const testTwimlUrl = `${SUPABASE_URL}/functions/v1/conference-twiml?name=test_${Date.now()}`;
-
   try {
-    const formData = new URLSearchParams();
-    formData.append('To', TEST_PHONE);
-    formData.append('From', TEST_SERVICE_NUMBER);
-    formData.append('Url', testTwimlUrl);
-    formData.append('Method', 'GET');
-
-    const response = await fetch(
-      `https://${SIGNALWIRE_SPACE_URL}/api/laml/2010-04-01/Accounts/${SIGNALWIRE_PROJECT_ID}/Calls.json`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Basic ${auth}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: formData,
-      }
-    );
+    // Use the livekit-outbound-call edge function which uses proper LiveKit SIP
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/livekit-outbound-call`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        phoneNumber: TEST_PHONE,
+        callerIdNumber: TEST_SERVICE_NUMBER,
+        userId: TEST_USER_ID_ALT,
+        recordCall: false,
+      }),
+    });
 
     const data = await response.json();
-    const callCreated = response.ok && data.sid;
-    logTest('call initiated', callCreated, callCreated ? `SID: ${data.sid}` : `error: ${JSON.stringify(data)}`);
+    const callCreated = response.ok && data.success;
+    logTest('call initiated', callCreated, callCreated ? `Room: ${data.roomName}` : `error: ${JSON.stringify(data)}`);
 
     if (callCreated) {
-      // Wait a moment and check call status
-      await new Promise(r => setTimeout(r, 3000));
+      log(`    → Call ID: ${data.callId}`, 'dim');
+      log(`    → Participant: ${data.participantId}`, 'dim');
 
-      const statusResponse = await fetch(
-        `https://${SIGNALWIRE_SPACE_URL}/api/laml/2010-04-01/Accounts/${SIGNALWIRE_PROJECT_ID}/Calls/${data.sid}.json`,
-        {
-          headers: { 'Authorization': `Basic ${auth}` },
+      // Wait for agent to fully initialize
+      await new Promise(r => setTimeout(r, 12000));
+
+      // Check call state logs with details
+      const logsResult = await queryDB(`
+        SELECT state, component, details, created_at
+        FROM call_state_logs
+        WHERE room_name = '${data.roomName}'
+        ORDER BY created_at ASC
+      `);
+
+      if (Array.isArray(logsResult) && logsResult.length > 0) {
+        log('    Call progression:', 'dim');
+
+        // Find key states
+        const configLoaded = logsResult.find(l => l.state === 'user_config_loaded');
+        const sessionStarted = logsResult.find(l => l.state === 'session_started');
+        const gettingConfig = logsResult.find(l => l.state === 'getting_user_config');
+
+        if (configLoaded?.details) {
+          const details = typeof configLoaded.details === 'string'
+            ? JSON.parse(configLoaded.details)
+            : configLoaded.details;
+          log(`      ✓ Agent loaded: ${details.agent_name} (${details.agent_id})`, 'green');
+        } else if (gettingConfig?.details) {
+          const details = typeof gettingConfig.details === 'string'
+            ? JSON.parse(gettingConfig.details)
+            : gettingConfig.details;
+          log(`      → Agent ID from metadata: ${details.agent_id_in_metadata}`, 'dim');
         }
-      );
-      const statusData = await statusResponse.json();
-      logTest('call status', true, statusData.status);
+
+        if (sessionStarted?.details) {
+          const details = typeof sessionStarted.details === 'string'
+            ? JSON.parse(sessionStarted.details)
+            : sessionStarted.details;
+          log(`      ✓ Session started (${details.direction}, LLM: ${details.llm_model})`, 'green');
+        }
+
+        // Show recent states
+        const recentStates = logsResult.slice(-5);
+        log('    Recent states:', 'dim');
+        recentStates.forEach(l => log(`      → ${l.state} (${l.component})`, 'dim'));
+      }
+
+      // Check SignalWire for actual PSTN call
+      log('    SignalWire calls:', 'dim');
+      try {
+        const swAuth = Buffer.from(`${SIGNALWIRE_PROJECT_ID}:${SIGNALWIRE_API_TOKEN}`).toString('base64');
+        const swResponse = await fetch(
+          `https://${SIGNALWIRE_SPACE_URL}/api/laml/2010-04-01/Accounts/${SIGNALWIRE_PROJECT_ID}/Calls?PageSize=5`,
+          {
+            headers: { 'Authorization': `Basic ${swAuth}` }
+          }
+        );
+        const swData = await swResponse.json();
+        if (swData.calls && swData.calls.length > 0) {
+          const oneMinuteAgo = new Date(Date.now() - 60000);
+          // Check if any RECENT call matches our destination
+          const matchingCall = swData.calls.find(c => {
+            const callTime = new Date(c.start_time);
+            const isRecent = callTime > oneMinuteAgo;
+            const matchesPhone = c.to === TEST_PHONE || c.to?.includes(TEST_PHONE.replace('+', ''));
+            return isRecent && matchesPhone;
+          });
+          if (matchingCall) {
+            log(`      ✓ NEW PSTN call: ${matchingCall.from} → ${matchingCall.to} (${matchingCall.status})`, 'green');
+            log(`        Started: ${matchingCall.start_time}`, 'dim');
+          } else {
+            log(`      ✗ No new PSTN call to ${TEST_PHONE} in last 60s`, 'yellow');
+          }
+          // Always show recent calls for debugging
+          log('      Recent SignalWire calls:', 'dim');
+          swData.calls.slice(0, 3).forEach(c => {
+            const shortSid = c.sid?.substring(0, 8) || 'unknown';
+            log(`        ${shortSid}: ${c.from} → ${c.to} (${c.status}, ${c.direction})`, 'dim');
+            log(`                 ${c.start_time}`, 'dim');
+          });
+        }
+      } catch (swErr) {
+        log(`      ✗ Could not check SignalWire: ${swErr.message}`, 'red');
+      }
     }
 
     return { passed: callCreated };
