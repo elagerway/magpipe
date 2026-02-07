@@ -132,6 +132,19 @@ async def get_user_config(room_metadata: dict) -> dict:
 async def speak_error_and_disconnect(ctx: JobContext, message: str):
     """Create a minimal session to speak an error message and disconnect."""
     try:
+        logger.info(f"🔊 Speaking error message: {message}")
+
+        # Ensure room is connected (try to connect, will no-op if already connected)
+        try:
+            await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
+            logger.info("✅ Connected to room for error message")
+        except Exception:
+            logger.info("Room already connected")
+            pass
+
+        # Wait for SIP participant to be ready
+        await asyncio.sleep(0.5)
+
         # Create minimal TTS-only session
         error_session = AgentSession(
             vad=silero.VAD.load(),
@@ -149,20 +162,20 @@ async def speak_error_and_disconnect(ctx: JobContext, message: str):
 
         # Start session
         await error_session.start(ctx.room, agent=error_agent)
+        logger.info("✅ Error session started")
 
-        # Wait for participant
+        # Wait for participant to be subscribed
         await asyncio.sleep(1)
 
         # Speak the error message
         await error_session.say(message, allow_interruptions=False)
+        logger.info(f"📢 Spoke error message")
 
-        # Wait for message to complete
-        await asyncio.sleep(3)
-
-        logger.info(f"📢 Spoke error message: {message}")
+        # Wait for message to complete before disconnecting
+        await asyncio.sleep(4)
 
     except Exception as e:
-        logger.error(f"Failed to speak error message: {e}")
+        logger.error(f"Failed to speak error message: {e}", exc_info=True)
 
 
 async def get_voice_config(voice_id: str, user_id: str) -> dict:
@@ -1172,7 +1185,7 @@ async def entrypoint(ctx: JobContext):
         user_config = await user_config_task
         if not user_config:
             logger.warning(f"No agent assigned for this number")
-            await speak_error_and_disconnect(ctx, "A Magpipe agent has not been assigned to this number.")
+            await speak_error_and_disconnect(ctx, "This number is not currently assigned. Go to Magpipe.ai to assign your number.")
             return
 
         # Get voice config, transfer numbers, and dynamic variables in parallel
@@ -1474,7 +1487,7 @@ async def entrypoint(ctx: JobContext):
         user_config = await get_user_config(room_metadata)
         if not user_config:
             logger.warning(f"No agent assigned for this number")
-            await speak_error_and_disconnect(ctx, "A Magpipe agent has not been assigned to this number.")
+            await speak_error_and_disconnect(ctx, "This number is not currently assigned. Go to Magpipe.ai to assign your number.")
             return
 
         user_id = user_config["user_id"]
