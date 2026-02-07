@@ -173,10 +173,20 @@ async def speak_error_and_disconnect(ctx: JobContext, message: str):
         logger.info(f"📢 Spoke error message")
 
         # Wait for message to complete before disconnecting
-        await asyncio.sleep(4)
+        await asyncio.sleep(3)
+
+        # Actually disconnect the room to hang up the call
+        logger.info("📞 Hanging up call...")
+        await ctx.room.disconnect()
+        logger.info("✅ Call disconnected")
 
     except Exception as e:
         logger.error(f"Failed to speak error message: {e}", exc_info=True)
+        # Try to disconnect even on error
+        try:
+            await ctx.room.disconnect()
+        except Exception:
+            pass
 
 
 async def get_voice_config(voice_id: str, user_id: str) -> dict:
