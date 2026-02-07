@@ -37,11 +37,11 @@ serve(async (req) => {
     if (error || !serviceNumber) {
       console.log('Number not active or not found:', to)
 
-      // Return TwiML to reject the call or play a message
+      // Return TwiML to play message and hang up
       return new Response(
         `<?xml version="1.0" encoding="UTF-8"?>
         <Response>
-          <Say voice="alice">This number is currently not accepting calls. Goodbye.</Say>
+          <Say voice="alice">This number is not currently assigned. Go to Magpipe dot A I to assign your number.</Say>
           <Hangup/>
         </Response>`,
         {
@@ -114,7 +114,7 @@ serve(async (req) => {
       console.log('Agent is inactive:', agentConfig.id, agentConfig.name || 'Unnamed')
       const response = `<?xml version="1.0" encoding="UTF-8"?>
       <Response>
-        <Say voice="alice">Hello! This number is currently unavailable. Please try again later. Goodbye.</Say>
+        <Say voice="alice">This number is not currently assigned. Go to Magpipe dot A I to assign your number.</Say>
         <Hangup/>
       </Response>`
 
