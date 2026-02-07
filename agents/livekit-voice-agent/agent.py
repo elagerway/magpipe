@@ -814,183 +814,10 @@ async def check_and_lock_account(user_id: str) -> bool:
         return False
 
 
-def create_warm_transfer_tools(user_id: str, transfer_numbers: list, room_name: str, service_number: str):
-    """Create warm transfer tools for attended call transfers.
-
-    Warm transfer flow:
-    1. start_warm_transfer - Put caller on hold, dial transferee
-    2. Agent talks privately with transferee to brief them
-    3. complete_warm_transfer - Bridge caller with transferee, or
-       cancel_warm_transfer - Bring caller back if transferee declines
-    """
-
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-    async def get_caller_call_sid() -> str:
-        """Look up the SignalWire CallSid for the current call"""
-        try:
-            # Find the call_record for this room/session
-            response = supabase.table("call_records") \
-                .select("vendor_call_id, call_sid") \
-                .eq("user_id", user_id) \
-                .eq("status", "in-progress") \
-                .order("created_at", desc=True) \
-                .limit(1) \
-                .execute()
-
-            if response.data:
-                record = response.data[0]
-                return record.get("vendor_call_id") or record.get("call_sid")
-            return None
-        except Exception as e:
-            logger.error(f"Failed to get caller call_sid: {e}")
-            return None
-
-    # Build transfer options string for tool descriptions
-    transfer_options = ", ".join([f"'{n.get('label', n.get('name', 'Unknown'))}'" for n in transfer_numbers])
-
-    @function_tool(description=f"Start a warm transfer by putting the caller on hold and dialing the transfer destination. The caller will hear hold music while you speak privately with the person you're transferring to. Available transfer destinations: {transfer_options}. After starting the transfer, you can speak with the transferee to brief them. Then use complete_warm_transfer to connect everyone, or cancel_warm_transfer if the transferee can't take the call.")
-    async def start_warm_transfer(
-        transfer_to: Annotated[str, f"The label of who to transfer to. Available options: {transfer_options}"]
-    ):
-        """Start warm transfer - put caller on hold, dial transferee"""
-        logger.info(f"🔄 Starting warm transfer to: {transfer_to}")
-
-        # Find matching transfer number
-        transfer_config = None
-        for num in transfer_numbers:
-            label = num.get("label") or num.get("name", "")
-            if label.lower() == transfer_to.lower():
-                transfer_config = num
-                break
-
-        if not transfer_config:
-            available = ", ".join([n.get('label', n.get('name', 'Unknown')) for n in transfer_numbers])
-            return f"I don't have a transfer destination called '{transfer_to}'. Available options are: {available}"
-
-        # Get phone number
-        phone_number = transfer_config.get('number') or transfer_config.get('phone_number')
-        if not phone_number:
-            return f"No phone number configured for {transfer_config.get('label', 'this destination')}."
-
-        # Get the SignalWire CallSid
-        caller_call_sid = await get_caller_call_sid()
-        if not caller_call_sid:
-            logger.error("Could not find caller call_sid for warm transfer")
-            return "I'm having trouble with the transfer. Let me take a message instead."
-
-        # Call warm-transfer edge function
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{supabase_url}/functions/v1/warm-transfer",
-                    headers={
-                        "Authorization": f"Bearer {supabase_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "operation": "start",
-                        "room_name": room_name,
-                        "target_number": phone_number,
-                        "target_label": transfer_config.get("label", ""),
-                        "caller_call_sid": caller_call_sid,
-                        "service_number": service_number,
-                    }
-                ) as resp:
-                    result = await resp.json()
-
-                    if resp.status == 200 and result.get("success"):
-                        logger.info(f"✅ Warm transfer started to {phone_number}")
-                        label = transfer_config.get('label', transfer_to)
-                        # Get description if available to tell transferee
-                        description = transfer_config.get('description', '')
-                        if description:
-                            return f"I've put the caller on hold and I'm now dialing {label}. {description}. When they answer, brief them about the call. Say complete_warm_transfer to connect everyone, or cancel_warm_transfer to bring the caller back."
-                        return f"I've put the caller on hold and I'm now dialing {label}. When they answer, brief them about the call. Say complete_warm_transfer to connect everyone, or cancel_warm_transfer to bring the caller back."
-                    else:
-                        error = result.get("error", "Unknown error")
-                        logger.error(f"Warm transfer failed: {error}")
-                        return "I'm having trouble transferring the call. Let me take a message instead."
-
-        except Exception as e:
-            logger.error(f"Warm transfer error: {e}")
-            return "I'm having trouble transferring the call right now. Can I take a message instead?"
-
-    @function_tool(description="Complete the warm transfer by connecting the caller with the transferee. Use this after you've briefed the transferee and they're ready to take the call. The caller will be taken off hold and connected to the transferee.")
-    async def complete_warm_transfer():
-        """Complete the warm transfer - bridge caller and transferee"""
-        logger.info(f"🔄 Completing warm transfer for room: {room_name}")
-
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{supabase_url}/functions/v1/warm-transfer",
-                    headers={
-                        "Authorization": f"Bearer {supabase_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "operation": "complete",
-                        "room_name": room_name,
-                    }
-                ) as resp:
-                    result = await resp.json()
-
-                    if resp.status == 200 and result.get("success"):
-                        logger.info(f"✅ Warm transfer completed")
-                        return "Transfer complete. The caller and transferee are now connected. You can end your participation in this call."
-                    else:
-                        error = result.get("error", "Unknown error")
-                        logger.error(f"Complete transfer failed: {error}")
-                        return "I had trouble completing the transfer. The caller is still on hold."
-
-        except Exception as e:
-            logger.error(f"Complete transfer error: {e}")
-            return "I had trouble completing the transfer."
-
-    @function_tool(description="Cancel the warm transfer and bring the caller back. Use this if the transferee is unavailable, declines the call, or can't take the call for any reason. The caller will be taken off hold and you can continue speaking with them.")
-    async def cancel_warm_transfer():
-        """Cancel warm transfer - hang up transferee, bring caller back"""
-        logger.info(f"🔄 Cancelling warm transfer for room: {room_name}")
-
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{supabase_url}/functions/v1/warm-transfer",
-                    headers={
-                        "Authorization": f"Bearer {supabase_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "operation": "cancel",
-                        "room_name": room_name,
-                    }
-                ) as resp:
-                    result = await resp.json()
-
-                    if resp.status == 200 and result.get("success"):
-                        logger.info(f"✅ Warm transfer cancelled")
-                        return "I've cancelled the transfer and brought the caller back. You can continue speaking with them."
-                    else:
-                        error = result.get("error", "Unknown error")
-                        logger.error(f"Cancel transfer failed: {error}")
-                        return "I had trouble cancelling the transfer."
-
-        except Exception as e:
-            logger.error(f"Cancel transfer error: {e}")
-            return "I had trouble cancelling the transfer."
-
-    return [start_warm_transfer, complete_warm_transfer, cancel_warm_transfer]
-
-
 def create_transfer_tool(user_id: str, transfer_numbers: list, room_name: str):
-    """Create simple (cold) transfer function tool - DEPRECATED, use create_warm_transfer_tools instead"""
+    """Create transfer function tool based on user's transfer numbers"""
 
-    # For backwards compatibility, create a simple transfer that just starts warm transfer
-    # In the future, this should be removed
-
-    @function_tool(description="Transfer the active call to another phone number")
+    @function_tool(description="Transfer the active call to another phone number using SignalWire")
     async def transfer_call(
         transfer_to: Annotated[str, "The label or number to transfer to (e.g., 'mobile', 'office', 'Rick')"]
     ):
@@ -2198,7 +2025,7 @@ CALL CONTEXT:
         custom_tools.append(end_call_tool)
         logger.info(f"📞 Registered end_call tool for room {ctx.room.name}")
 
-    # Transfer function (warm transfer)
+    # Transfer function
     transfer_config = functions_config.get("transfer", {})
     transfer_enabled = transfer_config.get("enabled", False)
     if transfer_enabled:
@@ -2208,10 +2035,9 @@ CALL CONTEXT:
             # Fall back to transfer_numbers table (backwards compatibility)
             transfer_nums = [{"phone_number": n.get("phone_number"), "label": n.get("label", "Transfer"), "description": n.get("description", "")} for n in transfer_numbers]
         if transfer_nums:
-            # Use warm transfer tools for attended transfer with handoff conversation
-            warm_transfer_tools = create_warm_transfer_tools(user_id, transfer_nums, ctx.room.name, service_number)
-            custom_tools.extend(warm_transfer_tools)
-            logger.info(f"📞 Registered warm transfer tools with {len(transfer_nums)} numbers")
+            transfer_tool = create_transfer_tool(user_id, transfer_nums, ctx.room.name)
+            custom_tools.append(transfer_tool)
+            logger.info(f"📞 Registered transfer tool with {len(transfer_nums)} numbers")
 
     # SMS function
     sms_config = functions_config.get("sms", {})
