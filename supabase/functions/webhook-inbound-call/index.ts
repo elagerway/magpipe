@@ -35,18 +35,14 @@ serve(async (req) => {
       .single()
 
     if (error || !serviceNumber) {
-      console.log('Number not active or not found, routing to LiveKit for error handling:', to)
+      console.log('Number not active or not found:', to)
 
-      // Route to LiveKit anyway - the agent will handle the "not assigned" message
-      const livekitSipDomain = '378ads1njtd.sip.livekit.cloud'
-      const sipUri = `sip:${to}@${livekitSipDomain};transport=tls`
-
+      // Use TwiML for inactive/unknown numbers (can't route to LiveKit without dispatch rule)
       return new Response(
         `<?xml version="1.0" encoding="UTF-8"?>
         <Response>
-          <Dial>
-            <Sip>${sipUri}</Sip>
-          </Dial>
+          <Say voice="alice">This number is not currently assigned. Go to Magpipe dot A I to assign your number.</Say>
+          <Hangup/>
         </Response>`,
         {
           headers: { 'Content-Type': 'text/xml' },
@@ -113,19 +109,16 @@ serve(async (req) => {
       })
     }
 
-    // Check if agent is active - if not, route to LiveKit anyway for consistent error handling
+    // Check if agent is active
     if (agentConfig.is_active === false) {
-      console.log('Agent is inactive, routing to LiveKit for error handling:', agentConfig.id, agentConfig.name || 'Unnamed')
+      console.log('Agent is inactive:', agentConfig.id, agentConfig.name || 'Unnamed')
 
-      const livekitSipDomain = '378ads1njtd.sip.livekit.cloud'
-      const sipUri = `sip:${to}@${livekitSipDomain};transport=tls`
-
+      // Use TwiML for inactive agents
       return new Response(
         `<?xml version="1.0" encoding="UTF-8"?>
         <Response>
-          <Dial>
-            <Sip>${sipUri}</Sip>
-          </Dial>
+          <Say voice="alice">This number is not currently assigned. Go to Magpipe dot A I to assign your number.</Say>
+          <Hangup/>
         </Response>`,
         {
           headers: { 'Content-Type': 'text/xml' },
