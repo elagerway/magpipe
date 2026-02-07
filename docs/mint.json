@@ -110,6 +110,13 @@
       ]
     },
     {
+      "group": "System Functions",
+      "pages": [
+        "api-reference/endpoints/configure-system-functions",
+        "api-reference/endpoints/end-call"
+      ]
+    },
+    {
       "group": "Custom Functions",
       "pages": [
         "api-reference/endpoints/create-custom-function",
@@ -135,7 +142,6 @@
         "api-reference/endpoints/get-call",
         "api-reference/endpoints/list-calls",
         "api-reference/endpoints/transfer-call",
-        "api-reference/endpoints/end-call",
         "api-reference/endpoints/get-recording"
       ]
     },
