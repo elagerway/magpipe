@@ -886,7 +886,7 @@ def create_warm_transfer_tools(user_id: str, transfer_numbers: list, room_name: 
     livekit_api_secret = os.getenv("LIVEKIT_API_SECRET")
 
     # Outbound SIP trunk ID (from LiveKit Cloud dashboard)
-    OUTBOUND_TRUNK_ID = os.getenv("LIVEKIT_OUTBOUND_TRUNK_ID", "ST_3DmaaWbHL9QT")
+    OUTBOUND_TRUNK_ID = os.getenv("LIVEKIT_OUTBOUND_TRUNK_ID", "ST_gjX5nwd4CNYq")
 
     # Transfer state stored in memory (per session)
     transfer_state = {
@@ -2057,6 +2057,26 @@ async def entrypoint(ctx: JobContext):
                 logger.info(f"📊 Found call direction from database: {direction}, contact_phone: {contact_phone}, service_number: {found_service_number}")
                 if call_purpose or call_goal:
                     logger.info(f"📋 Call template context: purpose='{call_purpose}', goal='{call_goal}'")
+
+                # CRITICAL: Look up correct agent_id from found_service_number
+                # This fixes dispatch rule overwriting metadata with wrong agent_id
+                if found_service_number and user_id:
+                    try:
+                        sn_lookup = supabase.table("service_numbers") \
+                            .select("agent_id") \
+                            .eq("phone_number", found_service_number) \
+                            .eq("user_id", user_id) \
+                            .limit(1) \
+                            .execute()
+                        if sn_lookup.data and len(sn_lookup.data) > 0:
+                            correct_agent_id = sn_lookup.data[0].get("agent_id")
+                            if correct_agent_id:
+                                logger.info(f"📊 Correcting agent_id from service_number lookup: {correct_agent_id}")
+                                room_metadata["agent_id"] = correct_agent_id
+                                # Also update service_number in case it was wrong
+                                room_metadata["service_number"] = found_service_number
+                    except Exception as sn_err:
+                        logger.warning(f"Could not look up agent_id from service_number: {sn_err}")
             else:
                 logger.warning(f"📊 No recent call found for user_id={user_id}")
         except Exception as e:

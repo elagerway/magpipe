@@ -8,7 +8,7 @@ const corsHeaders = {
 }
 
 // LiveKit outbound SIP trunk ID
-const OUTBOUND_TRUNK_ID = 'ST_3DmaaWbHL9QT'
+const OUTBOUND_TRUNK_ID = 'ST_gjX5nwd4CNYq'
 
 // Helper function to log call state to database
 async function logCallState(
@@ -64,19 +64,22 @@ serve(async (req) => {
     const roomClient = new RoomServiceClient(livekitUrl, livekitApiKey, livekitApiSecret)
     const dispatchClient = new AgentDispatchClient(livekitUrl, livekitApiKey, livekitApiSecret)
 
-    // Get user's agent config
+    // Get user's agent config (prefer default, or first active one)
     console.log('Querying agent_configs for user_id:', userId)
-    const { data: agentConfig, error: configError } = await supabase
+    const { data: agentConfigs, error: configError } = await supabase
       .from('agent_configs')
       .select('*')
       .eq('user_id', userId)
-      .single()
+      .eq('is_active', true)
+      .order('is_default', { ascending: false })
+      .limit(1)
 
     if (configError) {
       console.error('Agent config query error:', configError)
       throw new Error(`Agent config not found for user ${userId}: ${configError.message}. Please configure your voice AI agent in Settings.`)
     }
 
+    const agentConfig = agentConfigs?.[0]
     if (!agentConfig) {
       throw new Error(`No agent configuration found for user ${userId}. Please configure your voice AI agent in Settings.`)
     }
@@ -86,6 +89,22 @@ serve(async (req) => {
     // Verify user is on LiveKit stack
     if (agentConfig.active_voice_stack !== 'livekit') {
       throw new Error(`Outbound calling requires LiveKit stack (current: ${agentConfig.active_voice_stack || 'not set'}). Please switch to LiveKit in Settings.`)
+    }
+
+    // Look up agent_id for the caller ID number (service number)
+    let agentId = agentConfig.id // Default to user's agent config
+    if (callerIdNumber) {
+      const { data: serviceNumber } = await supabase
+        .from('service_numbers')
+        .select('agent_id')
+        .eq('phone_number', callerIdNumber)
+        .eq('user_id', userId)
+        .single()
+
+      if (serviceNumber?.agent_id) {
+        agentId = serviceNumber.agent_id
+        console.log('Using agent_id from service_number:', agentId)
+      }
     }
 
     // Generate unique room name for this call
@@ -101,13 +120,15 @@ serve(async (req) => {
       user_id: userId,
     })
 
-    // Create LiveKit room
+    // Create LiveKit room with complete metadata including agent_id
+    // This prevents dispatch rules from overwriting with wrong agent
     await roomClient.createRoom({
       name: roomName,
       emptyTimeout: 300, // 5 minutes
       maxParticipants: 10,
       metadata: JSON.stringify({
         user_id: userId,
+        agent_id: agentId,
         direction: 'outbound',
         contact_phone: phoneNumber,
         service_number: callerIdNumber,
