@@ -133,8 +133,8 @@ Deno.serve(async (req) => {
         }
       }
 
-      // TwiML to connect transferee to LiveKit room
-      const consultTwimlUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=consult&service_number=${encodeURIComponent(service_number || '')}`
+      // TwiML to connect transferee to the EXISTING LiveKit room (use room_name, not service_number)
+      const consultTwimlUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=consult&room_name=${encodeURIComponent(room_name)}`
 
       const dialFormBody = [
         `To=${encodeURIComponent(normalizedTarget)}`,
@@ -225,8 +225,8 @@ Deno.serve(async (req) => {
       // This way all 3 parties (caller, transferee, agent) are in LiveKit together
       // The agent can then go silent and let them talk
 
-      // Redirect caller back to LiveKit SIP
-      const unholdUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=unhold&service_number=${encodeURIComponent(state.service_number || '')}`
+      // Redirect caller back to LiveKit SIP using room_name
+      const unholdUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=unhold&room_name=${encodeURIComponent(room_name)}`
 
       console.log('📞 Bringing caller back to LiveKit...')
       const callerResponse = await fetch(
@@ -347,9 +347,9 @@ Deno.serve(async (req) => {
   }
 })
 
-async function unholdCaller(callerCallSid: string, roomName: string, signalwireAuth: string, serviceNumber?: string) {
-  // Reconnect caller to LiveKit room
-  const unholdUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=unhold&service_number=${encodeURIComponent(serviceNumber || '')}`
+async function unholdCaller(callerCallSid: string, roomName: string, signalwireAuth: string, _serviceNumber?: string) {
+  // Reconnect caller to LiveKit room using room_name in SIP URI
+  const unholdUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=unhold&room_name=${encodeURIComponent(roomName)}`
 
   await fetch(
     `https://${SIGNALWIRE_SPACE_URL}/api/laml/2010-04-01/Accounts/${SIGNALWIRE_PROJECT_ID}/Calls/${callerCallSid}.json`,

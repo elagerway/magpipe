@@ -481,3 +481,35 @@ The existing `warm-transfer` edge function already uses this approach with Signa
 - Full URI: `your-signalwire-project-id@erik-0f619b8e956e.sip.signalwire.com`
 - Has `passthrough` call handler for PSTN access
 
+---
+
+## Session: 2026-02-07 (Continued) - Warm Transfer Fix
+
+### Issues Found From User Test
+User tested warm transfer: "i called Amy asked to transfer to Erik, without saying a word Amy transferred me to my cel i picked up cel and i heard a ringing tone, and then amy picked up again"
+
+**Root causes:**
+1. **Agent didn't announce** - LLM didn't follow the tool instruction to speak before calling
+2. **New room created** - SIP URI used `service_number` which triggered dispatch rule to create new room
+3. **Amy picked up again** - New room meant new agent session started
+
+### Fixes Applied
+
+1. **Fixed SIP URI routing** - Changed from `service_number` to `room_name` in SIP URIs
+   - `warm-transfer/index.ts`: Pass `room_name` to consult and unhold TwiML URLs
+   - `warm-transfer-twiml/index.ts`: Use `room_name` in SIP URI (`sip:{room}@livekit.cloud`)
+   - This makes transferee/caller join the EXISTING room instead of creating new ones
+
+2. **Enhanced tool description** - Made agent instruction more emphatic:
+   ```
+   CRITICAL REQUIREMENT: You MUST speak to the caller BEFORE calling this function.
+   Say something like 'One moment, let me transfer you to Erik' or 'Please hold
+   while I connect you with sales.' The caller will hear hold music immediately
+   after this function is called - they won't hear you after that.
+   ```
+
+### Deployed
+- `warm-transfer` edge function
+- `warm-transfer-twiml` edge function
+- Agent changes require Render deploy (auto-deploys on push to master)
+
