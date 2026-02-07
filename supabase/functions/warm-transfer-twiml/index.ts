@@ -20,16 +20,21 @@ Deno.serve(async (req) => {
   const roomName = url.searchParams.get('room')
   const confName = url.searchParams.get('conf_name')
   const serviceNumber = url.searchParams.get('service_number')
+  const targetLabel = url.searchParams.get('target_label')
 
-  console.log('🎵 Warm Transfer TwiML:', { action, roomName, confName })
+  console.log('🎵 Warm Transfer TwiML:', { action, roomName, confName, targetLabel })
 
   let twiml = ''
 
   switch (action) {
     case 'hold':
-      // Play hold music in a loop
+      // Announce transfer destination, then play hold music
+      const announcement = targetLabel
+        ? `Please hold while I transfer you to ${targetLabel}.`
+        : 'Please hold while I transfer your call.'
       twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
+  <Say voice="Polly.Joanna">${announcement}</Say>
   <Play loop="0">${HOLD_MUSIC_URL}</Play>
 </Response>`
       break
