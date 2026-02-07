@@ -191,7 +191,8 @@
       "Bash(PROJECT=\"fb9ea15e-cf87-4de2-8be2-0f619b8e956e\")",
       "Bash(TOKEN=\"YOUR_SIGNALWIRE_API_TOKEN\")",
       "Bash(STRIPE_KEY=\"YOUR_STRIPE_SECRET_KEY\")",
-      "Bash(TZ='America/Los_Angeles' date:*)"
+      "Bash(TZ='America/Los_Angeles' date:*)",
+      "WebFetch(domain:github.com)"
     ],
     "deny": [],
     "ask": []
