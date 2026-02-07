@@ -20,6 +20,7 @@ BEGIN
     user_id,
     name,
     greeting,
+    greeting_template,
     system_prompt,
     voice_id,
     llm_model,
@@ -34,7 +35,8 @@ BEGIN
     god_user_id,
     'System - Not Assigned',
     'This number is not currently assigned. Go to Magpipe dot A I to assign your number.',
-    'You are a system agent. Your only job is to inform callers that this phone number has not been assigned to an agent yet. After speaking the greeting, wait briefly for any response, then politely end the call. Do not engage in conversation.',
+    'This number is not currently assigned. Go to Magpipe dot A I to assign your number.',
+    'You are a system agent. Speak only the greeting message, then immediately hang up the call. Do not wait for a response. Do not engage in any conversation. After the greeting, use the end_call function right away.',
     '21m00Tcm4TlvDq8ikWAM',  -- Rachel voice (ElevenLabs)
     'gpt-4.1-nano',
     true,
@@ -45,6 +47,7 @@ BEGIN
   )
   ON CONFLICT (id) DO UPDATE SET
     greeting = EXCLUDED.greeting,
+    greeting_template = EXCLUDED.greeting_template,
     system_prompt = EXCLUDED.system_prompt,
     active_voice_stack = 'livekit',
     updated_at = NOW();

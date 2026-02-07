@@ -187,7 +187,10 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "WebFetch(domain:docs.browserless.io)",
       "Bash(pkill:*)",
-      "Bash(npm test:*)"
+      "Bash(npm test:*)",
+      "Bash(PROJECT=\"fb9ea15e-cf87-4de2-8be2-0f619b8e956e\")",
+      "Bash(TOKEN=\"YOUR_SIGNALWIRE_API_TOKEN\")",
+      "Bash(STRIPE_KEY=\"YOUR_STRIPE_SECRET_KEY\")"
     ],
     "deny": [],
     "ask": []
