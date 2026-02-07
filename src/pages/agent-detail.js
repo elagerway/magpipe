@@ -1593,13 +1593,16 @@ THIS IS AN OUTBOUND CALL:
             <button id="configure-extract-btn" type="button" class="configure-btn">Configure</button>
           </div>
 
-          <label class="function-toggle">
-            <input type="checkbox" id="func-end-call" checked disabled />
-            <div class="toggle-content">
-              <span class="toggle-label">End Call</span>
-              <span class="toggle-desc">Allow agent to end calls (always enabled)</span>
-            </div>
-          </label>
+          <div class="function-toggle end-call-toggle-container" style="padding: 0; cursor: default;">
+            <label style="display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem; cursor: pointer; flex: 1;">
+              <input type="checkbox" id="func-end-call" ${this.agent.custom_instructions?.enable_end_call !== false ? 'checked' : ''} style="margin-top: 0.2rem;" />
+              <div class="toggle-content">
+                <span class="toggle-label">End Call</span>
+                <span class="toggle-desc">Allow agent to end calls when conversation is complete</span>
+              </div>
+            </label>
+            <button id="configure-end-call-btn" type="button" class="configure-btn">Configure</button>
+          </div>
         </div>
       </div>
 
@@ -2562,6 +2565,7 @@ THIS IS AN OUTBOUND CALL:
     const funcTransfer = document.getElementById('func-transfer');
     const funcBooking = document.getElementById('func-booking');
     const funcExtract = document.getElementById('func-extract');
+    const funcEndCall = document.getElementById('func-end-call');
 
     const updateCustomInstructions = () => {
       const customInstructions = {
@@ -2570,9 +2574,15 @@ THIS IS AN OUTBOUND CALL:
         enable_transfer: funcTransfer?.checked ?? true,
         enable_booking: funcBooking?.checked ?? false,
         enable_extract: funcExtract?.checked ?? false,
+        enable_end_call: funcEndCall?.checked ?? true,
       };
       this.scheduleAutoSave({ custom_instructions: customInstructions });
     };
+
+    // End Call toggle
+    if (funcEndCall) {
+      funcEndCall.addEventListener('change', updateCustomInstructions);
+    }
 
     // Booking toggle - show modal when enabled
     if (funcBooking) {
@@ -2611,6 +2621,16 @@ THIS IS AN OUTBOUND CALL:
         e.preventDefault();
         e.stopPropagation();
         this.showExtractDataModal();
+      });
+    }
+
+    // Configure end call button
+    const configureEndCallBtn = document.getElementById('configure-end-call-btn');
+    if (configureEndCallBtn) {
+      configureEndCallBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.showEndCallModal();
       });
     }
 
@@ -3895,6 +3915,63 @@ THIS IS AN OUTBOUND CALL:
     } catch (err) {
       console.error('Error in showExtractDataModal:', err);
     }
+  }
+
+  showEndCallModal() {
+    const currentDescription = this.agent.custom_instructions?.end_call_description ||
+      'End the phone call. Use this when the conversation is complete, the caller says goodbye, or there is nothing more to discuss.';
+
+    const modal = document.createElement('div');
+    modal.className = 'voice-modal-overlay';
+    modal.id = 'end-call-modal';
+    modal.innerHTML = `
+      <div class="voice-modal" style="max-width: 500px;">
+        <div class="voice-modal-header">
+          <h3>Configure End Call</h3>
+          <button class="close-modal-btn">&times;</button>
+        </div>
+        <div class="voice-modal-content" style="padding: 1rem;">
+          <p style="margin: 0 0 1rem; color: var(--text-secondary); font-size: 0.875rem;">
+            Define when your agent should end the call. This description helps the AI understand the right moment to hang up.
+          </p>
+          <div class="form-group">
+            <label for="end-call-description" style="display: block; margin-bottom: 0.5rem; font-weight: 500;">
+              End Call Condition
+            </label>
+            <textarea
+              id="end-call-description"
+              rows="4"
+              style="width: 100%; padding: 0.75rem; border: 1px solid var(--border-color, #e5e7eb); border-radius: 8px; resize: vertical; font-family: inherit;"
+              placeholder="Describe when the agent should end the call..."
+            >${currentDescription}</textarea>
+          </div>
+        </div>
+        <div style="padding: 1rem; border-top: 1px solid var(--border-color, #e5e7eb);">
+          <button id="save-end-call-btn" class="btn btn-primary" style="width: 100%;">
+            Save Changes
+          </button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // Close button
+    modal.querySelector('.close-modal-btn').addEventListener('click', () => modal.remove());
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) modal.remove();
+    });
+
+    // Save button
+    modal.querySelector('#save-end-call-btn').addEventListener('click', async () => {
+      const description = modal.querySelector('#end-call-description').value.trim();
+      const customInstructions = {
+        ...this.agent.custom_instructions,
+        end_call_description: description,
+      };
+      await this.scheduleAutoSave({ custom_instructions: customInstructions });
+      modal.remove();
+    });
   }
 
   renderDynamicVarRow(v, index) {
