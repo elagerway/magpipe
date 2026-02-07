@@ -902,6 +902,30 @@ def create_collect_data_tool(user_id: str):
     return collect_caller_data
 
 
+def create_end_call_tool(room_name: str):
+    """Create end call tool that allows the agent to hang up when appropriate"""
+
+    @function_tool(description="End the phone call. Use this when the conversation is complete, the caller says goodbye, or there's nothing more to discuss.")
+    async def end_call():
+        """End the current phone call by disconnecting all participants"""
+        logger.info(f"📞 Agent ending call for room: {room_name}")
+
+        try:
+            livekit_url = os.getenv("LIVEKIT_URL")
+            livekit_api_key = os.getenv("LIVEKIT_API_KEY")
+            livekit_api_secret = os.getenv("LIVEKIT_API_SECRET")
+            livekit_api = api.LiveKitAPI(livekit_url, livekit_api_key, livekit_api_secret)
+
+            await livekit_api.room.delete_room(api.DeleteRoomRequest(room=room_name))
+            logger.info(f"✅ Call ended - room {room_name} deleted")
+            return "Call ended successfully."
+        except Exception as e:
+            logger.error(f"Failed to end call: {e}")
+            return "I had trouble ending the call."
+
+    return end_call
+
+
 def create_voice_clone_tool(user_id: str):
     """Create voice cloning tool for creating custom ElevenLabs voices"""
 
@@ -1729,6 +1753,11 @@ CALL CONTEXT:
                     logger.error(f"Failed to create custom function '{func_config['name']}': {e}")
         else:
             logger.info(f"🔧 No custom functions configured for agent {agent_id}")
+
+    # Always add the end_call tool so agent can hang up when conversation is complete
+    end_call_tool = create_end_call_tool(ctx.room.name)
+    custom_tools.append(end_call_tool)
+    logger.info(f"📞 Registered end_call tool for room {ctx.room.name}")
 
     # Create Agent instance with custom function tools
     if custom_tools:
