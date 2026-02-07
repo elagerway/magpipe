@@ -1,0 +1,110 @@
+---
+title: "Configure Extract Data"
+api: "POST /update-agent"
+description: "Enable or disable data extraction from conversations"
+---
+
+Enable or disable the Extract Data function that allows your agent to collect structured information from conversations.
+
+## Request Body
+
+<ParamField body="agent_id" type="string" required>
+  The unique identifier of the agent to configure.
+</ParamField>
+
+<ParamField body="custom_instructions" type="object" required>
+  <Expandable title="Extract Data Settings">
+    <ParamField body="enable_extract" type="boolean" default={false}>
+      Enable extraction of structured data from conversations.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Response
+
+Returns the updated agent object.
+
+<RequestExample>
+```bash cURL
+curl -X POST https://api.magpipe.ai/functions/v1/update-agent \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_id": "550e8400-e29b-41d4-a716-446655440000",
+    "custom_instructions": {
+      "enable_extract": true
+    }
+  }'
+```
+
+```javascript Node.js
+const response = await fetch(
+  'https://api.magpipe.ai/functions/v1/update-agent',
+  {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer YOUR_API_TOKEN',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      agent_id: '550e8400-e29b-41d4-a716-446655440000',
+      custom_instructions: {
+        enable_extract: true
+      }
+    }),
+  }
+);
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'https://api.magpipe.ai/functions/v1/update-agent',
+    headers={
+        'Authorization': 'Bearer YOUR_API_TOKEN',
+        'Content-Type': 'application/json',
+    },
+    json={
+        'agent_id': '550e8400-e29b-41d4-a716-446655440000',
+        'custom_instructions': {
+            'enable_extract': True
+        }
+    }
+)
+```
+</RequestExample>
+
+<ResponseExample>
+```json Success Response
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "Sarah - Receptionist",
+  "custom_instructions": {
+    "enable_extract": true
+  },
+  "updated_at": "2024-01-16T09:15:00Z"
+}
+```
+</ResponseExample>
+
+## Dynamic Variables
+
+To define what data to extract, configure dynamic variables using the [Dynamic Variables API](/api-reference/endpoints/create-dynamic-variable).
+
+**Variable Types:**
+- `text` - Names, addresses, notes
+- `number` - Phone numbers, quantities
+- `boolean` - Yes/no confirmations
+- `enum` - Selection from predefined options
+
+## Disable Extract Data
+
+```json
+{
+  "agent_id": "550e8400-e29b-41d4-a716-446655440000",
+  "custom_instructions": {
+    "enable_extract": false
+  }
+}
+```
