@@ -878,22 +878,20 @@ def create_transfer_tool(user_id: str, transfer_numbers: list, room_name: str):
 
 
 def create_warm_transfer_tools(user_id: str, transfer_numbers: list, room_name: str, service_number: str, caller_identity: str, ctx: JobContext):
-    """Create warm transfer tools for attended call transfers - all in LiveKit"""
+    """Create warm transfer tools for attended call transfers.
 
-    # LiveKit API for room control
-    livekit_url = os.getenv("LIVEKIT_URL")
-    livekit_api_key = os.getenv("LIVEKIT_API_KEY")
-    livekit_api_secret = os.getenv("LIVEKIT_API_SECRET")
+    Uses SignalWire API for outbound dialing (LiveKit SIP outbound doesn't work with SignalWire).
+    The agent speaks all announcements in its natural voice - no TwiML robot voices.
+    """
 
-    # Outbound SIP trunk ID (from LiveKit Cloud dashboard)
-    OUTBOUND_TRUNK_ID = os.getenv("LIVEKIT_OUTBOUND_TRUNK_ID", "ST_gjX5nwd4CNYq")
+    # Supabase URL for edge function calls
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
     # Transfer state stored in memory (per session)
     transfer_state = {
         "active": False,
         "caller_identity": caller_identity,
-        "transferee_identity": None,
-        "transferee_sip_call_id": None,
         "target_label": None,
     }
 
@@ -969,11 +967,11 @@ def create_warm_transfer_tools(user_id: str, transfer_numbers: list, room_name: 
 
         return False
 
-    @function_tool(description="Start a warm transfer - mutes the caller so you can speak privately with the transfer destination first. Use this when the caller asks to speak with someone specific.")
+    @function_tool(description="Start a warm transfer - puts caller on hold so you can speak privately with the transfer destination first. IMPORTANT: Before calling this, tell the caller 'Please hold while I transfer you to [name]' - they will hear hold music after you speak.")
     async def start_warm_transfer(
         transfer_to: Annotated[str, "The label or name of who to transfer to (e.g., 'Sales', 'Rick', 'mobile')"]
     ):
-        """Start a warm transfer by muting caller and dialing the destination into the room"""
+        """Start warm transfer via SignalWire edge function - caller goes to hold music, transferee joins LiveKit"""
         logger.info(f"🔄 Starting warm transfer to: {transfer_to}")
 
         # Find matching transfer number with fuzzy matching
@@ -993,182 +991,114 @@ def create_warm_transfer_tools(user_id: str, transfer_numbers: list, room_name: 
             return f"No phone number configured for {transfer_config['label']}."
 
         try:
-            # Initialize LiveKit API
-            livekit_api = api.LiveKitAPI(livekit_url, livekit_api_key, livekit_api_secret)
+            # Call the warm-transfer edge function to:
+            # 1. Put caller on hold (silent - just music, agent already spoke)
+            # 2. Dial transferee and connect them to LiveKit room
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{supabase_url}/functions/v1/warm-transfer",
+                    headers={
+                        "Authorization": f"Bearer {supabase_service_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "operation": "start",
+                        "room_name": room_name,
+                        "target_number": phone_number,
+                        "target_label": transfer_config['label'],
+                        "caller_number": caller_identity,
+                        "service_number": service_number,
+                    },
+                ) as response:
+                    result = await response.json()
+                    logger.info(f"📞 Warm transfer start result: {result}")
 
-            # Step 1: Mute the caller (they can't hear the private consultation)
-            # Find the caller's identity from the room participants
-            caller_id = transfer_state["caller_identity"]
-            if not caller_id:
-                # Find SIP participant that's not our transferee
-                for participant in ctx.room.remote_participants.values():
-                    if participant.attributes.get("sip.trunkPhoneNumber"):
-                        caller_id = participant.identity
-                        transfer_state["caller_identity"] = caller_id
-                        break
+                    if response.status != 200 or result.get("error"):
+                        error_msg = result.get("error", "Unknown error")
+                        logger.error(f"❌ Failed to start warm transfer: {error_msg}")
+                        return f"I couldn't reach {transfer_config['label']}. Let me take a message instead."
 
-            if caller_id:
-                logger.info(f"🔇 Muting caller: {caller_id}")
-                await livekit_api.room.update_participant(
-                    api.UpdateParticipantRequest(
-                        room=room_name,
-                        identity=caller_id,
-                        permission=api.ParticipantPermission(
-                            can_subscribe=False,  # Can't hear anything
-                            can_publish=True,     # Can still talk (though we won't listen during consult)
-                            can_publish_data=True,
-                        ),
-                    )
-                )
-                logger.info(f"✅ Caller muted")
-            else:
-                logger.warning("⚠️ Could not find caller to mute")
+                    # Store transfer state
+                    transfer_state["active"] = True
+                    transfer_state["target_label"] = transfer_config['label']
 
-            # Step 2: Dial the transferee into this same LiveKit room
-            logger.info(f"📞 Dialing {transfer_config['label']} at {phone_number}")
-
-            # Normalize phone number
-            normalized_number = phone_number.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
-            if not normalized_number.startswith("+"):
-                if len(normalized_number) == 10:
-                    normalized_number = "+1" + normalized_number
-                elif len(normalized_number) == 11 and normalized_number.startswith("1"):
-                    normalized_number = "+" + normalized_number
-
-            transferee_identity = f"sip-transfer-{int(time_module.time())}"
-
-            from livekit.protocol.sip import CreateSIPParticipantRequest
-
-            sip_request = CreateSIPParticipantRequest(
-                sip_trunk_id=OUTBOUND_TRUNK_ID,
-                sip_call_to=normalized_number,
-                room_name=room_name,
-                participant_identity=transferee_identity,
-                participant_name=transfer_config['label'],
-                krisp_enabled=True,
-                play_dialtone=True,  # Let agent hear dial tone while connecting
-            )
-
-            try:
-                sip_participant = await livekit_api.sip.create_sip_participant(sip_request)
-                logger.info(f"✅ Transferee dialed: {sip_participant}")
-
-                # Store transfer state
-                transfer_state["active"] = True
-                transfer_state["transferee_identity"] = transferee_identity
-                transfer_state["transferee_sip_call_id"] = getattr(sip_participant, 'sip_call_id', None)
-                transfer_state["target_label"] = transfer_config['label']
-
-                # Agent will speak the greeting to the transferee
-                return f"I'm connecting you with {transfer_config['label']} now. When they answer, introduce the caller's situation. Say 'complete transfer' when they're ready to take the call, or 'cancel transfer' if they can't help."
-
-            except Exception as sip_error:
-                logger.error(f"❌ Failed to dial transferee: {sip_error}")
-                # Re-enable caller's audio since transfer failed
-                if caller_id:
-                    await livekit_api.room.update_participant(
-                        api.UpdateParticipantRequest(
-                            room=room_name,
-                            identity=caller_id,
-                            permission=api.ParticipantPermission(
-                                can_subscribe=True,
-                                can_publish=True,
-                                can_publish_data=True,
-                            ),
-                        )
-                    )
-                return f"I couldn't reach {transfer_config['label']}. Let me take a message instead."
+                    # Agent will speak to the transferee when they answer (in LiveKit)
+                    return f"I'm dialing {transfer_config['label']} now. When they answer, introduce the caller and their situation. Say 'complete transfer' when they're ready, or 'cancel transfer' if they can't help."
 
         except Exception as e:
             logger.error(f"Warm transfer error: {e}")
             return "I'm having trouble with the transfer right now. Can I take a message instead?"
 
-    @function_tool(description="Complete the warm transfer - unmutes the caller so all parties can talk. Use this after the transferee agrees to take the call.")
+    @function_tool(description="Complete the warm transfer - brings the caller back from hold so all parties can talk. IMPORTANT: After this, announce 'You're now connected with [name]' to everyone.")
     async def complete_warm_transfer():
-        """Complete the warm transfer by unmuting the caller - all parties in LiveKit together"""
+        """Complete warm transfer via edge function - brings caller back to LiveKit from hold"""
         logger.info(f"🔄 Completing warm transfer for room: {room_name}")
 
         if not transfer_state["active"]:
             return "There's no active transfer to complete."
 
         try:
-            livekit_api = api.LiveKitAPI(livekit_url, livekit_api_key, livekit_api_secret)
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{supabase_url}/functions/v1/warm-transfer",
+                    headers={
+                        "Authorization": f"Bearer {supabase_service_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "operation": "complete",
+                        "room_name": room_name,
+                        "service_number": service_number,
+                    },
+                ) as response:
+                    result = await response.json()
+                    logger.info(f"📞 Warm transfer complete result: {result}")
 
-            # Re-enable caller's audio subscription
-            caller_id = transfer_state["caller_identity"]
-            if caller_id:
-                logger.info(f"🔊 Unmuting caller: {caller_id}")
-                await livekit_api.room.update_participant(
-                    api.UpdateParticipantRequest(
-                        room=room_name,
-                        identity=caller_id,
-                        permission=api.ParticipantPermission(
-                            can_subscribe=True,  # Can hear everyone now
-                            can_publish=True,
-                            can_publish_data=True,
-                        ),
-                    )
-                )
-                logger.info(f"✅ Caller unmuted - all parties connected")
+                    if response.status != 200 or result.get("error"):
+                        error_msg = result.get("error", "Unknown error")
+                        logger.error(f"❌ Failed to complete warm transfer: {error_msg}")
+                        return "I'm having trouble completing the transfer."
 
-            transfer_state["active"] = False
-            target_label = transfer_state["target_label"] or "the other party"
+                    transfer_state["active"] = False
+                    target_label = transfer_state["target_label"] or "the other party"
 
-            # Agent announces the connection (using natural voice)
-            return f"You're now connected with {target_label}. I'll stay quiet while you talk."
+                    # Agent should announce to all parties
+                    return f"The caller is now connected. You're all on the line together. I'll stay quiet while you talk."
 
         except Exception as e:
             logger.error(f"Complete transfer error: {e}")
             return "I'm having trouble completing the transfer."
 
-    @function_tool(description="Cancel the warm transfer - disconnects the transferee and unmutes the caller. Use this if the transferee can't take the call.")
+    @function_tool(description="Cancel the warm transfer - hangs up on the transferee and brings the caller back from hold. Use this if the transferee can't take the call.")
     async def cancel_warm_transfer():
-        """Cancel the warm transfer - disconnect transferee, unmute caller"""
+        """Cancel warm transfer via edge function - hangs up transferee, brings caller back"""
         logger.info(f"🔄 Cancelling warm transfer for room: {room_name}")
 
         if not transfer_state["active"]:
             return "There's no active transfer to cancel."
 
         try:
-            livekit_api = api.LiveKitAPI(livekit_url, livekit_api_key, livekit_api_secret)
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{supabase_url}/functions/v1/warm-transfer",
+                    headers={
+                        "Authorization": f"Bearer {supabase_service_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "operation": "cancel",
+                        "room_name": room_name,
+                        "service_number": service_number,
+                    },
+                ) as response:
+                    result = await response.json()
+                    logger.info(f"📞 Warm transfer cancel result: {result}")
 
-            # Step 1: Remove the transferee from the room (hang up on them)
-            transferee_id = transfer_state["transferee_identity"]
-            if transferee_id:
-                logger.info(f"📞 Disconnecting transferee: {transferee_id}")
-                try:
-                    from livekit.protocol.room import RoomParticipantIdentity
-                    await livekit_api.room.remove_participant(
-                        RoomParticipantIdentity(
-                            room=room_name,
-                            identity=transferee_id,
-                        )
-                    )
-                    logger.info(f"✅ Transferee disconnected")
-                except Exception as e:
-                    logger.warning(f"Could not remove transferee (may have already left): {e}")
+                    transfer_state["active"] = False
+                    target_label = transfer_state["target_label"] or "them"
 
-            # Step 2: Re-enable caller's audio subscription
-            caller_id = transfer_state["caller_identity"]
-            if caller_id:
-                logger.info(f"🔊 Unmuting caller: {caller_id}")
-                await livekit_api.room.update_participant(
-                    api.UpdateParticipantRequest(
-                        room=room_name,
-                        identity=caller_id,
-                        permission=api.ParticipantPermission(
-                            can_subscribe=True,  # Can hear again
-                            can_publish=True,
-                            can_publish_data=True,
-                        ),
-                    )
-                )
-                logger.info(f"✅ Caller unmuted")
-
-            transfer_state["active"] = False
-            target_label = transfer_state["target_label"] or "them"
-
-            return f"I wasn't able to connect you with {target_label}. How else can I help you?"
+                    # Caller is being brought back - agent will speak to them
+                    return f"I wasn't able to connect you with {target_label}. How else can I help you?"
 
         except Exception as e:
             logger.error(f"Cancel transfer error: {e}")

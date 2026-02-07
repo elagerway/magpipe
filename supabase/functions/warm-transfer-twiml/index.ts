@@ -27,23 +27,18 @@ Deno.serve(async (req) => {
 
   switch (action) {
     case 'hold':
-      // Announce where they're being transferred, then play hold music
-      const announcement = targetLabel
-        ? `Please hold while I transfer you to ${targetLabel}.`
-        : 'Please hold while I transfer your call.'
+      // Play hold music only - agent speaks the announcement before this
       twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Joanna">${announcement}</Say>
   <Play loop="0">${HOLD_MUSIC_URL}</Play>
 </Response>`
       break
 
     case 'unhold':
-      // Reconnect to LiveKit room via SIP
+      // Reconnect to LiveKit room via SIP - agent speaks any announcements
       const unholdSipUri = `sip:${serviceNumber || '+16042566768'}@${LIVEKIT_SIP_DOMAIN};transport=tls`
       twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Joanna">Thank you for holding. Reconnecting you now.</Say>
   <Dial>
     <Sip>${unholdSipUri}</Sip>
   </Dial>
@@ -51,12 +46,10 @@ Deno.serve(async (req) => {
       break
 
     case 'consult':
-      // Connect transferee to LiveKit room for private consultation with agent
-      // The caller is on hold, so only agent + transferee can hear each other
+      // Connect transferee to LiveKit room silently - agent speaks to them directly
       const consultSipUri = `sip:${serviceNumber || '+16042566768'}@${LIVEKIT_SIP_DOMAIN};transport=tls`
       twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Joanna">Please hold while we connect you.</Say>
   <Dial>
     <Sip>${consultSipUri}</Sip>
   </Dial>
