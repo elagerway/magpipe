@@ -441,3 +441,43 @@ To test:
   - Added advanced parameters to add-knowledge-source
   - Added knowledge-source-manual endpoint
 
+---
+
+## Session: 2026-02-07
+
+### Completed - Outbound Call Fix
+
+1. ✅ **Fixed outbound SIP trunk ID**
+   - **Root cause**: Code was using wrong LiveKit outbound SIP trunk ID
+   - **Old (wrong)**: `ST_3DmaaWbHL9QT`
+   - **New (correct)**: `ST_gjX5nwd4CNYq` (SignalWire Outbound trunk)
+   - Used `scripts/list-sip-trunks.js` to discover correct trunk ID
+
+2. ✅ **Fixed multi-agent config query**
+   - Changed `.single()` to `.limit(1)` in livekit-outbound-call
+   - Prevents "Cannot coerce to single JSON object" error for users with multiple agents
+
+### Files Modified
+- `supabase/functions/livekit-outbound-call/index.ts` - Fixed agent lookup + query
+- `agents/livekit-voice-agent/agent.py` - Fixed agent_id correction from call_records
+- `scripts/test-functions.js` - Added detailed SignalWire call logging
+
+### Key Finding: LiveKit SIP Outbound via SignalWire DOES NOT WORK
+
+Attempted multiple approaches - none worked:
+1. **SIP endpoint with registration** - LiveKit trunks don't register, SignalWire expects registration
+2. **SIP endpoint with TLS** - Same issue
+3. **Domain app with IP auth** - Calls don't reach SignalWire at all
+4. **Various trunk addresses** - `erik.signalwire.com`, `erik-xxx.sip.signalwire.com`, `erik-plug.dapp.signalwire.com`
+
+**Root cause**: LiveKit SIP trunks use digest auth per-call without registration. SignalWire SIP infrastructure expects registered SIP clients.
+
+**Solution for warm transfers**: Use SignalWire API to place outbound calls, then connect back to LiveKit via SIP (reverse direction - this works because inbound SIP to LiveKit is functional).
+
+The existing `warm-transfer` edge function already uses this approach with SignalWire TwiML.
+
+### Created SignalWire SIP Endpoint
+- Username: `your-signalwire-project-id`
+- Full URI: `your-signalwire-project-id@erik-0f619b8e956e.sip.signalwire.com`
+- Has `passthrough` call handler for PSTN access
+
