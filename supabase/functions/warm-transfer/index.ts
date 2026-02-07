@@ -50,7 +50,7 @@ Deno.serve(async (req) => {
       service_number,   // Our service number (caller ID for outbound)
     } = await req.json()
 
-    console.log(`🔄 Warm Transfer: ${operation}`, { room_name, target_number, actualCallerCallSid })
+    console.log(`🔄 Warm Transfer: ${operation}`, { room_name, target_number, service_number })
 
     const supabase = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
     const signalwireAuth = 'Basic ' + btoa(`${SIGNALWIRE_PROJECT_ID}:${SIGNALWIRE_API_TOKEN}`)
