@@ -6,6 +6,9 @@ import { getCurrentUser, supabase } from '../lib/supabase.js';
 import { renderBottomNav } from '../components/BottomNav.js';
 import { User } from '../models/index.js';
 
+// System agent UUID for unassigned numbers
+const SYSTEM_AGENT_ID = '00000000-0000-0000-0000-000000000002';
+
 export default class ManageNumbersPage {
   constructor() {
     this.serviceNumbers = [];
@@ -521,7 +524,7 @@ export default class ManageNumbersPage {
         </div>
 
         <!-- Assigned Agent -->
-        ${number.agent ? `
+        ${number.agent && number.agent_id !== SYSTEM_AGENT_ID ? `
           <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; padding: 0.5rem 0.75rem; background: rgba(99, 102, 241, 0.08); border-radius: 0.375rem;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--primary-color); flex-shrink: 0;">
               <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
@@ -559,7 +562,7 @@ export default class ManageNumbersPage {
               <circle cx="12" cy="7" r="4"/>
             </svg>
             <span style="font-size: 0.8125rem; color: var(--text-muted);">
-              No agent assigned
+              System default (not assigned)
             </span>
           </div>
         `}
@@ -747,15 +750,15 @@ export default class ManageNumbersPage {
     errorMessage.classList.add('hidden');
     successMessage.classList.add('hidden');
 
-    if (!number.agent) {
+    if (!number.agent || number.agent_id === SYSTEM_AGENT_ID) {
       return;
     }
 
     try {
-      // Update the service_numbers record to remove agent_id
+      // Update the service_numbers record to use system agent
       const { error } = await supabase
         .from('service_numbers')
-        .update({ agent_id: null })
+        .update({ agent_id: SYSTEM_AGENT_ID })
         .eq('id', number.id);
 
       if (error) throw error;
@@ -773,11 +776,12 @@ export default class ManageNumbersPage {
   }
 
   async showAgentAssignmentModal(number) {
-    // Load all agents for this user
+    // Load all agents for this user (excluding system agent)
     const { data: agents, error } = await supabase
       .from('agent_configs')
       .select('id, name')
       .eq('user_id', this.user.id)
+      .neq('id', SYSTEM_AGENT_ID)
       .order('name');
 
     if (error) {
@@ -785,8 +789,10 @@ export default class ManageNumbersPage {
       return;
     }
 
-    const currentAgentId = number.agent_id;
-    const currentAgentName = number.agent?.name;
+    // Don't show current assignment if it's the system agent
+    const isSystemAgent = number.agent_id === SYSTEM_AGENT_ID;
+    const currentAgentId = isSystemAgent ? null : number.agent_id;
+    const currentAgentName = isSystemAgent ? null : number.agent?.name;
 
     const modal = document.createElement('div');
     modal.id = 'agent-assignment-modal';
@@ -996,7 +1002,7 @@ export default class ManageNumbersPage {
 
         const { error } = await supabase
           .from('service_numbers')
-          .update({ agent_id: null })
+          .update({ agent_id: SYSTEM_AGENT_ID })
           .eq('id', number.id);
 
         if (error) {

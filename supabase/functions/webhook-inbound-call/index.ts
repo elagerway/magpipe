@@ -22,11 +22,12 @@ serve(async (req) => {
 
     console.log('Inbound call:', { to, from, callSid })
 
-    // Check if the number is active
+    // All numbers should have an agent_id (system agent as default)
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseKey)
 
+    // Get the service number with its assigned agent
     const { data: serviceNumber, error } = await supabase
       .from('service_numbers')
       .select('*, users!inner(*)')
@@ -35,13 +36,13 @@ serve(async (req) => {
       .single()
 
     if (error || !serviceNumber) {
-      console.log('Number not active or not found:', to)
-
-      // Use TwiML for inactive/unknown numbers (can't route to LiveKit without dispatch rule)
+      console.log('Number not found or inactive:', to)
+      // This shouldn't happen - all numbers should be active with system agent as default
+      // Use TwiML fallback only for truly unknown numbers
       return new Response(
         `<?xml version="1.0" encoding="UTF-8"?>
         <Response>
-          <Say voice="alice">This number is not currently assigned. Go to Magpipe dot A I to assign your number.</Say>
+          <Say voice="alice">This number is not currently in service. Goodbye.</Say>
           <Hangup/>
         </Response>`,
         {

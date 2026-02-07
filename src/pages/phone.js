@@ -8,6 +8,9 @@ import { showOutboundTemplateModal } from '../components/OutboundTemplateModal.j
 import { User } from '../models/index.js';
 import { createExternalTrunkSettings, addExternalTrunkSettingsStyles } from '../components/ExternalTrunkSettings.js';
 
+// System agent UUID for unassigned numbers
+const SYSTEM_AGENT_ID = '00000000-0000-0000-0000-000000000002';
+
 // Lazy load SIP client to reduce initial bundle size (281KB)
 let sipClient = null;
 async function loadSipClient() {
@@ -1225,11 +1228,12 @@ export default class PhonePage {
   }
 
   async showAgentAssignmentModal(number) {
-    // Load all agents for this user
+    // Load all agents for this user (excluding system agent)
     const { data: agents, error } = await supabase
       .from('agent_configs')
       .select('id, name')
       .eq('user_id', this.userId)
+      .neq('id', SYSTEM_AGENT_ID)
       .order('name');
 
     if (error) {
@@ -1237,8 +1241,10 @@ export default class PhonePage {
       return;
     }
 
-    const currentAgentId = number.agent_id;
-    const currentAgentName = number.agent?.name;
+    // Don't show current assignment if it's the system agent
+    const isSystemAgent = number.agent_id === SYSTEM_AGENT_ID;
+    const currentAgentId = isSystemAgent ? null : number.agent_id;
+    const currentAgentName = isSystemAgent ? null : number.agent?.name;
 
     const modal = document.createElement('div');
     modal.id = 'agent-assignment-modal';
@@ -1333,7 +1339,7 @@ export default class PhonePage {
               text-align: center;
               color: var(--text-secondary);
               font-size: 0.875rem;
-            ">No agent assigned</div>
+            ">System default (not assigned)</div>
           `}
 
           <div>
@@ -1449,7 +1455,7 @@ export default class PhonePage {
 
         const { error } = await supabase
           .from('service_numbers')
-          .update({ agent_id: null })
+          .update({ agent_id: SYSTEM_AGENT_ID })
           .eq('id', number.id);
 
         if (error) {
