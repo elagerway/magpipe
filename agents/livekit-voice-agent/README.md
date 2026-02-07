@@ -42,10 +42,30 @@ Edit `.env` with your actual keys.
 ### 3. Run Agent Locally
 
 ```bash
+# Fix macOS SSL certificates first
+export SSL_CERT_FILE=$(python3 -c "import certifi; print(certifi.where())")
+
 python agent.py dev
 ```
 
 This starts the agent in development mode, connecting to your LiveKit Cloud.
+
+### 4. Local Testing with Dedicated Number (Recommended)
+
+To avoid conflicts with the production Render agent:
+
+1. **LiveKit Cloud Dashboard**: Create a dispatch rule for test number (+16042101966) that routes to agent name "SW Telephony Agent Local"
+
+2. **Run local agent with different name**:
+```bash
+export LIVEKIT_AGENT_NAME="SW Telephony Agent Local"
+export SSL_CERT_FILE=$(python3 -c "import certifi; print(certifi.where())")
+python agent.py dev
+```
+
+3. **Assign test number to an agent** in the database (service_numbers table)
+
+4. **Call the test number** to test your changes locally before deploying
 
 ## Deployment on Render
 
