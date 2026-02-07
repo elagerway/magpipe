@@ -2625,11 +2625,30 @@ THIS IS AN OUTBOUND CALL:
     }
 
     // Booking toggle - show modal when enabled
+    // Booking toggle - requires Cal.com connection
     if (funcBooking) {
-      funcBooking.addEventListener('change', () => {
-        updateFunctions();
+      funcBooking.addEventListener('change', async (e) => {
         if (funcBooking.checked) {
-          this.showBookingModal();
+          // Check if Cal.com is connected
+          const { data: userData } = await supabase
+            .from('users')
+            .select('cal_com_access_token')
+            .eq('id', this.agent.user_id)
+            .single();
+
+          const isConnected = !!userData?.cal_com_access_token;
+          if (!isConnected) {
+            // Not connected - prevent enable, show modal to connect
+            e.preventDefault();
+            funcBooking.checked = false;
+            this.showBookingModal(true); // true = enabling mode
+          } else {
+            // Already connected, just enable
+            updateFunctions();
+          }
+        } else {
+          // Disabling - just update
+          updateFunctions();
         }
       });
     }
@@ -2644,12 +2663,24 @@ THIS IS AN OUTBOUND CALL:
       });
     }
 
-    // Extract toggle - show modal when enabled
+    // Extract Data toggle - must configure before enabling
     if (funcExtract) {
-      funcExtract.addEventListener('change', () => {
-        updateFunctions();
+      funcExtract.addEventListener('change', (e) => {
         if (funcExtract.checked) {
-          this.showExtractDataModal();
+          // Trying to enable - check if has variables configured
+          const hasVariables = this.agent.functions?.extract_data?.variables?.length > 0;
+          if (!hasVariables) {
+            // No config yet - prevent enable, show modal
+            e.preventDefault();
+            funcExtract.checked = false;
+            this.showExtractDataModal(true); // true = enabling mode
+          } else {
+            // Already configured, just enable
+            updateFunctions();
+          }
+        } else {
+          // Disabling - just update
+          updateFunctions();
         }
       });
     }
@@ -2674,12 +2705,25 @@ THIS IS AN OUTBOUND CALL:
       });
     }
 
-    // SMS toggle - show modal when enabled
+    // SMS toggle - must configure before enabling
     if (funcSms) {
-      funcSms.addEventListener('change', () => {
-        updateFunctions();
+      funcSms.addEventListener('change', (e) => {
         if (funcSms.checked) {
-          this.showSmsModal();
+          // Trying to enable - check if has description or templates
+          const hasDescription = this.agent.functions?.sms?.description?.trim();
+          // Templates are per-user, we'll check in modal
+          if (!hasDescription) {
+            // No config yet - prevent enable, show modal
+            e.preventDefault();
+            funcSms.checked = false;
+            this.showSmsModal(true); // true = enabling mode
+          } else {
+            // Already configured, just enable
+            updateFunctions();
+          }
+        } else {
+          // Disabling - just update
+          updateFunctions();
         }
       });
     }
@@ -2694,12 +2738,24 @@ THIS IS AN OUTBOUND CALL:
       });
     }
 
-    // Transfer toggle - show modal when enabled
+    // Transfer toggle - must configure before enabling
     if (funcTransfer) {
-      funcTransfer.addEventListener('change', () => {
-        updateFunctions();
+      funcTransfer.addEventListener('change', (e) => {
         if (funcTransfer.checked) {
-          this.showTransferModal();
+          // Trying to enable - check if already has numbers configured
+          const hasNumbers = this.agent.functions?.transfer?.numbers?.length > 0;
+          if (!hasNumbers) {
+            // No config yet - prevent enable, show modal
+            e.preventDefault();
+            funcTransfer.checked = false;
+            this.showTransferModal(true); // true = enabling mode
+          } else {
+            // Already configured, just enable
+            updateFunctions();
+          }
+        } else {
+          // Disabling - just update
+          updateFunctions();
         }
       });
     }
@@ -3685,8 +3741,11 @@ THIS IS AN OUTBOUND CALL:
     }
   }
 
-  async showBookingModal() {
+  async showBookingModal(enablingMode = false) {
     try {
+      // enablingMode = true means user is trying to enable the function, needs Cal.com connection
+      this._bookingEnablingMode = enablingMode;
+
       // Check if Cal.com is connected
       const { data: user } = await supabase
         .from('users')
@@ -3808,15 +3867,33 @@ THIS IS AN OUTBOUND CALL:
           const checkboxes = modal.querySelectorAll('.event-type-checkbox:checked');
           const selectedIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
 
+          // If enabling mode and no event types selected, don't enable
+          if (this._bookingEnablingMode && selectedIds.length === 0) {
+            alert('Please select at least one event type to enable booking.');
+            return;
+          }
+
+          // If enabling mode and has selections, enable the function
+          const shouldEnable = this._bookingEnablingMode && selectedIds.length > 0;
+
           const functions = {
             ...this.agent.functions,
             booking: {
               ...this.agent.functions?.booking,
+              enabled: shouldEnable ? true : (this.agent.functions?.booking?.enabled ?? false),
               event_type_ids: selectedIds,
             },
           };
           this.agent.functions = functions;
           this.scheduleAutoSave({ functions });
+
+          // Update checkbox if we enabled
+          if (shouldEnable) {
+            const checkbox = document.getElementById('func-booking');
+            if (checkbox) checkbox.checked = true;
+          }
+
+          this._bookingEnablingMode = false;
           modal.remove();
         });
       }
@@ -3868,8 +3945,11 @@ THIS IS AN OUTBOUND CALL:
     }
   }
 
-  async showExtractDataModal() {
+  async showExtractDataModal(enablingMode = false) {
     try {
+      // enablingMode = true means user is trying to enable the function, needs valid config to proceed
+      this._extractEnablingMode = enablingMode;
+
       // Load dynamic variables from database
       const { data: dynamicVars, error } = await supabase
         .from('dynamic_variables')
@@ -4163,6 +4243,19 @@ THIS IS AN OUTBOUND CALL:
     }
 
     try {
+      // Count valid variables
+      const validVars = this.modalDynamicVars.filter(v => v.name);
+
+      // If enabling mode and no valid variables, don't enable
+      if (this._extractEnablingMode && validVars.length === 0) {
+        alert('Please add at least one variable to extract to enable this function.');
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'Save Changes';
+        }
+        return;
+      }
+
       for (const v of this.modalDynamicVars) {
         // Skip empty entries
         if (!v.name) continue;
@@ -4193,14 +4286,36 @@ THIS IS AN OUTBOUND CALL:
             });
         }
       }
+
+      // If enabling mode and has valid variables, enable the function
+      if (this._extractEnablingMode && validVars.length > 0) {
+        const functions = {
+          ...this.agent.functions,
+          extract_data: {
+            ...this.agent.functions?.extract_data,
+            enabled: true,
+          },
+        };
+        this.agent.functions = functions;
+        await this.scheduleAutoSave({ functions });
+
+        // Update checkbox
+        const checkbox = document.getElementById('func-extract');
+        if (checkbox) checkbox.checked = true;
+      }
+
+      this._extractEnablingMode = false;
     } catch (err) {
       console.error('Error saving dynamic variables:', err);
       alert('Failed to save variables. Please try again.');
     }
   }
 
-  async showSmsModal() {
+  async showSmsModal(enablingMode = false) {
     try {
+      // enablingMode = true means user is trying to enable the function, needs valid config to proceed
+      this._smsEnablingMode = enablingMode;
+
       // Load SMS templates from database
       const { data: smsTemplates, error } = await supabase
         .from('sms_templates')
@@ -4389,6 +4504,19 @@ THIS IS AN OUTBOUND CALL:
     }
 
     try {
+      // Count valid templates
+      const validTemplates = this.modalSmsTemplates.filter(t => t.name || t.content);
+
+      // If enabling mode and no valid templates, don't enable
+      if (this._smsEnablingMode && validTemplates.length === 0) {
+        alert('Please add at least one SMS template to enable this function.');
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'Save Changes';
+        }
+        return;
+      }
+
       for (const tmpl of this.modalSmsTemplates) {
         // Skip empty entries
         if (!tmpl.name && !tmpl.content) continue;
@@ -4414,6 +4542,25 @@ THIS IS AN OUTBOUND CALL:
             });
         }
       }
+
+      // If enabling mode and has valid templates, enable the function
+      if (this._smsEnablingMode && validTemplates.length > 0) {
+        const functions = {
+          ...this.agent.functions,
+          sms: {
+            ...this.agent.functions?.sms,
+            enabled: true,
+          },
+        };
+        this.agent.functions = functions;
+        await this.scheduleAutoSave({ functions });
+
+        // Update checkbox
+        const checkbox = document.getElementById('func-sms');
+        if (checkbox) checkbox.checked = true;
+      }
+
+      this._smsEnablingMode = false;
     } catch (err) {
       console.error('Error saving SMS templates:', err);
       alert('Failed to save templates. Please try again.');
@@ -4937,8 +5084,11 @@ THIS IS AN OUTBOUND CALL:
     }
   }
 
-  async showTransferModal() {
+  async showTransferModal(enablingMode = false) {
     try {
+      // enablingMode = true means user is trying to enable the function, needs valid config to proceed
+      this._transferEnablingMode = enablingMode;
+
       // Load transfer numbers from functions config (or fall back to table for migration)
       let numbers = this.agent.functions?.transfer?.numbers || [];
 
@@ -5191,16 +5341,38 @@ THIS IS AN OUTBOUND CALL:
           description: num.description || '',
         }));
 
+      // If enabling mode and no valid numbers, don't enable
+      if (this._transferEnablingMode && validNumbers.length === 0) {
+        alert('Please add at least one transfer number to enable this function.');
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'Save Changes';
+        }
+        return;
+      }
+
+      // If enabling mode and has valid numbers, enable the function
+      const shouldEnable = this._transferEnablingMode && validNumbers.length > 0;
+
       // Save to functions.transfer.numbers
       const functions = {
         ...this.agent.functions,
         transfer: {
           ...this.agent.functions?.transfer,
+          enabled: shouldEnable ? true : (this.agent.functions?.transfer?.enabled ?? false),
           numbers: validNumbers,
         },
       };
       this.agent.functions = functions;
       await this.scheduleAutoSave({ functions });
+
+      // Update checkbox if we enabled
+      if (shouldEnable) {
+        const checkbox = document.getElementById('func-transfer');
+        if (checkbox) checkbox.checked = true;
+      }
+
+      this._transferEnablingMode = false;
     } catch (err) {
       console.error('Error saving transfer numbers:', err);
       alert('Failed to save transfer numbers. Please try again.');
