@@ -52,6 +52,32 @@ Update any configuration fields for an existing AI agent. Only include fields yo
   Enable or disable the agent.
 </ParamField>
 
+<ParamField body="functions" type="object">
+  Configuration for agent functions. See [Create Agent](/api-reference/endpoints/create-agent) for full schema.
+
+  **Example - Enable transfer with multiple numbers:**
+  ```json
+  {
+    "transfer": {
+      "enabled": true,
+      "numbers": [
+        { "number": "+14155551234", "label": "Sales", "description": "Transfer for sales inquiries" }
+      ]
+    }
+  }
+  ```
+
+  **Example - Configure end call:**
+  ```json
+  {
+    "end_call": {
+      "enabled": true,
+      "description": "End the call after confirming the appointment."
+    }
+  }
+  ```
+</ParamField>
+
 ## Response
 
 Returns the updated agent object.

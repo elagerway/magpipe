@@ -834,6 +834,11 @@ def create_transfer_tool(user_id: str, transfer_numbers: list, room_name: str):
         if not transfer_config:
             return f"I don't have a transfer number configured for '{transfer_to}'. Available options are: {', '.join([n['label'] for n in transfer_numbers])}"
 
+        # Get phone number (support both 'number' and 'phone_number' keys)
+        phone_number = transfer_config.get('number') or transfer_config.get('phone_number')
+        if not phone_number:
+            return f"No phone number configured for {transfer_config['label']}."
+
         # Execute call transfer via SignalWire API
         try:
             signalwire_space = os.getenv("SIGNALWIRE_SPACE")
@@ -852,13 +857,13 @@ def create_transfer_tool(user_id: str, transfer_numbers: list, room_name: str):
                     transfer_url,
                     auth=auth,
                     data={
-                        "To": transfer_config['phone_number'],
+                        "To": phone_number,
                         "From": transfer_config.get('caller_id', ''),  # Use configured caller ID
                         "Url": f"{os.getenv('SUPABASE_URL')}/functions/v1/signalwire-transfer-handler",
                     }
                 ) as resp:
                     if resp.status == 201:
-                        logger.info(f"Successfully initiated transfer to {transfer_config['phone_number']}")
+                        logger.info(f"Successfully initiated transfer to {phone_number}")
                         return f"Transferring you to {transfer_config['label']} now. Please hold..."
                     else:
                         error_text = await resp.text()
@@ -1756,14 +1761,31 @@ CALL CONTEXT:
         else:
             logger.info(f"🔧 No custom functions configured for agent {agent_id}")
 
-    # Add end_call tool if enabled in custom_instructions (default: enabled)
-    custom_instructions = user_config.get("custom_instructions", {}) if user_config else {}
-    end_call_enabled = custom_instructions.get("enable_end_call", True)
+    # Add system function tools based on functions config
+    functions_config = user_config.get("functions", {}) if user_config else {}
+
+    # End Call function (default: enabled)
+    end_call_config = functions_config.get("end_call", {})
+    end_call_enabled = end_call_config.get("enabled", True)  # Default enabled
     if end_call_enabled:
-        end_call_description = custom_instructions.get("end_call_description")
+        end_call_description = end_call_config.get("description")
         end_call_tool = create_end_call_tool(ctx.room.name, end_call_description)
         custom_tools.append(end_call_tool)
         logger.info(f"📞 Registered end_call tool for room {ctx.room.name}")
+
+    # Transfer function
+    transfer_config = functions_config.get("transfer", {})
+    transfer_enabled = transfer_config.get("enabled", False)
+    if transfer_enabled:
+        # Get transfer numbers from functions.transfer.numbers, or fall back to table
+        transfer_nums = transfer_config.get("numbers", [])
+        if not transfer_nums and transfer_numbers:
+            # Fall back to transfer_numbers table (backwards compatibility)
+            transfer_nums = [{"phone_number": n.get("phone_number"), "label": n.get("label", "Transfer"), "description": n.get("description", "")} for n in transfer_numbers]
+        if transfer_nums:
+            transfer_tool = create_transfer_tool(user_id, transfer_nums, ctx.room.name)
+            custom_tools.append(transfer_tool)
+            logger.info(f"📞 Registered transfer tool with {len(transfer_nums)} numbers")
 
     # Create Agent instance with custom function tools
     if custom_tools:
