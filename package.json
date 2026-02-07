@@ -19,7 +19,10 @@
     "supabase:stop": "supabase stop",
     "supabase:status": "supabase status",
     "supabase:migrate": "supabase db push",
-    "supabase:reset": "supabase db reset"
+    "supabase:reset": "supabase db reset",
+    "test:functions": "node scripts/test-functions.js",
+    "test:telephony": "node scripts/test-functions.js telephony",
+    "test:live-call": "node scripts/test-functions.js live-call"
   },
   "keywords": [
     "pwa",
