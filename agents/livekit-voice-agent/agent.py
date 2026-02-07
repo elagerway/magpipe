@@ -1378,7 +1378,8 @@ async def entrypoint(ctx: JobContext):
                             logger.warning(f"⚠️ Could not update call_record with livekit_call_id")
 
     if not user_id:
-        logger.error("Could not determine user_id")
+        logger.warning("Could not determine user_id - number not found or inactive")
+        await speak_error_and_disconnect(ctx, "This number is not currently assigned. Go to Magpipe.ai to assign your number.")
         return
 
     # Get direction from metadata or database to determine agent role (MUST be before admin check)
