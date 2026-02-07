@@ -883,6 +883,78 @@ def create_warm_transfer_tools(user_id: str, transfer_numbers: list, room_name: 
     supabase_url = os.getenv("SUPABASE_URL")
     supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
+    def fuzzy_name_match(name1: str, name2: str) -> bool:
+        """Check if two names match, allowing for common spelling variations"""
+        n1 = name1.lower().strip()
+        n2 = name2.lower().strip()
+
+        # Exact match
+        if n1 == n2:
+            return True
+
+        # One contains the other (for partial matches like "Rick" matching "Ricky")
+        if n1 in n2 or n2 in n1:
+            return True
+
+        # Common name variations (phonetically similar)
+        variations = {
+            'eric': ['erik', 'erick', 'erich'],
+            'erik': ['eric', 'erick', 'erich'],
+            'rick': ['ricky', 'richard', 'rich', 'ric'],
+            'mike': ['michael', 'mikey', 'mick'],
+            'michael': ['mike', 'mikey', 'mick'],
+            'bob': ['robert', 'rob', 'bobby', 'robbie'],
+            'robert': ['bob', 'rob', 'bobby', 'robbie'],
+            'bill': ['william', 'will', 'billy', 'willy'],
+            'william': ['bill', 'will', 'billy', 'willy'],
+            'jim': ['james', 'jimmy', 'jamie'],
+            'james': ['jim', 'jimmy', 'jamie'],
+            'joe': ['joseph', 'joey'],
+            'joseph': ['joe', 'joey'],
+            'tom': ['thomas', 'tommy'],
+            'thomas': ['tom', 'tommy'],
+            'dan': ['daniel', 'danny'],
+            'daniel': ['dan', 'danny'],
+            'steve': ['steven', 'stephen', 'steph'],
+            'steven': ['steve', 'stephen', 'steph'],
+            'stephen': ['steve', 'steven', 'steph'],
+            'chris': ['christopher', 'kristopher', 'kris'],
+            'christopher': ['chris', 'kris'],
+            'matt': ['matthew', 'matty'],
+            'matthew': ['matt', 'matty'],
+            'dave': ['david', 'davey'],
+            'david': ['dave', 'davey'],
+            'nick': ['nicholas', 'nicky', 'nic'],
+            'nicholas': ['nick', 'nicky', 'nic'],
+            'alex': ['alexander', 'alexis', 'xander'],
+            'alexander': ['alex', 'xander'],
+            'sam': ['samuel', 'sammy', 'samantha'],
+            'samuel': ['sam', 'sammy'],
+            'ben': ['benjamin', 'benny', 'benji'],
+            'benjamin': ['ben', 'benny', 'benji'],
+            'tony': ['anthony', 'anton'],
+            'anthony': ['tony', 'anton'],
+            'jon': ['jonathan', 'john', 'johnny'],
+            'john': ['jon', 'jonathan', 'johnny'],
+            'jonathan': ['jon', 'john', 'johnny'],
+            'kate': ['katherine', 'kathy', 'katie', 'catherine'],
+            'katherine': ['kate', 'kathy', 'katie', 'catherine'],
+            'catherine': ['kate', 'kathy', 'katie', 'katherine'],
+            'jen': ['jennifer', 'jenny', 'jenn'],
+            'jennifer': ['jen', 'jenny', 'jenn'],
+            'liz': ['elizabeth', 'lizzy', 'beth', 'betty'],
+            'elizabeth': ['liz', 'lizzy', 'beth', 'betty'],
+            'sue': ['susan', 'susie', 'suzanne'],
+            'susan': ['sue', 'susie', 'suzanne'],
+        }
+
+        if n1 in variations and n2 in variations[n1]:
+            return True
+        if n2 in variations and n1 in variations[n2]:
+            return True
+
+        return False
+
     @function_tool(description="Start a warm transfer - puts the caller on hold and dials the transfer destination so you can speak privately with them first. Use this when the caller asks to speak with someone specific.")
     async def start_warm_transfer(
         transfer_to: Annotated[str, "The label or name of who to transfer to (e.g., 'Sales', 'Rick', 'mobile')"]
@@ -890,11 +962,12 @@ def create_warm_transfer_tools(user_id: str, transfer_numbers: list, room_name: 
         """Start a warm transfer by putting caller on hold and dialing the destination"""
         logger.info(f"🔄 Starting warm transfer to: {transfer_to}")
 
-        # Find matching transfer number
+        # Find matching transfer number with fuzzy matching
         transfer_config = None
         for num in transfer_numbers:
-            if num["label"].lower() == transfer_to.lower():
+            if fuzzy_name_match(num["label"], transfer_to):
                 transfer_config = num
+                logger.info(f"🔄 Fuzzy matched '{transfer_to}' to '{num['label']}'")
                 break
 
         if not transfer_config:

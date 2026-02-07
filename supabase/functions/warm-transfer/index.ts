@@ -61,22 +61,29 @@ Deno.serve(async (req) => {
         return errorResponse('Missing required fields: target_number, room_name', 400)
       }
 
-      // Look up the SignalWire call SID from call_records if not provided
-      let actualCallerCallSid = caller_call_sid
-      if (!actualCallerCallSid) {
-        console.log('📞 Looking up SignalWire call SID from database...')
-        const { data: callRecord } = await supabase
-          .from('call_records')
-          .select('vendor_call_id, call_sid')
-          .eq('service_number', service_number)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single()
+      // ALWAYS look up SignalWire call SID from database
+      // The caller_call_sid from agent is the LiveKit SIP call ID (SCL_...), not SignalWire UUID
+      console.log('📞 Looking up SignalWire call SID from database...')
+      console.log('📞 Service number:', service_number, 'Room name:', room_name)
 
-        if (callRecord) {
-          actualCallerCallSid = callRecord.vendor_call_id || callRecord.call_sid
-          console.log('📞 Found SignalWire call SID:', actualCallerCallSid)
-        }
+      const { data: callRecord, error: lookupError } = await supabase
+        .from('call_records')
+        .select('vendor_call_id, call_sid')
+        .eq('service_number', service_number)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single()
+
+      if (lookupError) {
+        console.error('📞 Error looking up call record:', lookupError)
+      }
+
+      let actualCallerCallSid = null
+      if (callRecord) {
+        actualCallerCallSid = callRecord.vendor_call_id || callRecord.call_sid
+        console.log('📞 Found SignalWire call SID:', actualCallerCallSid)
+      } else {
+        console.log('📞 No call record found for service_number:', service_number)
       }
 
       if (!actualCallerCallSid) {
