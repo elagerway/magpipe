@@ -110,16 +110,6 @@
       ]
     },
     {
-      "group": "System Functions",
-      "pages": [
-        "api-reference/endpoints/end-call",
-        "api-reference/endpoints/transfer",
-        "api-reference/endpoints/sms",
-        "api-reference/endpoints/extract-data",
-        "api-reference/endpoints/booking"
-      ]
-    },
-    {
       "group": "Custom Functions",
       "pages": [
         "api-reference/endpoints/create-custom-function",
@@ -145,6 +135,7 @@
         "api-reference/endpoints/get-call",
         "api-reference/endpoints/list-calls",
         "api-reference/endpoints/transfer-call",
+        "api-reference/endpoints/end-call",
         "api-reference/endpoints/get-recording"
       ]
     },

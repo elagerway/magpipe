@@ -277,12 +277,13 @@ export default class AgentDetailPage {
       // Clean URL
       window.history.replaceState({}, '', `/agents/${this.agentId}`);
 
-      // Enable booking in custom_instructions
-      const customInstructions = {
-        ...this.agent.custom_instructions,
-        enable_booking: true,
+      // Enable booking in functions
+      const functions = {
+        ...this.agent.functions,
+        booking: { ...this.agent.functions?.booking, enabled: true },
       };
-      this.scheduleAutoSave({ custom_instructions: customInstructions });
+      this.agent.functions = functions;
+      this.scheduleAutoSave({ functions });
 
       // Update the checkbox if on functions tab
       const funcBooking = document.getElementById('func-booking');
@@ -1551,7 +1552,7 @@ THIS IS AN OUTBOUND CALL:
         <div class="function-toggles">
           <div class="function-toggle sms-toggle-container" style="padding: 0; cursor: default;">
             <label style="display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem; cursor: pointer; flex: 1;">
-              <input type="checkbox" id="func-sms" ${this.agent.custom_instructions?.enable_sms !== false ? 'checked' : ''} style="margin-top: 0.2rem;" />
+              <input type="checkbox" id="func-sms" ${this.agent.functions?.sms?.enabled ? 'checked' : ''} style="margin-top: 0.2rem;" />
               <div class="toggle-content">
                 <span class="toggle-label">Send SMS</span>
                 <span class="toggle-desc">Allow agent to send text messages</span>
@@ -1562,7 +1563,7 @@ THIS IS AN OUTBOUND CALL:
 
           <div class="function-toggle transfer-toggle-container" style="padding: 0; cursor: default;">
             <label style="display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem; cursor: pointer; flex: 1;">
-              <input type="checkbox" id="func-transfer" ${this.agent.custom_instructions?.enable_transfer !== false ? 'checked' : ''} style="margin-top: 0.2rem;" />
+              <input type="checkbox" id="func-transfer" ${this.agent.functions?.transfer?.enabled ? 'checked' : ''} style="margin-top: 0.2rem;" />
               <div class="toggle-content">
                 <span class="toggle-label">Transfer Calls</span>
                 <span class="toggle-desc">Allow agent to transfer calls to another number</span>
@@ -1573,7 +1574,7 @@ THIS IS AN OUTBOUND CALL:
 
           <div class="function-toggle booking-toggle-container" style="padding: 0; cursor: default;">
             <label style="display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem; cursor: pointer; flex: 1;">
-              <input type="checkbox" id="func-booking" ${this.isCalComConnected && this.agent.custom_instructions?.enable_booking ? 'checked' : ''} style="margin-top: 0.2rem;" />
+              <input type="checkbox" id="func-booking" ${this.isCalComConnected && this.agent.functions?.booking?.enabled ? 'checked' : ''} style="margin-top: 0.2rem;" />
               <div class="toggle-content">
                 <span class="toggle-label">Book Appointments</span>
                 <span class="toggle-desc">Allow agent to schedule appointments (requires Cal.com)</span>
@@ -1584,7 +1585,7 @@ THIS IS AN OUTBOUND CALL:
 
           <div class="function-toggle extract-toggle-container" style="padding: 0; cursor: default;">
             <label style="display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem; cursor: pointer; flex: 1;">
-              <input type="checkbox" id="func-extract" ${this.agent.custom_instructions?.enable_extract ? 'checked' : ''} style="margin-top: 0.2rem;" />
+              <input type="checkbox" id="func-extract" ${this.agent.functions?.extract_data?.enabled ? 'checked' : ''} style="margin-top: 0.2rem;" />
               <div class="toggle-content">
                 <span class="toggle-label">Extract Data</span>
                 <span class="toggle-desc">Extract structured data from conversations (name, email, etc.)</span>
@@ -1595,7 +1596,7 @@ THIS IS AN OUTBOUND CALL:
 
           <div class="function-toggle end-call-toggle-container" style="padding: 0; cursor: default;">
             <label style="display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem; cursor: pointer; flex: 1;">
-              <input type="checkbox" id="func-end-call" ${this.agent.custom_instructions?.enable_end_call !== false ? 'checked' : ''} style="margin-top: 0.2rem;" />
+              <input type="checkbox" id="func-end-call" ${this.agent.functions?.end_call?.enabled !== false ? 'checked' : ''} style="margin-top: 0.2rem;" />
               <div class="toggle-content">
                 <span class="toggle-label">End Call</span>
                 <span class="toggle-desc">Allow agent to end calls when conversation is complete</span>
@@ -2567,27 +2568,28 @@ THIS IS AN OUTBOUND CALL:
     const funcExtract = document.getElementById('func-extract');
     const funcEndCall = document.getElementById('func-end-call');
 
-    const updateCustomInstructions = () => {
-      const customInstructions = {
-        ...this.agent.custom_instructions,
-        enable_sms: funcSms?.checked ?? true,
-        enable_transfer: funcTransfer?.checked ?? true,
-        enable_booking: funcBooking?.checked ?? false,
-        enable_extract: funcExtract?.checked ?? false,
-        enable_end_call: funcEndCall?.checked ?? true,
+    const updateFunctions = () => {
+      const functions = {
+        ...this.agent.functions,
+        sms: { ...this.agent.functions?.sms, enabled: funcSms?.checked ?? false },
+        transfer: { ...this.agent.functions?.transfer, enabled: funcTransfer?.checked ?? false },
+        booking: { ...this.agent.functions?.booking, enabled: funcBooking?.checked ?? false },
+        extract_data: { ...this.agent.functions?.extract_data, enabled: funcExtract?.checked ?? false },
+        end_call: { ...this.agent.functions?.end_call, enabled: funcEndCall?.checked ?? true },
       };
-      this.scheduleAutoSave({ custom_instructions: customInstructions });
+      this.agent.functions = functions;
+      this.scheduleAutoSave({ functions });
     };
 
     // End Call toggle
     if (funcEndCall) {
-      funcEndCall.addEventListener('change', updateCustomInstructions);
+      funcEndCall.addEventListener('change', updateFunctions);
     }
 
     // Booking toggle - show modal when enabled
     if (funcBooking) {
       funcBooking.addEventListener('change', () => {
-        updateCustomInstructions();
+        updateFunctions();
         if (funcBooking.checked) {
           this.showBookingModal();
         }
@@ -2607,7 +2609,7 @@ THIS IS AN OUTBOUND CALL:
     // Extract toggle - show modal when enabled
     if (funcExtract) {
       funcExtract.addEventListener('change', () => {
-        updateCustomInstructions();
+        updateFunctions();
         if (funcExtract.checked) {
           this.showExtractDataModal();
         }
@@ -2637,7 +2639,7 @@ THIS IS AN OUTBOUND CALL:
     // SMS toggle - show modal when enabled
     if (funcSms) {
       funcSms.addEventListener('change', () => {
-        updateCustomInstructions();
+        updateFunctions();
         if (funcSms.checked) {
           this.showSmsModal();
         }
@@ -2657,7 +2659,7 @@ THIS IS AN OUTBOUND CALL:
     // Transfer toggle - show modal when enabled
     if (funcTransfer) {
       funcTransfer.addEventListener('change', () => {
-        updateCustomInstructions();
+        updateFunctions();
         if (funcTransfer.checked) {
           this.showTransferModal();
         }
@@ -3677,8 +3679,8 @@ THIS IS AN OUTBOUND CALL:
         }
       }
 
-      // Get saved booking config from custom_instructions
-      const bookingConfig = this.agent.custom_instructions?.booking_config || {};
+      // Get saved booking config from functions
+      const bookingConfig = this.agent.functions?.booking || {};
       const selectedEventTypes = bookingConfig.event_type_ids || [];
 
       const modal = document.createElement('div');
@@ -3764,14 +3766,15 @@ THIS IS AN OUTBOUND CALL:
           const checkboxes = modal.querySelectorAll('.event-type-checkbox:checked');
           const selectedIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
 
-          const customInstructions = {
-            ...this.agent.custom_instructions,
-            booking_config: {
+          const functions = {
+            ...this.agent.functions,
+            booking: {
+              ...this.agent.functions?.booking,
               event_type_ids: selectedIds,
             },
           };
-
-          this.scheduleAutoSave({ custom_instructions: customInstructions });
+          this.agent.functions = functions;
+          this.scheduleAutoSave({ functions });
           modal.remove();
         });
       }
@@ -3918,7 +3921,7 @@ THIS IS AN OUTBOUND CALL:
   }
 
   showEndCallModal() {
-    const currentDescription = this.agent.custom_instructions?.end_call_description ||
+    const currentDescription = this.agent.functions?.end_call?.description ||
       'End the phone call. Use this when the conversation is complete, the caller says goodbye, or there is nothing more to discuss.';
 
     const modal = document.createElement('div');
@@ -3965,11 +3968,15 @@ THIS IS AN OUTBOUND CALL:
     // Save button
     modal.querySelector('#save-end-call-btn').addEventListener('click', async () => {
       const description = modal.querySelector('#end-call-description').value.trim();
-      const customInstructions = {
-        ...this.agent.custom_instructions,
-        end_call_description: description,
+      const functions = {
+        ...this.agent.functions,
+        end_call: {
+          ...this.agent.functions?.end_call,
+          description: description,
+        },
       };
-      await this.scheduleAutoSave({ custom_instructions: customInstructions });
+      this.agent.functions = functions;
+      await this.scheduleAutoSave({ functions });
       modal.remove();
     });
   }
@@ -4890,18 +4897,26 @@ THIS IS AN OUTBOUND CALL:
 
   async showTransferModal() {
     try {
-      // Load transfer numbers from database
-      const { data: transferNumbers, error } = await supabase
-        .from('transfer_numbers')
-        .select('*')
-        .eq('user_id', this.agent.user_id)
-        .order('created_at', { ascending: true });
+      // Load transfer numbers from functions config (or fall back to table for migration)
+      let numbers = this.agent.functions?.transfer?.numbers || [];
 
-      if (error) {
-        console.error('Error loading transfer numbers:', error);
+      // If no numbers in functions, try loading from legacy table
+      if (numbers.length === 0) {
+        const { data: transferNumbers, error } = await supabase
+          .from('transfer_numbers')
+          .select('*')
+          .eq('user_id', this.agent.user_id)
+          .order('created_at', { ascending: true });
+
+        if (!error && transferNumbers?.length > 0) {
+          // Convert legacy format to new format
+          numbers = transferNumbers.map(n => ({
+            number: n.phone_number,
+            label: n.label || '',
+            description: '',
+          }));
+        }
       }
-
-    const numbers = transferNumbers || [];
 
     const modal = document.createElement('div');
     modal.className = 'voice-modal-overlay';
@@ -4964,7 +4979,7 @@ THIS IS AN OUTBOUND CALL:
 
     // Add number button
     modal.querySelector('#add-transfer-number-btn').addEventListener('click', () => {
-      this.modalTransferNumbers.push({ id: null, label: '', phone_number: '', transfer_secret: '' });
+      this.modalTransferNumbers.push({ number: '', label: '', description: '' });
       this.refreshTransferNumbersList();
     });
 
@@ -4982,7 +4997,8 @@ THIS IS AN OUTBOUND CALL:
   }
 
   renderTransferNumberRow(num, index) {
-    let displayNumber = num.phone_number || '';
+    // Support both 'number' (new) and 'phone_number' (legacy) field names
+    let displayNumber = num.number || num.phone_number || '';
     if (displayNumber.startsWith('+1')) {
       displayNumber = displayNumber.substring(2);
     }
@@ -4998,7 +5014,7 @@ THIS IS AN OUTBOUND CALL:
           <input
             type="text"
             class="transfer-label-input form-input"
-            placeholder="Label (e.g., Mobile, Office)"
+            placeholder="Label (e.g., Sales, Support)"
             value="${num.label || ''}"
             data-index="${index}"
             style="flex: 1; font-size: 0.875rem;"
@@ -5015,7 +5031,7 @@ THIS IS AN OUTBOUND CALL:
             </svg>
           </button>
         </div>
-        <div style="display: flex; gap: 0.5rem;">
+        <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
           <div style="flex: 1; display: flex;">
             <span style="
               background: #eff6ff;
@@ -5037,12 +5053,12 @@ THIS IS AN OUTBOUND CALL:
             />
           </div>
         </div>
-        <div style="margin-top: 0.5rem;">
+        <div>
           <input
             type="text"
-            class="transfer-passcode-input form-input"
-            placeholder="Passcode (optional - for instant transfer)"
-            value="${num.transfer_secret || ''}"
+            class="transfer-description-input form-input"
+            placeholder="When to transfer (e.g., Transfer for billing questions)"
+            value="${num.description || ''}"
             data-index="${index}"
             style="width: 100%; font-size: 0.875rem;"
           />
@@ -5094,29 +5110,22 @@ THIS IS AN OUTBOUND CALL:
 
         // Store as +1XXXXXXXXXX
         const digits = value.replace(/\D/g, '');
-        this.modalTransferNumbers[index].phone_number = digits.length === 10 ? `+1${digits}` : '';
+        this.modalTransferNumbers[index].number = digits.length === 10 ? `+1${digits}` : '';
       });
     });
 
-    // Passcode inputs
-    modal.querySelectorAll('.transfer-passcode-input').forEach(input => {
+    // Description inputs
+    modal.querySelectorAll('.transfer-description-input').forEach(input => {
       input.addEventListener('input', (e) => {
         const index = parseInt(e.target.dataset.index);
-        this.modalTransferNumbers[index].transfer_secret = e.target.value;
+        this.modalTransferNumbers[index].description = e.target.value;
       });
     });
 
     // Remove buttons
     modal.querySelectorAll('.remove-transfer-btn').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
+      btn.addEventListener('click', (e) => {
         const index = parseInt(e.currentTarget.dataset.index);
-        const num = this.modalTransferNumbers[index];
-
-        // If it has an ID, delete from database
-        if (num.id) {
-          await supabase.from('transfer_numbers').delete().eq('id', num.id);
-        }
-
         this.modalTransferNumbers.splice(index, 1);
         this.refreshTransferNumbersList();
       });
@@ -5131,32 +5140,25 @@ THIS IS AN OUTBOUND CALL:
     }
 
     try {
-      for (const num of this.modalTransferNumbers) {
-        // Skip empty entries
-        if (!num.label && !num.phone_number) continue;
+      // Filter out empty entries and normalize format
+      const validNumbers = this.modalTransferNumbers
+        .filter(num => num.label || num.number || num.phone_number)
+        .map(num => ({
+          number: num.number || num.phone_number || '',
+          label: num.label || '',
+          description: num.description || '',
+        }));
 
-        if (num.id) {
-          // Update existing
-          await supabase
-            .from('transfer_numbers')
-            .update({
-              label: num.label,
-              phone_number: num.phone_number,
-              transfer_secret: num.transfer_secret || null,
-            })
-            .eq('id', num.id);
-        } else if (num.phone_number) {
-          // Insert new
-          await supabase
-            .from('transfer_numbers')
-            .insert({
-              user_id: this.agent.user_id,
-              label: num.label,
-              phone_number: num.phone_number,
-              transfer_secret: num.transfer_secret || null,
-            });
-        }
-      }
+      // Save to functions.transfer.numbers
+      const functions = {
+        ...this.agent.functions,
+        transfer: {
+          ...this.agent.functions?.transfer,
+          numbers: validNumbers,
+        },
+      };
+      this.agent.functions = functions;
+      await this.scheduleAutoSave({ functions });
     } catch (err) {
       console.error('Error saving transfer numbers:', err);
       alert('Failed to save transfer numbers. Please try again.');
