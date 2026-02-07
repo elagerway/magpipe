@@ -74,27 +74,30 @@ Creates a new AI agent that can handle phone calls, SMS messages, and chat conve
 </ParamField>
 
 <ParamField body="voice_id" type="string">
-  ID of the voice to use for phone calls.
+  ID of the voice to use for phone calls. Use the [List Voices](/api-reference/endpoints/list-voices) endpoint to get all available options.
 
-  **Available voices:**
-  | Voice ID | Description |
-  |----------|-------------|
-  | `alloy` | Neutral, professional |
-  | `echo` | Warm, friendly |
-  | `fable` | Expressive, dynamic |
-  | `onyx` | Deep, authoritative |
-  | `nova` | Bright, energetic |
-  | `shimmer` | Soft, calm |
+  **Popular ElevenLabs voices:**
+  | Voice ID | Name | Description |
+  |----------|------|-------------|
+  | `21m00Tcm4TlvDq8ikWAM` | Rachel | Calm, American female |
+  | `pNInz6obpgDQGcFmaJgB` | Adam | Deep, American male |
+  | `EXAVITQu4vr4xnSDxMaL` | Sarah | Soft, American female |
+  | `TxGEqnHWrfWFTfGW9XjX` | Josh | Strong, American male |
+  | `cjVigY5qzO86Huf0OWal` | Eric | Friendly, American male |
 
-  **Default:** `alloy`
+  **Default:** `21m00Tcm4TlvDq8ikWAM` (Rachel)
 </ParamField>
 
-<ParamField body="voice_speed" type="number">
-  Speech rate multiplier.
+<ParamField body="llm_model" type="string">
+  LLM model for conversations. Use the [List Models](/api-reference/endpoints/list-models) endpoint to get all available options.
 
-  **Range:** 0.5 to 2.0
+  | Model ID | Description |
+  |----------|-------------|
+  | `gpt-4.1-nano` | Fastest response time (default) |
+  | `gpt-4o-mini` | Fast and cost-effective |
+  | `gpt-4o` | Most capable, higher latency |
 
-  **Default:** 1.0
+  **Default:** `gpt-4.1-nano`
 </ParamField>
 
 <ParamField body="language" type="string">
@@ -181,7 +184,7 @@ curl -X POST "https://api.magpipe.ai/rest/v1/agent_configs" \
     "name": "Reception Agent",
     "greeting": "Hello, thanks for calling! How can I help you today?",
     "system_prompt": "You are a friendly receptionist. Be helpful and professional.",
-    "voice_id": "nova"
+    "voice_id": "21m00Tcm4TlvDq8ikWAM"
   }'
 ```
 
@@ -196,7 +199,7 @@ const { data, error } = await supabase
     name: 'Reception Agent',
     greeting: 'Hello, thanks for calling! How can I help you today?',
     system_prompt: 'You are a friendly receptionist. Be helpful and professional.',
-    voice_id: 'nova',
+    voice_id: '21m00Tcm4TlvDq8ikWAM',
   })
   .select()
   .single();
@@ -213,7 +216,7 @@ result = supabase.table('agent_configs').insert({
     'name': 'Reception Agent',
     'greeting': 'Hello, thanks for calling! How can I help you today?',
     'system_prompt': 'You are a friendly receptionist. Be helpful and professional.',
-    'voice_id': 'nova',
+    'voice_id': '21m00Tcm4TlvDq8ikWAM',
 }).execute()
 
 print(result.data)
@@ -229,8 +232,8 @@ print(result.data)
   "name": "Reception Agent",
   "greeting": "Hello, thanks for calling! How can I help you today?",
   "system_prompt": "You are a friendly receptionist. Be helpful and professional.",
-  "voice_id": "nova",
-  "voice_speed": 1.0,
+  "voice_id": "21m00Tcm4TlvDq8ikWAM",
+  "llm_model": "gpt-4.1-nano",
   "language": "en-US",
   "max_call_duration": 1800,
   "is_active": true,
