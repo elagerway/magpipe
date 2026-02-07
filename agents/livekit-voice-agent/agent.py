@@ -1492,6 +1492,14 @@ async def entrypoint(ctx: JobContext):
             await speak_error_and_disconnect(ctx, "This number is not currently assigned. Go to Magpipe.ai to assign your number.")
             return
 
+        # Check if this is the system agent (for unassigned numbers)
+        SYSTEM_AGENT_ID = "00000000-0000-0000-0000-000000000002"
+        if user_config.get("id") == SYSTEM_AGENT_ID:
+            logger.info("🔔 System agent detected - speaking greeting and disconnecting")
+            greeting = user_config.get("greeting_template", "This number is not currently assigned.")
+            await speak_error_and_disconnect(ctx, greeting)
+            return
+
         user_id = user_config["user_id"]
         logger.info(f"Loaded config for user: {user_id}")
 
