@@ -217,15 +217,19 @@ Deno.serve(async (req) => {
       }
 
       const state = stateData.value as TransferState
-      console.log('🔗 Completing warm transfer - bridging all parties')
+      console.log('🔗 Completing warm transfer - bringing caller back to LiveKit')
+      console.log('📞 State:', JSON.stringify(state))
 
-      // Create conference and move everyone in
-      const conferenceName = `warm_xfer_${Date.now()}`
-      const conferenceUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=conference&conf_name=${encodeURIComponent(conferenceName)}`
+      // The transferee is already in LiveKit (via SIP)
+      // We need to bring the caller BACK to LiveKit (not to a separate conference)
+      // This way all 3 parties (caller, transferee, agent) are in LiveKit together
+      // The agent can then go silent and let them talk
 
-      // Move caller to conference
-      console.log('📞 Moving caller to conference...')
-      await fetch(
+      // Redirect caller back to LiveKit SIP
+      const unholdUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=unhold&service_number=${encodeURIComponent(state.service_number || '')}`
+
+      console.log('📞 Bringing caller back to LiveKit...')
+      const callerResponse = await fetch(
         `https://${SIGNALWIRE_SPACE_URL}/api/laml/2010-04-01/Accounts/${SIGNALWIRE_PROJECT_ID}/Calls/${state.actualCallerCallSid}.json`,
         {
           method: 'POST',
@@ -233,46 +237,37 @@ Deno.serve(async (req) => {
             'Authorization': signalwireAuth,
             'Content-Type': 'application/x-www-form-urlencoded',
           },
-          body: `Url=${encodeURIComponent(conferenceUrl)}&Method=GET`,
+          body: `Url=${encodeURIComponent(unholdUrl)}&Method=GET`,
         }
       )
 
-      // Move transferee to conference
-      if (state.transferee_call_sid) {
-        console.log('📞 Moving transferee to conference...')
-        await fetch(
-          `https://${SIGNALWIRE_SPACE_URL}/api/laml/2010-04-01/Accounts/${SIGNALWIRE_PROJECT_ID}/Calls/${state.transferee_call_sid}.json`,
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': signalwireAuth,
-              'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: `Url=${encodeURIComponent(conferenceUrl)}&Method=GET`,
-          }
-        )
+      if (!callerResponse.ok) {
+        const error = await callerResponse.text()
+        console.error('❌ Failed to bring caller back:', error)
+        return errorResponse('Failed to reconnect caller', 500)
       }
+
+      console.log('✅ Caller redirected back to LiveKit')
 
       // Update state
       await supabase.from('temp_state').update({
-        value: { ...state, status: 'bridged', conference_name: conferenceName },
+        value: { ...state, status: 'bridged' },
       }).eq('key', stateKey)
 
       await supabase.from('call_state_logs').insert({
         room_name,
         state: 'warm_transfer_completed',
         component: 'agent',
-        details: JSON.stringify({ ...state, conference_name: conferenceName }),
+        details: JSON.stringify({ ...state, status: 'bridged' }),
       })
 
-      console.log('✅ All parties bridged in conference:', conferenceName)
+      console.log('✅ All parties now in LiveKit together')
 
       return new Response(
         JSON.stringify({
           success: true,
           status: 'bridged',
-          conference_name: conferenceName,
-          message: 'Transfer complete. All parties are now connected.',
+          message: 'Transfer complete. All parties are now connected. You can stay silent while they talk.',
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
