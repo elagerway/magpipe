@@ -2909,14 +2909,17 @@ if __name__ == "__main__":
         sys.argv = [sys.argv[0], "start"]
 
     # Run the agent worker with error handling
+    # Agent name is configurable for local testing with separate dispatch rules
+    agent_worker_name = os.getenv("LIVEKIT_AGENT_NAME", "SW Telephony Agent")
+
     try:
         logger.info("🎬 Starting LiveKit agent worker...")
-        logger.info("   → Agent Name: SW Telephony Agent")
+        logger.info(f"   → Agent Name: {agent_worker_name}")
         logger.info("   → Agent will join rooms automatically via LiveKit Cloud dispatch rules")
         cli.run_app(WorkerOptions(
             entrypoint_fnc=entrypoint,  # Called when agent joins a room
             prewarm_fnc=prewarm,  # Called for explicit agent dispatch
-            agent_name="SW Telephony Agent",
+            agent_name=agent_worker_name,
             num_idle_processes=0  # Disable worker pool to avoid DuplexClosed errors
         ))
     except KeyboardInterrupt:
