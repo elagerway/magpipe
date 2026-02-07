@@ -167,6 +167,9 @@ serve(async (req) => {
       }
     }
 
+    // System agent for unassigned numbers (fixed UUID)
+    const SYSTEM_AGENT_ID = '00000000-0000-0000-0000-000000000002'
+
     // Step 3: Save the service number to service_numbers table
     const { error: insertError } = await supabase
       .from('service_numbers')
@@ -175,7 +178,8 @@ serve(async (req) => {
         phone_number: phoneNumber,
         phone_sid: phoneSid,
         friendly_name: `Magpipe - ${user.email}`,
-        is_active: false, // Inactive by default - user must activate
+        is_active: true, // Active by default - routes to system agent until user assigns their own
+        agent_id: SYSTEM_AGENT_ID, // Default to system agent - user can assign their own
         capabilities: normalizedCapabilities,
       })
 
