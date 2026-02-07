@@ -1,125 +1,161 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from 'npm:@supabase/supabase-js@2'
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-};
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   // Handle CORS preflight
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
   }
 
   try {
     // Get authenticated user
     const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
       {
         global: {
-          headers: { Authorization: req.headers.get("Authorization")! },
+          headers: { Authorization: req.headers.get('Authorization')! },
         },
       }
-    );
+    )
 
-    const authHeader = req.headers.get("Authorization")!;
-    const token = authHeader.replace("Bearer ", "");
+    const authHeader = req.headers.get('Authorization')!
+    const token = authHeader.replace('Bearer ', '')
     const {
       data: { user },
       error: userError,
-    } = await supabaseClient.auth.getUser(token);
+    } = await supabaseClient.auth.getUser(token)
 
     if (userError || !user) {
-      throw new Error("Unauthorized");
+      throw new Error('Unauthorized')
     }
 
-    const { call_sid } = await req.json();
+    const { call_id } = await req.json()
 
-    if (!call_sid) {
+    if (!call_id) {
       return new Response(
-        JSON.stringify({ error: "Missing required parameter: call_sid" }),
+        JSON.stringify({ error: 'Missing required parameter: call_id' }),
         {
           status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         }
-      );
+      )
     }
 
-    // Get SignalWire credentials
-    const signalwireProjectId = Deno.env.get("SIGNALWIRE_PROJECT_ID");
-    const signalwireToken = Deno.env.get("SIGNALWIRE_API_TOKEN");
-    const signalwireSpaceUrl = Deno.env.get("SIGNALWIRE_SPACE_URL");
+    console.log('Terminating call:', { call_id, user_id: user.id })
 
-    if (!signalwireProjectId || !signalwireToken || !signalwireSpaceUrl) {
-      return new Response(
-        JSON.stringify({ error: "SignalWire configuration missing" }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
+    // Look up the call record to determine platform
+    const serviceClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    )
 
-    const signalwireAuth = btoa(`${signalwireProjectId}:${signalwireToken}`);
+    const { data: callRecord } = await serviceClient
+      .from('call_records')
+      .select('voice_platform, vendor_call_id, livekit_call_id')
+      .or(`id.eq.${call_id},vendor_call_id.eq.${call_id},livekit_call_id.eq.${call_id}`)
+      .single()
 
-    console.log("Terminating call:", { call_sid, user_id: user.id });
+    // Try LiveKit first (delete room)
+    const livekitUrl = Deno.env.get('LIVEKIT_URL')
+    const livekitApiKey = Deno.env.get('LIVEKIT_API_KEY')
+    const livekitApiSecret = Deno.env.get('LIVEKIT_API_SECRET')
 
-    // Terminate the call via SignalWire REST API
-    // Setting Status to "completed" ends the call
-    const terminateResponse = await fetch(
-      `https://${signalwireSpaceUrl}/api/laml/2010-04-01/Accounts/${signalwireProjectId}/Calls/${call_sid}.json`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Basic ${signalwireAuth}`,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: "Status=completed",
+    if (livekitUrl && livekitApiKey && livekitApiSecret) {
+      // The call_id might be a room name (call-xxx format)
+      const roomName = call_id.startsWith('call-') ? call_id : `call-${call_id}`
+
+      try {
+        // Import LiveKit SDK dynamically
+        const { RoomServiceClient } = await import('npm:livekit-server-sdk@2')
+        const roomService = new RoomServiceClient(livekitUrl, livekitApiKey, livekitApiSecret)
+
+        await roomService.deleteRoom(roomName)
+        console.log('LiveKit room deleted:', roomName)
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            call_id: call_id,
+            platform: 'livekit',
+            status: 'terminated',
+          }),
+          {
+            status: 200,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          }
+        )
+      } catch (livekitError) {
+        console.log('LiveKit delete failed (may not exist):', livekitError.message)
+        // Continue to try SignalWire
       }
-    );
-
-    if (!terminateResponse.ok) {
-      const errorText = await terminateResponse.text();
-      console.error("Failed to terminate call:", errorText);
-      // Don't throw - the call might have already ended
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: "Failed to terminate call",
-          details: errorText 
-        }),
-        {
-          status: 200, // Return 200 anyway since the UI should still reset
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
     }
 
-    const callData = await terminateResponse.json();
-    console.log("Call terminated:", callData);
+    // Try SignalWire
+    const signalwireProjectId = Deno.env.get('SIGNALWIRE_PROJECT_ID')
+    const signalwireToken = Deno.env.get('SIGNALWIRE_API_TOKEN')
+    const signalwireSpace = Deno.env.get('SIGNALWIRE_SPACE') || 'erik.signalwire.com'
 
+    if (signalwireProjectId && signalwireToken) {
+      const callSid = callRecord?.vendor_call_id || call_id
+      const signalwireAuth = btoa(`${signalwireProjectId}:${signalwireToken}`)
+
+      const terminateResponse = await fetch(
+        `https://${signalwireSpace}/api/laml/2010-04-01/Accounts/${signalwireProjectId}/Calls/${callSid}.json`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Basic ${signalwireAuth}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: 'Status=completed',
+        }
+      )
+
+      if (terminateResponse.ok) {
+        console.log('SignalWire call terminated:', callSid)
+        return new Response(
+          JSON.stringify({
+            success: true,
+            call_id: call_id,
+            platform: 'signalwire',
+            status: 'terminated',
+          }),
+          {
+            status: 200,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          }
+        )
+      } else {
+        const errorText = await terminateResponse.text()
+        console.error('SignalWire terminate failed:', errorText)
+      }
+    }
+
+    // If we get here, neither platform worked
     return new Response(
       JSON.stringify({
-        success: true,
-        call_sid: call_sid,
-        status: "terminated",
+        success: false,
+        error: 'call_not_found',
+        message: 'Call not found or already ended',
       }),
       {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
-    );
+    )
   } catch (error) {
-    console.error("Error in terminate-call:", error);
+    console.error('Error in terminate-call:', error)
     return new Response(
       JSON.stringify({ error: error.message }),
       {
         status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
-    );
+    )
   }
-});
+})
