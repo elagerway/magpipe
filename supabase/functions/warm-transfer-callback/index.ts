@@ -102,13 +102,12 @@ Deno.serve(async (req) => {
     const serviceNumber = transferState.service_number || ''
     const targetLabel = transferState.target_label || 'the person you requested'
     const callerContext = transferState.caller_context || ''
-    const callRecordId = transferState.call_record_id || ''
 
-    console.log('📞 Room name for decline redirect:', roomName, 'Service number:', serviceNumber, 'Target:', targetLabel, 'Call record:', callRecordId)
+    console.log('📞 Room name for decline redirect:', roomName, 'Service number:', serviceNumber, 'Target:', targetLabel)
 
     // Redirect caller to declined notification, then back to LiveKit
     // Pass transfer context so agent knows this is a reconnect after declined transfer
-    const declinedUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=caller_declined&room_name=${encodeURIComponent(roomName)}&agent_name=${encodeURIComponent(agentNameParam)}&service_number=${encodeURIComponent(serviceNumber)}&target_label=${encodeURIComponent(targetLabel)}&caller_context=${encodeURIComponent(callerContext)}&call_record_id=${encodeURIComponent(callRecordId)}`
+    const declinedUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=caller_declined&room_name=${encodeURIComponent(roomName)}&agent_name=${encodeURIComponent(agentNameParam)}&service_number=${encodeURIComponent(serviceNumber)}&target_label=${encodeURIComponent(targetLabel)}&caller_context=${encodeURIComponent(callerContext)}`
     console.log('📞 Declined URL:', declinedUrl)
 
     console.log('📞 Calling SignalWire to redirect caller:', transferState.actualCallerCallSid)
