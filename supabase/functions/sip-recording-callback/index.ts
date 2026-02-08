@@ -107,8 +107,19 @@ Deno.serve(async (req) => {
       downloadHeaders['Authorization'] = 'Basic ' + btoa(`${signalwireProjectId}:${signalwireApiToken}`);
     }
 
-    // Get the recording as mp3
-    const mp3Url = fullRecordingUrl + '.mp3';
+    // Build the correct download URL - must use /Recordings/SID.mp3 format
+    // SignalWire callback sends URLs like:
+    // - /Accounts/.../Calls/.../Recordings/SID (call recordings)
+    // - /Accounts/.../Conferences/.../Recordings/SID (conference recordings)
+    // Both need to be converted to: /Accounts/.../Recordings/SID.mp3
+    let mp3Url = fullRecordingUrl + '.mp3';
+    if (mp3Url.includes('/Calls/') || mp3Url.includes('/Conferences/')) {
+      // Extract recording SID and rebuild URL
+      const recordingSidMatch = mp3Url.match(/Recordings\/([^/.]+)/);
+      if (recordingSidMatch && signalwireProjectId) {
+        mp3Url = `https://${signalwireSpaceUrl}/api/laml/2010-04-01/Accounts/${signalwireProjectId}/Recordings/${recordingSidMatch[1]}.mp3`;
+      }
+    }
     console.log(`📥 Downloading recording from: ${mp3Url}`);
 
     // First request to get redirect URL (SignalWire returns 302 to pre-signed S3 URL)
@@ -127,22 +138,36 @@ Deno.serve(async (req) => {
     }
 
     if (!audioResponse.ok) {
-      console.error(`Failed to download recording: ${audioResponse.status}`);
-      // Still update with SignalWire URL as fallback
+      console.error(`Failed to download recording: ${audioResponse.status} ${audioResponse.statusText}`);
+      // Still update with SignalWire URL as fallback, but also append to recordings array
+      const fallbackEntry = {
+        url: fullRecordingUrl,
+        label: label,
+        duration: parseInt(RecordingDuration as string) || 0,
+        timestamp: new Date().toISOString(),
+        recording_sid: RecordingSid,
+        note: 'fallback_signalwire_url',
+      };
+      const existingRecordings = callRecord.recordings || [];
+      const updatedRecordings = [...existingRecordings, fallbackEntry];
+
       await supabase.from('call_records').update({
-        recording_url: fullRecordingUrl,
+        recording_url: callRecord.recording_url || fullRecordingUrl,
+        recordings: updatedRecordings,
         duration_seconds: parseInt(RecordingDuration as string) || callRecord.duration_seconds,
         status: 'completed',
         metadata: { ...(callRecord.metadata || {}), recording_sid: RecordingSid },
       }).eq('id', callRecord.id);
+      console.log(`✅ Updated call record ${callRecord.id} with fallback recording (label: ${label})`);
       return new Response('OK', { status: 200 });
     }
 
     const audioBlob = await audioResponse.blob();
     console.log(`   Downloaded ${audioBlob.size} bytes`);
 
-    // Upload to Supabase Storage
-    const fileName = `recordings/${callRecord.id}.mp3`;
+    // Upload to Supabase Storage - use unique filename for each recording segment
+    const fileLabel = label === 'main' ? '' : `_${label}`;
+    const fileName = `recordings/${callRecord.id}${fileLabel}.mp3`;
     const { error: uploadError } = await supabase.storage
       .from('public')
       .upload(fileName, audioBlob, {
@@ -200,8 +225,8 @@ Deno.serve(async (req) => {
     console.log(`✅ Updated call record ${callRecord.id} with recording (label: ${label})`);
 
     // Transcribe with speaker diarization asynchronously
-    // Pass call direction to label speakers correctly
-    transcribeWithDiarization(audioBlob, callRecord.id, callRecord.direction || 'outbound', supabase).catch(err => {
+    // Pass call direction and recording label to store per-recording transcript
+    transcribeWithDiarization(audioBlob, callRecord.id, callRecord.direction || 'outbound', supabase, label, RecordingSid as string).catch(err => {
       console.error('Transcription failed:', err);
     });
 
@@ -220,7 +245,7 @@ Deno.serve(async (req) => {
  * - Outbound: Speaker who speaks first is usually the Callee (they answer), our user is Caller
  * - Inbound: Speaker who speaks first is usually the Caller (external), our user is Callee
  */
-async function transcribeWithDiarization(audioBlob: Blob, callRecordId: string, direction: string, supabase: any) {
+async function transcribeWithDiarization(audioBlob: Blob, callRecordId: string, direction: string, supabase: any, recordingLabel: string = 'main', recordingSid: string = '') {
   try {
     const deepgramApiKey = Deno.env.get('DEEPGRAM_API_KEY');
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
@@ -328,18 +353,45 @@ async function transcribeWithDiarization(audioBlob: Blob, callRecordId: string, 
       transcript = whisperResult.text;
     }
 
-    console.log(`✅ Transcription completed: ${transcript.substring(0, 100)}...`);
+    console.log(`✅ Transcription completed (${recordingLabel}): ${transcript.substring(0, 100)}...`);
 
-    // Update call record with transcript
+    // Get current call record to update recordings array
+    const { data: currentRecord, error: fetchError } = await supabase
+      .from('call_records')
+      .select('recordings, transcript')
+      .eq('id', callRecordId)
+      .single();
+
+    if (fetchError) {
+      console.error('Error fetching call record for transcript update:', fetchError);
+      return;
+    }
+
+    // Update the specific recording entry with transcript
+    const recordings = currentRecord.recordings || [];
+    const updatedRecordings = recordings.map((rec: any) => {
+      if (rec.recording_sid === recordingSid || (recordingLabel === 'main' && rec.label === 'main')) {
+        return { ...rec, transcript };
+      }
+      return rec;
+    });
+
+    // Build update data - always update recordings array with per-recording transcript
+    // Only update call-level transcript for "main" recording
+    const updateData: Record<string, unknown> = { recordings: updatedRecordings };
+    if (recordingLabel === 'main') {
+      updateData.transcript = transcript;
+    }
+
     const { error: transcriptError } = await supabase
       .from('call_records')
-      .update({ transcript })
+      .update(updateData)
       .eq('id', callRecordId);
 
     if (transcriptError) {
       console.error('Error saving transcript:', transcriptError);
     } else {
-      console.log(`✅ Saved transcript for call ${callRecordId}`);
+      console.log(`✅ Saved transcript for call ${callRecordId} (${recordingLabel})`);
     }
   } catch (error) {
     console.error('Transcription error:', error);

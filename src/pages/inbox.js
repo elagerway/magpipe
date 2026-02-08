@@ -1739,28 +1739,189 @@ export default class InboxPage {
         </div>
       </div>
 
-      <div class="thread-messages" id="thread-messages">
-        ${call.recording_url ? `
-          <div style="width: 100%; margin-bottom: 0.5rem;">
-            <audio controls src="${call.recording_url}" style="width: 100%; height: 40px;"></audio>
-          </div>
-        ` : ''}
+      <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 1rem; background: var(--bg-tertiary); border-bottom: 1px solid var(--border-color); font-size: 0.75rem; color: var(--text-secondary);">
+        <span>${call.created_at ? new Date(call.created_at).toLocaleString() : ''}</span>
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <span style="font-family: monospace;">${call.id || ''}</span>
+          <button class="copy-call-id-btn" data-call-id="${call.id}" title="Copy call ID" style="background: none; border: none; padding: 2px; cursor: pointer; color: var(--text-secondary); display: flex; align-items: center;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
 
-        ${messages.length > 0 ? messages.map(msg => `
-          <div class="message-bubble ${msg.speaker === 'agent' ? 'outbound' : 'inbound'}">
-            <div class="message-content">${this.linkifyPhoneNumbers(msg.text)}</div>
-          </div>
-        `).join('') : call.transcript ? `
-          <div class="message-bubble inbound" style="max-width: 100%;">
-            <div class="message-content">${this.linkifyPhoneNumbers(call.transcript)}</div>
-          </div>
-        ` : `
-          <div style="padding: 3rem 1.5rem; text-align: center; color: var(--text-secondary);">
-            <p>No transcript available for this call.</p>
-          </div>
-        `}
+      <div class="thread-messages" id="thread-messages">
+        ${this.renderRecordings(call, messages)}
       </div>
     `;
+  }
+
+  formatRecordingLabel(label) {
+    const labels = {
+      'main': 'Conversation',
+      'transfer_conference': 'Transferred Call',
+      'transferee_consult': 'Transfer Consultation',
+      'reconnect_after_decline': 'Reconnect After Decline',
+      'reconnect_to_agent': 'Reconnect',
+      'back_to_agent': 'Back to Agent',
+    };
+    return labels[label] || label.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  }
+
+  /**
+   * Split a transcript text into segments by detecting speaker changes.
+   * Detects speaker changes at:
+   * - Question marks (Q&A pattern)
+   * - After prompts like "say you're busy" followed by a short response
+   * - Before phrases like "I'll let [name] know" (bot responding to input)
+   */
+  splitTranscriptBySpeaker(text, startsAsAgent) {
+    const segments = [];
+    let isAgent = startsAsAgent;
+
+    // First, try to detect the transfer consultation pattern:
+    // "...or say you're busy. [short response]. I'll let [name] know..."
+    const consultMatch = text.match(/^(.+(?:say you're busy|or say busy)[^.]*\.)\s*([^.]{1,30}\.)\s*(I'll let .+)$/i);
+    if (consultMatch) {
+      segments.push({ text: consultMatch[1].trim(), isAgent });
+      segments.push({ text: consultMatch[2].trim(), isAgent: !isAgent });
+      segments.push({ text: consultMatch[3].trim(), isAgent });
+      return segments;
+    }
+
+    // Split on question marks followed by a space and capital letter
+    const parts = text.split(/(\?)\s+(?=[A-Z])/);
+
+    let currentSegment = '';
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      if (part === '?') {
+        currentSegment += '?';
+        if (currentSegment.trim()) {
+          segments.push({ text: currentSegment.trim(), isAgent });
+        }
+        currentSegment = '';
+        isAgent = !isAgent; // Switch speaker after question
+      } else {
+        currentSegment += part;
+      }
+    }
+
+    // Add remaining text
+    if (currentSegment.trim()) {
+      segments.push({ text: currentSegment.trim(), isAgent });
+    }
+
+    return segments.length > 0 ? segments : [{ text, isAgent: startsAsAgent }];
+  }
+
+  formatDurationShort(seconds) {
+    if (!seconds) return '';
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+  }
+
+  renderRecordings(call, messages = []) {
+    // Build recordings array from recordings field or fallback to recording_url
+    const recordings = call.recordings || [];
+    if (recordings.length === 0 && call.recording_url) {
+      recordings.push({ url: call.recording_url, label: 'main', duration: call.duration_seconds });
+    }
+
+    // If no recordings, just show transcript if available
+    if (recordings.length === 0) {
+      if (call.transcript) {
+        const lines = call.transcript.split('\n').filter(l => l.trim());
+        if (lines.length > 0 && lines[0].includes(':')) {
+          const bubbles = [];
+          for (const line of lines) {
+            const colonIndex = line.indexOf(':');
+            if (colonIndex > 0 && colonIndex < 20) {
+              const speaker = line.substring(0, colonIndex).trim().toLowerCase();
+              let text = line.substring(colonIndex + 1).trim();
+              const isAgent = ['pat', 'you', 'agent', 'callee', 'amy'].includes(speaker);
+
+              // Split text into segments by detecting speaker changes
+              const segments = this.splitTranscriptBySpeaker(text, isAgent);
+              for (const seg of segments) {
+                bubbles.push(`<div class="message-bubble ${seg.isAgent ? 'outbound' : 'inbound'}">
+                  <div class="message-content">${this.linkifyPhoneNumbers(seg.text)}</div>
+                </div>`);
+              }
+            } else {
+              bubbles.push(`<div style="color: var(--text-secondary);">${this.linkifyPhoneNumbers(line)}</div>`);
+            }
+          }
+          return `<div style="display: flex; flex-direction: column; gap: 0.5rem; padding: 0.5rem;">${bubbles.join('')}</div>`;
+        }
+        return `<div style="font-size: 0.9rem; color: var(--text-secondary); white-space: pre-wrap; padding: 0.5rem;">${this.linkifyPhoneNumbers(call.transcript)}</div>`;
+      }
+      return `<div style="padding: 3rem 1.5rem; text-align: center; color: var(--text-secondary);"><p>No transcript available for this call.</p></div>`;
+    }
+
+    // Sort recordings: "main" first, then by timestamp (chronological order)
+    const sortedRecordings = [...recordings].sort((a, b) => {
+      if (a.label === 'main') return -1;
+      if (b.label === 'main') return 1;
+      return new Date(a.timestamp || 0) - new Date(b.timestamp || 0);
+    });
+
+    return sortedRecordings.map(rec => {
+      // Show transcript under the recording - use the recording's own transcript
+      let transcriptHtml = '';
+      let recTranscript = rec.transcript;
+
+      // Fallback to call.transcript only if recording has no transcript and it's the only recording
+      if (!recTranscript && recordings.length === 1) {
+        recTranscript = call.transcript;
+      }
+
+      if (recTranscript) {
+        // Parse speaker-labeled transcript into SMS-style chat bubbles
+        const lines = recTranscript.split('\n').filter(l => l.trim());
+        if (lines.length > 0 && lines[0].includes(':')) {
+          const bubbles = [];
+          for (const line of lines) {
+            const colonIndex = line.indexOf(':');
+            if (colonIndex > 0 && colonIndex < 20) {
+              const speaker = line.substring(0, colonIndex).trim().toLowerCase();
+              let text = line.substring(colonIndex + 1).trim();
+              // Agent speakers: pat, you, agent, callee, amy (common agent names)
+              const isAgent = ['pat', 'you', 'agent', 'callee', 'amy'].includes(speaker);
+
+              // Split text into segments by detecting speaker changes at question marks
+              const segments = this.splitTranscriptBySpeaker(text, isAgent);
+              for (const seg of segments) {
+                bubbles.push(`<div class="message-bubble ${seg.isAgent ? 'outbound' : 'inbound'}">
+                  <div class="message-content">${this.linkifyPhoneNumbers(seg.text)}</div>
+                </div>`);
+              }
+            } else {
+              bubbles.push(`<div style="color: var(--text-secondary); margin: 0.25rem 0;">${this.linkifyPhoneNumbers(line)}</div>`);
+            }
+          }
+          // Wrap in flex container for proper bubble alignment
+          transcriptHtml = `<div style="display: flex; flex-direction: column; gap: 0.5rem;">${bubbles.join('')}</div>`;
+        } else {
+          // No speaker labels - show as plain text
+          transcriptHtml = `<div style="font-size: 0.85rem; color: var(--text-secondary); white-space: pre-wrap;">${this.linkifyPhoneNumbers(recTranscript)}</div>`;
+        }
+      }
+
+      return `
+        <div style="width: 100%; margin-bottom: 0.75rem; padding: 0.75rem; background: var(--bg-tertiary); border-radius: 8px;">
+          <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.25rem; display: flex; justify-content: space-between;">
+            <span style="font-weight: 500;">${this.formatRecordingLabel(rec.label)}</span>
+            ${rec.duration ? `<span>${this.formatDurationShort(rec.duration)}</span>` : ''}
+          </div>
+          <audio controls src="${rec.url}" style="width: 100%; height: 36px;"></audio>
+          ${transcriptHtml ? `<div style="margin-top: 0.5rem;">${transcriptHtml}</div>` : ''}
+        </div>
+      `;
+    }).join('');
   }
 
   getCallStatusInfo(status) {
@@ -2005,21 +2166,27 @@ export default class InboxPage {
       if (isNaN(dateObj.getTime())) return '';
 
       const now = new Date();
-      const diffMs = now - dateObj;
-      const diffMins = Math.floor(diffMs / 60000);
-      const diffHours = Math.floor(diffMs / 3600000);
-      const diffDays = Math.floor(diffMs / 86400000);
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const dateDay = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate());
 
-      if (diffMins < 1) return 'now';
-      if (diffMins < 60) return `${diffMins}m`;
-      if (diffHours < 24) return `${diffHours}h`;
-      if (diffDays === 0) return 'Today';
-      if (diffDays === 1) return 'Yesterday';
-      if (diffDays < 7) return `${diffDays}d`;
+      const timeStr = dateObj.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
 
-      // Final safety check before calling toLocaleDateString
+      // Today: just show time
+      if (dateDay.getTime() === today.getTime()) {
+        return timeStr;
+      }
+
+      // Yesterday: show "Yesterday" + time
+      if (dateDay.getTime() === yesterday.getTime()) {
+        return `Yesterday ${timeStr}`;
+      }
+
+      // Older: show full date + time
       if (typeof dateObj.toLocaleDateString !== 'function') return '';
-      return dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const dateStr = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      return `${dateStr} ${timeStr}`;
     } catch (err) {
       console.error('formatTimestamp error:', err, 'date:', date);
       return '';
@@ -5061,6 +5228,27 @@ Examples:
         return;
       }
 
+      // Handle copy call ID button click
+      const copyBtn = e.target.closest('.copy-call-id-btn');
+      if (copyBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const callId = copyBtn.dataset.callId;
+        if (callId) {
+          navigator.clipboard.writeText(callId).then(() => {
+            // Show brief feedback
+            const originalHtml = copyBtn.innerHTML;
+            copyBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+            copyBtn.style.color = 'var(--success-color)';
+            setTimeout(() => {
+              copyBtn.innerHTML = originalHtml;
+              copyBtn.style.color = '';
+            }, 1500);
+          });
+        }
+        return;
+      }
+
       // Handle select mode checkbox click
       const checkbox = e.target.closest('input[type="checkbox"][data-conv-key]');
       if (checkbox && this.selectMode) {
@@ -5392,6 +5580,27 @@ Examples:
   }
 
   attachRedialButtonListener() {
+    // Copy call ID button (in call detail header)
+    const copyBtns = document.querySelectorAll('#message-thread .copy-call-id-btn');
+    copyBtns.forEach(copyBtn => {
+      copyBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const callId = copyBtn.dataset.callId;
+        if (callId) {
+          navigator.clipboard.writeText(callId).then(() => {
+            const originalHtml = copyBtn.innerHTML;
+            copyBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+            copyBtn.style.color = 'var(--success-color)';
+            setTimeout(() => {
+              copyBtn.innerHTML = originalHtml;
+              copyBtn.style.color = '';
+            }, 1500);
+          });
+        }
+      });
+    });
+
     // Call action button
     const callBtn = document.getElementById('call-action-btn');
     if (callBtn) {
