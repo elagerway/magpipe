@@ -3,6 +3,7 @@
 Pat AI Voice Agent - LiveKit Implementation
 Handles real-time voice conversations with STT, LLM, and TTS pipeline
 """
+print("🔴 AGENT CODE VERSION: RECONNECT-AWARE-V3 🔴")
 
 import aiohttp
 import asyncio
@@ -17,6 +18,18 @@ import sys
 import threading
 import time as time_module
 from typing import Annotated
+
+# Load environment variables from .env files
+# This is crucial for subprocess workers to have access to API keys
+from dotenv import load_dotenv
+# Get absolute path to .env files
+_agent_dir = os.path.dirname(os.path.abspath(__file__))
+_root_dir = os.path.dirname(os.path.dirname(_agent_dir))
+# Load root .env first, then agent .env (agent overrides root)
+load_dotenv(os.path.join(_root_dir, '.env'), override=True)
+load_dotenv(os.path.join(_agent_dir, '.env'), override=True)
+# Debug: print if DEEPGRAM key loaded
+print(f"DEEPGRAM_API_KEY loaded: {bool(os.getenv('DEEPGRAM_API_KEY'))}", flush=True)
 
 # Force unbuffered output for immediate log visibility in Render
 try:
@@ -56,6 +69,15 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 logger = logging.getLogger(__name__)
+
+# Silence noisy loggers
+logging.getLogger("hpack").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("h2").setLevel(logging.WARNING)
+logging.getLogger("h11").setLevel(logging.WARNING)
+logging.getLogger("livekit").setLevel(logging.INFO)
+logging.getLogger("livekit.agents").setLevel(logging.INFO)
 
 # Log immediately on module load to verify script is running
 print("=" * 80, flush=True)
@@ -150,7 +172,7 @@ async def speak_error_and_disconnect(ctx: JobContext, message: str):
         error_session = AgentSession(
             vad=silero.VAD.load(),
             stt=deepgram.STT(model="nova-2-phonecall", language="en-US"),
-            llm=lkopenai.LLM(model="gpt-4.1-nano"),
+            llm=lkopenai.LLM(model="gpt-4o-mini"),
             tts=elevenlabs.TTS(
                 model="eleven_flash_v2_5",
                 voice_id="21m00Tcm4TlvDq8ikWAM",  # Rachel
@@ -730,7 +752,7 @@ async def check_phone_admin_access(caller_number: str) -> dict:
 
         # Query users table for matching phone number
         response = supabase.table("users") \
-            .select("id, full_name, phone, phone_admin_access_code, phone_admin_locked") \
+            .select("id, name, phone, phone_admin_access_code, phone_admin_locked") \
             .eq("phone", f"+{normalized}") \
             .limit(1) \
             .execute()
@@ -743,7 +765,7 @@ async def check_phone_admin_access(caller_number: str) -> dict:
                 return {
                     "has_access": True,
                     "user_id": user_data["id"],
-                    "full_name": user_data.get("full_name", ""),
+                    "full_name": user_data.get("name", ""),
                     "access_code_hash": user_data["phone_admin_access_code"],
                     "is_locked": user_data.get("phone_admin_locked", False),
                 }
@@ -877,7 +899,7 @@ def create_transfer_tool(user_id: str, transfer_numbers: list, room_name: str):
     return transfer_call
 
 
-def create_warm_transfer_tools(user_id: str, transfer_numbers: list, room_name: str, service_number: str, caller_identity: str, ctx: JobContext):
+def create_warm_transfer_tools(user_id: str, transfer_numbers: list, room_name: str, service_number: str, caller_identity: str, agent_name: str, ctx: JobContext):
     """Create warm transfer tools for attended call transfers.
 
     Uses SignalWire API for outbound dialing (LiveKit SIP outbound doesn't work with SignalWire).
@@ -1008,6 +1030,7 @@ def create_warm_transfer_tools(user_id: str, transfer_numbers: list, room_name: 
                         "target_label": transfer_config['label'],
                         "caller_number": caller_identity,
                         "service_number": service_number,
+                        "agent_name": agent_name,
                     },
                 ) as response:
                     result = await response.json()
@@ -2074,9 +2097,12 @@ async def entrypoint(ctx: JobContext):
             "agent_id": str(user_config.get("id")),
         })
 
+        log_call_state(ctx.room.name, "debug_1_fetching_voice", "agent", {})
+
         # Get voice configuration
         voice_id = user_config.get("voice_id", "11labs-Rachel")
         voice_config = await get_voice_config(voice_id, user_id)
+        log_call_state(ctx.room.name, "debug_2_voice_fetched", "agent", {"voice_id": voice_id})
 
         # Get transfer numbers
         transfer_numbers_response = supabase.table("transfer_numbers") \
@@ -2085,12 +2111,16 @@ async def entrypoint(ctx: JobContext):
             .execute()
 
         transfer_numbers = transfer_numbers_response.data or []
+        log_call_state(ctx.room.name, "debug_3_transfer_nums", "agent", {"count": len(transfer_numbers)})
 
         # Get dynamic variables for extraction
         agent_id = user_config.get("id")
         dynamic_variables = await get_dynamic_variables(agent_id, user_id)
+        log_call_state(ctx.room.name, "debug_4_dynamic_vars", "agent", {"count": len(dynamic_variables)})
     else:
         logger.info("⚡ Using pre-fetched configs from fast path")
+
+    log_call_state(ctx.room.name, "debug_5_prompt_start", "agent", {})
 
     # Get greeting message and base prompt
     base_prompt = user_config.get("system_prompt", "You are Pat, a helpful AI assistant answering calls for a business. The caller is a customer - treat them professionally and helpfully.")
@@ -2160,7 +2190,65 @@ THIS IS AN OUTBOUND CALL:
                 actual_caller_phone = sip_phone
                 break
 
+        # Check for reconnect context from SIP headers (e.g., after declined transfer)
+        reconnect_reason = None
+        transfer_target = None
+        for participant in ctx.room.remote_participants.values():
+            attrs = participant.attributes
+            reconnect_reason = attrs.get("reconnect_reason")
+            transfer_target = attrs.get("transfer_target")
+            if reconnect_reason:
+                logger.info(f"🔄 Reconnect detected from SIP headers: reason={reconnect_reason}, target={transfer_target}")
+                break
+
+        # Fallback: Check database for recent declined transfer for this caller
+        logger.info(f"🔄 Checking for reconnect: reconnect_reason={reconnect_reason}, actual_caller_phone={actual_caller_phone}")
+        if not reconnect_reason and actual_caller_phone:
+            try:
+                # Look for declined transfer in last 2 minutes
+                # Room names contain the caller phone, so we can match by that
+                caller_phone_clean = actual_caller_phone.replace("+", "")
+                recent_declined = supabase.table("call_state_logs") \
+                    .select("details, room_name") \
+                    .eq("state", "warm_transfer_declined") \
+                    .gte("created_at", (datetime.datetime.utcnow() - datetime.timedelta(minutes=2)).isoformat()) \
+                    .order("created_at", desc=True) \
+                    .limit(5) \
+                    .execute()
+
+                logger.info(f"🔄 Recent declined query result: {recent_declined.data}")
+                # Find one that matches this caller's phone
+                for declined_log in (recent_declined.data or []):
+                    room_name = declined_log.get("room_name", "")
+                    if caller_phone_clean in room_name or actual_caller_phone in room_name:
+                        logger.info(f"🔄 Found matching declined transfer for this caller: {declined_log}")
+
+                        # Parse the details JSON to get target_label
+                        details_str = declined_log.get("details", "{}")
+                        try:
+                            details = json.loads(details_str) if isinstance(details_str, str) else details_str
+                            transfer_target = details.get("target_label", "the person you requested")
+                            reconnect_reason = "transfer_declined"
+                            logger.info(f"🔄 Reconnect detected from DB: target={transfer_target}")
+                        except json.JSONDecodeError as je:
+                            logger.error(f"Failed to parse declined transfer details: {je}")
+                            transfer_target = "the person you requested"
+                            reconnect_reason = "transfer_declined"
+                        break
+            except Exception as e:
+                logger.error(f"Error checking for recent declined transfer: {e}")
+
+        # Customize greeting for reconnect after declined transfer
+        if reconnect_reason == "transfer_declined" and transfer_target:
+            greeting = f"I'm sorry, {transfer_target} wasn't available. How else can I help you?"
+            logger.info(f"🔄 Using reconnect greeting for declined transfer to {transfer_target}")
+        else:
+            greeting = user_config.get("greeting_template", "Hello! This is Pat. How can I help you today?")
+
         caller_phone_info = f"\n- The caller's phone number is: {actual_caller_phone}" if actual_caller_phone else ""
+        reconnect_context = ""
+        if reconnect_reason == "transfer_declined":
+            reconnect_context = f"\n- IMPORTANT: This caller just tried to transfer to {transfer_target} but they were unavailable. Apologize briefly and offer to help with something else."
 
         # Put role clarification FIRST, then user's prompt, then call context
         INBOUND_ROLE_PREFIX = f"""CRITICAL - UNDERSTAND YOUR ROLE:
@@ -2169,7 +2257,7 @@ The person on this call is a CALLER/CUSTOMER calling in - they are NOT the busin
 - The CALLER is a customer/client reaching out to the business
 - Do NOT treat the caller as your boss or as if they set you up
 - Do NOT say "your assistant" or "your number" to them - you're not THEIR assistant
-- Treat every caller professionally as a potential customer{caller_phone_info}
+- Treat every caller professionally as a potential customer{caller_phone_info}{reconnect_context}
 
 YOUR CONFIGURED PERSONALITY:
 """
@@ -2186,6 +2274,8 @@ CALL CONTEXT:
         logger.info("📥 Inbound call - Agent handling customer service")
 
     logger.info(f"Voice system prompt applied for {direction} call")
+
+    log_call_state(ctx.room.name, "debug_5b_memory_check", "agent", {})
 
     # Inject caller memory if memory is enabled for this agent
     agent_id = user_config.get("id")
@@ -2258,6 +2348,8 @@ CALL CONTEXT:
 
     # Already connected earlier to get service number, don't connect again in session.start
 
+    log_call_state(ctx.room.name, "debug_6_custom_funcs", "agent", {})
+
     # Load custom functions for this agent
     custom_tools = []
     if agent_id:
@@ -2291,6 +2383,7 @@ CALL CONTEXT:
     # Transfer function
     transfer_config = functions_config.get("transfer", {})
     transfer_enabled = transfer_config.get("enabled", False)
+    logger.info(f"📞 Transfer config: enabled={transfer_enabled}, numbers={len(transfer_config.get('numbers', []))}")
     if transfer_enabled:
         # Get transfer numbers from functions.transfer.numbers, or fall back to table
         transfer_nums = transfer_config.get("numbers", [])
@@ -2312,6 +2405,7 @@ CALL CONTEXT:
                 room_name=ctx.room.name,
                 service_number=service_number or '',
                 caller_identity=caller_identity or '',
+                agent_name=user_config.get("name", "your assistant"),
                 ctx=ctx,
             )
             custom_tools.extend(warm_transfer_tools)
@@ -2366,43 +2460,55 @@ CALL CONTEXT:
         logger.info(f"📝 Registered extract_data/collect tool")
 
     # Create Agent instance with custom function tools
+    log_call_state(ctx.room.name, "debug_7_creating_agent", "agent", {})
     if custom_tools:
         assistant = Agent(instructions=system_prompt, tools=custom_tools)
         logger.info(f"🔧 Agent created with {len(custom_tools)} custom function tools")
     else:
         assistant = Agent(instructions=system_prompt)
+    log_call_state(ctx.room.name, "debug_8_agent_created", "agent", {})
 
-    # Get LLM model from config (default to gpt-4.1-nano for lowest latency)
-    llm_model = user_config.get("llm_model", "gpt-4.1-nano") if user_config else "gpt-4.1-nano"
+    # Get LLM model from config (default to gpt-4o-mini for lowest latency)
+    llm_model = user_config.get("llm_model", "gpt-4o-mini") if user_config else "gpt-4o-mini"
 
     # Get voice settings from voice_config (or use defaults)
     tts_voice_id = voice_config.get("voice_id", "21m00Tcm4TlvDq8ikWAM") if voice_config else "21m00Tcm4TlvDq8ikWAM"
 
     logger.info(f"🎙️ Using LLM: {llm_model}, Voice: {tts_voice_id}")
 
+    log_call_state(ctx.room.name, "debug_9_creating_session", "agent", {"llm": llm_model, "voice": tts_voice_id})
+
     # Initialize AgentSession with low-latency configuration
     # VAD tuning: instant response with background noise filtering
-    session = AgentSession(
-        vad=silero.VAD.load(
-            min_silence_duration=0.0,   # Respond immediately when speech stops
-            min_speech_duration=0.15,   # Require slightly longer speech to trigger
-            activation_threshold=0.6,   # Higher = less sensitive to background noise (default 0.5)
-        ),
-        stt=deepgram.STT(
-            model="nova-2-phonecall",
-            language="en-US",
-        ),
-        llm=lkopenai.LLM(
-            model=llm_model,
-            temperature=0.7,
-        ),
-        tts=elevenlabs.TTS(
-            model="eleven_flash_v2_5",  # Fastest ElevenLabs model
-            voice_id=tts_voice_id,
-            api_key=os.getenv("ELEVENLABS_API_KEY") or os.getenv("ELEVEN_API_KEY"),
-            chunk_length_schedule=[50, 80, 120, 150],  # Smaller chunks for faster first audio
-        ),
-    )
+    try:
+        session = AgentSession(
+            vad=silero.VAD.load(
+                min_silence_duration=0.0,   # Respond immediately when speech stops
+                min_speech_duration=0.15,   # Require slightly longer speech to trigger
+                activation_threshold=0.6,   # Higher = less sensitive to background noise (default 0.5)
+            ),
+            stt=deepgram.STT(
+                model="nova-2-phonecall",
+                language="en-US",
+                api_key=os.getenv("DEEPGRAM_API_KEY"),
+            ),
+            llm=lkopenai.LLM(
+                model=llm_model,
+                temperature=0.7,
+            ),
+            tts=elevenlabs.TTS(
+                model="eleven_flash_v2_5",  # Fastest ElevenLabs model
+                voice_id=tts_voice_id,
+                api_key=os.getenv("ELEVENLABS_API_KEY") or os.getenv("ELEVEN_API_KEY"),
+                chunk_length_schedule=[50, 80, 120, 150],  # Smaller chunks for faster first audio
+            ),
+        )
+    except Exception as e:
+        log_call_state(ctx.room.name, "debug_session_error", "agent", {"error": str(e)})
+        logger.error(f"Failed to create AgentSession: {e}")
+        raise
+
+    log_call_state(ctx.room.name, "debug_10_session_created", "agent", {})
 
     # Track egress (recording) ID
     egress_id = None

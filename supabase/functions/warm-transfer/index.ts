@@ -1,10 +1,14 @@
 /**
- * Warm Transfer - Orchestrates attended call transfers
+ * Warm Transfer - Orchestrates attended call transfers using SignalWire SWML
  *
- * Flow:
- * 1. start: Put caller on hold, dial transferee to join agent in LiveKit
- * 2. complete: Bridge all parties together in a conference
- * 3. cancel: Hang up transferee, bring caller back from hold
+ * NEW Flow (using SignalWire AI with ElevenLabs voices):
+ * 1. start: Put caller on hold in conference, dial transferee with AI agent
+ * 2. AI agent briefs transferee and asks if available
+ * 3. If accepted: caller is connected to conference with transferee
+ * 4. If declined: caller hears message and is returned to LiveKit
+ *
+ * This approach uses SignalWire's native AI instead of trying to bridge to LiveKit,
+ * which avoids the "new room creation" problem with inbound SIP.
  */
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
@@ -18,20 +22,19 @@ const SIGNALWIRE_SPACE_URL = Deno.env.get('SIGNALWIRE_SPACE_URL') || 'erik.signa
 const SIGNALWIRE_PROJECT_ID = Deno.env.get('SIGNALWIRE_PROJECT_ID')!
 const SIGNALWIRE_API_TOKEN = Deno.env.get('SIGNALWIRE_API_TOKEN')!
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
-const LIVEKIT_SIP_DOMAIN = Deno.env.get('LIVEKIT_SIP_DOMAIN') || '378ads1njtd.sip.livekit.cloud'
-
-// Hold music URL
-const HOLD_MUSIC_URL = 'http://com.twilio.sounds.music.s3.amazonaws.com/MARKOVICHAMP-B4.mp3'
 
 interface TransferState {
   actualCallerCallSid: string
   transferee_call_sid?: string
-  conference_name?: string
+  conference_name: string
   target_number: string
   target_label?: string
   caller_number: string
+  caller_context?: string
   service_number: string
-  status: 'holding' | 'consulting' | 'bridged' | 'cancelled'
+  room_name: string
+  voice_id?: string
+  status: 'holding' | 'consulting' | 'bridged' | 'cancelled' | 'declined'
 }
 
 Deno.serve(async (req) => {
@@ -48,6 +51,9 @@ Deno.serve(async (req) => {
       caller_call_sid,  // Original caller's SignalWire call SID (optional - will be looked up if not provided)
       caller_number,    // Caller's phone number
       service_number,   // Our service number (caller ID for outbound)
+      caller_context = 'a customer',  // Context about the caller for AI briefing
+      voice_id = 'Rachel',            // ElevenLabs voice ID
+      agent_name = 'your assistant',  // Name of the AI agent
     } = await req.json()
 
     console.log(`🔄 Warm Transfer: ${operation}`, { room_name, target_number, service_number })
@@ -90,16 +96,12 @@ Deno.serve(async (req) => {
         return errorResponse('Could not find the caller\'s call to transfer', 404)
       }
 
-      // Step 1: Put caller on hold
-      console.log('📞 Putting caller on hold...')
-      const holdTwiml = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Say voice="Polly.Joanna">Please hold while I transfer you to ${target_label || 'our team'}.</Say>
-  <Play loop="0">${HOLD_MUSIC_URL}</Play>
-</Response>`
+      // Generate unique conference name
+      const confName = `transfer_${room_name}_${Date.now()}`
 
-      // Create a data URL for the hold TwiML
-      const holdTwimlUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=hold&target_label=${encodeURIComponent(target_label || '')}`
+      // Step 1: Put caller on hold in a conference
+      console.log('📞 Putting caller on hold in conference...')
+      const holdUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=hold&conf_name=${encodeURIComponent(confName)}`
 
       const holdResponse = await fetch(
         `https://${SIGNALWIRE_SPACE_URL}/api/laml/2010-04-01/Accounts/${SIGNALWIRE_PROJECT_ID}/Calls/${actualCallerCallSid}.json`,
@@ -109,7 +111,7 @@ Deno.serve(async (req) => {
             'Authorization': signalwireAuth,
             'Content-Type': 'application/x-www-form-urlencoded',
           },
-          body: `Url=${encodeURIComponent(holdTwimlUrl)}&Method=GET`,
+          body: `Url=${encodeURIComponent(holdUrl)}&Method=GET`,
         }
       )
 
@@ -119,10 +121,10 @@ Deno.serve(async (req) => {
         return errorResponse('Failed to put caller on hold', 500)
       }
 
-      console.log('✅ Caller on hold')
+      console.log('✅ Caller on hold in conference:', confName)
 
-      // Step 2: Dial transferee to join the LiveKit room (agent can talk privately)
-      console.log('📞 Dialing transferee:', target_number)
+      // Step 2: Dial transferee with SignalWire AI agent (ElevenLabs voice)
+      console.log('📞 Dialing transferee with AI agent:', target_number)
 
       let normalizedTarget = target_number.replace(/[^\d+]/g, '')
       if (!normalizedTarget.startsWith('+')) {
@@ -133,13 +135,13 @@ Deno.serve(async (req) => {
         }
       }
 
-      // TwiML to connect transferee to the EXISTING LiveKit room (use room_name, not service_number)
-      const consultTwimlUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=consult&room_name=${encodeURIComponent(room_name)}`
+      // TwiML URL for whisper message to transferee
+      const transfereeUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=ai_transfer&conf_name=${encodeURIComponent(confName)}&agent_name=${encodeURIComponent(agent_name)}&context=${encodeURIComponent(caller_context)}&voice_id=${encodeURIComponent(voice_id)}`
 
       const dialFormBody = [
         `To=${encodeURIComponent(normalizedTarget)}`,
         `From=${encodeURIComponent(service_number || '+16042566768')}`,
-        `Url=${encodeURIComponent(consultTwimlUrl)}`,
+        `Url=${encodeURIComponent(transfereeUrl)}`,
         `Method=GET`,
         `StatusCallback=${encodeURIComponent(`${SUPABASE_URL}/functions/v1/warm-transfer-status`)}`,
         `StatusCallbackEvent=answered`,
@@ -168,16 +170,20 @@ Deno.serve(async (req) => {
       }
 
       const dialResult = await dialResponse.json()
-      console.log('✅ Transferee call initiated:', dialResult.sid)
+      console.log('✅ Transferee call initiated with AI agent:', dialResult.sid)
 
       // Store transfer state
       const transferState: TransferState = {
         actualCallerCallSid,
         transferee_call_sid: dialResult.sid,
+        conference_name: confName,
         target_number: normalizedTarget,
         target_label,
         caller_number: caller_number || '',
+        caller_context,
         service_number: service_number || '',
+        room_name,
+        voice_id,
         status: 'consulting',
       }
 
@@ -199,13 +205,17 @@ Deno.serve(async (req) => {
           success: true,
           status: 'consulting',
           transferee_call_sid: dialResult.sid,
-          message: 'Caller on hold. You can now speak privately with the transferee.',
+          conference_name: confName,
+          message: 'Caller on hold. AI agent is briefing the transferee.',
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
 
     } else if (operation === 'complete') {
-      // Get transfer state
+      // Note: With the SWML approach, the AI agent handles bridging automatically
+      // via the connect_caller SWAIG function. This operation is for manual completion
+      // or can be called if we need to programmatically complete the transfer.
+
       const { data: stateData } = await supabase
         .from('temp_state')
         .select('value')
@@ -217,37 +227,11 @@ Deno.serve(async (req) => {
       }
 
       const state = stateData.value as TransferState
-      console.log('🔗 Completing warm transfer - bringing caller back to LiveKit')
+      console.log('🔗 Completing warm transfer manually')
       console.log('📞 State:', JSON.stringify(state))
 
-      // The transferee is already in LiveKit (via SIP)
-      // We need to bring the caller BACK to LiveKit (not to a separate conference)
-      // This way all 3 parties (caller, transferee, agent) are in LiveKit together
-      // The agent can then go silent and let them talk
-
-      // Redirect caller back to LiveKit SIP using room_name
-      const unholdUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=unhold&room_name=${encodeURIComponent(room_name)}`
-
-      console.log('📞 Bringing caller back to LiveKit...')
-      const callerResponse = await fetch(
-        `https://${SIGNALWIRE_SPACE_URL}/api/laml/2010-04-01/Accounts/${SIGNALWIRE_PROJECT_ID}/Calls/${state.actualCallerCallSid}.json`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': signalwireAuth,
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: `Url=${encodeURIComponent(unholdUrl)}&Method=GET`,
-        }
-      )
-
-      if (!callerResponse.ok) {
-        const error = await callerResponse.text()
-        console.error('❌ Failed to bring caller back:', error)
-        return errorResponse('Failed to reconnect caller', 500)
-      }
-
-      console.log('✅ Caller redirected back to LiveKit')
+      // With SWML, the caller is in a conference. The AI agent joins the same
+      // conference when transfer is accepted. So we just update state.
 
       // Update state
       await supabase.from('temp_state').update({
@@ -261,13 +245,13 @@ Deno.serve(async (req) => {
         details: JSON.stringify({ ...state, status: 'bridged' }),
       })
 
-      console.log('✅ All parties now in LiveKit together')
+      console.log('✅ Transfer marked as complete')
 
       return new Response(
         JSON.stringify({
           success: true,
           status: 'bridged',
-          message: 'Transfer complete. All parties are now connected. You can stay silent while they talk.',
+          message: 'Transfer complete. Caller and transferee are now connected.',
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
@@ -287,9 +271,9 @@ Deno.serve(async (req) => {
       const state = stateData.value as TransferState
       console.log('❌ Cancelling warm transfer')
 
-      // Hang up transferee
+      // Hang up transferee call (the AI agent call)
       if (state.transferee_call_sid) {
-        console.log('📞 Hanging up transferee...')
+        console.log('📞 Hanging up transferee call...')
         try {
           await fetch(
             `https://${SIGNALWIRE_SPACE_URL}/api/laml/2010-04-01/Accounts/${SIGNALWIRE_PROJECT_ID}/Calls/${state.transferee_call_sid}.json`,
@@ -303,13 +287,13 @@ Deno.serve(async (req) => {
             }
           )
         } catch (e) {
-          console.log('Transferee may have already hung up')
+          console.log('Transferee call may have already ended')
         }
       }
 
-      // Bring caller back
-      console.log('📞 Bringing caller back from hold...')
-      await unholdCaller(state.actualCallerCallSid, room_name, signalwireAuth, state.service_number)
+      // Bring caller back to LiveKit from the hold conference
+      console.log('📞 Bringing caller back to LiveKit...')
+      await unholdCaller(state.actualCallerCallSid, state.room_name, signalwireAuth)
 
       // Update state
       await supabase.from('temp_state').update({
@@ -323,13 +307,13 @@ Deno.serve(async (req) => {
         details: JSON.stringify(state),
       })
 
-      console.log('✅ Transfer cancelled - caller back on line')
+      console.log('✅ Transfer cancelled - caller returned to agent')
 
       return new Response(
         JSON.stringify({
           success: true,
           status: 'cancelled',
-          message: 'Transfer cancelled. Caller is back on the line.',
+          message: 'Transfer cancelled. Caller is back with the agent.',
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
@@ -347,21 +331,29 @@ Deno.serve(async (req) => {
   }
 })
 
-async function unholdCaller(callerCallSid: string, roomName: string, signalwireAuth: string, _serviceNumber?: string) {
-  // Reconnect caller to LiveKit room using room_name in SIP URI
+async function unholdCaller(callerCallSid: string, roomName: string, signalwireAuth: string) {
+  // Redirect caller back to LiveKit room using TwiML with SIP dial
+  // This takes them out of the hold conference and back to the agent
   const unholdUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=unhold&room_name=${encodeURIComponent(roomName)}`
 
-  await fetch(
-    `https://${SIGNALWIRE_SPACE_URL}/api/laml/2010-04-01/Accounts/${SIGNALWIRE_PROJECT_ID}/Calls/${callerCallSid}.json`,
-    {
-      method: 'POST',
-      headers: {
-        'Authorization': signalwireAuth,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: `Url=${encodeURIComponent(unholdUrl)}&Method=GET`,
+  try {
+    const response = await fetch(
+      `https://${SIGNALWIRE_SPACE_URL}/api/laml/2010-04-01/Accounts/${SIGNALWIRE_PROJECT_ID}/Calls/${callerCallSid}.json`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': signalwireAuth,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `Url=${encodeURIComponent(unholdUrl)}&Method=GET`,
+      }
+    )
+    if (!response.ok) {
+      console.error('Failed to unhold caller:', await response.text())
     }
-  )
+  } catch (e) {
+    console.error('Error unholding caller:', e)
+  }
 }
 
 function errorResponse(message: string, status: number) {
