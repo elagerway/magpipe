@@ -256,11 +256,11 @@ export default class CallsPage {
           </div>
         ` : ''}
 
-        ${callRecord.recording_url ? `
+        ${(callRecord.recordings && callRecord.recordings.length > 0) || callRecord.recording_url ? `
           <div class="form-group">
-            <strong>Recording:</strong><br>
-            <div id="recording-player-container" style="margin-top: 0.5rem;">
-              <span style="color: var(--text-muted);">Loading recording...</span>
+            <strong>Recordings:</strong><br>
+            <div id="recordings-container" style="margin-top: 0.5rem;">
+              <span style="color: var(--text-muted);">Loading recordings...</span>
             </div>
           </div>
         ` : ''}
@@ -278,23 +278,63 @@ export default class CallsPage {
 
     callModal.classList.remove('hidden');
 
-    // Load recording directly if available
-    if (callRecord.recording_url) {
-      console.log('Loading recording from URL:', callRecord.recording_url);
-      // Wait for DOM to update before loading recording
+    // Load recordings if available
+    const recordings = callRecord.recordings || [];
+    // Fallback to single recording_url for backward compatibility
+    if (recordings.length === 0 && callRecord.recording_url) {
+      recordings.push({ url: callRecord.recording_url, label: 'main', duration: callRecord.duration_seconds });
+    }
+
+    if (recordings.length > 0) {
+      console.log('Loading recordings:', recordings);
       setTimeout(() => {
-        this.loadRecording(callRecord.recording_url);
+        this.loadRecordings(recordings);
       }, 100);
     } else {
-      console.log('No recording URL found for this call');
+      console.log('No recordings found for this call');
     }
   }
 
-  loadRecording(recordingUrl) {
-    console.log('loadRecording called with URL:', recordingUrl);
-    const container = document.getElementById('recording-player-container');
+  formatRecordingLabel(label) {
+    const labels = {
+      'main': 'Conversation',
+      'transfer_conference': 'Transfer Call',
+      'reconnect_to_agent': 'Reconnect',
+      'back_to_agent': 'Back to Agent',
+    };
+    return labels[label] || label.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  }
+
+  loadRecordings(recordings) {
+    const container = document.getElementById('recordings-container');
     if (!container) {
-      console.error('recording-player-container not found in DOM');
+      console.error('recordings-container not found in DOM');
+      return;
+    }
+
+    container.innerHTML = recordings.map((rec, index) => `
+      <div class="recording-item" style="margin-bottom: 1rem; padding: 0.75rem; background: var(--bg-secondary); border-radius: 8px;">
+        <div style="font-weight: 500; margin-bottom: 0.5rem; color: var(--text-secondary);">
+          ${this.formatRecordingLabel(rec.label)}
+          ${rec.duration ? `<span style="font-weight: normal; color: var(--text-muted);"> (${this.formatDuration(rec.duration)})</span>` : ''}
+        </div>
+        <div id="recording-player-${index}">
+          <span style="color: var(--text-muted);">Loading...</span>
+        </div>
+      </div>
+    `).join('');
+
+    // Load each recording player
+    recordings.forEach((rec, index) => {
+      this.loadRecording(rec.url, `recording-player-${index}`);
+    });
+  }
+
+  loadRecording(recordingUrl, containerId = 'recording-player-container') {
+    console.log('loadRecording called with URL:', recordingUrl);
+    const container = document.getElementById(containerId);
+    if (!container) {
+      console.error(`${containerId} not found in DOM`);
       return;
     }
 
