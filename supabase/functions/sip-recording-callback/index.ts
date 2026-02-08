@@ -3,21 +3,26 @@
  * downloads and stores in Supabase Storage, transcribes with speaker diarization
  */
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
+import { createClient } from 'npm:@supabase/supabase-js@2';
 
 Deno.serve(async (req) => {
   try {
+    // Parse query params for label (e.g., ?label=transfer_conference)
+    const url = new URL(req.url);
+    const label = url.searchParams.get('label') || 'main';
+
     // Parse the incoming SignalWire recording callback
     const formData = await req.formData();
     const params = Object.fromEntries(formData.entries());
 
-    console.log('Recording callback received:', params);
+    console.log('Recording callback received:', { label, ...params });
 
     const {
       RecordingUrl,        // URL of the recording
       RecordingSid,        // Recording SID
       RecordingDuration,   // Duration in seconds
       CallSid,             // Call SID
+      ConferenceSid,       // Conference SID (for conference recordings)
       RecordingStatus,     // Status: completed, failed, etc.
     } = params;
 
@@ -132,15 +137,36 @@ Deno.serve(async (req) => {
       console.log(`✅ Uploaded to Supabase Storage: ${publicRecordingUrl}`);
     }
 
-    // Update call record with public recording URL
+    // Build recording entry for the array
+    const recordingEntry = {
+      url: publicRecordingUrl,
+      label: label,
+      duration: parseInt(RecordingDuration as string) || 0,
+      timestamp: new Date().toISOString(),
+      recording_sid: RecordingSid,
+    };
+
+    // Get existing recordings array or initialize empty
+    const existingRecordings = callRecord.recordings || [];
+    const updatedRecordings = [...existingRecordings, recordingEntry];
+
+    // Update call record - set recording_url for backward compatibility (first recording)
+    // and append to recordings array
+    const updateData: Record<string, unknown> = {
+      recordings: updatedRecordings,
+      duration_seconds: parseInt(RecordingDuration as string) || callRecord.duration_seconds,
+      status: 'completed',
+      metadata: { ...(callRecord.metadata || {}), recording_sid: RecordingSid, signalwire_url: fullRecordingUrl },
+    };
+
+    // Only set recording_url if this is the first/main recording
+    if (!callRecord.recording_url || label === 'main') {
+      updateData.recording_url = publicRecordingUrl;
+    }
+
     const { error: updateError } = await supabase
       .from('call_records')
-      .update({
-        recording_url: publicRecordingUrl,
-        duration_seconds: parseInt(RecordingDuration as string) || callRecord.duration_seconds,
-        status: 'completed',
-        metadata: { ...(callRecord.metadata || {}), recording_sid: RecordingSid, signalwire_url: fullRecordingUrl },
-      })
+      .update(updateData)
       .eq('id', callRecord.id);
 
     if (updateError) {
@@ -148,7 +174,7 @@ Deno.serve(async (req) => {
       return new Response('Error updating call record', { status: 500 });
     }
 
-    console.log(`✅ Updated call record ${callRecord.id} with recording URL`);
+    console.log(`✅ Updated call record ${callRecord.id} with recording (label: ${label})`);
 
     // Transcribe with speaker diarization asynchronously
     // Pass call direction to label speakers correctly
