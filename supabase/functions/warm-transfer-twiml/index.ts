@@ -37,9 +37,8 @@ Deno.serve(async (req) => {
   const agentName = url.searchParams.get('agent_name') || 'your assistant'
   const callerContext = url.searchParams.get('context') || 'a customer'
   const voiceId = url.searchParams.get('voice_id') || 'Rachel'
-  const callRecordId = url.searchParams.get('call_record_id') || ''
 
-  console.log('🎵 Warm Transfer TwiML:', { action, confName, agentName, voiceId, callRecordId })
+  console.log('🎵 Warm Transfer TwiML:', { action, confName, agentName, voiceId })
 
   let twiml = ''
 
@@ -47,15 +46,13 @@ Deno.serve(async (req) => {
     case 'hold':
       // Put caller on hold in a conference with music
       // They will be muted and hear hold music until the transfer completes
-      const holdRecordingCallback = `${SUPABASE_URL}/functions/v1/sip-recording-callback?label=transfer_conference${callRecordId ? `&call_record_id=${callRecordId}` : ''}`
       if (confName) {
         // Caller joins conference and hears hold music until transferee joins
         // NOT muted - they can speak once transferee joins and music stops
-        // Record the conference for the full transfer conversation
         twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Dial>
-    <Conference beep="false" startConferenceOnEnter="false" endConferenceOnExit="true" waitUrl="${HOLD_MUSIC_URL}" record="record-from-start" recordingStatusCallback="${holdRecordingCallback}">${escapeXml(confName)}</Conference>
+    <Conference beep="false" startConferenceOnEnter="false" endConferenceOnExit="true" waitUrl="${HOLD_MUSIC_URL}">${escapeXml(confName)}</Conference>
   </Dial>
 </Response>`
       } else {
@@ -206,11 +203,10 @@ Deno.serve(async (req) => {
       // Add action URL to capture dial result
       const dialActionUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=dial_result&room_name=${encodeURIComponent(declinedRoomName || 'unknown')}`
 
-      const reconnectRecordingCallback = `${SUPABASE_URL}/functions/v1/sip-recording-callback?label=reconnect_to_agent${callRecordId ? `&call_record_id=${callRecordId}` : ''}`
       twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="Polly.Joanna-Neural">I'm sorry, they're not available right now. Let me reconnect you.</Say>
-  <Dial action="${escapeXml(dialActionUrl)}" callerId="${escapeXml(dialCallerId)}" timeout="30" record="record-from-answer" recordingStatusCallback="${reconnectRecordingCallback}">
+  <Dial action="${escapeXml(dialActionUrl)}" callerId="${escapeXml(dialCallerId)}" timeout="30">
     <Sip>${escapeXml(declinedSipUri)}</Sip>
   </Dial>
   <Say voice="Polly.Joanna-Neural">I was unable to reconnect you. Please call back.</Say>
@@ -231,11 +227,10 @@ Deno.serve(async (req) => {
       }
       // Use raw room name but XML-escape for TwiML
       const unholdSipUri = `sip:${unholdRoomName}@${LIVEKIT_SIP_DOMAIN};transport=tls`
-      const unholdRecordingCallback = `${SUPABASE_URL}/functions/v1/sip-recording-callback?label=back_to_agent${callRecordId ? `&call_record_id=${callRecordId}` : ''}`
       console.log('📞 Unhold SIP URI:', unholdSipUri)
       twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Dial record="record-from-answer" recordingStatusCallback="${unholdRecordingCallback}">
+  <Dial>
     <Sip>${escapeXml(unholdSipUri)}</Sip>
   </Dial>
 </Response>`
