@@ -34,6 +34,7 @@ interface TransferState {
   service_number: string
   room_name: string
   voice_id?: string
+  call_record_id?: string
   status: 'holding' | 'consulting' | 'bridged' | 'cancelled' | 'declined'
 }
 
@@ -74,7 +75,7 @@ Deno.serve(async (req) => {
 
       const { data: callRecord, error: lookupError } = await supabase
         .from('call_records')
-        .select('vendor_call_id, call_sid')
+        .select('id, vendor_call_id, call_sid')
         .eq('service_number', service_number)
         .order('created_at', { ascending: false })
         .limit(1)
@@ -85,9 +86,11 @@ Deno.serve(async (req) => {
       }
 
       let actualCallerCallSid = null
+      let callRecordId = null
       if (callRecord) {
         actualCallerCallSid = callRecord.vendor_call_id || callRecord.call_sid
-        console.log('📞 Found SignalWire call SID:', actualCallerCallSid)
+        callRecordId = callRecord.id
+        console.log('📞 Found SignalWire call SID:', actualCallerCallSid, 'Call record ID:', callRecordId)
       } else {
         console.log('📞 No call record found for service_number:', service_number)
       }
@@ -101,7 +104,7 @@ Deno.serve(async (req) => {
 
       // Step 1: Put caller on hold in a conference
       console.log('📞 Putting caller on hold in conference...')
-      const holdUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=hold&conf_name=${encodeURIComponent(confName)}`
+      const holdUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=hold&conf_name=${encodeURIComponent(confName)}${callRecordId ? `&call_record_id=${encodeURIComponent(callRecordId)}` : ''}`
 
       const holdResponse = await fetch(
         `https://${SIGNALWIRE_SPACE_URL}/api/laml/2010-04-01/Accounts/${SIGNALWIRE_PROJECT_ID}/Calls/${actualCallerCallSid}.json`,
@@ -136,13 +139,19 @@ Deno.serve(async (req) => {
       }
 
       // TwiML URL for whisper message to transferee
-      const transfereeUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=ai_transfer&conf_name=${encodeURIComponent(confName)}&agent_name=${encodeURIComponent(agent_name)}&context=${encodeURIComponent(caller_context)}&voice_id=${encodeURIComponent(voice_id)}`
+      const transfereeUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=ai_transfer&conf_name=${encodeURIComponent(confName)}&agent_name=${encodeURIComponent(agent_name)}&context=${encodeURIComponent(caller_context)}&voice_id=${encodeURIComponent(voice_id)}${callRecordId ? `&call_record_id=${encodeURIComponent(callRecordId)}` : ''}`
+
+      // Recording callback for the transferee conversation
+      const transfereeRecordingUrl = `${SUPABASE_URL}/functions/v1/sip-recording-callback?label=transferee_consult${callRecordId ? `&call_record_id=${callRecordId}` : ''}`
 
       const dialFormBody = [
         `To=${encodeURIComponent(normalizedTarget)}`,
         `From=${encodeURIComponent(service_number || '+16042566768')}`,
         `Url=${encodeURIComponent(transfereeUrl)}`,
         `Method=GET`,
+        `Record=record-from-answer`,
+        `RecordingStatusCallback=${encodeURIComponent(transfereeRecordingUrl)}`,
+        `RecordingStatusCallbackMethod=POST`,
         `StatusCallback=${encodeURIComponent(`${SUPABASE_URL}/functions/v1/warm-transfer-status`)}`,
         `StatusCallbackEvent=answered`,
         `StatusCallbackEvent=completed`,
@@ -184,6 +193,7 @@ Deno.serve(async (req) => {
         service_number: service_number || '',
         room_name,
         voice_id,
+        call_record_id: callRecordId,
         status: 'consulting',
       }
 

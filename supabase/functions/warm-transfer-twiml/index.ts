@@ -15,8 +15,8 @@ const LIVEKIT_SIP_DOMAIN = Deno.env.get('LIVEKIT_SIP_DOMAIN') || '378ads1njtd.si
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const supabase = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 
-// Hold music URL - pleasant hold music
-const HOLD_MUSIC_URL = 'http://com.twilio.sounds.music.s3.amazonaws.com/MARKOVICHAMP-B4.mp3'
+// Hold music URL - hosted in Supabase storage
+const HOLD_MUSIC_URL = 'https://mtxbiyilvgwhbdptysex.supabase.co/storage/v1/object/public/public/hold-music.mp3'
 
 // Escape XML special characters
 function escapeXml(str: string): string {
@@ -37,31 +37,20 @@ Deno.serve(async (req) => {
   const agentName = url.searchParams.get('agent_name') || 'your assistant'
   const callerContext = url.searchParams.get('context') || 'a customer'
   const voiceId = url.searchParams.get('voice_id') || 'Rachel'
+  const callRecordId = url.searchParams.get('call_record_id') || ''
 
-  console.log('🎵 Warm Transfer TwiML:', { action, confName, agentName, voiceId })
+  console.log('🎵 Warm Transfer TwiML:', { action, confName, agentName, voiceId, callRecordId })
 
   let twiml = ''
 
   switch (action) {
     case 'hold':
-      // Put caller on hold in a conference with music
-      // They will be muted and hear hold music until the transfer completes
-      if (confName) {
-        // Caller joins conference and hears hold music until transferee joins
-        // NOT muted - they can speak once transferee joins and music stops
-        twiml = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Dial>
-    <Conference beep="false" startConferenceOnEnter="false" endConferenceOnExit="true" waitUrl="${HOLD_MUSIC_URL}">${escapeXml(confName)}</Conference>
-  </Dial>
-</Response>`
-      } else {
-        // Fallback to simple hold music if no conference name
-        twiml = `<?xml version="1.0" encoding="UTF-8"?>
+      // Put caller on hold with music - simple Play approach (working)
+      // Conference with waitUrl is broken (SignalWire expects TwiML, not raw MP3)
+      twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Play loop="0">${HOLD_MUSIC_URL}</Play>
 </Response>`
-      }
       break
 
     case 'ai_transfer':
@@ -77,7 +66,7 @@ Deno.serve(async (req) => {
       }
 
       // First, wait for them to say hello - any speech triggers the whisper
-      const whisperUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=whisper&conf_name=${encodeURIComponent(confName)}&agent_name=${encodeURIComponent(agentName)}`
+      const whisperUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=whisper&conf_name=${encodeURIComponent(confName)}&agent_name=${encodeURIComponent(agentName)}${callRecordId ? `&call_record_id=${encodeURIComponent(callRecordId)}` : ''}`
 
       twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -92,16 +81,33 @@ Deno.serve(async (req) => {
       // Play the whisper message after they said hello, then gather response
       const whisperConfName = confName
       const neuralVoice = 'Polly.Joanna-Neural'
-      const gatherCallbackUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=gather_response&conf_name=${encodeURIComponent(whisperConfName || '')}&agent_name=${encodeURIComponent(agentName)}`
+      const gatherCallbackUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=gather_response&conf_name=${encodeURIComponent(whisperConfName || '')}&agent_name=${encodeURIComponent(agentName)}${callRecordId ? `&call_record_id=${encodeURIComponent(callRecordId)}` : ''}`
+      // Fallback redirect (if gather times out = accept by default)
+      const whisperFallbackUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=accept_fallback&conf_name=${encodeURIComponent(whisperConfName || '')}${callRecordId ? `&call_record_id=${encodeURIComponent(callRecordId)}` : ''}`
 
       twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Gather input="speech dtmf" timeout="7" speechTimeout="auto" numDigits="1" action="${escapeXml(gatherCallbackUrl)}" method="POST">
     <Say voice="${neuralVoice}">Call from ${escapeXml(agentName)} on Magpipe. Hold the line to be connected, or say you're busy.</Say>
   </Gather>
-  <Say voice="${neuralVoice}">Connecting you now.</Say>
+  <Redirect>${escapeXml(whisperFallbackUrl)}</Redirect>
+</Response>`
+      break
+
+    case 'accept_fallback':
+      // Fallback when gather times out (silence = accept)
+      // Trigger connect callback to redirect caller, then join conference
+      const fallbackConfName = confName
+      const fallbackConnectUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-callback?action=connect&conf_name=${encodeURIComponent(fallbackConfName || '')}${callRecordId ? `&call_record_id=${encodeURIComponent(callRecordId)}` : ''}`
+      fetch(fallbackConnectUrl, { method: 'POST' }).catch(e => console.error('Fallback connect callback error:', e))
+
+      const fallbackConfRecordingUrl = `${SUPABASE_URL}/functions/v1/sip-recording-callback?label=transfer_conference${callRecordId ? `&call_record_id=${callRecordId}` : ''}`
+
+      twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Joanna-Neural">Connecting you now.</Say>
   <Dial>
-    <Conference beep="true" startConferenceOnEnter="true" endConferenceOnExit="true">${escapeXml(whisperConfName || 'default')}</Conference>
+    <Conference record="record-from-start" recordingStatusCallback="${escapeXml(fallbackConfRecordingUrl)}" recordingStatusCallbackMethod="POST" beep="true" startConferenceOnEnter="true" endConferenceOnExit="true">${escapeXml(fallbackConfName || 'default')}</Conference>
   </Dial>
 </Response>`
       break
@@ -142,7 +148,7 @@ Deno.serve(async (req) => {
 
       if (declined) {
         // Explicitly declined - trigger callback to notify caller and return to agent
-        const declineCallbackUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-callback?action=decline&conf_name=${encodeURIComponent(gatherConfName || '')}&agent_name=${encodeURIComponent(agentName)}`
+        const declineCallbackUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-callback?action=decline&conf_name=${encodeURIComponent(gatherConfName || '')}&agent_name=${encodeURIComponent(agentName)}${callRecordId ? `&call_record_id=${encodeURIComponent(callRecordId)}` : ''}`
 
         // Make async call to callback (don't await - let TwiML finish)
         fetch(declineCallbackUrl, { method: 'POST' }).catch(e => console.error('Decline callback error:', e))
@@ -154,11 +160,18 @@ Deno.serve(async (req) => {
 </Response>`
       } else {
         // Accept by default (including hello, yes, silence timeout, etc)
+        // Trigger connect callback to redirect the caller from hold to conference
+        const acceptConnectUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-callback?action=connect&conf_name=${encodeURIComponent(gatherConfName || '')}${callRecordId ? `&call_record_id=${encodeURIComponent(callRecordId)}` : ''}`
+        fetch(acceptConnectUrl, { method: 'POST' }).catch(e => console.error('Connect callback error:', e))
+
+        // Recording for the bridged conference
+        const acceptConfRecordingUrl = `${SUPABASE_URL}/functions/v1/sip-recording-callback?label=transfer_conference${callRecordId ? `&call_record_id=${callRecordId}` : ''}`
+
         twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="Polly.Joanna-Neural">Connecting you now.</Say>
   <Dial>
-    <Conference beep="true" startConferenceOnEnter="true" endConferenceOnExit="true">${escapeXml(gatherConfName || 'default')}</Conference>
+    <Conference record="record-from-start" recordingStatusCallback="${escapeXml(acceptConfRecordingUrl)}" recordingStatusCallbackMethod="POST" beep="true" startConferenceOnEnter="true" endConferenceOnExit="true">${escapeXml(gatherConfName || 'default')}</Conference>
   </Dial>
 </Response>`
       }
@@ -202,11 +215,13 @@ Deno.serve(async (req) => {
 
       // Add action URL to capture dial result
       const dialActionUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=dial_result&room_name=${encodeURIComponent(declinedRoomName || 'unknown')}`
+      // Recording callback for reconnect segment
+      const reconnectRecordingUrl = `${SUPABASE_URL}/functions/v1/sip-recording-callback?label=reconnect_after_decline${callRecordId ? `&call_record_id=${callRecordId}` : ''}`
 
       twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="Polly.Joanna-Neural">I'm sorry, they're not available right now. Let me reconnect you.</Say>
-  <Dial action="${escapeXml(dialActionUrl)}" callerId="${escapeXml(dialCallerId)}" timeout="30">
+  <Dial action="${escapeXml(dialActionUrl)}" callerId="${escapeXml(dialCallerId)}" timeout="30" record="record-from-answer" recordingStatusCallback="${escapeXml(reconnectRecordingUrl)}" recordingStatusCallbackMethod="POST">
     <Sip>${escapeXml(declinedSipUri)}</Sip>
   </Dial>
   <Say voice="Polly.Joanna-Neural">I was unable to reconnect you. Please call back.</Say>
@@ -228,9 +243,11 @@ Deno.serve(async (req) => {
       // Use raw room name but XML-escape for TwiML
       const unholdSipUri = `sip:${unholdRoomName}@${LIVEKIT_SIP_DOMAIN};transport=tls`
       console.log('📞 Unhold SIP URI:', unholdSipUri)
+      // Recording callback for back_to_agent segment
+      const unholdRecordingUrl = `${SUPABASE_URL}/functions/v1/sip-recording-callback?label=back_to_agent${callRecordId ? `&call_record_id=${callRecordId}` : ''}`
       twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Dial>
+  <Dial record="record-from-answer" recordingStatusCallback="${escapeXml(unholdRecordingUrl)}" recordingStatusCallbackMethod="POST">
     <Sip>${escapeXml(unholdSipUri)}</Sip>
   </Dial>
 </Response>`
@@ -269,11 +286,11 @@ Deno.serve(async (req) => {
     case 'conference':
       // Join SignalWire conference for final bridged call
       // All parties (caller, transferee, optionally agent) are now connected
-      const recordingCallbackUrl = `${SUPABASE_URL}/functions/v1/sip-recording-callback`
+      const conferenceRecordingUrl = `${SUPABASE_URL}/functions/v1/sip-recording-callback?label=transfer_conference${callRecordId ? `&call_record_id=${callRecordId}` : ''}`
       twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Dial>
-    <Conference record="record-from-start" recordingStatusCallback="${recordingCallbackUrl}" recordingStatusCallbackMethod="POST" beep="false" startConferenceOnEnter="true" endConferenceOnExit="true">${confName || 'default_conference'}</Conference>
+    <Conference record="record-from-start" recordingStatusCallback="${escapeXml(conferenceRecordingUrl)}" recordingStatusCallbackMethod="POST" beep="false" startConferenceOnEnter="true" endConferenceOnExit="true">${escapeXml(confName || 'default_conference')}</Conference>
   </Dial>
 </Response>`
       break

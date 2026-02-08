@@ -60,11 +60,65 @@ Deno.serve(async (req) => {
   console.log('📋 Found transfer state:', JSON.stringify(transferState))
 
   if (action === 'connect') {
-    // Transfer accepted - the caller is already in the conference (muted)
-    // The transferee will join the conference after the AI finishes
-    // We need to unmute the caller
+    // Transfer accepted - redirect the caller from hold music to the conference
+    console.log('✅ Transfer accepted, redirecting caller to conference')
 
-    console.log('✅ Transfer accepted, unmuting caller in conference')
+    const signalwireAuth = 'Basic ' + btoa(`${SIGNALWIRE_PROJECT_ID}:${SIGNALWIRE_API_TOKEN}`)
+    const callRecordId = transferState.call_record_id || ''
+
+    // TwiML URL to join the conference
+    const conferenceUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=conference&conf_name=${encodeURIComponent(confName || '')}${callRecordId ? `&call_record_id=${encodeURIComponent(callRecordId)}` : ''}`
+
+    console.log('📞 Redirecting caller to conference:', transferState.actualCallerCallSid, 'URL:', conferenceUrl)
+
+    // Log to database for debugging
+    await supabase.from('call_state_logs').insert({
+      room_name: transferState.room_name,
+      state: 'connect_redirect_attempt',
+      component: 'callback',
+      details: JSON.stringify({
+        callerCallSid: transferState.actualCallerCallSid,
+        conferenceUrl,
+        confName
+      }),
+    })
+
+    try {
+      const swUrl = `https://${SIGNALWIRE_SPACE_URL}/api/laml/2010-04-01/Accounts/${SIGNALWIRE_PROJECT_ID}/Calls/${transferState.actualCallerCallSid}.json`
+
+      const response = await fetch(swUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': signalwireAuth,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `Url=${encodeURIComponent(conferenceUrl)}&Method=GET`,
+      })
+
+      const responseText = await response.text()
+
+      // Log result to database
+      await supabase.from('call_state_logs').insert({
+        room_name: transferState.room_name,
+        state: response.ok ? 'connect_redirect_success' : 'connect_redirect_failed',
+        component: 'callback',
+        details: JSON.stringify({ status: response.status, response: responseText }),
+      })
+
+      if (!response.ok) {
+        console.error('❌ Failed to redirect caller to conference:', responseText)
+      } else {
+        console.log('✅ Caller redirect to conference initiated')
+      }
+    } catch (e) {
+      console.error('❌ Error redirecting caller to conference:', e)
+      await supabase.from('call_state_logs').insert({
+        room_name: transferState.room_name,
+        state: 'connect_redirect_error',
+        component: 'callback',
+        error_message: String(e),
+      })
+    }
 
     // Update the transfer state
     await supabase.from('temp_state').update({
@@ -78,14 +132,10 @@ Deno.serve(async (req) => {
       details: JSON.stringify({ confName, action }),
     })
 
-    // Note: The caller unmuting happens when they join the non-muted conference
-    // We may need to update the caller's conference settings via SignalWire API
-    // For now, the flow should work as the conference TwiML handles this
-
     return new Response(
       JSON.stringify({
         success: true,
-        message: 'Transfer connected. Caller will be unmuted.',
+        message: 'Transfer connected. Caller redirected to conference.',
         response: 'Great, connecting you now.'
       }),
       { headers: { 'Content-Type': 'application/json' } }
@@ -102,12 +152,13 @@ Deno.serve(async (req) => {
     const serviceNumber = transferState.service_number || ''
     const targetLabel = transferState.target_label || 'the person you requested'
     const callerContext = transferState.caller_context || ''
+    const callRecordId = transferState.call_record_id || ''
 
-    console.log('📞 Room name for decline redirect:', roomName, 'Service number:', serviceNumber, 'Target:', targetLabel)
+    console.log('📞 Room name for decline redirect:', roomName, 'Service number:', serviceNumber, 'Target:', targetLabel, 'Call record ID:', callRecordId)
 
     // Redirect caller to declined notification, then back to LiveKit
     // Pass transfer context so agent knows this is a reconnect after declined transfer
-    const declinedUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=caller_declined&room_name=${encodeURIComponent(roomName)}&agent_name=${encodeURIComponent(agentNameParam)}&service_number=${encodeURIComponent(serviceNumber)}&target_label=${encodeURIComponent(targetLabel)}&caller_context=${encodeURIComponent(callerContext)}`
+    const declinedUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=caller_declined&room_name=${encodeURIComponent(roomName)}&agent_name=${encodeURIComponent(agentNameParam)}&service_number=${encodeURIComponent(serviceNumber)}&target_label=${encodeURIComponent(targetLabel)}&caller_context=${encodeURIComponent(callerContext)}${callRecordId ? `&call_record_id=${encodeURIComponent(callRecordId)}` : ''}`
     console.log('📞 Declined URL:', declinedUrl)
 
     console.log('📞 Calling SignalWire to redirect caller:', transferState.actualCallerCallSid)
