@@ -7,15 +7,16 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 
 Deno.serve(async (req) => {
   try {
-    // Parse query params for label (e.g., ?label=transfer_conference)
+    // Parse query params for label and call_record_id
     const url = new URL(req.url);
     const label = url.searchParams.get('label') || 'main';
+    const callRecordId = url.searchParams.get('call_record_id');
 
     // Parse the incoming SignalWire recording callback
     const formData = await req.formData();
     const params = Object.fromEntries(formData.entries());
 
-    console.log('Recording callback received:', { label, ...params });
+    console.log('Recording callback received:', { label, callRecordId, ...params });
 
     const {
       RecordingUrl,        // URL of the recording
@@ -36,35 +37,57 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Find the call record by call_sid (set by sip-call-handler)
-    let { data: callRecord, error: fetchError } = await supabase
-      .from('call_records')
-      .select('*')
-      .or(`call_sid.eq.${CallSid},vendor_call_id.eq.${CallSid}`)
-      .single();
+    let callRecord = null;
 
-    if (fetchError || !callRecord) {
-      console.log(`No call record found with call_sid: ${CallSid}`);
-
-      // Fallback: try to find by recent outbound call without recording
-      const { data: recentCall, error: recentError } = await supabase
+    // If call_record_id is provided, use it directly (for transfer legs)
+    if (callRecordId) {
+      const { data, error } = await supabase
         .from('call_records')
         .select('*')
-        .eq('direction', 'outbound')
-        .is('recording_url', null)
-        .order('created_at', { ascending: false })
-        .limit(1)
+        .eq('id', callRecordId)
         .single();
 
-      if (recentError || !recentCall) {
-        console.error('Could not find matching call record');
-        return new Response('Call record not found', { status: 404 });
+      if (data) {
+        callRecord = data;
+        console.log(`Found call record by ID: ${callRecord.id}`);
+      } else {
+        console.log(`No call record found with ID: ${callRecordId}`, error?.message);
       }
-
-      callRecord = recentCall;
     }
 
-    console.log(`Found call record: ${callRecord.id}`);
+    // Fall back to looking up by CallSid
+    if (!callRecord) {
+      const { data, error: fetchError } = await supabase
+        .from('call_records')
+        .select('*')
+        .or(`call_sid.eq.${CallSid},vendor_call_id.eq.${CallSid}`)
+        .single();
+
+      if (data) {
+        callRecord = data;
+      } else if (fetchError) {
+        console.log(`No call record found with call_sid: ${CallSid}`);
+
+        // Fallback: try to find by recent outbound call without recording
+        const { data: recentCall, error: recentError } = await supabase
+          .from('call_records')
+          .select('*')
+          .eq('direction', 'outbound')
+          .is('recording_url', null)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (recentError || !recentCall) {
+          console.error('Could not find matching call record');
+          return new Response('Call record not found', { status: 404 });
+        }
+
+        callRecord = recentCall;
+      }
+    }
+
+    console.log(`Using call record: ${callRecord.id}`);
 
     // Ensure we have a full recording URL (SignalWire may send relative paths)
     const signalwireSpaceUrl = Deno.env.get('SIGNALWIRE_SPACE_URL') || 'erik.signalwire.com';

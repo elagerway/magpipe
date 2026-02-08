@@ -34,6 +34,7 @@ interface TransferState {
   service_number: string
   room_name: string
   voice_id?: string
+  call_record_id?: string
   status: 'holding' | 'consulting' | 'bridged' | 'cancelled' | 'declined'
 }
 
@@ -74,7 +75,7 @@ Deno.serve(async (req) => {
 
       const { data: callRecord, error: lookupError } = await supabase
         .from('call_records')
-        .select('vendor_call_id, call_sid')
+        .select('id, vendor_call_id, call_sid')
         .eq('service_number', service_number)
         .order('created_at', { ascending: false })
         .limit(1)
@@ -101,7 +102,8 @@ Deno.serve(async (req) => {
 
       // Step 1: Put caller on hold in a conference
       console.log('📞 Putting caller on hold in conference...')
-      const holdUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=hold&conf_name=${encodeURIComponent(confName)}`
+      const callRecordId = callRecord.id
+      const holdUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=hold&conf_name=${encodeURIComponent(confName)}&call_record_id=${encodeURIComponent(callRecordId)}`
 
       const holdResponse = await fetch(
         `https://${SIGNALWIRE_SPACE_URL}/api/laml/2010-04-01/Accounts/${SIGNALWIRE_PROJECT_ID}/Calls/${actualCallerCallSid}.json`,
@@ -184,6 +186,7 @@ Deno.serve(async (req) => {
         service_number: service_number || '',
         room_name,
         voice_id,
+        call_record_id: callRecordId,
         status: 'consulting',
       }
 
