@@ -31,6 +31,7 @@ const TEST_USER_ID = 'f58a3d64-6036-4a89-88a4-deed898c41a8';
 const TEST_USER_ID_ALT = '77873635-9f5a-4eee-90f3-d145aed0c2c4'; // Amy's user
 const TEST_PHONE = '+16045628647';
 const TEST_SERVICE_NUMBER = '+16042566768';
+const LOCAL_TEST_NUMBER = '+16042101966';  // Routes to local agent via separate trunk
 
 // Colors for output
 const colors = {
