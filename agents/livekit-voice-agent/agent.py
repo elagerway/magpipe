@@ -3,7 +3,7 @@
 Pat AI Voice Agent - LiveKit Implementation
 Handles real-time voice conversations with STT, LLM, and TTS pipeline
 """
-print("🔴 AGENT CODE VERSION: NO-EGRESS-V4 🔴")
+print("🔴 AGENT CODE VERSION: RECONNECT-FIX-V5 🔴")
 
 import aiohttp
 import asyncio
@@ -2202,16 +2202,18 @@ THIS IS AN OUTBOUND CALL:
                 break
 
         # Fallback: Check database for recent declined transfer for this caller
+        # Only check if we have a caller phone to match against
         logger.info(f"🔄 Checking for reconnect: reconnect_reason={reconnect_reason}, actual_caller_phone={actual_caller_phone}")
         if not reconnect_reason and actual_caller_phone:
             try:
-                # Look for declined transfer in last 2 minutes
+                # Look for declined transfer in last 30 seconds (tight window to avoid false positives)
                 # Room names contain the caller phone, so we can match by that
+                # Also check for unconsumed declines (not yet used for a reconnect greeting)
                 caller_phone_clean = actual_caller_phone.replace("+", "")
                 recent_declined = supabase.table("call_state_logs") \
-                    .select("details, room_name") \
+                    .select("id, details, room_name") \
                     .eq("state", "warm_transfer_declined") \
-                    .gte("created_at", (datetime.datetime.utcnow() - datetime.timedelta(minutes=2)).isoformat()) \
+                    .gte("created_at", (datetime.datetime.utcnow() - datetime.timedelta(seconds=30)).isoformat()) \
                     .order("created_at", desc=True) \
                     .limit(5) \
                     .execute()
@@ -2220,20 +2222,29 @@ THIS IS AN OUTBOUND CALL:
                 # Find one that matches this caller's phone
                 for declined_log in (recent_declined.data or []):
                     room_name = declined_log.get("room_name", "")
+                    # Check if this caller's phone is in the room name
                     if caller_phone_clean in room_name or actual_caller_phone in room_name:
-                        logger.info(f"🔄 Found matching declined transfer for this caller: {declined_log}")
-
-                        # Parse the details JSON to get target_label
+                        # Check if already consumed
                         details_str = declined_log.get("details", "{}")
                         try:
                             details = json.loads(details_str) if isinstance(details_str, str) else details_str
+                            if details.get("consumed"):
+                                logger.info(f"🔄 Skipping already consumed declined transfer")
+                                continue
+
                             transfer_target = details.get("target_label", "the person you requested")
                             reconnect_reason = "transfer_declined"
                             logger.info(f"🔄 Reconnect detected from DB: target={transfer_target}")
+
+                            # Mark as consumed so it won't trigger for future calls
+                            details["consumed"] = True
+                            supabase.table("call_state_logs") \
+                                .update({"details": json.dumps(details)}) \
+                                .eq("id", declined_log["id"]) \
+                                .execute()
+                            logger.info(f"🔄 Marked declined transfer as consumed")
                         except json.JSONDecodeError as je:
                             logger.error(f"Failed to parse declined transfer details: {je}")
-                            transfer_target = "the person you requested"
-                            reconnect_reason = "transfer_declined"
                         break
             except Exception as e:
                 logger.error(f"Error checking for recent declined transfer: {e}")
