@@ -18,7 +18,7 @@ describe('SignalWire Phone Verification SMS Contract', () => {
     const smsRequest = {
       From: serviceNumber,
       To: recipientNumber,
-      Body: `Your Pat verification code is: ${verificationCode}. This code expires in 10 minutes.`,
+      Body: `Your Maggie verification code is: ${verificationCode}. This code expires in 10 minutes.`,
     };
 
     expect(smsRequest.From).toMatch(/^\+[1-9]\d{1,14}$/);
@@ -34,7 +34,7 @@ describe('SignalWire Phone Verification SMS Contract', () => {
       account_sid: 'test-account-sid-placeholder',
       from: '+14155550000',
       to: '+14155551234',
-      body: 'Your Pat verification code is: 123456',
+      body: 'Your Maggie verification code is: 123456',
       status: 'queued',
       direction: 'outbound-api',
       date_created: new Date().toISOString(),
@@ -61,7 +61,7 @@ describe('SignalWire Phone Verification SMS Contract', () => {
       MessageStatus: 'delivered',
       From: '+14155550000',
       To: '+14155551234',
-      Body: 'Your Pat verification code is: 123456',
+      Body: 'Your Maggie verification code is: 123456',
       ErrorCode: null,
       ErrorMessage: null,
     };

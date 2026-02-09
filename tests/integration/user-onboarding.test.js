@@ -61,7 +61,7 @@ describe('User Onboarding Integration Test', () => {
     // Step 5: Create agent configuration
     const { config: agentConfig, error: configError } = await AgentConfig.create({
       user_id: testUserId,
-      system_prompt: 'You are Pat, my personal AI assistant.',
+      system_prompt: 'You are Maggie, my personal AI assistant.',
       voice_id: 'kate',
       response_style: 'friendly',
     });

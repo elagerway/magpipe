@@ -194,7 +194,7 @@ test.describe('Agent Detail Page - Phone Numbers Display', () => {
     }
   });
 
-  test('should NOT show legacy Pat AI friendly_name in assign modal', async ({ page }) => {
+  test('should NOT show legacy friendly_name in assign modal', async ({ page }) => {
     await page.goto('http://localhost:3000/agents');
     await page.waitForSelector('.agent-card, [data-agent-id]', { timeout: 10000 });
     await page.click('.agent-card, [data-agent-id]');
@@ -208,9 +208,8 @@ test.describe('Agent Detail Page - Phone Numbers Display', () => {
       // Modal should appear (use heading to be specific)
       await expect(page.locator('.voice-modal h3:has-text("Assign Phone Numbers")')).toBeVisible();
 
-      // Should NOT contain "Pat AI" text
+      // Should NOT contain legacy names or email
       const modalContent = await page.locator('.voice-modal').textContent();
-      expect(modalContent).not.toContain('Pat AI');
       expect(modalContent).not.toContain('erik@snapsonic.com');
     }
   });

@@ -34,7 +34,7 @@ describe('Supabase Agent Configs Contract', () => {
   it('should create agent config with default values', async () => {
     const configData = {
       user_id: testUserId,
-      system_prompt: 'You are Pat, a helpful AI assistant.',
+      system_prompt: 'You are Maggie, a helpful AI assistant.',
       voice_id: 'kate',
     };
 
@@ -253,7 +253,7 @@ describe('Supabase Agent Configs Contract', () => {
 
   it('should store and retrieve custom_instructions as JSONB', async () => {
     const customInstructions = {
-      greeting: 'Hello! This is Pat.',
+      greeting: 'Hello! This is Maggie.',
       closing: 'Thank you for calling.',
       special_rules: ['Always be polite', 'Ask clarifying questions'],
       preferred_topics: {
