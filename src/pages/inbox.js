@@ -1824,11 +1824,84 @@ export default class InboxPage {
     return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
   }
 
+  /**
+   * Refresh call recordings from the database and re-render if updated
+   */
+  async refreshCallRecordings(callId) {
+    console.log('📥 Refreshing recordings for call:', callId);
+
+    try {
+      // Fetch latest call record from database
+      const { data: updatedCall, error } = await supabase
+        .from('call_records')
+        .select('*')
+        .eq('id', callId)
+        .single();
+
+      if (error || !updatedCall) {
+        console.error('Failed to refresh call:', error);
+        return;
+      }
+
+      // Update the call in our conversations array
+      const convIndex = this.conversations.findIndex(c => c.type === 'call' && c.callId === callId);
+      if (convIndex !== -1) {
+        this.conversations[convIndex].call = updatedCall;
+
+        // Check if recordings are now complete
+        const recordings = updatedCall.recordings || [];
+        const stillPending = recordings.some(rec => {
+          const isSupabaseUrl = rec.url && rec.url.includes('supabase.co');
+          const hasTranscript = !!rec.transcript;
+          return !isSupabaseUrl || !hasTranscript;
+        });
+
+        // Re-render if this call is currently selected
+        if (this.selectedCallId === callId) {
+          const threadMessages = document.getElementById('thread-messages');
+          if (threadMessages) {
+            threadMessages.innerHTML = this.renderRecordings(updatedCall, []);
+          }
+        }
+
+        // If still pending, schedule another refresh
+        if (stillPending && recordings.length > 0) {
+          console.log('📥 Recordings still syncing, will retry in 10s...');
+          this._recordingRefreshTimer = setTimeout(() => {
+            this._recordingRefreshTimer = null;
+            this.refreshCallRecordings(callId);
+          }, 10000);
+        } else {
+          console.log('✅ Recordings fully synced');
+        }
+      }
+    } catch (err) {
+      console.error('Error refreshing recordings:', err);
+    }
+  }
+
   renderRecordings(call, messages = []) {
     // Build recordings array from recordings field or fallback to recording_url
     const recordings = call.recordings || [];
     if (recordings.length === 0 && call.recording_url) {
       recordings.push({ url: call.recording_url, label: 'main', duration: call.duration_seconds });
+    }
+
+    // Check if any recordings are still syncing (no Supabase URL or no transcript)
+    const hasPendingRecordings = recordings.some(rec => {
+      // Recording is pending if it doesn't have a Supabase URL yet
+      const isSupabaseUrl = rec.url && rec.url.includes('supabase.co');
+      const hasTranscript = !!rec.transcript;
+      return !isSupabaseUrl || !hasTranscript;
+    });
+
+    // If recordings are pending and we haven't already set up a refresh timer
+    if (hasPendingRecordings && recordings.length > 0 && !this._recordingRefreshTimer) {
+      console.log('📥 Recordings still syncing, will retry in 10s...');
+      this._recordingRefreshTimer = setTimeout(() => {
+        this._recordingRefreshTimer = null;
+        this.refreshCallRecordings(call.id);
+      }, 10000);
     }
 
     // If no recordings, just show transcript if available
@@ -1842,7 +1915,8 @@ export default class InboxPage {
             if (colonIndex > 0 && colonIndex < 20) {
               const speaker = line.substring(0, colonIndex).trim().toLowerCase();
               let text = line.substring(colonIndex + 1).trim();
-              const isAgent = ['pat', 'you', 'agent', 'callee', 'amy'].includes(speaker);
+              // Caller/User are always the caller; any other name is the agent (supports custom agent names)
+              const isAgent = !['caller', 'user'].includes(speaker);
 
               // Split text into segments by detecting speaker changes
               const segments = this.splitTranscriptBySpeaker(text, isAgent);
@@ -1874,8 +1948,8 @@ export default class InboxPage {
       let transcriptHtml = '';
       let recTranscript = rec.transcript;
 
-      // Fallback to call.transcript only if recording has no transcript and it's the only recording
-      if (!recTranscript && recordings.length === 1) {
+      // Fallback to call.transcript for the last recording if no per-recording transcript
+      if (!recTranscript && rec === sortedRecordings[sortedRecordings.length - 1] && call.transcript) {
         recTranscript = call.transcript;
       }
 
@@ -1889,8 +1963,8 @@ export default class InboxPage {
             if (colonIndex > 0 && colonIndex < 20) {
               const speaker = line.substring(0, colonIndex).trim().toLowerCase();
               let text = line.substring(colonIndex + 1).trim();
-              // Agent speakers: pat, you, agent, callee, amy (common agent names)
-              const isAgent = ['pat', 'you', 'agent', 'callee', 'amy'].includes(speaker);
+              // Caller/User are always the caller; any other name is the agent (supports custom agent names)
+              const isAgent = !['caller', 'user'].includes(speaker);
 
               // Split text into segments by detecting speaker changes at question marks
               const segments = this.splitTranscriptBySpeaker(text, isAgent);
@@ -1911,6 +1985,20 @@ export default class InboxPage {
         }
       }
 
+      // Check if this recording is still syncing
+      const isSupabaseUrl = rec.url && rec.url.includes('supabase.co');
+      const hasTranscript = !!rec.transcript;
+      const isSyncing = !isSupabaseUrl || !hasTranscript;
+
+      const syncingIndicator = isSyncing ? `
+        <div style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem; background: var(--bg-secondary); border-radius: 6px; margin-top: 0.5rem;">
+          <svg class="spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--primary-color)" stroke-width="2">
+            <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
+          </svg>
+          <span style="font-size: 0.8rem; color: var(--text-secondary);">Syncing recording...</span>
+        </div>
+      ` : '';
+
       return `
         <div style="width: 100%; margin-bottom: 0.75rem; padding: 0.75rem; background: var(--bg-tertiary); border-radius: 8px;">
           <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.25rem; display: flex; justify-content: space-between;">
@@ -1918,6 +2006,7 @@ export default class InboxPage {
             ${rec.duration ? `<span>${this.formatDurationShort(rec.duration)}</span>` : ''}
           </div>
           <audio controls src="${rec.url}" style="width: 100%; height: 36px;"></audio>
+          ${syncingIndicator}
           ${transcriptHtml ? `<div style="margin-top: 0.5rem;">${transcriptHtml}</div>` : ''}
         </div>
       `;
@@ -5905,21 +5994,19 @@ Examples:
     if (!transcript) return [];
 
     // Parse transcript in "Speaker: Message" format
-    // Supports:
-    // - "Agent:/Pat:" (AI agent) -> right side
-    // - "You:" (our user in direct calls) -> right side
-    // - "User:/Caller:/Callee:" (other party) -> left side
+    // Caller/User = left side (caller)
+    // Any other name = right side (agent with custom name like "Amy", "Maggie", etc.)
     const lines = transcript.split('\n').filter(line => line.trim().length > 0);
     const messages = [];
 
     for (const line of lines) {
-      // Match speaker labels at the start
-      const match = line.match(/^(Agent|Pat|You|User|Caller|Callee):\s*(.+)$/);
+      // Match any speaker label at the start (up to 20 chars before colon)
+      const match = line.match(/^([^:]{1,20}):\s*(.+)$/);
       if (match) {
         const [, speaker, text] = match;
-        // Agent, Pat, You = right side (our side)
-        // User, Caller, Callee = left side (other party)
-        const isOurSide = (speaker === 'Agent' || speaker === 'Pat' || speaker === 'You');
+        const speakerLower = speaker.toLowerCase();
+        // Caller/User = left side (other party), everything else is the agent
+        const isOurSide = !['caller', 'user'].includes(speakerLower);
         messages.push({
           speaker: isOurSide ? 'agent' : 'user',
           speakerLabel: speaker,  // Keep original label for display
@@ -5932,10 +6019,9 @@ Examples:
   }
 
   getSpeakerDisplayLabel(speakerLabel) {
-    // Map transcript speaker labels to display names
+    // Map known labels, otherwise show the agent's custom name
     const labelMap = {
       'Agent': 'AI Assistant',
-      'Pat': 'AI Assistant',
       'You': 'You',
       'User': 'Caller',
       'Caller': 'Caller',

@@ -72,7 +72,16 @@ Deno.serve(async (req) => {
           })
         }
 
-        console.log(`🎙️ Recording URL: ${recordingUrl}, duration: ${durationSeconds}s`)
+        console.log(`🎙️ Raw recording URL: ${recordingUrl}, duration: ${durationSeconds}s`)
+
+        // Transform S3 URL to public Supabase Storage URL
+        // From: https://PROJECT.storage.supabase.co/storage/v1/s3/BUCKET/path
+        // To:   https://PROJECT.supabase.co/storage/v1/object/public/BUCKET/path
+        if (recordingUrl.includes('.storage.supabase.co/storage/v1/s3/')) {
+          recordingUrl = recordingUrl
+            .replace('.storage.supabase.co/storage/v1/s3/', '.supabase.co/storage/v1/object/public/')
+          console.log(`🎙️ Transformed to public URL: ${recordingUrl}`)
+        }
 
         // Add to recordings array
         const { data: callRecord } = await supabase
