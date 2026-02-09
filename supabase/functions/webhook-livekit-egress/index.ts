@@ -1,5 +1,4 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'npm:@supabase/supabase-js@2'
 import { analyzeSentiment, extractCallerMessages } from '../_shared/sentiment-analysis.ts'
 
 const corsHeaders = {
@@ -7,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   // Handle OPTIONS for CORS
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -114,16 +113,34 @@ serve(async (req) => {
 
     console.log(`✅ Recording URL: ${recordingUrl}`)
 
-    // First, get the call record to access the transcript for sentiment analysis
+    // Extract duration from egress info if available
+    const durationMs = egressInfo.endedAt && egressInfo.startedAt
+      ? (egressInfo.endedAt - egressInfo.startedAt)
+      : (egressInfo.ended_at && egressInfo.started_at
+        ? (egressInfo.ended_at - egressInfo.started_at)
+        : 0)
+    const durationSeconds = Math.round(durationMs / 1000)
+
+    // Get the call record to access transcript and existing recordings
     const { data: existingRecord } = await supabase
       .from('call_records')
-      .select('transcript')
+      .select('id, transcript, recordings, user_id, slack_message_ts, slack_channel_id, contact_phone, caller_number, direction, duration_seconds, extracted_data, call_summary, user_sentiment')
       .eq('egress_id', egressId)
       .single()
 
+    if (!existingRecord) {
+      console.warn(`No call_record found with egress_id: ${egressId}`)
+      return new Response(JSON.stringify({ ok: true, message: 'No matching call record' }), {
+        headers: { 'Content-Type': 'application/json' },
+        status: 200,
+      })
+    }
+
+    console.log(`Found call_record: ${existingRecord.id}`)
+
     // Analyze sentiment from caller's messages in the transcript
-    let sentiment = null
-    if (existingRecord?.transcript) {
+    let sentiment = existingRecord.user_sentiment
+    if (!sentiment && existingRecord.transcript) {
       console.log('Analyzing sentiment from transcript...')
       const callerMessages = extractCallerMessages(existingRecord.transcript)
       if (callerMessages) {
@@ -132,17 +149,37 @@ serve(async (req) => {
       }
     }
 
-    // Update call_record with recording URL, sentiment, and get Slack info
-    const updateData: Record<string, any> = { recording_url: recordingUrl }
+    // Add LiveKit recording to the recordings array
+    // Label it "conversation" since it's the initial agent conversation
+    const existingRecordings = existingRecord.recordings || []
+    const livekitRecording = {
+      recording_sid: egressId,
+      label: 'conversation',
+      url: recordingUrl,
+      duration_seconds: durationSeconds,
+      source: 'livekit',
+      created_at: new Date().toISOString(),
+    }
+
+    // Check if this egress is already in recordings (avoid duplicates)
+    const alreadyExists = existingRecordings.some((r: any) => r.recording_sid === egressId)
+    const updatedRecordings = alreadyExists
+      ? existingRecordings.map((r: any) => r.recording_sid === egressId ? { ...r, url: recordingUrl } : r)
+      : [livekitRecording, ...existingRecordings]  // LiveKit recording first (earliest)
+
+    // Update call_record with recording in recordings array
+    const updateData: Record<string, any> = {
+      recording_url: recordingUrl,  // Keep for backwards compatibility
+      recordings: updatedRecordings,
+    }
     if (sentiment) {
       updateData.user_sentiment = sentiment
     }
 
-    const { data: updateResult, error: updateError } = await supabase
+    const { error: updateError } = await supabase
       .from('call_records')
       .update(updateData)
-      .eq('egress_id', egressId)
-      .select('id, user_id, slack_message_ts, slack_channel_id, contact_phone, caller_number, direction, duration_seconds, transcript, extracted_data, call_summary, user_sentiment')
+      .eq('id', existingRecord.id)
 
     if (updateError) {
       console.error('Error updating call_record:', updateError)
@@ -152,36 +189,27 @@ serve(async (req) => {
       })
     }
 
-    if (!updateResult || updateResult.length === 0) {
-      console.warn(`No call_record found with egress_id: ${egressId}`)
-      return new Response(JSON.stringify({ ok: true, message: 'No matching call record' }), {
-        headers: { 'Content-Type': 'application/json' },
-        status: 200,
-      })
-    }
-
-    console.log(`✅ Updated call_record ${updateResult[0].id} with recording URL`)
+    console.log(`✅ Updated call_record ${existingRecord.id} with LiveKit recording in recordings array`)
 
     // Update Slack message with recording URL if we have a Slack message
-    const callRecord = updateResult[0]
-    if (callRecord.slack_message_ts && callRecord.slack_channel_id) {
+    if (existingRecord.slack_message_ts && existingRecord.slack_channel_id) {
       updateSlackMessageWithRecording(
         supabase,
-        callRecord.user_id,
-        callRecord.slack_channel_id,
-        callRecord.slack_message_ts,
-        callRecord.contact_phone || callRecord.caller_number,
-        callRecord.direction,
-        callRecord.duration_seconds,
+        existingRecord.user_id,
+        existingRecord.slack_channel_id,
+        existingRecord.slack_message_ts,
+        existingRecord.contact_phone || existingRecord.caller_number,
+        existingRecord.direction,
+        existingRecord.duration_seconds,
         recordingUrl,
-        callRecord.transcript,
-        callRecord.extracted_data,
-        callRecord.call_summary,
-        callRecord.user_sentiment || sentiment
+        existingRecord.transcript,
+        existingRecord.extracted_data,
+        existingRecord.call_summary,
+        existingRecord.user_sentiment || sentiment
       ).catch(err => console.error('Failed to update Slack message:', err))
     }
 
-    return new Response(JSON.stringify({ ok: true, updated: updateResult.length }), {
+    return new Response(JSON.stringify({ ok: true, updated: 1 }), {
       headers: { 'Content-Type': 'application/json' },
       status: 200,
     })
