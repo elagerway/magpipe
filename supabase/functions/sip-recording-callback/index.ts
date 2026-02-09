@@ -4,6 +4,7 @@
  */
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { analyzeSentiment, extractCallerMessages } from '../_shared/sentiment-analysis.ts';
 
 Deno.serve(async (req) => {
   try {
@@ -422,8 +423,40 @@ async function transcribeWithDiarization(audioBlob: Blob, callRecordId: string, 
       console.error('Error saving transcript:', transcriptError);
     } else {
       console.log(`✅ Saved transcript for call ${callRecordId} (${recordingLabel})`);
+
+      // Run sentiment analysis for main recording (don't wait, fire and forget)
+      if (recordingLabel === 'main' && transcript) {
+        analyzeSentimentForCall(callRecordId, transcript, supabase).catch(err =>
+          console.error('Sentiment analysis error:', err)
+        );
+      }
     }
   } catch (error) {
     console.error('Transcription error:', error);
+  }
+}
+
+/**
+ * Analyze sentiment from transcript and update call record
+ */
+async function analyzeSentimentForCall(callRecordId: string, transcript: string, supabase: any) {
+  try {
+    const callerMessages = extractCallerMessages(transcript);
+    if (!callerMessages || callerMessages.length < 10) {
+      console.log('Skipping sentiment - no/short caller messages');
+      return;
+    }
+
+    console.log('🎭 Analyzing sentiment for call', callRecordId);
+    const sentiment = await analyzeSentiment(callerMessages);
+
+    await supabase
+      .from('call_records')
+      .update({ user_sentiment: sentiment })
+      .eq('id', callRecordId);
+
+    console.log(`✅ Sentiment: ${sentiment}`);
+  } catch (error) {
+    console.error('Sentiment analysis failed:', error);
   }
 }
