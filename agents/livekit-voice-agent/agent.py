@@ -752,8 +752,8 @@ async def check_phone_admin_access(caller_number: str) -> dict:
 
         # Query users table for matching phone number
         response = supabase.table("users") \
-            .select("id, name, phone, phone_admin_access_code, phone_admin_locked") \
-            .eq("phone", f"+{normalized}") \
+            .select("id, name, phone_number, phone_admin_access_code, phone_admin_locked") \
+            .eq("phone_number", f"+{normalized}") \
             .limit(1) \
             .execute()
 
