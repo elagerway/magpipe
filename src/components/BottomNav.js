@@ -151,32 +151,46 @@ async function fetchNavUserData() {
 
       messagesUsed = messageCount || 0;
 
-      // Get user's default agent config for rate calculation
+      // Get actual costs from credit_transactions (more accurate than recalculating)
+      let voiceCost = 0;
+      let messageCost = 0;
+
+      const { data: transactions } = await supabase
+        .from('credit_transactions')
+        .select('amount, reference_type')
+        .eq('user_id', user.id)
+        .in('reference_type', ['call', 'sms'])
+        .gte('created_at', periodStart.toISOString());
+
+      if (transactions) {
+        for (const tx of transactions) {
+          const amount = Math.abs(parseFloat(tx.amount) || 0);
+          if (tx.reference_type === 'call') {
+            voiceCost += amount;
+          } else if (tx.reference_type === 'sms') {
+            messageCost += amount;
+          }
+        }
+      }
+
+      const totalCost = voiceCost + messageCost;
+
+      // Get per-minute rate for display purposes
       let voiceRate = VOICE_RATES.default;
       let llmRate = LLM_RATES.default;
 
       const { config: agentConfig } = await AgentConfig.getByUserId(user.id);
       if (agentConfig) {
-        // Determine voice rate based on voice_id
         if (agentConfig.voice_id?.startsWith('openai-')) {
           voiceRate = VOICE_RATES.openai;
         } else {
           voiceRate = VOICE_RATES.elevenlabs;
         }
-
-        // Determine LLM rate based on ai_model
         if (agentConfig.ai_model && LLM_RATES[agentConfig.ai_model]) {
           llmRate = LLM_RATES[agentConfig.ai_model];
         }
       }
-
-      // Calculate per-minute rate (Voice + LLM + Telephony)
       const perMinuteRate = voiceRate + llmRate + TELEPHONY_RATE;
-
-      // Calculate costs
-      const voiceCost = minutesUsed * perMinuteRate;
-      const messageCost = messagesUsed * MESSAGE_RATE;
-      const totalCost = voiceCost + messageCost;
 
       cachedUserData = {
         name: profile?.name || null,
