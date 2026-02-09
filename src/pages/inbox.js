@@ -1741,15 +1741,7 @@ export default class InboxPage {
 
       <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 1rem; background: var(--bg-tertiary); border-bottom: 1px solid var(--border-color); font-size: 0.75rem; color: var(--text-secondary);">
         <span>${call.created_at ? new Date(call.created_at).toLocaleString() : ''}</span>
-        <div style="display: flex; align-items: center; gap: 0.5rem;">
-          <span style="font-family: monospace;">${call.id || ''}</span>
-          <button class="copy-call-id-btn" data-call-id="${call.id}" title="Copy call ID" style="background: none; border: none; padding: 2px; cursor: pointer; color: var(--text-secondary); display: flex; align-items: center;">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-            </svg>
-          </button>
-        </div>
+        <span class="copy-call-id-btn" data-call-id="${call.id}" title="Click to copy" style="font-family: monospace; cursor: pointer; position: relative;">${call.id || ''}</span>
       </div>
 
       <div class="thread-messages" id="thread-messages">
@@ -5334,7 +5326,7 @@ Examples:
         return;
       }
 
-      // Handle copy call ID button click
+      // Handle copy call ID click
       const copyBtn = e.target.closest('.copy-call-id-btn');
       if (copyBtn) {
         e.preventDefault();
@@ -5342,14 +5334,12 @@ Examples:
         const callId = copyBtn.dataset.callId;
         if (callId) {
           navigator.clipboard.writeText(callId).then(() => {
-            // Show brief feedback
-            const originalHtml = copyBtn.innerHTML;
-            copyBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>';
-            copyBtn.style.color = 'var(--success-color)';
-            setTimeout(() => {
-              copyBtn.innerHTML = originalHtml;
-              copyBtn.style.color = '';
-            }, 1500);
+            // Show "Copied" tooltip
+            const tooltip = document.createElement('span');
+            tooltip.textContent = 'Copied';
+            tooltip.style.cssText = 'position: absolute; top: -25px; left: 50%; transform: translateX(-50%); background: var(--bg-primary); color: var(--text-primary); padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.2); z-index: 1000;';
+            copyBtn.appendChild(tooltip);
+            setTimeout(() => tooltip.remove(), 3000);
           });
         }
         return;
