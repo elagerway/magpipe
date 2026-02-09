@@ -43,6 +43,7 @@ export class Router {
     this.addRoute('/calls', () => import('./pages/calls.js'), true);
     this.addRoute('/messages', () => import('./pages/messages.js'), true);
     this.addRoute('/apps', () => import('./pages/apps.js'), true);
+    this.addRoute('/analytics', () => import('./pages/analytics.js'), true);
     this.addRoute('/knowledge', () => import('./pages/knowledge.js'), true);
     this.addRoute('/settings', () => import('./pages/settings.js'), true);
     this.addRoute('/team', () => import('./pages/team.js'), true);
