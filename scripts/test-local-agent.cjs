@@ -29,6 +29,33 @@ async function queryDB(sql) {
   return response.json();
 }
 
+async function createCallRecord(serviceNumber, callerNumber, userId, agentId) {
+  // Create a call record so the agent can find it and billing works
+  const { createClient } = require('@supabase/supabase-js');
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+  const { data, error } = await supabase
+    .from('call_records')
+    .insert({
+      user_id: userId,
+      agent_id: agentId,
+      service_number: serviceNumber,
+      caller_number: callerNumber,
+      direction: 'inbound',
+      status: 'in-progress',
+      disposition: 'answered_by_pat',
+      started_at: new Date().toISOString(),
+    })
+    .select('id')
+    .single();
+
+  if (error) {
+    console.log('   ⚠️ Could not create call record:', error.message);
+    return null;
+  }
+  return data.id;
+}
+
 async function testLocalAgent() {
   console.log('\n🧪 Local Agent Test');
   console.log('='.repeat(50));
@@ -42,6 +69,16 @@ async function testLocalAgent() {
   const LIVEKIT_SIP_DOMAIN = process.env.LIVEKIT_SIP_DOMAIN || '378ads1njtd.sip.livekit.cloud';
 
   const signalwireAuth = Buffer.from(`${SIGNALWIRE_PROJECT_ID}:${SIGNALWIRE_API_TOKEN}`).toString('base64');
+
+  // Create call record for billing test (uses Erik's user_id and agent_id)
+  const TEST_USER_ID = '77873635-9f5a-4eee-90f3-d145aed0c2c4';
+  const TEST_AGENT_ID = '7f806f26-8dc4-4ecf-b80b-0f829cb7c577';
+
+  console.log('\n📝 Creating call record for billing...');
+  const callRecordId = await createCallRecord(LOCAL_TEST_NUMBER, TEST_PHONE, TEST_USER_ID, TEST_AGENT_ID);
+  if (callRecordId) {
+    console.log(`   ✅ Created call_record: ${callRecordId}`);
+  }
 
   // Call LiveKit SIP using the test number (routes to local agent)
   const livekitSipUri = `sip:${LOCAL_TEST_NUMBER}@${LIVEKIT_SIP_DOMAIN};transport=tls`;
