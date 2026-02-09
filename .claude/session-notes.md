@@ -513,3 +513,74 @@ User tested warm transfer: "i called Amy asked to transfer to Erik, without sayi
 - `warm-transfer-twiml` edge function
 - Agent changes require Render deploy (auto-deploys on push to master)
 
+### Local Agent Testing Infrastructure (Completed)
+
+Set up dedicated local testing to avoid disrupting production Render agent:
+
+**Infrastructure:**
+- Test number: `+16042101966`
+- LiveKit trunk: `ST_jKuUnR9Lo5zW` (SignalWire Local Test)
+- Dispatch rule: `call-local-` prefix → `SW Telephony Agent Local`
+- Room names show `call-local-` prefix when routed to local agent
+
+**Scripts created:**
+- `scripts/test-local-agent.cjs` - Initiates test call via SignalWire → LiveKit
+- `scripts/create-test-trunk.cjs` - Helper to manage LiveKit SIP trunks
+
+**Agent changes:**
+- Made agent name configurable via `LIVEKIT_AGENT_NAME` env var
+- Local: `SW Telephony Agent Local`
+- Render: `SW Telephony Agent` (default)
+
+**To run local agent:**
+```bash
+cd agents/livekit-voice-agent
+export SSL_CERT_FILE=$(python3 -c "import certifi; print(certifi.where())")
+export LIVEKIT_AGENT_NAME="SW Telephony Agent Local"
+python3 agent.py dev
+```
+
+**Then test:**
+```bash
+node scripts/test-local-agent.cjs
+```
+
+### Verification Status
+- ✅ TwiML endpoint returns correct SIP URI with `room_name`
+- ⏳ Full warm transfer flow needs human testing (requires real call interaction)
+
+---
+
+## Session: 2026-02-08
+
+### Completed - Warm Transfer Multi-Recording Support
+
+Added `call_record_id` parameter throughout warm transfer flow so all recordings from a single transfer (hold, consult, reconnect, etc.) link to the same call record and display as multiple audio players in the UI.
+
+### Files Modified
+
+**warm-transfer/index.ts:**
+- Added `id` to call_records select query
+- Store `call_record_id` in local variable and TransferState
+- Pass `call_record_id` to `holdUrl` and `transfereeUrl`
+
+**warm-transfer-twiml/index.ts:**
+- Parse `call_record_id` from query params
+- Pass through whisper → gather_response → decline callback chain
+- Added recording callbacks with labels:
+  - `conference` action → label: `transfer_conference`
+  - `caller_declined` action → label: `reconnect_after_decline`
+  - `unhold` action → label: `back_to_agent`
+
+**warm-transfer-callback/index.ts:**
+- Extract `call_record_id` from transfer state
+- Pass to `caller_declined` redirect URL
+
+### Edge Functions Deployed
+- `warm-transfer`
+- `warm-transfer-twiml`
+- `warm-transfer-callback`
+
+### Purpose
+All recordings from a warm transfer flow now link to the same call_record_id, allowing multiple audio players to show in the call detail UI (calls.js already supports this via the `recordings` JSONB array).
+

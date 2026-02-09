@@ -63,7 +63,7 @@ describe('SignalWire Inbound Call Webhook Contract', () => {
     const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Gather input="speech" action="/webhooks/signalwire/gather-caller-info" method="POST" timeout="5" speechTimeout="auto">
-    <Say voice="Polly.Joanna">Hello, you've reached Pat. I don't have you in my contacts. May I have your name and the reason for your call?</Say>
+    <Say voice="Polly.Joanna">Hello, you've reached Maggie. I don't have you in my contacts. May I have your name and the reason for your call?</Say>
   </Gather>
   <Say voice="Polly.Joanna">I didn't receive a response. Please try again later.</Say>
   <Hangup/>

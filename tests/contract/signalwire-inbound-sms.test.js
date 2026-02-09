@@ -209,7 +209,7 @@ describe('SignalWire Inbound SMS Webhook Contract', () => {
       messages: [
         {
           role: 'system',
-          content: 'You are Pat, a helpful AI assistant. Respond professionally and concisely to SMS messages.',
+          content: 'You are Maggie, a helpful AI assistant. Respond professionally and concisely to SMS messages.',
         },
         {
           role: 'user',
