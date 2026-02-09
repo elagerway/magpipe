@@ -3,7 +3,7 @@
  * This is triggered by SignalWire statusCallback on the dialed number
  */
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
+import { createClient } from 'npm:@supabase/supabase-js@2'
 
 Deno.serve(async (req) => {
   try {
@@ -101,6 +101,11 @@ Deno.serve(async (req) => {
       } else {
         console.log(`✅ Updated call record ${callRecordId} to status: ${dbStatus}, duration: ${duration}s`);
 
+        // Fetch recordings proactively (with 5s delay to let SignalWire finalize)
+        // This is more reliable than depending on SignalWire webhooks
+        fetchRecordings(supabaseUrl, supabaseKey, callRecordId, CallSid as string)
+          .catch(err => console.error('Failed to fetch recordings:', err));
+
         // Send Slack call summary notification (fire and forget)
         if (callRecord) {
           sendSlackCallNotification(
@@ -192,6 +197,40 @@ async function deductCallCredits(
     }
   } catch (error) {
     console.error('Error deducting call credits:', error);
+  }
+}
+
+/**
+ * Fetch recordings from SignalWire proactively
+ */
+async function fetchRecordings(
+  supabaseUrl: string,
+  supabaseKey: string,
+  callRecordId: string,
+  callSid: string
+) {
+  // Wait 5 seconds for recordings to finalize
+  await new Promise(resolve => setTimeout(resolve, 5000));
+
+  console.log(`📥 Fetching recordings for call ${callRecordId}...`);
+
+  const response = await fetch(`${supabaseUrl}/functions/v1/fetch-call-recordings`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${supabaseKey}`,
+    },
+    body: JSON.stringify({
+      call_record_id: callRecordId,
+      call_sid: callSid,
+    }),
+  });
+
+  const result = await response.json();
+  if (result.success) {
+    console.log(`✅ Fetched ${result.recordings_added} recording(s)`);
+  } else {
+    console.error('Failed to fetch recordings:', result.error);
   }
 }
 
