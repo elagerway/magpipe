@@ -584,3 +584,50 @@ Added `call_record_id` parameter throughout warm transfer flow so all recordings
 ### Purpose
 All recordings from a warm transfer flow now link to the same call_record_id, allowing multiple audio players to show in the call detail UI (calls.js already supports this via the `recordings` JSONB array).
 
+---
+
+## Session: 2026-02-09
+
+### Completed - UI Improvements
+
+#### 1. ✅ Clickable Phone Numbers with Copy Tooltip
+Made all phone number displays in the Inbox page clickable with "Copied" tooltip appearing at mouse position:
+
+**Call Detail View (`renderCallDetailView`):**
+- Main header phone (when no contact name)
+- Secondary phone number under contact name
+- "Called:" service number
+- Call ID (existing functionality, updated to use tooltip at mouse position)
+
+**SMS Thread View:**
+- Main header phone (when no contact name)
+- Secondary phone number under contact name
+- "Messaged:" service number
+
+**Implementation:**
+- Added `clickable-phone` class with `data-phone` attribute
+- Click handler copies raw phone number to clipboard
+- Tooltip appears at mouse position (fixed positioning with clientX/clientY)
+- Tooltip disappears after 3 seconds
+
+#### 2. ✅ Fixed Consumption Data Not Updating
+The sidebar consumption progress bar was showing stale data because `cachedUserData` was never refreshed after initial load.
+
+**Root cause:** When navigating between pages, the nav detected it was already rendered and only updated active state, never refreshing consumption data.
+
+**Fix:**
+- Added `refreshConsumptionData()` export function to BottomNav.js
+- Modified `renderBottomNav()` to clear cache and refetch user data on each page navigation
+- Progress bar now updates properly on navigation
+
+### Files Modified
+- `src/pages/inbox.js`
+  - Added `clickable-phone` class to phone number spans in call and SMS thread headers
+  - Updated `attachRedialButtonListener()` with tooltip at mouse position for call ID
+  - Added clickable phone handlers to `attachRedialButtonListener()`
+  - Updated `attachMessageInputListeners()` with clickable phone handlers and call button listener for SMS
+
+- `src/components/BottomNav.js`
+  - Added `refreshConsumptionData()` export function
+  - Updated persistent nav logic to refresh consumption data on each navigation
+

@@ -1450,7 +1450,7 @@ export default class InboxPage {
         <div style="flex: 1; display: flex; flex-direction: column; gap: 0.25rem;">
           <div style="display: flex; align-items: center; gap: 0.75rem; justify-content: space-between;">
             <h2 style="margin: 0; font-size: calc(1.125rem - 5px); font-weight: 600; line-height: 1;">
-              ${contactName || this.formatPhoneNumber(conv.phone)}
+              ${contactName ? contactName : `<span class="clickable-phone" data-phone="${conv.phone}" style="cursor: pointer;">${this.formatPhoneNumber(conv.phone)}</span>`}
             </h2>
             <div style="display: flex; align-items: center; gap: 0.75rem;">
               <div style="
@@ -1490,8 +1490,8 @@ export default class InboxPage {
                           </div>
           </div>
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: -5px;">
-            <span style="font-size: 0.8rem; color: var(--text-secondary);">${contactName ? this.formatPhoneNumber(conv.phone) : ''}</span>
-            <span style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.7;">Messaged: ${serviceNumberDisplay}</span>
+            ${contactName ? `<span class="clickable-phone" data-phone="${conv.phone}" style="font-size: 0.8rem; color: var(--text-secondary); cursor: pointer;">${this.formatPhoneNumber(conv.phone)}</span>` : ''}
+            <span style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.7;">Messaged: <span class="clickable-phone" data-phone="${conv.serviceNumber}" style="cursor: pointer;">${serviceNumberDisplay}</span></span>
           </div>
         </div>
       </div>
@@ -1687,7 +1687,7 @@ export default class InboxPage {
               line-height: 1;
             ">←</button>
             <h2 style="margin: 0; font-size: calc(1.125rem - 5px); font-weight: 600; line-height: 1;">
-              ${contactName || this.formatPhoneNumber(call.contact_phone)}
+              ${contactName ? contactName : `<span class="clickable-phone" data-phone="${call.contact_phone}" style="cursor: pointer;">${this.formatPhoneNumber(call.contact_phone)}</span>`}
             </h2>
           </div>
           <div style="display: flex; align-items: center; gap: 0.75rem;">
@@ -1734,8 +1734,8 @@ export default class InboxPage {
           </div>
         </div>
         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: -5px;">
-          <span style="font-size: 0.8rem; color: var(--text-secondary);">${contactName ? this.formatPhoneNumber(call.contact_phone) : ''}</span>
-          <span style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.7;">Called: ${this.formatPhoneNumber(call.service_number || (call.direction === 'inbound' ? call.callee_number : call.caller_number) || '')}</span>
+          ${contactName ? `<span class="clickable-phone" data-phone="${call.contact_phone}" style="font-size: 0.8rem; color: var(--text-secondary); cursor: pointer;">${this.formatPhoneNumber(call.contact_phone)}</span>` : ''}
+          <span style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.7;">Called: <span class="clickable-phone" data-phone="${call.service_number || (call.direction === 'inbound' ? call.callee_number : call.caller_number) || ''}" style="cursor: pointer;">${this.formatPhoneNumber(call.service_number || (call.direction === 'inbound' ? call.callee_number : call.caller_number) || '')}</span></span>
         </div>
       </div>
 
@@ -2010,7 +2010,7 @@ export default class InboxPage {
           <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.25rem; display: flex; justify-content: space-between; align-items: center;">
             <span>
               <span style="font-weight: 500;">${this.formatRecordingLabel(rec.label)}</span>
-              ${rec.recording_sid ? `<span style="font-family: monospace; font-size: 0.6rem; opacity: 0.5; margin-left: 0.5rem;">${rec.recording_sid}</span>` : ''}
+              ${rec.recording_sid ? `<span class="clickable-id" data-id="${rec.recording_sid}" style="font-family: monospace; font-size: 0.6rem; opacity: 0.5; margin-left: 0.5rem; cursor: pointer;">${rec.recording_sid}</span>` : ''}
             </span>
             ${rec.duration || rec.duration_seconds ? `<span>${this.formatDurationShort(rec.duration || rec.duration_seconds)}</span>` : ''}
           </div>
@@ -5334,11 +5334,11 @@ Examples:
         const callId = copyBtn.dataset.callId;
         if (callId) {
           navigator.clipboard.writeText(callId).then(() => {
-            // Show "Copied" tooltip
+            // Show "Copied" tooltip at mouse position
             const tooltip = document.createElement('span');
             tooltip.textContent = 'Copied';
-            tooltip.style.cssText = 'position: absolute; top: -25px; left: 50%; transform: translateX(-50%); background: var(--bg-primary); color: var(--text-primary); padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.2); z-index: 1000;';
-            copyBtn.appendChild(tooltip);
+            tooltip.style.cssText = `position: fixed; top: ${e.clientY - 30}px; left: ${e.clientX}px; transform: translateX(-50%); background: var(--bg-primary); color: var(--text-primary); padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.2); z-index: 10000; pointer-events: none;`;
+            document.body.appendChild(tooltip);
             setTimeout(() => tooltip.remove(), 3000);
           });
         }
@@ -5685,13 +5685,11 @@ Examples:
         const callId = copyBtn.dataset.callId;
         if (callId) {
           navigator.clipboard.writeText(callId).then(() => {
-            const originalHtml = copyBtn.innerHTML;
-            copyBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>';
-            copyBtn.style.color = 'var(--success-color)';
-            setTimeout(() => {
-              copyBtn.innerHTML = originalHtml;
-              copyBtn.style.color = '';
-            }, 1500);
+            const tooltip = document.createElement('span');
+            tooltip.textContent = 'Copied';
+            tooltip.style.cssText = `position: fixed; top: ${e.clientY - 30}px; left: ${e.clientX}px; transform: translateX(-50%); background: var(--bg-primary); color: var(--text-primary); padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.2); z-index: 10000; pointer-events: none;`;
+            document.body.appendChild(tooltip);
+            setTimeout(() => tooltip.remove(), 3000);
           });
         }
       });
@@ -5739,6 +5737,44 @@ Examples:
     } else {
       console.warn('Message button not found when attaching listener');
     }
+
+    // Clickable phone numbers - copy on click with tooltip at mouse position
+    const clickablePhones = document.querySelectorAll('#message-thread .clickable-phone');
+    clickablePhones.forEach(phoneEl => {
+      phoneEl.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const phone = phoneEl.dataset.phone;
+        if (phone) {
+          navigator.clipboard.writeText(phone).then(() => {
+            const tooltip = document.createElement('span');
+            tooltip.textContent = 'Copied';
+            tooltip.style.cssText = `position: fixed; top: ${e.clientY - 30}px; left: ${e.clientX}px; transform: translateX(-50%); background: var(--bg-primary); color: var(--text-primary); padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.2); z-index: 10000; pointer-events: none;`;
+            document.body.appendChild(tooltip);
+            setTimeout(() => tooltip.remove(), 3000);
+          });
+        }
+      });
+    });
+
+    // Clickable IDs (recording_sid, etc.) - copy on click with tooltip at mouse position
+    const clickableIds = document.querySelectorAll('#message-thread .clickable-id');
+    clickableIds.forEach(idEl => {
+      idEl.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const id = idEl.dataset.id;
+        if (id) {
+          navigator.clipboard.writeText(id).then(() => {
+            const tooltip = document.createElement('span');
+            tooltip.textContent = 'Copied';
+            tooltip.style.cssText = `position: fixed; top: ${e.clientY - 30}px; left: ${e.clientX}px; transform: translateX(-50%); background: var(--bg-primary); color: var(--text-primary); padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.2); z-index: 10000; pointer-events: none;`;
+            document.body.appendChild(tooltip);
+            setTimeout(() => tooltip.remove(), 3000);
+          });
+        }
+      });
+    });
   }
 
   attachMessageInputListeners() {
@@ -5747,6 +5783,39 @@ Examples:
     const sendChatBtn = document.getElementById('send-chat-btn');
 
     console.log('Attaching message input listeners', { input, sendButton, sendChatBtn });
+
+    // Clickable phone numbers - copy on click with tooltip at mouse position
+    const clickablePhones = document.querySelectorAll('#message-thread .clickable-phone');
+    clickablePhones.forEach(phoneEl => {
+      phoneEl.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const phone = phoneEl.dataset.phone;
+        if (phone) {
+          navigator.clipboard.writeText(phone).then(() => {
+            const tooltip = document.createElement('span');
+            tooltip.textContent = 'Copied';
+            tooltip.style.cssText = `position: fixed; top: ${e.clientY - 30}px; left: ${e.clientX}px; transform: translateX(-50%); background: var(--bg-primary); color: var(--text-primary); padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.2); z-index: 10000; pointer-events: none;`;
+            document.body.appendChild(tooltip);
+            setTimeout(() => tooltip.remove(), 3000);
+          });
+        }
+      });
+    });
+
+    // Call action button (for SMS thread header)
+    const callBtn = document.getElementById('call-action-btn');
+    if (callBtn && !callBtn._listenerAttached) {
+      callBtn._listenerAttached = true;
+      callBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const phoneNumber = callBtn.dataset.phone;
+        if (phoneNumber) {
+          window.navigateTo(`/phone?dial=${encodeURIComponent(phoneNumber)}`);
+        }
+      });
+    }
 
     // For SMS, we need input and sendButton
     // For Chat, we need input and sendChatBtn
