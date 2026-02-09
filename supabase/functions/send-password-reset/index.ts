@@ -97,7 +97,7 @@ serve(async (req) => {
                 Hi${userName ? ' ' + userName : ''},
               </p>
               <p style="margin: 0 0 20px; font-size: 16px; line-height: 1.5; color: #6b7280;">
-                We received a request to reset your Pat password. Click the button below to create a new password:
+                We received a request to reset your Maggie password. Click the button below to create a new password:
               </p>
 
               <!-- Button -->
@@ -144,7 +144,7 @@ Reset Your Password
 
 Hi${userName ? ' ' + userName : ''},
 
-We received a request to reset your Pat password.
+We received a request to reset your Maggie password.
 
 Click the link below to create a new password:
 ${resetLink}
@@ -166,7 +166,7 @@ If you didn't request this, you can safely ignore this email. This link will exp
       body: JSON.stringify({
         From: 'notifications@snapsonic.com',
         To: email,
-        Subject: 'Reset Your Pat Password',
+        Subject: 'Reset Your Maggie Password',
         HtmlBody: emailHtml,
         TextBody: emailText,
         MessageStream: 'outbound',

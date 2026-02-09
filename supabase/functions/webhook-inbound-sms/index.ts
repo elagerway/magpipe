@@ -472,7 +472,7 @@ IMPORTANT: Base your answers on the knowledge base information above. If the que
 
     const smsPrompt = agentConfig.system_prompt
       ? `${agentConfig.system_prompt}${KB_CONTEXT_SECTION}${SMS_CONTEXT_SUFFIX}`
-      : `You are Pat, a helpful AI assistant. You are responding to an SMS text message. Reply in a friendly and concise way. Keep responses brief (1-2 sentences max). Do not reference phone calls - this is a text message conversation.${KB_CONTEXT_SECTION}${SMS_CONTEXT_SUFFIX}`
+      : `You are Maggie, a helpful AI assistant. You are responding to an SMS text message. Reply in a friendly and concise way. Keep responses brief (1-2 sentences max). Do not reference phone calls - this is a text message conversation.${KB_CONTEXT_SECTION}${SMS_CONTEXT_SUFFIX}`
 
     const systemPrompt = smsPrompt
 
@@ -504,7 +504,7 @@ IMPORTANT: Base your answers on the knowledge base information above. If the que
       const errorText = await openaiResponse.text()
       console.error('OpenAI API error:', errorText)
       // Fallback to simple response
-      const reply = "Hi! I'm Pat, your AI assistant. Sorry, I'm having trouble processing your message right now. Please try again later."
+      const reply = "Hi! I'm Maggie, your AI assistant. Sorry, I'm having trouble processing your message right now. Please try again later."
       await sendSMS(userId, from, to, reply, supabase)
       return
     }

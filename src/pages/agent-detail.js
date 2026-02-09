@@ -867,7 +867,7 @@ CALL CONTEXT:
   }
 
   buildOutboundPromptPreview() {
-    const agentName = this.agent.agent_name || this.agent.name || "Pat";
+    const agentName = this.agent.agent_name || this.agent.name || "Maggie";
     const basePrompt = this.agent.outbound_system_prompt;
 
     if (basePrompt) {

@@ -54,7 +54,7 @@ Numbers: ${phoneNumbers}
 User: ${userId}
 
 Reply YES to approve deletion
-Reply NO to reject and remove from Pat
+Reply NO to reject and remove from Maggie
 
 Approval ID: ${approval.id.substring(0, 8)}`
 

@@ -69,7 +69,7 @@ async function recreateTrunk() {
       },
       {
         trunkIds: [trunk.sipTrunkId],
-        name: 'Pat AI Calls',
+        name: 'Maggie AI Calls',
         hidePhoneNumber: false,
         roomConfig: {
           agents: [{

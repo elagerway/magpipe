@@ -1,4 +1,4 @@
-# Pat AI - LiveKit Voice Agent
+# Maggie AI - LiveKit Voice Agent
 
 Python-based LiveKit agent for handling real-time voice conversations with custom voice support.
 

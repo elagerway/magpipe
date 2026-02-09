@@ -157,7 +157,7 @@ CREATE TRIGGER update_user_integrations_updated_at
 
 -- Insert built-in provider (for built-in tools)
 INSERT INTO integration_providers (slug, name, description, category, oauth_type, enabled)
-VALUES ('builtin', 'Built-in Tools', 'Core Pat features like contacts, SMS, and calling', 'core', NULL, true)
+VALUES ('builtin', 'Built-in Tools', 'Core Maggie features like contacts, SMS, and calling', 'core', NULL, true)
 ON CONFLICT (slug) DO NOTHING;
 
 -- Insert Cal.com provider (migrate existing Cal.com integration)

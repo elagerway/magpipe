@@ -111,7 +111,7 @@ serve(async (req) => {
         body: JSON.stringify({
           username: sipUsername,
           password: sipPassword,
-          caller_id: `Pat - ${user.email}`,
+          caller_id: `Maggie - ${user.email}`,
           encryption: 'required',
         }),
       }

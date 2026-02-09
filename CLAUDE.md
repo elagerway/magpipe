@@ -1,4 +1,4 @@
-# Pat Development Guidelines
+# Maggie Development Guidelines
 
 ## Technologies
 - **Frontend**: JavaScript ES6+, HTML5, CSS3 (vanilla, minimal frameworks), Vite
@@ -98,7 +98,7 @@ navItems.push({ path: '/new', label: 'New' });
 - **Wait for user approval before pushing**: Always let user test changes on localhost before committing/pushing
 
 ### Render (LiveKit Agent)
-- **DO NOT use Pat-AI branch**: Work on `master` only, Pat-AI is outdated
+- **DO NOT use Pat-AI branch**: Work on `master` only, that branch is outdated
 - **Auto-deploys on push to master**: No manual deploy needed
 - Agent changes take effect after Render finishes building (~2-3 min)
 
@@ -163,7 +163,7 @@ const sessionResult = await page.evaluate(async ({ email, otp }) => {
 
 ## UI Guidelines
 - **Never expose vendor names** (SignalWire, OpenAI, ElevenLabs) in user-facing messages
-- **NEVER use "Pat" or "Pat AI"** - this product name is deprecated. Use generic language like "AI assistant", "your assistant", or "the agent"
+- **Use "Maggie"** as the AI assistant name. "Pat" is deprecated.
 - **Be mindful of mobile vs desktop styling differences**:
   - Back buttons: typically only needed on mobile (desktop has persistent sidebar nav)
   - Use `mobile-only` class to show elements only on mobile

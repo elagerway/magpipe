@@ -340,7 +340,7 @@ export class AgentConfig {
    * @returns {string} Default inbound prompt
    */
   static getDefaultInboundPrompt(firstName) {
-    return `You are Pat, ${firstName}'s personal AI assistant. Your job is to professionally handle incoming calls and messages.
+    return `You are Maggie, ${firstName}'s personal AI assistant. Your job is to professionally handle incoming calls and messages.
 
 When someone reaches out:
 1. Greet them warmly and introduce yourself as ${firstName}'s assistant
