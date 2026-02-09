@@ -3,7 +3,7 @@
 Maggie AI Voice Agent - LiveKit Implementation
 Handles real-time voice conversations with STT, LLM, and TTS pipeline
 """
-print("🔴 AGENT CODE VERSION: PROACTIVE-EGRESS-V7 🔴")
+print("🔴 AGENT CODE VERSION: EDGE-FUNCTION-EGRESS-V8 🔴")
 
 import aiohttp
 import asyncio
@@ -775,123 +775,45 @@ async def check_phone_admin_access(caller_number: str) -> dict:
     return {"has_access": False}
 
 
-async def fetch_livekit_recording(
+async def trigger_livekit_recording_fetch(
     egress_id: str,
     call_record_id: str,
-    livekit_api,
-    transcript: str = None,
-    max_attempts: int = 12,
-    delay_seconds: int = 10
+    transcript: str = None
 ):
     """
-    Proactively fetch LiveKit recording after egress completes.
-    Polls the egress API until recording is ready, then adds to call_record.
+    Trigger Edge Function to fetch LiveKit recording.
+    The Edge Function runs independently and survives agent process exit.
     """
-    from livekit.protocol import egress as proto_egress
+    try:
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
-    logger.info(f"🎙️ Starting proactive recording fetch for egress {egress_id}")
+        logger.info(f"🎙️ Triggering Edge Function to fetch recording for egress {egress_id}")
 
-    for attempt in range(max_attempts):
-        try:
-            # Wait before checking (egress needs time to process)
-            await asyncio.sleep(delay_seconds)
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{supabase_url}/functions/v1/fetch-livekit-recording",
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {supabase_key}",
+                },
+                json={
+                    "egress_id": egress_id,
+                    "call_record_id": call_record_id,
+                    "transcript": transcript,
+                },
+                timeout=aiohttp.ClientTimeout(total=5)  # Quick timeout, fire and forget
+            ) as response:
+                if response.status == 200:
+                    logger.info(f"✅ Edge Function triggered for egress {egress_id}")
+                else:
+                    logger.warning(f"⚠️ Edge Function returned {response.status}")
 
-            # Query egress status
-            list_request = proto_egress.ListEgressRequest(egress_id=egress_id)
-            egress_list = await livekit_api.egress.list_egress(list_request)
-
-            if not egress_list.items:
-                logger.warning(f"🎙️ Egress {egress_id} not found, attempt {attempt + 1}/{max_attempts}")
-                continue
-
-            egress_info = egress_list.items[0]
-            status = egress_info.status
-
-            # Status values: EGRESS_STARTING=0, EGRESS_ACTIVE=1, EGRESS_ENDING=2, EGRESS_COMPLETE=3, EGRESS_FAILED=4
-            if status == 3:  # EGRESS_COMPLETE
-                logger.info(f"✅ Egress {egress_id} complete!")
-
-                # Get the recording URL from file results
-                recording_url = None
-                duration_seconds = 0
-
-                if egress_info.file_results:
-                    file_result = egress_info.file_results[0]
-                    recording_url = file_result.location
-                    duration_seconds = int(file_result.duration / 1_000_000_000)  # nanoseconds to seconds
-                elif egress_info.file:
-                    recording_url = egress_info.file.location
-                    duration_seconds = int(egress_info.file.duration / 1_000_000_000)
-
-                if not recording_url:
-                    logger.warning(f"⚠️ Egress complete but no file URL found")
-                    return
-
-                logger.info(f"🎙️ Recording URL: {recording_url}, duration: {duration_seconds}s")
-
-                # Add to recordings array in call_record
-                try:
-                    # Get existing recordings
-                    response = supabase.table("call_records") \
-                        .select("recordings") \
-                        .eq("id", call_record_id) \
-                        .single() \
-                        .execute()
-
-                    existing_recordings = response.data.get("recordings", []) if response.data else []
-
-                    # Check if already added
-                    if any(r.get("recording_sid") == egress_id for r in existing_recordings):
-                        logger.info(f"🎙️ Recording {egress_id} already in recordings array")
-                        return
-
-                    # Create new recording entry
-                    new_recording = {
-                        "recording_sid": egress_id,
-                        "label": "conversation",
-                        "url": recording_url,
-                        "duration_seconds": duration_seconds,
-                        "source": "livekit",
-                        "created_at": datetime.datetime.now().isoformat(),
-                    }
-
-                    # Add transcript if available
-                    if transcript:
-                        new_recording["transcript"] = transcript
-
-                    # Prepend to recordings (conversation is first/earliest)
-                    updated_recordings = [new_recording] + existing_recordings
-
-                    # Update database
-                    supabase.table("call_records") \
-                        .update({
-                            "recordings": updated_recordings,
-                            "recording_url": recording_url  # For backwards compatibility
-                        }) \
-                        .eq("id", call_record_id) \
-                        .execute()
-
-                    logger.info(f"✅ Added LiveKit recording to call_record {call_record_id}")
-                    return
-
-                except Exception as e:
-                    logger.error(f"❌ Error adding recording to database: {e}")
-                    return
-
-            elif status == 4:  # EGRESS_FAILED
-                error_msg = getattr(egress_info, 'error', 'Unknown error')
-                logger.error(f"❌ Egress {egress_id} failed: {error_msg}")
-                return
-
-            else:
-                # Still processing
-                status_names = {0: "STARTING", 1: "ACTIVE", 2: "ENDING", 3: "COMPLETE", 4: "FAILED"}
-                logger.info(f"🎙️ Egress {egress_id} status: {status_names.get(status, status)}, attempt {attempt + 1}/{max_attempts}")
-
-        except Exception as e:
-            logger.error(f"❌ Error checking egress status: {e}")
-
-    logger.warning(f"⚠️ Gave up waiting for egress {egress_id} after {max_attempts} attempts")
+    except asyncio.TimeoutError:
+        # Expected - we don't wait for the full response
+        logger.info(f"🎙️ Edge Function triggered (fire and forget) for egress {egress_id}")
+    except Exception as e:
+        logger.error(f"❌ Error triggering recording fetch: {e}")
 
 
 async def verify_access_code(user_id: str, spoken_code: str, access_code_hash: str) -> bool:
@@ -2773,11 +2695,10 @@ CALL CONTEXT:
                     update_data["egress_id"] = egress_id
                     logger.info(f"💾 Saving egress_id {egress_id} - will fetch recording proactively")
 
-                    # Proactively fetch LiveKit recording after a delay
-                    asyncio.create_task(fetch_livekit_recording(
+                    # Trigger Edge Function to fetch recording (runs independently)
+                    asyncio.create_task(trigger_livekit_recording_fetch(
                         egress_id=egress_id,
                         call_record_id=call_record_id,
-                        livekit_api=livekit_api,
                         transcript=transcript_text
                     ))
 
