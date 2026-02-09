@@ -3,7 +3,7 @@
  * Handles caching, offline support, and background sync
  */
 
-const CACHE_NAME = 'pat-v12';
+const CACHE_NAME = 'pat-v13';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -58,6 +58,28 @@ self.addEventListener('fetch', (event) => {
 
   // Skip Supabase API requests (always fetch from network)
   if (event.request.url.includes('supabase.co')) {
+    return;
+  }
+
+  // Network-first for CSS files (always get fresh styles)
+  if (event.request.url.endsWith('.css')) {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          // Cache the fresh response
+          if (networkResponse.ok) {
+            const responseClone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, responseClone);
+            });
+          }
+          return networkResponse;
+        })
+        .catch(() => {
+          // Network failed, try cache
+          return caches.match(event.request);
+        })
+    );
     return;
   }
 
