@@ -187,11 +187,11 @@ Deno.serve(async (req) => {
         .catch(err => console.error('Auto-enrich error:', err))
     }
 
-    // Return TwiML to connect to LiveKit via SIP with recording
-    const recordingCallbackUrl = `${supabaseUrl}/functions/v1/sip-recording-callback?label=main`
+    // Return TwiML to connect to LiveKit via SIP
+    // Note: No SignalWire recording - LiveKit records the conversation
     const response = `<?xml version="1.0" encoding="UTF-8"?>
     <Response>
-      <Dial record="record-from-answer" recordingStatusCallback="${recordingCallbackUrl}">
+      <Dial>
         <Sip>${sipUri}</Sip>
       </Dial>
     </Response>`
