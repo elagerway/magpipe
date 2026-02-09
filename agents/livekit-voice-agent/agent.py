@@ -3,7 +3,7 @@
 Maggie AI Voice Agent - LiveKit Implementation
 Handles real-time voice conversations with STT, LLM, and TTS pipeline
 """
-print("🔴 AGENT CODE VERSION: PATH-STYLE-S3-V9 🔴")
+print("🔴 AGENT CODE VERSION: BILLING-V1 🔴")
 
 import aiohttp
 import asyncio
@@ -537,6 +537,68 @@ async def get_semantic_context(transcript_text: str, agent_id: str, user_id: str
     except Exception as e:
         logger.error(f"Failed to get semantic context: {e}")
         return ""
+
+
+async def deduct_call_credits(user_id: str, agent_id: str, duration_seconds: int, call_record_id: str) -> bool:
+    """Deduct credits for a completed call by calling the deduct-credits edge function."""
+    if not user_id or duration_seconds <= 0:
+        logger.info(f"💰 Skipping billing - missing user_id or zero duration (user={bool(user_id)}, duration={duration_seconds})")
+        return False
+
+    try:
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+        if not supabase_url or not supabase_key:
+            logger.error("💰 Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY for billing")
+            return False
+
+        # Get agent config to determine voice and LLM rates
+        voice_id = None
+        ai_model = None
+
+        if agent_id:
+            try:
+                response = supabase.table("agent_configs") \
+                    .select("voice_id, ai_model") \
+                    .eq("id", agent_id) \
+                    .limit(1) \
+                    .execute()
+                if response.data and len(response.data) > 0:
+                    voice_id = response.data[0].get("voice_id")
+                    ai_model = response.data[0].get("ai_model")
+            except Exception as e:
+                logger.warning(f"💰 Could not fetch agent config for billing: {e}")
+
+        # Call deduct-credits edge function
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{supabase_url}/functions/v1/deduct-credits",
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {supabase_key}"
+                },
+                json={
+                    "userId": user_id,
+                    "type": "voice",
+                    "durationSeconds": duration_seconds,
+                    "voiceId": voice_id,
+                    "aiModel": ai_model,
+                    "referenceType": "call",
+                    "referenceId": call_record_id
+                }
+            ) as resp:
+                result = await resp.json()
+                if result.get("success"):
+                    logger.info(f"💰 Deducted ${result.get('cost', 0):.4f} for {duration_seconds}s call, balance: ${result.get('balanceAfter', 0):.2f}")
+                    return True
+                else:
+                    logger.error(f"💰 Failed to deduct credits: {result.get('error', 'unknown')}")
+                    return False
+
+    except Exception as e:
+        logger.error(f"💰 Error deducting call credits: {e}", exc_info=True)
+        return False
 
 
 async def update_caller_memory(caller_phone: str, user_id: str, agent_id: str, call_summary: str, call_record_id: str, transcript_text: str, generate_embedding_flag: bool = True) -> bool:
@@ -2738,6 +2800,16 @@ CALL CONTEXT:
                     .execute()
 
                 logger.info(f"✅ Call transcript saved to database{' with summary' if update_data.get('call_summary') else ''}{' with extracted_data' if update_data.get('extracted_data') else ''}")
+
+                # Deduct credits for the call
+                call_duration = int(asyncio.get_event_loop().time() - call_start_time)
+                billing_agent_id = user_config.get("id") if user_config else None
+                asyncio.create_task(deduct_call_credits(
+                    user_id=user_id,
+                    agent_id=billing_agent_id,
+                    duration_seconds=call_duration,
+                    call_record_id=call_record_id
+                ))
 
                 # Update caller memory if enabled
                 if user_config and user_config.get("memory_enabled") and update_data.get("call_summary"):
