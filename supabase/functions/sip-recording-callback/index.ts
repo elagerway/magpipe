@@ -122,19 +122,36 @@ Deno.serve(async (req) => {
     }
     console.log(`📥 Downloading recording from: ${mp3Url}`);
 
-    // First request to get redirect URL (SignalWire returns 302 to pre-signed S3 URL)
-    let audioResponse = await fetch(mp3Url, {
-      headers: downloadHeaders,
-      redirect: 'manual'  // Don't auto-follow to see the redirect
-    });
+    // Try to download with automatic redirect following
+    // SignalWire returns 302 to a pre-signed S3 URL
+    let audioResponse: Response;
+    try {
+      // First try with redirect: follow (Deno should handle auth stripping automatically)
+      audioResponse = await fetch(mp3Url, {
+        headers: downloadHeaders,
+        redirect: 'follow'
+      });
 
-    // If we got a redirect, follow it without auth (pre-signed URL)
-    if (audioResponse.status === 302 || audioResponse.status === 301) {
-      const redirectUrl = audioResponse.headers.get('Location');
-      console.log(`📥 Following redirect to: ${redirectUrl?.substring(0, 100)}...`);
-      if (redirectUrl) {
-        audioResponse = await fetch(redirectUrl);  // No auth needed for pre-signed URL
+      // If that didn't work, try manual redirect handling
+      if (!audioResponse.ok && audioResponse.status !== 200) {
+        console.log(`📥 Auto-redirect failed (${audioResponse.status}), trying manual redirect...`);
+
+        const manualResponse = await fetch(mp3Url, {
+          headers: downloadHeaders,
+          redirect: 'manual'
+        });
+
+        if (manualResponse.status === 302 || manualResponse.status === 301) {
+          const redirectUrl = manualResponse.headers.get('Location');
+          console.log(`📥 Following redirect to: ${redirectUrl?.substring(0, 100)}...`);
+          if (redirectUrl) {
+            audioResponse = await fetch(redirectUrl);  // No auth needed for pre-signed URL
+          }
+        }
       }
+    } catch (fetchError) {
+      console.error(`Fetch error: ${fetchError}`);
+      audioResponse = new Response(null, { status: 500, statusText: 'Fetch failed' });
     }
 
     if (!audioResponse.ok) {
@@ -224,9 +241,22 @@ Deno.serve(async (req) => {
 
     console.log(`✅ Updated call record ${callRecord.id} with recording (label: ${label})`);
 
+    // Get agent name for transcript labels
+    let agentName = 'Maggie';  // Default fallback
+    if (callRecord.agent_id) {
+      const { data: agentConfig } = await supabase
+        .from('agent_configs')
+        .select('name, agent_name')
+        .eq('id', callRecord.agent_id)
+        .single();
+      if (agentConfig) {
+        agentName = agentConfig.agent_name || agentConfig.name || 'Maggie';
+      }
+    }
+
     // Transcribe with speaker diarization asynchronously
     // Pass call direction and recording label to store per-recording transcript
-    transcribeWithDiarization(audioBlob, callRecord.id, callRecord.direction || 'outbound', supabase, label, RecordingSid as string).catch(err => {
+    transcribeWithDiarization(audioBlob, callRecord.id, callRecord.direction || 'outbound', supabase, label, RecordingSid as string, agentName).catch(err => {
       console.error('Transcription failed:', err);
     });
 
@@ -243,9 +273,9 @@ Deno.serve(async (req) => {
  *
  * Speaker labeling based on call direction:
  * - Outbound: Speaker who speaks first is usually the Callee (they answer), our user is Caller
- * - Inbound: Speaker who speaks first is usually the Caller (external), our user is Callee
+ * - Inbound: Speaker who speaks first is usually the Caller (external), agent answers
  */
-async function transcribeWithDiarization(audioBlob: Blob, callRecordId: string, direction: string, supabase: any, recordingLabel: string = 'main', recordingSid: string = '') {
+async function transcribeWithDiarization(audioBlob: Blob, callRecordId: string, direction: string, supabase: any, recordingLabel: string = 'main', recordingSid: string = '', agentName: string = 'Maggie') {
   try {
     const deepgramApiKey = Deno.env.get('DEEPGRAM_API_KEY');
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
@@ -255,7 +285,7 @@ async function transcribeWithDiarization(audioBlob: Blob, callRecordId: string, 
       return;
     }
 
-    console.log(`🎤 Starting transcription for call ${callRecordId}`);
+    console.log(`🎤 Starting transcription for call ${callRecordId} (agent: ${agentName})`);
 
     let transcript = '';
 
@@ -307,18 +337,18 @@ async function transcribeWithDiarization(audioBlob: Blob, callRecordId: string, 
         }
 
         // Format with proper labels based on call direction
-        // For outbound: first speaker (0) is usually callee who answers, speaker 1 is our user
-        // For inbound: first speaker (0) is usually the external caller, speaker 1 is our user
+        // For outbound: first speaker (0) is usually callee who answers, speaker 1 is the agent
+        // For inbound: first speaker (0) is usually the external caller, speaker 1 is the agent
         transcript = segments.map(seg => {
           let label: string;
           if (direction === 'outbound') {
-            // Outbound: our user called someone
-            // Speaker 0 = Callee (person who answered), Speaker 1 = You (our user)
-            label = seg.speaker === 0 ? 'Callee' : 'You';
+            // Outbound: agent called someone
+            // Speaker 0 = Callee (person who answered), Speaker 1 = Agent
+            label = seg.speaker === 0 ? 'Callee' : agentName;
           } else {
-            // Inbound: someone called our user
-            // Speaker 0 = Caller (external person), Speaker 1 = You (our user)
-            label = seg.speaker === 0 ? 'Caller' : 'You';
+            // Inbound: someone called the agent
+            // Speaker 0 = Caller (external person), Speaker 1 = Agent
+            label = seg.speaker === 0 ? 'Caller' : agentName;
           }
           return `${label}: ${seg.text}`;
         }).join('\n');
