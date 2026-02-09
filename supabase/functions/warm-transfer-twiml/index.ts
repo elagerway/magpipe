@@ -215,13 +215,12 @@ Deno.serve(async (req) => {
 
       // Add action URL to capture dial result
       const dialActionUrl = `${SUPABASE_URL}/functions/v1/warm-transfer-twiml?action=dial_result&room_name=${encodeURIComponent(declinedRoomName || 'unknown')}`
-      // Recording callback for reconnect segment
-      const reconnectRecordingUrl = `${SUPABASE_URL}/functions/v1/sip-recording-callback?label=reconnect_after_decline${callRecordId ? `&call_record_id=${callRecordId}` : ''}`
+      // Note: No SignalWire recording here - LiveKit records the reconnect conversation
 
       twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="Polly.Joanna-Neural">I'm sorry, they're not available right now. Let me reconnect you.</Say>
-  <Dial action="${escapeXml(dialActionUrl)}" callerId="${escapeXml(dialCallerId)}" timeout="30" record="record-from-answer" recordingStatusCallback="${escapeXml(reconnectRecordingUrl)}" recordingStatusCallbackMethod="POST">
+  <Dial action="${escapeXml(dialActionUrl)}" callerId="${escapeXml(dialCallerId)}" timeout="30">
     <Sip>${escapeXml(declinedSipUri)}</Sip>
   </Dial>
   <Say voice="Polly.Joanna-Neural">I was unable to reconnect you. Please call back.</Say>
