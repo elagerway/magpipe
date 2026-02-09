@@ -3,7 +3,7 @@
 Maggie AI Voice Agent - LiveKit Implementation
 Handles real-time voice conversations with STT, LLM, and TTS pipeline
 """
-print("🔴 AGENT CODE VERSION: EDGE-FUNCTION-EGRESS-V8 🔴")
+print("🔴 AGENT CODE VERSION: PATH-STYLE-S3-V9 🔴")
 
 import aiohttp
 import asyncio
@@ -2853,12 +2853,14 @@ CALL CONTEXT:
             from livekit.protocol import egress as proto_egress
 
             # Configure S3 upload to Supabase Storage
+            # force_path_style=True is required for Supabase Storage (uses path-style URLs, not virtual-hosted)
             s3_upload = proto_egress.S3Upload(
                 access_key=s3_access_key,
                 secret=s3_secret,
                 region=s3_region,
                 bucket=s3_bucket,
                 endpoint=s3_endpoint,
+                force_path_style=True,
             )
 
             # Create room composite egress to record audio
