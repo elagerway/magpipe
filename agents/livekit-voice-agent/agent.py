@@ -560,13 +560,13 @@ async def deduct_call_credits(user_id: str, agent_id: str, duration_seconds: int
         if agent_id:
             try:
                 response = supabase.table("agent_configs") \
-                    .select("voice_id, ai_model") \
+                    .select("voice_id, llm_model") \
                     .eq("id", agent_id) \
                     .limit(1) \
                     .execute()
                 if response.data and len(response.data) > 0:
                     voice_id = response.data[0].get("voice_id")
-                    ai_model = response.data[0].get("ai_model")
+                    ai_model = response.data[0].get("llm_model")
             except Exception as e:
                 logger.warning(f"💰 Could not fetch agent config for billing: {e}")
 
