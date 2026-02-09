@@ -242,6 +242,20 @@ Deno.serve(async (req) => {
 
     console.log(`✅ Updated call record ${callRecord.id} with recording (label: ${label})`);
 
+    // Deduct credits for completed calls (only for main recording to avoid double billing)
+    const durationSeconds = parseInt(RecordingDuration as string) || 0;
+    if (label === 'main' && durationSeconds > 0 && callRecord.user_id) {
+      deductCallCredits(
+        supabaseUrl,
+        supabaseKey,
+        supabase,
+        callRecord.user_id,
+        durationSeconds,
+        callRecord.id,
+        callRecord.agent_id
+      ).catch(err => console.error('Failed to deduct credits:', err));
+    }
+
     // Get agent name for transcript labels
     let agentName = 'Maggie';  // Default fallback
     if (callRecord.agent_id) {
@@ -458,5 +472,79 @@ async function analyzeSentimentForCall(callRecordId: string, transcript: string,
     console.log(`✅ Sentiment: ${sentiment}`);
   } catch (error) {
     console.error('Sentiment analysis failed:', error);
+  }
+}
+
+/**
+ * Deduct credits for a completed call
+ * This was added because inbound LiveKit SIP calls go through sip-recording-callback
+ * but not through webhook-call-status (which normally handles billing)
+ */
+async function deductCallCredits(
+  supabaseUrl: string,
+  supabaseKey: string,
+  supabase: any,
+  userId: string,
+  durationSeconds: number,
+  callRecordId: string,
+  agentId?: string
+) {
+  try {
+    // Check if credits were already deducted for this call (avoid double billing)
+    const { data: existingTransaction } = await supabase
+      .from('credit_transactions')
+      .select('id')
+      .eq('reference_id', callRecordId)
+      .eq('reference_type', 'call')
+      .single();
+
+    if (existingTransaction) {
+      console.log(`Credits already deducted for call ${callRecordId}, skipping`);
+      return;
+    }
+
+    // Get agent config to determine voice and LLM rates
+    let voiceId = null;
+    let aiModel = null;
+
+    if (agentId) {
+      const { data: agentConfig } = await supabase
+        .from('agent_configs')
+        .select('voice_id, ai_model')
+        .eq('id', agentId)
+        .single();
+
+      if (agentConfig) {
+        voiceId = agentConfig.voice_id;
+        aiModel = agentConfig.ai_model;
+      }
+    }
+
+    // Call deduct-credits function
+    const response = await fetch(`${supabaseUrl}/functions/v1/deduct-credits`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseKey}`
+      },
+      body: JSON.stringify({
+        userId,
+        type: 'voice',
+        durationSeconds,
+        voiceId,
+        aiModel,
+        referenceType: 'call',
+        referenceId: callRecordId
+      })
+    });
+
+    const result = await response.json();
+    if (result.success) {
+      console.log(`💰 Deducted $${result.cost} for ${durationSeconds}s call (${callRecordId}), balance: $${result.balanceAfter}`);
+    } else {
+      console.error('Failed to deduct credits:', result.error);
+    }
+  } catch (error) {
+    console.error('Error deducting call credits:', error);
   }
 }
