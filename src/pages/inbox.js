@@ -179,7 +179,7 @@ export default class InboxPage {
       <div class="inbox-container">
         <!-- Conversation List Sidebar -->
         <div class="conversation-list" id="conversation-list">
-          <div class="inbox-header" style="position: relative;">
+          <div class="inbox-header" style="position: relative; margin-top: -4px;">
             <h1 style="margin: 0; font-size: 1rem; font-weight: 600;">Inbox</h1>
             <div id="inbox-search-container" style="display: flex; align-items: center; margin-left: auto; margin-right: 0.5rem;">
               <button id="inbox-search-toggle" style="
@@ -1452,20 +1452,16 @@ export default class InboxPage {
             <h2 style="margin: 0; font-size: calc(1.125rem - 5px); font-weight: 600; line-height: 1;">
               ${contactName ? contactName : `<span class="clickable-phone" data-phone="${conv.phone}" style="cursor: pointer;">${this.formatPhoneNumber(conv.phone)}</span>`}
             </h2>
-            <div style="display: flex; align-items: center; gap: 0.75rem;">
-              <div style="
-                display: flex;
+            <div style="display: flex; align-items: center; gap: 0.5rem; padding-bottom: 5px;">
+              <a href="#" id="call-action-btn" data-phone="${conv.phone}" style="
+                padding: 0.2rem 0.5rem;
+                color: var(--primary-color, #6366f1);
+                text-decoration: none;
                 border: 1px solid var(--border-color, #e5e7eb);
-                border-radius: 6px;
-                overflow: hidden;
-                font-size: 0.8rem;
-              ">
-                <a href="#" id="call-action-btn" data-phone="${conv.phone}" style="
-                  padding: 0.35rem 0.75rem;
-                  color: var(--primary-color, #6366f1);
-                  text-decoration: none;
-                ">Call</a>
-              </div>
+                border-radius: 9999px;
+                font-size: 0.7rem;
+                transition: background-color 0.15s ease;
+              " onmouseenter="this.style.backgroundColor='var(--bg-tertiary, #f3f4f6)'" onmouseleave="this.style.backgroundColor=''">Call</a>
               ${contact?.company || contact?.job_title || contact?.linkedin_url || contact?.twitter_url ? `
                 <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; color: var(--text-secondary);">
                   ${contact?.company || contact?.job_title ? `
@@ -1669,7 +1665,32 @@ export default class InboxPage {
 
     // Look up contact for this call
     const contact = this.contactsMap?.[call.contact_phone];
-    const contactName = contact ? [contact.first_name, contact.last_name].filter(Boolean).join(' ') || contact.name : null;
+    let contactName = contact ? [contact.first_name, contact.last_name].filter(Boolean).join(' ') || contact.name : null;
+
+    // Check if we should try to extract a name from the transcript
+    const isUnknownContact = !contactName || contactName.toLowerCase() === 'unknown';
+    // Search main transcript and all recording transcripts for a name
+    let suggestedName = null;
+    if (isUnknownContact) {
+      // Try main transcript first
+      suggestedName = this.extractCallerNameFromTranscript(call.transcript);
+      // If not found, try recording transcripts (prioritize main/conversation recordings)
+      if (!suggestedName && call.recordings?.length > 0) {
+        // Sort recordings to check main/conversation first
+        const sortedRecordings = [...call.recordings].sort((a, b) => {
+          const priority = ['main', 'conversation', 'reconnect_conversation'];
+          const aIdx = priority.indexOf(a.label) >= 0 ? priority.indexOf(a.label) : 99;
+          const bIdx = priority.indexOf(b.label) >= 0 ? priority.indexOf(b.label) : 99;
+          return aIdx - bIdx;
+        });
+        for (const rec of sortedRecordings) {
+          if (rec.transcript) {
+            suggestedName = this.extractCallerNameFromTranscript(rec.transcript);
+            if (suggestedName) break;
+          }
+        }
+      }
+    }
 
     return `
       <div class="thread-header" style="display: flex; flex-direction: column; gap: 0.25rem;">
@@ -1687,29 +1708,32 @@ export default class InboxPage {
               line-height: 1;
             ">←</button>
             <h2 style="margin: 0; font-size: calc(1.125rem - 5px); font-weight: 600; line-height: 1;">
-              ${contactName ? contactName : `<span class="clickable-phone" data-phone="${call.contact_phone}" style="cursor: pointer;">${this.formatPhoneNumber(call.contact_phone)}</span>`}
+              ${contactName && !isUnknownContact
+                ? contactName
+                : suggestedName
+                  ? `Unknown <span style="font-weight: 400; font-size: 0.85em;">(could be <a href="#" class="add-contact-link" data-name="${suggestedName}" data-phone="${call.contact_phone}" style="color: var(--primary-color); text-decoration: underline; cursor: pointer;">${suggestedName}</a>)</span>`
+                  : 'Unknown'}
             </h2>
           </div>
-          <div style="display: flex; align-items: center; gap: 0.75rem;">
-            <div style="
-              display: flex;
-              border: 1px solid var(--border-color, #e5e7eb);
-              border-radius: 6px;
-              overflow: hidden;
-              font-size: 0.8rem;
-            ">
+          <div style="display: flex; align-items: center; gap: 0.5rem; padding-bottom: 5px;">
               <a href="#" id="call-action-btn" data-phone="${call.contact_phone}" style="
-                padding: 0.35rem 0.75rem;
+                padding: 0.2rem 0.5rem;
                 color: var(--primary-color, #6366f1);
                 text-decoration: none;
-                border-right: 1px solid var(--border-color, #e5e7eb);
-              ">Call</a>
+                border: 1px solid var(--border-color, #e5e7eb);
+                border-radius: 9999px;
+                font-size: 0.7rem;
+                transition: background-color 0.15s ease;
+              " onmouseenter="this.style.backgroundColor='var(--bg-tertiary, #f3f4f6)'" onmouseleave="this.style.backgroundColor=''">Call</a>
               <a href="#" id="message-action-btn" data-phone="${call.contact_phone}" style="
-                padding: 0.35rem 0.75rem;
+                padding: 0.2rem 0.5rem;
                 color: var(--primary-color, #6366f1);
                 text-decoration: none;
-              ">Message</a>
-            </div>
+                border: 1px solid var(--border-color, #e5e7eb);
+                border-radius: 9999px;
+                font-size: 0.7rem;
+                transition: background-color 0.15s ease;
+              " onmouseenter="this.style.backgroundColor='var(--bg-tertiary, #f3f4f6)'" onmouseleave="this.style.backgroundColor=''">Message</a>
             ${contact?.company || contact?.job_title || contact?.linkedin_url || contact?.twitter_url ? `
               <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; color: var(--text-secondary);">
                 ${contact?.company || contact?.job_title ? `
@@ -1734,7 +1758,7 @@ export default class InboxPage {
           </div>
         </div>
         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: -5px;">
-          ${contactName ? `<span class="clickable-phone" data-phone="${call.contact_phone}" style="font-size: 0.8rem; color: var(--text-secondary); cursor: pointer;">${this.formatPhoneNumber(call.contact_phone)}</span>` : ''}
+          <span class="clickable-phone" data-phone="${call.contact_phone}" style="font-size: 0.8rem; color: var(--text-secondary); cursor: pointer;">${this.formatPhoneNumber(call.contact_phone)}</span>
           <span style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.7;">Called: <span class="clickable-phone" data-phone="${call.service_number || (call.direction === 'inbound' ? call.callee_number : call.caller_number) || ''}" style="cursor: pointer;">${this.formatPhoneNumber(call.service_number || (call.direction === 'inbound' ? call.callee_number : call.caller_number) || '')}</span></span>
         </div>
       </div>
@@ -2244,6 +2268,41 @@ export default class InboxPage {
       return `+1 (${match[1]}) ${match[2]}-${match[3]}`;
     }
     return phone;
+  }
+
+  /**
+   * Extract potential caller name from transcript using common patterns
+   * Returns the first name found or null
+   */
+  extractCallerNameFromTranscript(transcript) {
+    if (!transcript) return null;
+
+    // Search the entire transcript - speaker labels can be inconsistent
+    // (caller speech is sometimes mislabeled with agent name)
+    const textToSearch = transcript;
+    if (!textToSearch) return null;
+
+    // Common patterns for name introduction (allow optional punctuation between words)
+    // Handle both regular apostrophe (') and fancy apostrophe (')
+    const patterns = [
+      /(?:my name is|i[''']m|i am|this is|it[''']s|its)[,.\s]+([A-Za-z]+)/i,
+      /(?:call me|they call me)[,.\s]+([A-Za-z]+)/i,
+      /^([A-Z][a-z]+)\s+(?:here|speaking|calling)/i,
+    ];
+
+    for (const pattern of patterns) {
+      const match = textToSearch.match(pattern);
+      if (match && match[1]) {
+        const name = match[1];
+        // Filter out common false positives
+        const excluded = ['yes', 'no', 'hi', 'hello', 'hey', 'well', 'sure', 'okay', 'fine', 'good', 'great', 'thanks', 'thank', 'sorry', 'please', 'just', 'actually', 'really', 'maybe', 'probably', 'can', 'could', 'would', 'will', 'need', 'want', 'like', 'know', 'think', 'see', 'get', 'got', 'have', 'had', 'been', 'was', 'were', 'are', 'being', 'able', 'going', 'gonna', 'about', 'here', 'there', 'very', 'that', 'this', 'these', 'those', 'what', 'when', 'where', 'which', 'who', 'how', 'why', 'hold', 'moment', 'transfer', 'busy', 'available', 'ready', 'done', 'back', 'away', 'out', 'not', 'now', 'late', 'early', 'free', 'home', 'work', 'calling'];
+        if (!excluded.includes(name.toLowerCase())) {
+          return name;
+        }
+      }
+    }
+
+    return null;
   }
 
   formatTimestamp(date) {
@@ -4825,6 +4884,11 @@ Examples:
     this.attachFilterToggleListener();
     this.attachEditToggleListener();
 
+    // Attach call-specific listeners if viewing a call
+    if (this.selectedCallId) {
+      this.attachRedialButtonListener();
+    }
+
     // Only attach dropdown listeners once
     if (!this.dropdownListenersAttached) {
       this.attachDropdownListeners();
@@ -5775,6 +5839,161 @@ Examples:
         }
       });
     });
+
+    // Add contact link - show modal to confirm adding suggested name as contact
+    const addContactLinks = document.querySelectorAll('#message-thread .add-contact-link');
+    addContactLinks.forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const name = link.dataset.name;
+        const phone = link.dataset.phone;
+        if (name && phone) {
+          this.showAddContactModal(name, phone);
+        }
+      });
+    });
+  }
+
+  showAddContactModal(name, phone) {
+    // Remove any existing modal
+    const existing = document.getElementById('add-contact-modal-overlay');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'add-contact-modal-overlay';
+    overlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10001;
+    `;
+
+    overlay.innerHTML = `
+      <div style="
+        background: var(--bg-primary);
+        border-radius: 12px;
+        padding: 1.5rem;
+        max-width: 320px;
+        width: 90%;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+      ">
+        <h3 style="margin: 0 0 0.75rem; font-size: 1rem; font-weight: 600;">Add to Contacts</h3>
+        <p style="margin: 0 0 1.25rem; color: var(--text-secondary); font-size: 0.9rem;">
+          Add <strong>${name}</strong> as a contact for ${this.formatPhoneNumber(phone)}?
+        </p>
+        <div style="display: flex; gap: 0.75rem; justify-content: flex-end;">
+          <button id="add-contact-no" style="
+            padding: 0.5rem 1rem;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: transparent;
+            color: var(--text-primary);
+            cursor: pointer;
+            font-size: 0.85rem;
+          ">No</button>
+          <button id="add-contact-yes" style="
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 6px;
+            background: var(--primary-color);
+            color: white;
+            cursor: pointer;
+            font-size: 0.85rem;
+          ">Yes</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    // Handle No button
+    document.getElementById('add-contact-no').addEventListener('click', () => {
+      overlay.remove();
+    });
+
+    // Handle Yes button
+    document.getElementById('add-contact-yes').addEventListener('click', async () => {
+      await this.saveContactName(name, phone);
+      overlay.remove();
+      this.showSavedModal();
+    });
+
+    // Close on backdrop click
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) overlay.remove();
+    });
+  }
+
+  async saveContactName(name, phone) {
+    try {
+      // Check if contact exists
+      const existingContact = this.contactsMap?.[phone];
+
+      if (existingContact) {
+        // Update existing contact
+        await supabase
+          .from('contacts')
+          .update({ first_name: name })
+          .eq('id', existingContact.id);
+
+        // Update local cache
+        existingContact.first_name = name;
+        existingContact.name = name;
+      } else {
+        // Create new contact
+        const { data: newContact, error } = await supabase
+          .from('contacts')
+          .insert({
+            user_id: this.userId,
+            phone_number: phone,
+            first_name: name
+          })
+          .select()
+          .single();
+
+        if (!error && newContact) {
+          // Add to local cache
+          this.contactsMap[phone] = newContact;
+        }
+      }
+
+      // Re-render the thread to show updated name
+      const threadElement = document.getElementById('message-thread');
+      if (threadElement && this.selectedCallId) {
+        threadElement.innerHTML = this.renderMessageThread();
+        this.attachRedialButtonListener();
+      }
+    } catch (err) {
+      console.error('Error saving contact:', err);
+    }
+  }
+
+  showSavedModal() {
+    const toast = document.createElement('div');
+    toast.style.cssText = `
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      padding: 1rem 1.5rem;
+      border-radius: 8px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+      z-index: 10002;
+      font-size: 0.9rem;
+      font-weight: 500;
+    `;
+    toast.textContent = 'Contact saved!';
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 2000);
   }
 
   attachMessageInputListeners() {

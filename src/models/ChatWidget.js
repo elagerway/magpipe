@@ -168,13 +168,14 @@ export class ChatWidget {
       .eq('user_id', userId)
       .eq('is_portal_widget', true)
       .eq('is_active', true)
-      .single();
+      .order('updated_at', { ascending: false })
+      .limit(1);
 
-    if (error && error.code !== 'PGRST116') {
+    if (error) {
       return { widget: null, error };
     }
 
-    return { widget: data, error: null };
+    return { widget: data?.[0] || null, error: null };
   }
 
   /**
