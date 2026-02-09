@@ -13,7 +13,7 @@ const LIVEKIT_URL = Deno.env.get('LIVEKIT_URL')!
 
 Deno.serve(async (req) => {
   try {
-    const { egress_id, call_record_id, transcript } = await req.json()
+    const { egress_id, call_record_id, transcript, label = 'conversation' } = await req.json()
 
     if (!egress_id || !call_record_id) {
       return new Response(JSON.stringify({ error: 'Missing egress_id or call_record_id' }), {
@@ -22,7 +22,7 @@ Deno.serve(async (req) => {
       })
     }
 
-    console.log(`🎙️ Starting proactive recording fetch for egress ${egress_id}`)
+    console.log(`🎙️ Starting proactive recording fetch for egress ${egress_id} with label ${label}`)
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
@@ -103,7 +103,7 @@ Deno.serve(async (req) => {
         // Create new recording entry
         const newRecording: Record<string, any> = {
           recording_sid: egress_id,
-          label: 'conversation',
+          label: label,  // Use label from request (conversation, reconnect_conversation, etc.)
           url: recordingUrl,
           duration_seconds: durationSeconds,
           source: 'livekit',

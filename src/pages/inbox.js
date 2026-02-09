@@ -1760,7 +1760,9 @@ export default class InboxPage {
 
   formatRecordingLabel(label) {
     const labels = {
-      'main': 'Conversation',
+      'conversation': 'Conversation',
+      'reconnect_conversation': 'Reconnect Conversation',
+      'main': 'Main Call',
       'transfer_conference': 'Transferred Call',
       'transferee_consult': 'Transfer Consultation',
       'reconnect_after_decline': 'Reconnect After Decline',

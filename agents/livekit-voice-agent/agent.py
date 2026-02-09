@@ -778,17 +778,21 @@ async def check_phone_admin_access(caller_number: str) -> dict:
 async def trigger_livekit_recording_fetch(
     egress_id: str,
     call_record_id: str,
-    transcript: str = None
+    transcript: str = None,
+    label: str = "conversation"
 ):
     """
     Trigger Edge Function to fetch LiveKit recording.
     The Edge Function runs independently and survives agent process exit.
+
+    Args:
+        label: Recording label - "conversation" for initial, "reconnect_conversation" for reconnect after declined transfer
     """
     try:
         supabase_url = os.getenv("SUPABASE_URL")
         supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
-        logger.info(f"🎙️ Triggering Edge Function to fetch recording for egress {egress_id}")
+        logger.info(f"🎙️ Triggering Edge Function to fetch recording for egress {egress_id} with label {label}")
 
         async with aiohttp.ClientSession() as session:
             async with session.post(
@@ -801,6 +805,7 @@ async def trigger_livekit_recording_fetch(
                     "egress_id": egress_id,
                     "call_record_id": call_record_id,
                     "transcript": transcript,
+                    "label": label,
                 },
                 timeout=aiohttp.ClientTimeout(total=5)  # Quick timeout, fire and forget
             ) as response:
@@ -2696,10 +2701,13 @@ CALL CONTEXT:
                     logger.info(f"💾 Saving egress_id {egress_id} - will fetch recording proactively")
 
                     # Trigger Edge Function to fetch recording (runs independently)
+                    # Use "reconnect_conversation" label if this is a reconnect after declined transfer
+                    recording_label = "reconnect_conversation" if reconnect_reason == "transfer_declined" else "conversation"
                     asyncio.create_task(trigger_livekit_recording_fetch(
                         egress_id=egress_id,
                         call_record_id=call_record_id,
-                        transcript=transcript_text
+                        transcript=transcript_text,
+                        label=recording_label
                     ))
 
                 # Generate call summary and extract dynamic variables in parallel
