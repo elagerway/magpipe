@@ -296,43 +296,8 @@ function updateNavLogoSection(userData) {
     <div class="nav-logo">
       <img src="${logoUrl}" alt="Logo" />
     </div>
-    <button class="sidebar-panel-toggle" id="sidebar-panel-toggle" title="Toggle chat history">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-        <line x1="9" y1="3" x2="9" y2="21"></line>
-      </svg>
-    </button>
   `;
   logoSection.style.display = 'flex';
-
-  // Attach click handler for sidebar toggle
-  const toggleBtn = document.getElementById('sidebar-panel-toggle');
-  if (toggleBtn) {
-    toggleBtn.addEventListener('click', () => {
-      const chatSidebar = document.querySelector('.chat-sidebar');
-      if (chatSidebar) {
-        const isCollapsed = chatSidebar.classList.toggle('collapsed');
-        // Update icon based on state
-        if (isCollapsed) {
-          // Closed panel icon (line on right)
-          toggleBtn.innerHTML = `
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-              <line x1="15" y1="3" x2="15" y2="21"></line>
-            </svg>
-          `;
-        } else {
-          // Open panel icon (line on left)
-          toggleBtn.innerHTML = `
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-              <line x1="9" y1="3" x2="9" y2="21"></line>
-            </svg>
-          `;
-        }
-      }
-    });
-  }
 
   // Also update favicon if custom one is set
   if (userData?.favicon_url) {
@@ -508,7 +473,7 @@ function generateNavHtml(currentPath) {
       <div class="nav-items-container">
         ${NAV_ITEMS.map(item => `
           <button
-            id="${item.isPhone ? 'phone-nav-btn' : ''}"
+            id="${item.isPhone ? 'phone-nav-btn' : (item.path === '/agent' ? 'agent-nav-btn' : '')}"
             class="bottom-nav-item ${currentPath === item.path ? 'active' : ''}${item.desktopOnly ? ' desktop-only' : ''}${item.mobileOnly ? ' mobile-only' : ''}"
             onclick="navigateTo('${item.path}')"
           >
@@ -517,6 +482,14 @@ function generateNavHtml(currentPath) {
               ${item.badge ? `<span id="inbox-badge" class="nav-badge" style="display: none;">0</span>` : ''}
             </span>
             <span>${item.label}</span>
+            ${item.path === '/agent' ? `
+              <span class="sidebar-panel-toggle" id="sidebar-panel-toggle" title="Toggle chat history" onclick="event.stopPropagation(); toggleChatSidebar();">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                  <line x1="15" y1="3" x2="15" y2="21"></line>
+                </svg>
+              </span>
+            ` : ''}
           </button>
         `).join('')}
       </div>
@@ -840,7 +813,7 @@ export function renderBottomNav(currentPath = '/agent') {
       <div class="nav-items-container">
         ${navItems.map(item => `
           <button
-            id="${item.isPhone ? 'phone-nav-btn' : ''}"
+            id="${item.isPhone ? 'phone-nav-btn' : (item.path === '/agent' ? 'agent-nav-btn' : '')}"
             class="bottom-nav-item ${currentPath === item.path ? 'active' : ''}${item.desktopOnly ? ' desktop-only' : ''}${item.mobileOnly ? ' mobile-only' : ''}"
             onclick="navigateTo('${item.path}')"
           >
@@ -849,6 +822,14 @@ export function renderBottomNav(currentPath = '/agent') {
               ${item.badge ? `<span id="inbox-badge" class="nav-badge" style="display: none;">0</span>` : ''}
             </span>
             <span>${item.label}</span>
+            ${item.path === '/agent' ? `
+              <span class="sidebar-panel-toggle" id="sidebar-panel-toggle" title="Toggle chat history" onclick="event.stopPropagation(); toggleChatSidebar();">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                  <line x1="15" y1="3" x2="15" y2="21"></line>
+                </svg>
+              </span>
+            ` : ''}
           </button>
         `).join('')}
       </div>
@@ -1083,6 +1064,33 @@ window.closeUserModal = function() {
   if (modal) modal.classList.remove('open');
   if (button) button.classList.remove('open');
   document.removeEventListener('click', closeUserModalOnClickOutside);
+};
+
+// Toggle chat sidebar (for agent page)
+window.toggleChatSidebar = function() {
+  const chatSidebar = document.querySelector('.chat-sidebar');
+  const toggleBtn = document.getElementById('sidebar-panel-toggle');
+  if (chatSidebar && toggleBtn) {
+    const isCollapsed = chatSidebar.classList.toggle('collapsed');
+    // Update icon based on state
+    if (isCollapsed) {
+      // Closed panel icon (line on right)
+      toggleBtn.innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+          <line x1="15" y1="3" x2="15" y2="21"></line>
+        </svg>
+      `;
+    } else {
+      // Open panel icon (line on left)
+      toggleBtn.innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+          <line x1="9" y1="3" x2="9" y2="21"></line>
+        </svg>
+      `;
+    }
+  }
 };
 
 function closeUserModalOnClickOutside(event) {

@@ -431,6 +431,11 @@ p {
   font-weight: 500;
 }
 
+/* Hide sidebar toggle by default (mobile) - desktop overrides in media query */
+.sidebar-panel-toggle {
+  display: none;
+}
+
 .nav-icon-wrapper {
   position: relative;
   display: flex;
@@ -573,23 +578,28 @@ p {
   }
 
   .sidebar-panel-toggle {
-    display: flex;
+    display: none;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
-    margin-right: 0.75rem;
+    width: 22px;
+    height: 22px;
+    margin-left: auto;
     background: transparent;
     border: none;
-    border-radius: 6px;
+    border-radius: 4px;
     cursor: pointer;
     color: var(--text-secondary);
     flex-shrink: 0;
+    padding: 0;
+  }
+
+  /* Only show toggle when agent nav item is active */
+  .bottom-nav-item.active .sidebar-panel-toggle {
+    display: flex;
   }
 
   .sidebar-panel-toggle:hover {
-    background: var(--bg-secondary);
-    color: var(--text-primary);
+    color: var(--primary-color);
   }
 
   /* Plan Summary Section */

@@ -59,9 +59,9 @@ export function createAdminChatInterface(container) {
   mobileHeader.appendChild(historyBtn);
   chatContainer.appendChild(mobileHeader);
 
-  // Sidebar
+  // Sidebar (collapsed by default)
   const sidebar = document.createElement('div');
-  sidebar.className = 'chat-sidebar';
+  sidebar.className = 'chat-sidebar collapsed';
 
   // Sidebar header
   const sidebarHeader = document.createElement('div');
