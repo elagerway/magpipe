@@ -58,10 +58,10 @@ Deno.serve(async (req) => {
         const fileResults = egressInfo.file_results || egressInfo.fileResults || []
         if (fileResults.length > 0) {
           recordingUrl = fileResults[0].location
-          durationSeconds = Math.round((fileResults[0].duration || 0) / 1_000_000_000)
+          durationSeconds = convertDurationToSeconds(fileResults[0].duration || 0)
         } else if (egressInfo.file) {
           recordingUrl = egressInfo.file.location
-          durationSeconds = Math.round((egressInfo.file.duration || 0) / 1_000_000_000)
+          durationSeconds = convertDurationToSeconds(egressInfo.file.duration || 0)
         }
 
         if (!recordingUrl) {
@@ -234,4 +234,27 @@ async function createLiveKitToken(): Promise<string> {
     .replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
 
   return `${headerB64}.${payloadB64}.${signatureB64}`
+}
+
+/**
+ * Convert duration to seconds, auto-detecting the unit based on magnitude
+ * LiveKit can return duration in nanoseconds or the value may come pre-converted
+ */
+function convertDurationToSeconds(duration: number): number {
+  if (!duration || duration <= 0) return 0
+
+  // If > 1 billion, assume nanoseconds
+  if (duration > 1_000_000_000) {
+    return Math.round(duration / 1_000_000_000)
+  }
+  // If > 1 million, assume microseconds
+  if (duration > 1_000_000) {
+    return Math.round(duration / 1_000_000)
+  }
+  // If > 1000, assume milliseconds
+  if (duration > 1000) {
+    return Math.round(duration / 1000)
+  }
+  // Already in seconds
+  return Math.round(duration)
 }
