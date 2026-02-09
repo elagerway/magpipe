@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
 };
 
-// Built-in tool definitions (core Pat features)
+// Built-in tool definitions (core Maggie features)
 const BUILTIN_TOOLS = [
   {
     name: 'update_system_prompt',

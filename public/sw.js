@@ -128,7 +128,7 @@ self.addEventListener('push', (event) => {
   console.log('Push notification received:', event);
 
   const data = event.data ? event.data.json() : {};
-  const title = data.title || 'Pat Notification';
+  const title = data.title || 'Maggie Notification';
   const options = {
     body: data.body || 'You have a new notification',
     icon: '/icons/icon-192x192.png',

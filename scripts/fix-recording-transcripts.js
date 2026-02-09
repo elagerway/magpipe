@@ -76,7 +76,7 @@ async function transcribeWithDiarization(audioUrl, direction = 'inbound') {
       label = seg.speaker === 0 ? 'Callee' : 'You';
     } else {
       // For inbound: speaker 0 is usually the agent who answers
-      label = seg.speaker === 0 ? 'Pat' : 'Caller';
+      label = seg.speaker === 0 ? 'Maggie' : 'Caller';
     }
     return `${label}: ${seg.text}`;
   }).join('\n\n');

@@ -1065,7 +1065,7 @@ async function handleSlackSendMessage(accessToken: string, args: any): Promise<M
       if (result.error === 'not_in_channel') {
         return {
           success: false,
-          message: `I couldn't join that channel. It may be private - ask a channel admin to invite the Pat app.`,
+          message: `I couldn't join that channel. It may be private - ask a channel admin to invite the Maggie app.`,
         };
       }
 
@@ -1121,7 +1121,7 @@ async function handleSlackListChannels(accessToken: string): Promise<McpExecuteR
     if (channels.length === 0) {
       return {
         success: true,
-        message: "I don't see any channels. Make sure the Pat app has been added to your Slack workspace.",
+        message: "I don't see any channels. Make sure the Maggie app has been added to your Slack workspace.",
         result: { channels: [] },
       };
     }

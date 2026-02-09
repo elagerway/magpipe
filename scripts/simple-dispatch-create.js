@@ -27,7 +27,7 @@ async function createDispatchRule() {
   // Second parameter: options
   const opts = {
     trunkIds: ['ST_zHW9LbppnrBR'],
-    name: 'Pat AI Calls',
+    name: 'Maggie AI Calls',
     hidePhoneNumber: false,
     inboundNumbers: ['+1'], // Try passing here
     roomConfig: {

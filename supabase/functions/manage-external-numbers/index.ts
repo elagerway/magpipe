@@ -167,7 +167,7 @@ async function handleAdd(
     console.log('Creating LiveKit trunk for first number...')
 
     // Build trunk options based on auth type
-    const trunkName = `Pat-${userId.substring(0, 8)}-${trunk.name}`
+    const trunkName = `Maggie-${userId.substring(0, 8)}-${trunk.name}`
     const trunkOptions: any = {
       metadata: JSON.stringify({ user_id: userId, trunk_name: trunk.name }),
     }
@@ -285,7 +285,7 @@ async function handleAdd(
     console.log('Deleted old LiveKit trunk:', trunk.livekit_inbound_trunk_id)
 
     // Recreate trunk with all numbers
-    const trunkName = `Pat-${userId.substring(0, 8)}-${trunk.name}`
+    const trunkName = `Maggie-${userId.substring(0, 8)}-${trunk.name}`
     const trunkOptions: any = {
       metadata: JSON.stringify({ user_id: userId, trunk_name: trunk.name }),
     }
@@ -410,7 +410,7 @@ async function handleRemove(
 
       if (numbersList.length > 0) {
         // Recreate trunk with remaining numbers
-        const trunkName = `Pat-${userId.substring(0, 8)}-${trunk.name}`
+        const trunkName = `Maggie-${userId.substring(0, 8)}-${trunk.name}`
         const trunkOptions: any = {
           metadata: JSON.stringify({ user_id: userId, trunk_name: trunk.name }),
         }

@@ -130,7 +130,7 @@ serve(async (req) => {
             },
             body: JSON.stringify({
               to: userData.phone,
-              message: `Your Pat access code confirmation: ${confirmationCode}. Expires in 5 minutes.`,
+              message: `Your Maggie access code confirmation: ${confirmationCode}. Expires in 5 minutes.`,
             }),
           });
         } catch (smsError) {

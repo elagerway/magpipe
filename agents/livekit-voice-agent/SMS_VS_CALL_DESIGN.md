@@ -26,7 +26,7 @@ The LiveKit voice agent doesn't know whether it's handling a **voice call** or *
   ```typescript
   const smsPrompt = agentConfig.system_prompt
     ? `${agentConfig.system_prompt}\n\nYou are responding to an SMS text message (not a phone call). Keep your response brief, friendly, and conversational. Limit responses to 1-2 sentences. Do not reference phone calls or calling - this is a text message conversation.`
-    : "You are Pat, a helpful AI assistant. You are responding to an SMS text message. Reply in a friendly and concise way. Keep responses brief (1-2 sentences max). Do not reference phone calls - this is a text message conversation."
+    : "You are Maggie, a helpful AI assistant. You are responding to an SMS text message. Reply in a friendly and concise way. Keep responses brief (1-2 sentences max). Do not reference phone calls - this is a text message conversation."
   ```
 
 ## Key Differences

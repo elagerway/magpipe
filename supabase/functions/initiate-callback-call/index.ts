@@ -171,10 +171,10 @@ serve(async (req) => {
     const statusCallbackUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/callback-call-status?call_record_id=${encodeURIComponent(callRecord.id)}`;
 
     // Call user's cell phone first
-    // The From number should be the caller_id so user sees their Pat number calling
+    // The From number should be the caller_id so user sees their Maggie number calling
     const formBody = [
       `To=${encodeURIComponent(userCellPhone)}`,
-      `From=${encodeURIComponent(caller_id)}`, // User sees their Pat number calling
+      `From=${encodeURIComponent(caller_id)}`, // User sees their Maggie number calling
       `Url=${encodeURIComponent(cxmlUrl)}`,
       `Method=POST`,
       `StatusCallback=${encodeURIComponent(statusCallbackUrl)}`,

@@ -116,10 +116,10 @@ serve(async (req) => {
           .delete()
           .eq('id', approval.deletion_record_id)
 
-        console.log(`✅ Removed from deletion queue - numbers kept in SignalWire with "removed_from_pat" label`)
+        console.log(`✅ Removed from deletion queue - numbers kept in SignalWire with "removed_from_maggie" label`)
       }
 
-      return new Response('<?xml version="1.0" encoding="UTF-8"?><Response><Message>Deletion rejected. Numbers removed from Pat and labeled in SignalWire.</Message></Response>', {
+      return new Response('<?xml version="1.0" encoding="UTF-8"?><Response><Message>Deletion rejected. Numbers removed from Maggie and labeled in SignalWire.</Message></Response>', {
         headers: { 'Content-Type': 'application/xml' }
       })
     }

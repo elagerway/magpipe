@@ -57,6 +57,6 @@ CREATE TRIGGER service_numbers_updated_at
   EXECUTE FUNCTION public.handle_updated_at();
 
 -- Comments
-COMMENT ON TABLE service_numbers IS 'Service phone numbers purchased by users for receiving calls/SMS through Pat';
+COMMENT ON TABLE service_numbers IS 'Service phone numbers purchased by users for receiving calls/SMS through Maggie';
 COMMENT ON COLUMN service_numbers.is_active IS 'Whether this number should actively receive and respond to calls/SMS';
 COMMENT ON COLUMN service_numbers.phone_sid IS 'SignalWire SID for managing the number via API';

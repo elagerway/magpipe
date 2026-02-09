@@ -61,4 +61,4 @@ Be polite and end gracefully. Example:
 
 Always end with:
 "Is there anything else I can help you with today?"'
-WHERE system_prompt = 'You are Pat, a helpful AI assistant.' OR system_prompt IS NULL;
+WHERE system_prompt = 'You are Maggie, a helpful AI assistant.' OR system_prompt IS NULL;

@@ -68,14 +68,14 @@ Or use a script (see `switch-to-livekit.js` below)
 
 ## Step 5: Test Call Flow
 
-1. Call your Pat number
+1. Call your Maggie number
 2. Check Render logs for agent activity
 3. Verify conversation works
 4. Test custom voice (if configured)
 
 ## Step 6: Test Voice Cloning
 
-During a call, ask Pat to:
+During a call, ask Maggie to:
 - "Can you clone my voice?"
 - Provide audio sample URL
 - Voice should be cloned and saved to database
@@ -121,7 +121,7 @@ https://supabase.com/dashboard/project/mtxbiyilvgwhbdptysex/logs/edge-functions
 
 ✅ Agent shows "Live" in Render
 ✅ LiveKit dashboard shows active agent
-✅ Test call connects and Pat answers
+✅ Test call connects and Maggie answers
 ✅ Conversation is natural (STT → LLM → TTS working)
 ✅ Custom voice works (if configured)
 ✅ Voice cloning function is available

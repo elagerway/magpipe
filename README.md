@@ -1,6 +1,6 @@
-# Pat - AI Call & SMS Assistant
+# Maggie - AI Call & SMS Assistant
 
-Pat is a Progressive Web App (PWA) that acts as your personal AI assistant for managing phone calls and SMS messages. Built with vanilla JavaScript, Supabase, SignalWire, and LiveKit.
+Maggie is a Progressive Web App (PWA) that acts as your personal AI assistant for managing phone calls and SMS messages. Built with vanilla JavaScript, Supabase, SignalWire, and LiveKit.
 
 ## Features
 

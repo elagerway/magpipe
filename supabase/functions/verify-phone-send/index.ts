@@ -87,7 +87,7 @@ serve(async (req) => {
     const signalwireUrl = `https://${signalwireSpaceUrl}/api/laml/2010-04-01/Accounts/${signalwireProjectId}/Messages.json`
 
     // Add USA SMS compliance text
-    const message = `Your Pat verification code is: ${verificationCode}. This code expires in 10 minutes.\n\nSTOP to opt out`
+    const message = `Your Maggie verification code is: ${verificationCode}. This code expires in 10 minutes.\n\nSTOP to opt out`
 
     const body = new URLSearchParams({
       From: fromNumber,

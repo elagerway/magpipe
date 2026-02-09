@@ -99,7 +99,7 @@ Deno.serve(async (req) => {
       console.log('No agent configured for user')
       const response = `<?xml version="1.0" encoding="UTF-8"?>
       <Response>
-        <Say voice="alice">Hello! This is Pat. The AI assistant is not configured yet. Please contact the account owner.</Say>
+        <Say voice="alice">Hello! This is Maggie. The AI assistant is not configured yet. Please contact the account owner.</Say>
         <Hangup/>
       </Response>`
 

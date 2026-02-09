@@ -299,6 +299,8 @@ export default class CallsPage {
     const labels = {
       'main': 'Conversation',
       'transfer_conference': 'Transfer Call',
+      'transferee_consult': 'Transfer Consultation',
+      'reconnect_after_decline': 'Reconnect After Decline',
       'reconnect_to_agent': 'Reconnect',
       'back_to_agent': 'Back to Agent',
     };

@@ -859,7 +859,7 @@ async function mirrorConversationToSlack(
     // Format the conversation nicely
     const slackMessage = {
       channel: channelId,
-      text: `💬 Pat conversation`,
+      text: `💬 Maggie conversation`,
       blocks: [
         {
           type: 'section',
@@ -872,7 +872,7 @@ async function mirrorConversationToSlack(
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `*Pat:* ${agentResponse}`
+            text: `*Maggie:* ${agentResponse}`
           }
         },
         {

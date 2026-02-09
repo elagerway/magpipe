@@ -2,7 +2,7 @@
 
 **Last Updated:** 2025-10-24
 **Status:** Active
-**Owner:** Pat AI Platform
+**Owner:** Maggie AI Platform
 
 ---
 
