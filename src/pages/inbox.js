@@ -1936,20 +1936,28 @@ export default class InboxPage {
       return `<div style="padding: 3rem 1.5rem; text-align: center; color: var(--text-secondary);"><p>No transcript available for this call.</p></div>`;
     }
 
-    // Sort recordings: "main" first, then by timestamp (chronological order)
+    // Sort recordings: "conversation" first (LiveKit initial), then "main", then by timestamp
     const sortedRecordings = [...recordings].sort((a, b) => {
+      // conversation (LiveKit) comes first - it's the initial agent conversation
+      if (a.label === 'conversation' && b.label !== 'conversation') return -1;
+      if (b.label === 'conversation' && a.label !== 'conversation') return 1;
+      // main comes next
       if (a.label === 'main') return -1;
       if (b.label === 'main') return 1;
-      return new Date(a.timestamp || 0) - new Date(b.timestamp || 0);
+      return new Date(a.timestamp || a.created_at || 0) - new Date(b.timestamp || b.created_at || 0);
     });
 
-    return sortedRecordings.map(rec => {
+    // Find the first conversation recording to attach the call transcript
+    const firstConversationIdx = sortedRecordings.findIndex(r => r.label === 'conversation');
+
+    return sortedRecordings.map((rec, idx) => {
       // Show transcript under the recording - use the recording's own transcript
       let transcriptHtml = '';
       let recTranscript = rec.transcript;
 
-      // Fallback to call.transcript for the last recording if no per-recording transcript
-      if (!recTranscript && rec === sortedRecordings[sortedRecordings.length - 1] && call.transcript) {
+      // Show call.transcript under the first "conversation" recording (LiveKit initial conversation)
+      // This is where the main agent conversation transcript belongs
+      if (!recTranscript && rec.label === 'conversation' && idx === firstConversationIdx && call.transcript) {
         recTranscript = call.transcript;
       }
 
