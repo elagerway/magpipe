@@ -2013,9 +2013,12 @@ export default class InboxPage {
 
       return `
         <div style="width: 100%; margin-bottom: 0.75rem; padding: 0.75rem; background: var(--bg-tertiary); border-radius: 8px;">
-          <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.25rem; display: flex; justify-content: space-between;">
-            <span style="font-weight: 500;">${this.formatRecordingLabel(rec.label)}</span>
-            ${rec.duration ? `<span>${this.formatDurationShort(rec.duration)}</span>` : ''}
+          <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.25rem; display: flex; justify-content: space-between; align-items: center;">
+            <span>
+              <span style="font-weight: 500;">${this.formatRecordingLabel(rec.label)}</span>
+              ${rec.recording_sid ? `<span style="font-family: monospace; font-size: 0.6rem; opacity: 0.5; margin-left: 0.5rem;">${rec.recording_sid}</span>` : ''}
+            </span>
+            ${rec.duration || rec.duration_seconds ? `<span>${this.formatDurationShort(rec.duration || rec.duration_seconds)}</span>` : ''}
           </div>
           <audio controls src="${rec.url}" style="width: 100%; height: 36px;"></audio>
           ${syncingIndicator}
