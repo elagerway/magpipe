@@ -510,13 +510,13 @@ async function deductCallCredits(
     if (agentId) {
       const { data: agentConfig } = await supabase
         .from('agent_configs')
-        .select('voice_id, ai_model')
+        .select('voice_id, llm_model')
         .eq('id', agentId)
         .single();
 
       if (agentConfig) {
         voiceId = agentConfig.voice_id;
-        aiModel = agentConfig.ai_model;
+        aiModel = agentConfig.llm_model;
       }
     }
 
