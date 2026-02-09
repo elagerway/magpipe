@@ -72,6 +72,17 @@ export function clearNavUserCache() {
   userDataFetchPromise = null;
 }
 
+// Refresh consumption data (clears cache and updates the plan section)
+export async function refreshConsumptionData() {
+  cachedUserData = null;
+  userDataFetchPromise = null;
+  const userData = await fetchNavUserData();
+  if (userData) {
+    updateNavPlanSection(userData);
+  }
+  return userData;
+}
+
 // Fetch user data for nav (with caching)
 async function fetchNavUserData() {
   // Return cached data if available
@@ -723,6 +734,15 @@ export function renderBottomNav(currentPath = '/agent') {
       // Just update active state, don't re-render
       updateNavActiveState(currentPath);
       setTimeout(() => initUnreadTracking(), 100);
+      // Refresh consumption data on each navigation to ensure fresh data
+      setTimeout(async () => {
+        cachedUserData = null;
+        userDataFetchPromise = null;
+        const userData = await fetchNavUserData();
+        if (userData) {
+          updateNavPlanSection(userData);
+        }
+      }, 0);
       return ''; // Return empty - nav already exists
     }
     // First time: render nav into persistent container
