@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Pat AI Voice Agent - LiveKit Implementation
+Maggie AI Voice Agent - LiveKit Implementation
 Handles real-time voice conversations with STT, LLM, and TTS pipeline
 """
-print("🔴 AGENT CODE VERSION: RECONNECT-FIX-V5 🔴")
+print("🔴 AGENT CODE VERSION: SUPABASE-EGRESS-V6 🔴")
 
 import aiohttp
 import asyncio
@@ -2123,7 +2123,7 @@ async def entrypoint(ctx: JobContext):
     log_call_state(ctx.room.name, "debug_5_prompt_start", "agent", {})
 
     # Get greeting message and base prompt
-    base_prompt = user_config.get("system_prompt", "You are Pat, a helpful AI assistant answering calls for a business. The caller is a customer - treat them professionally and helpfully.")
+    base_prompt = user_config.get("system_prompt", "You are Maggie, a helpful AI assistant answering calls for a business. The caller is a customer - treat them professionally and helpfully.")
 
     # Different prompts and behavior based on call direction
     if direction == "outbound":
@@ -2138,7 +2138,7 @@ async def entrypoint(ctx: JobContext):
             logger.info("🔄 Outbound call - Using user's configured outbound prompt")
         else:
             # Default outbound prompt when user hasn't configured one
-            agent_name = user_config.get("agent_name", "Pat")
+            agent_name = user_config.get("agent_name", "Maggie")
             system_prompt = f"""You are {agent_name}, an AI assistant making an outbound phone call on behalf of your owner.
 
 THIS IS AN OUTBOUND CALL:
@@ -2163,7 +2163,7 @@ THIS IS AN OUTBOUND CALL:
             logger.info(f"📋 Added template context to outbound prompt: contact='{contact_phone}', purpose='{call_purpose}', goal='{call_goal}'")
     else:
         # INBOUND: Agent handles the call for the user (traditional behavior)
-        greeting = user_config.get("greeting_template", "Hello! This is Pat. How can I help you today?")
+        greeting = user_config.get("greeting_template", "Hello! This is Maggie. How can I help you today?")
 
         # Get the actual caller phone number for the prompt
         # Try sip_caller_number first, then caller_number, then parse from participants
@@ -2254,7 +2254,7 @@ THIS IS AN OUTBOUND CALL:
             greeting = f"I'm sorry, {transfer_target} wasn't available. How else can I help you?"
             logger.info(f"🔄 Using reconnect greeting for declined transfer to {transfer_target}")
         else:
-            greeting = user_config.get("greeting_template", "Hello! This is Pat. How can I help you today?")
+            greeting = user_config.get("greeting_template", "Hello! This is Maggie. How can I help you today?")
 
         caller_phone_info = f"\n- The caller's phone number is: {actual_caller_phone}" if actual_caller_phone else ""
         reconnect_context = ""
@@ -2578,9 +2578,10 @@ CALL CONTEXT:
         try:
             logger.info("📞 Call ending - saving transcript...")
 
-            # Format transcript
+            # Format transcript - use agent's configured name, fallback to "Maggie"
+            transcript_agent_name = user_config.get("agent_name") or user_config.get("name") or "Maggie"
             transcript_text = "\n\n".join([
-                f"{'Pat' if msg['speaker'] == 'agent' else 'Caller'}: {msg['text']}"
+                f"{transcript_agent_name if msg['speaker'] == 'agent' else 'Caller'}: {msg['text']}"
                 for msg in transcript_messages
             ])
 
@@ -2783,8 +2784,64 @@ CALL CONTEXT:
         "llm_model": llm_model,
     })
 
-    # LiveKit Egress recording disabled - using SignalWire recording instead
-    # SignalWire records calls and stores in Supabase Storage via sip-recording-callback
+    # Start LiveKit Egress recording in background (captures initial conversation)
+    # Uses Supabase Storage's S3-compatible endpoint
+    async def start_recording_background():
+        nonlocal egress_id
+        try:
+            # Check for Supabase Storage S3 credentials
+            s3_access_key = os.getenv("SUPABASE_S3_ACCESS_KEY")
+            s3_secret = os.getenv("SUPABASE_S3_SECRET_KEY")
+            s3_endpoint = os.getenv("SUPABASE_S3_ENDPOINT")
+            s3_region = os.getenv("SUPABASE_S3_REGION", "us-east-1")
+            s3_bucket = "call-recordings"  # Use existing bucket
+
+            if not s3_access_key or not s3_secret or not s3_endpoint:
+                logger.info("ℹ️ Supabase S3 credentials not configured - LiveKit recording disabled")
+                return
+
+            logger.info(f"🎙️ Starting LiveKit recording for room: {ctx.room.name}")
+
+            from livekit.protocol import egress as proto_egress
+
+            # Configure S3 upload to Supabase Storage
+            s3_upload = proto_egress.S3Upload(
+                access_key=s3_access_key,
+                secret=s3_secret,
+                region=s3_region,
+                bucket=s3_bucket,
+                endpoint=s3_endpoint,
+            )
+
+            # Create room composite egress to record audio
+            clean_room_name = ctx.room.name.replace("+", "").replace("_", "-")
+            timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+
+            egress_request = proto_egress.RoomCompositeEgressRequest(
+                room_name=ctx.room.name,
+                audio_only=True,
+                file_outputs=[
+                    proto_egress.EncodedFileOutput(
+                        file_type=proto_egress.EncodedFileType.MP4,
+                        filepath=f"livekit/{clean_room_name}-{timestamp}.mp4",
+                        s3=s3_upload,
+                    )
+                ],
+            )
+
+            egress_response = await asyncio.wait_for(
+                livekit_api.egress.start_room_composite_egress(egress_request),
+                timeout=10.0
+            )
+            egress_id = egress_response.egress_id
+            logger.info(f"✅ LiveKit recording started with egress_id: {egress_id}")
+        except asyncio.TimeoutError:
+            logger.error("❌ Recording start timed out")
+        except Exception as e:
+            logger.error(f"❌ Failed to start LiveKit recording: {e}")
+
+    # Fire and forget - recording starts while agent is already listening
+    asyncio.ensure_future(start_recording_background())
 
     # Handle phone admin authentication if applicable (after session started)
     is_admin_authenticated = False
