@@ -249,37 +249,35 @@ Deno.serve(async (req) => {
       }
 
       try {
-        // Download the recording
+        // Download the recording using manual redirect (auth headers shouldn't go to S3)
         const mp3Url = `https://${SIGNALWIRE_SPACE_URL}/api/laml/2010-04-01/Accounts/${SIGNALWIRE_PROJECT_ID}/Recordings/${swRec.sid}.mp3`
         console.log(`📥 Downloading ${label}: ${swRec.sid}`)
 
-        const audioResponse = await fetch(mp3Url, {
+        // Use manual redirect so auth headers don't get forwarded to S3
+        const initialResp = await fetch(mp3Url, {
           headers: { 'Authorization': signalwireAuth },
-          redirect: 'follow'
+          redirect: 'manual'
         })
 
-        if (!audioResponse.ok) {
-          // Try manual redirect
-          const manualResp = await fetch(mp3Url, {
-            headers: { 'Authorization': signalwireAuth },
-            redirect: 'manual'
-          })
-
-          if (manualResp.status === 302 || manualResp.status === 301) {
-            const redirectUrl = manualResp.headers.get('Location')
-            if (redirectUrl) {
-              const redirectResp = await fetch(redirectUrl)
-              if (!redirectResp.ok) {
-                throw new Error(`Download failed: ${redirectResp.status}`)
-              }
-              // Continue with redirectResp...
-            }
-          }
-
-          if (!audioResponse.ok) {
-            console.error(`Failed to download ${swRec.sid}: ${audioResponse.status}`)
+        let audioResponse: Response
+        if (initialResp.status === 302 || initialResp.status === 301) {
+          const redirectUrl = initialResp.headers.get('Location')
+          if (!redirectUrl) {
+            console.error(`No redirect URL for ${swRec.sid}`)
             continue
           }
+          // Follow redirect without auth headers
+          audioResponse = await fetch(redirectUrl)
+        } else if (initialResp.ok) {
+          audioResponse = initialResp
+        } else {
+          console.error(`Failed to download ${swRec.sid}: ${initialResp.status}`)
+          continue
+        }
+
+        if (!audioResponse.ok) {
+          console.error(`Download failed after redirect for ${swRec.sid}: ${audioResponse.status}`)
+          continue
         }
 
         const audioBlob = await audioResponse.blob()

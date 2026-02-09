@@ -1986,9 +1986,13 @@ export default class InboxPage {
       }
 
       // Check if this recording is still syncing
-      const isSupabaseUrl = rec.url && rec.url.includes('supabase.co');
-      const hasTranscript = !!rec.transcript;
-      const isSyncing = !isSupabaseUrl || !hasTranscript;
+      // A recording is ready if it has a valid URL (Supabase or SignalWire fallback)
+      const hasValidUrl = rec.url && (
+        rec.url.includes('supabase.co') ||
+        rec.url.includes('signalwire.com') ||
+        rec.note === 'fallback_signalwire_url'
+      );
+      const isSyncing = !hasValidUrl;
 
       const syncingIndicator = isSyncing ? `
         <div style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem; background: var(--bg-secondary); border-radius: 6px; margin-top: 0.5rem;">
