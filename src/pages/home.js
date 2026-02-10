@@ -162,7 +162,7 @@ export default class HomePage {
                 <span class="highlight-label">per voice minute</span>
               </div>
               <div class="pricing-highlight">
-                <span class="highlight-price">$0.001</span>
+                <span class="highlight-price">$0.01</span>
                 <span class="highlight-label">per SMS message</span>
               </div>
               <div class="pricing-highlight">
