@@ -539,7 +539,7 @@ async def get_semantic_context(transcript_text: str, agent_id: str, user_id: str
         return ""
 
 
-async def deduct_call_credits(user_id: str, agent_id: str, duration_seconds: int, call_record_id: str) -> bool:
+async def deduct_call_credits(user_id: str, agent_id: str, duration_seconds: int, call_record_id: str, tts_characters: int = 0) -> bool:
     """Deduct credits for a completed call by calling the deduct-credits edge function."""
     if not user_id or duration_seconds <= 0:
         logger.info(f"💰 Skipping billing - missing user_id or zero duration (user={bool(user_id)}, duration={duration_seconds})")
@@ -584,6 +584,7 @@ async def deduct_call_credits(user_id: str, agent_id: str, duration_seconds: int
                     "durationSeconds": duration_seconds,
                     "voiceId": voice_id,
                     "aiModel": ai_model,
+                    "ttsCharacters": tts_characters,
                     "referenceType": "call",
                     "referenceId": call_record_id
                 }
@@ -2740,11 +2741,15 @@ CALL CONTEXT:
                 # Deduct credits for the call
                 call_duration = int(asyncio.get_event_loop().time() - call_start_time)
                 billing_agent_id = user_config.get("id") if user_config else None
+                # Count TTS characters (agent speech only) for accurate vendor cost tracking
+                tts_characters = sum(len(msg['text']) for msg in transcript_messages if msg['speaker'] == 'agent')
+                logger.info(f"💰 TTS characters for billing: {tts_characters} chars from {sum(1 for m in transcript_messages if m['speaker'] == 'agent')} agent messages")
                 asyncio.create_task(deduct_call_credits(
                     user_id=user_id,
                     agent_id=billing_agent_id,
                     duration_seconds=call_duration,
-                    call_record_id=call_record_id
+                    call_record_id=call_record_id,
+                    tts_characters=tts_characters
                 ))
 
                 # Update caller memory if enabled
