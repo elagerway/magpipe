@@ -898,7 +898,30 @@ async function getKpiMetrics(supabase: ReturnType<typeof createClient>, since: s
     .select('*', { count: 'exact', head: true })
     .eq('is_active', true)
 
-  const projectedMonthlyMrr = (activeNumbers || 0) * 2.00  // $2/mo per number
+  // Get extra KB counts per user (beyond 20 included)
+  const { data: allKbs } = await supabase
+    .from('knowledge_sources')
+    .select('user_id')
+  const kbByUser = new Map<string, number>()
+  for (const kb of allKbs || []) {
+    kbByUser.set(kb.user_id, (kbByUser.get(kb.user_id) || 0) + 1)
+  }
+  let totalExtraKbs = 0
+  for (const [, count] of kbByUser.entries()) {
+    if (count > 7) totalExtraKbs += (count - 7)
+  }
+
+  // Get extra concurrency slots
+  const { data: usersWithSlots } = await supabase
+    .from('users')
+    .select('extra_concurrency_slots')
+    .gt('extra_concurrency_slots', 0)
+  const totalExtraSlots = (usersWithSlots || []).reduce((sum, u) => sum + (u.extra_concurrency_slots || 0), 0)
+
+  const projectedPhoneNumberMrr = (activeNumbers || 0) * 2.00
+  const projectedKbMrr = totalExtraKbs * 5.00
+  const projectedConcurrencyMrr = totalExtraSlots * 5.00
+  const projectedMonthlyMrr = projectedPhoneNumberMrr + projectedKbMrr + projectedConcurrencyMrr
 
   // Combine usage revenue + MRR for overall P&L
   const totalCombinedRevenue = totalRevenue + totalMrr
@@ -924,6 +947,11 @@ async function getKpiMetrics(supabase: ReturnType<typeof createClient>, since: s
       totalCollected: Math.round(totalMrr * 100) / 100,
       projectedMonthly: Math.round(projectedMonthlyMrr * 100) / 100,
       activeNumbers: activeNumbers || 0,
+      extraKbs: totalExtraKbs,
+      extraSlots: totalExtraSlots,
+      projectedPhoneNumberMrr: Math.round(projectedPhoneNumberMrr * 100) / 100,
+      projectedKbMrr: Math.round(projectedKbMrr * 100) / 100,
+      projectedConcurrencyMrr: Math.round(projectedConcurrencyMrr * 100) / 100,
       breakdown: Object.entries(mrrByType).map(([type, data]) => ({
         type: type.replace(/_/g, ' '),
         count: data.count,

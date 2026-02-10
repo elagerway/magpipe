@@ -1460,7 +1460,7 @@ export default class AdminPage {
       ${data.mrr ? `
       <div class="analytics-section">
         <h2>Monthly Recurring Revenue (MRR)</h2>
-        <div class="analytics-grid analytics-grid-4">
+        <div class="analytics-grid analytics-grid-3">
           <div class="analytics-card">
             <div class="analytics-card-value" style="color: #6366f1;">$${data.mrr.totalCollected.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
             <div class="analytics-card-label">MRR Collected</div>
@@ -1470,12 +1470,8 @@ export default class AdminPage {
             <div class="analytics-card-label">Projected Monthly</div>
           </div>
           <div class="analytics-card">
-            <div class="analytics-card-value">${data.mrr.activeNumbers}</div>
-            <div class="analytics-card-label">Active Phone Numbers</div>
-          </div>
-          <div class="analytics-card">
-            <div class="analytics-card-value">$2.00</div>
-            <div class="analytics-card-label">Per Number/Month</div>
+            <div class="analytics-card-value">${[data.mrr.activeNumbers ? data.mrr.activeNumbers + ' lines' : '', (data.mrr.extraKbs || 0) > 0 ? data.mrr.extraKbs + ' KBs' : '', (data.mrr.extraSlots || 0) > 0 ? data.mrr.extraSlots + ' lines' : ''].filter(Boolean).join(', ') || 'None'}</div>
+            <div class="analytics-card-label">Billable Items</div>
           </div>
         </div>
       </div>
@@ -1535,11 +1531,23 @@ export default class AdminPage {
                 <td style="color: ${plColor(o.usageRevenue - o.totalVendorCost)}; font-weight: 600;">$${fmt(o.usageRevenue - o.totalVendorCost)}</td>
               </tr>
               <tr>
-                <td><strong>Phone Number Fees (MRR)</strong><span class="kpi-pl-sub">${data.mrr.activeNumbers} numbers @ $2/mo</span></td>
-                <td>$${fmt(o.mrrRevenue)}</td>
+                <td><strong>Phone Numbers</strong><span class="kpi-pl-sub">${data.mrr.activeNumbers} @ $2/mo</span></td>
+                <td>$${fmt(data.mrr.projectedPhoneNumberMrr || o.mrrRevenue)}</td>
                 <td class="kpi-cost">$0.00</td>
-                <td style="color: #10b981; font-weight: 600;">$${fmt(o.mrrProfit)}</td>
+                <td style="color: #10b981; font-weight: 600;">$${fmt(data.mrr.projectedPhoneNumberMrr || o.mrrRevenue)}</td>
               </tr>
+              ${(data.mrr.extraKbs || 0) > 0 ? `<tr>
+                <td><strong>Extra Knowledge Bases</strong><span class="kpi-pl-sub">${data.mrr.extraKbs} @ $5/mo (7 included)</span></td>
+                <td>$${fmt(data.mrr.projectedKbMrr || 0)}</td>
+                <td class="kpi-cost">$0.00</td>
+                <td style="color: #10b981; font-weight: 600;">$${fmt(data.mrr.projectedKbMrr || 0)}</td>
+              </tr>` : ''}
+              ${(data.mrr.extraSlots || 0) > 0 ? `<tr>
+                <td><strong>Extra Lines</strong><span class="kpi-pl-sub">${data.mrr.extraSlots} @ $5/mo</span></td>
+                <td>$${fmt(data.mrr.projectedConcurrencyMrr || 0)}</td>
+                <td class="kpi-cost">$0.00</td>
+                <td style="color: #10b981; font-weight: 600;">$${fmt(data.mrr.projectedConcurrencyMrr || 0)}</td>
+              </tr>` : ''}
               <tr class="kpi-pl-total">
                 <td><strong>Total</strong></td>
                 <td><strong>$${fmt(o.totalRevenue)}</strong></td>

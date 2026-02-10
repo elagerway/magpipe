@@ -43,6 +43,10 @@ CREATE POLICY "Service role full access on monthly_billing_log"
   USING (true)
   WITH CHECK (true);
 
+-- Add extra concurrency slots tracking to users table
+ALTER TABLE public.users
+  ADD COLUMN IF NOT EXISTS extra_concurrency_slots INTEGER DEFAULT 0;
+
 -- Schedule daily cron job at 3am UTC to process monthly fees
 SELECT cron.schedule(
   'process-monthly-fees',
