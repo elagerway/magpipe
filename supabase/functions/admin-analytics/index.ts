@@ -933,10 +933,20 @@ async function getKpiMetrics(supabase: ReturnType<typeof createClient>, since: s
     overall: {
       totalRevenue: Math.round(totalCombinedRevenue * 100) / 100,
       usageRevenue: Math.round(totalRevenue * 100) / 100,
+      voiceRevenue: Math.round((totalRevenue - smsRevenue) * 100) / 100,
+      smsRevenue: Math.round(smsRevenue * 100) / 100,
       mrrRevenue: Math.round(totalMrr * 100) / 100,
       totalVendorCost: Math.round(totalVendorCost * 100) / 100,
+      voiceVendorCost: Math.round((totalVendorCost - totalSmsCost) * 100) / 100,
+      smsVendorCost: Math.round(totalSmsCost * 100) / 100,
+      voiceProfit: Math.round((totalRevenue - smsRevenue - (totalVendorCost - totalSmsCost)) * 100) / 100,
+      smsProfit: Math.round((smsRevenue - totalSmsCost) * 100) / 100,
+      mrrProfit: Math.round(totalMrr * 100) / 100,  // MRR has no vendor cost
       profit: Math.round(overallProfit * 100) / 100,
       margin: Math.round(overallMargin * 10) / 10,
+      breakEvenMinutes: totalVoiceMinutes > 0
+        ? Math.round((totalMrr / ((totalVendorCost - totalSmsCost) / totalVoiceMinutes - (totalRevenue - smsRevenue) / totalVoiceMinutes)) * 100) / 100
+        : 0,
     },
     voiceBreakdown: voiceCostBreakdown,
     smsBreakdown: smsCostBreakdown,

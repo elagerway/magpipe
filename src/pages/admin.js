@@ -1486,27 +1486,72 @@ export default class AdminPage {
         const o = data.overall;
         const oColor = o.profit >= 0 ? '#10b981' : '#ef4444';
         const oMarginColor = o.margin >= 50 ? '#10b981' : o.margin >= 20 ? '#f59e0b' : '#ef4444';
+        const fmt = (v) => v.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        const plColor = (v) => v >= 0 ? '#10b981' : '#ef4444';
         return `
       <div class="analytics-section">
-        <h2>Overall P&L (Usage + MRR)</h2>
-        <div class="analytics-grid analytics-grid-4">
+        <h2>Overall P&L</h2>
+        <div class="analytics-grid analytics-grid-3">
           <div class="analytics-card">
-            <div class="analytics-card-value">$${o.totalRevenue.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
+            <div class="analytics-card-value">$${fmt(o.totalRevenue)}</div>
             <div class="analytics-card-label">Total Revenue</div>
-            <div class="analytics-card-sub">Usage: $${o.usageRevenue.toFixed(2)} + MRR: $${o.mrrRevenue.toFixed(2)}</div>
           </div>
           <div class="analytics-card">
-            <div class="analytics-card-value" style="color: #ef4444;">$${o.totalVendorCost.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
-            <div class="analytics-card-label">Total Vendor Cost</div>
-          </div>
-          <div class="analytics-card">
-            <div class="analytics-card-value" style="color: ${oColor};">$${o.profit.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
-            <div class="analytics-card-label">Overall Profit</div>
+            <div class="analytics-card-value" style="color: ${oColor};">$${fmt(o.profit)}</div>
+            <div class="analytics-card-label">Net Profit</div>
           </div>
           <div class="analytics-card">
             <div class="analytics-card-value" style="color: ${oMarginColor};">${o.margin.toFixed(1)}%</div>
-            <div class="analytics-card-label">Overall Margin</div>
+            <div class="analytics-card-label">Net Margin</div>
           </div>
+        </div>
+        <div class="analytics-panel" style="margin-top: 1rem;">
+          <table class="kpi-table kpi-pl-table">
+            <thead>
+              <tr>
+                <th>Line Item</th>
+                <th>Revenue</th>
+                <th>Vendor Cost</th>
+                <th>Profit</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Voice Calls</strong><span class="kpi-pl-sub">${data.perCall.totalMinutes.toFixed(1)} min @ $0.15/min retail</span></td>
+                <td>$${fmt(o.voiceRevenue)}</td>
+                <td class="kpi-cost">$${fmt(o.voiceVendorCost)}</td>
+                <td style="color: ${plColor(o.voiceProfit)}; font-weight: 600;">$${fmt(o.voiceProfit)}</td>
+              </tr>
+              <tr>
+                <td><strong>SMS</strong><span class="kpi-pl-sub">${data.smsBreakdown.reduce((s,r) => s + r.quantity, 0)} msgs @ $0.013/msg</span></td>
+                <td>$${fmt(o.smsRevenue)}</td>
+                <td class="kpi-cost">$${fmt(o.smsVendorCost)}</td>
+                <td style="color: ${plColor(o.smsProfit)}; font-weight: 600;">$${fmt(o.smsProfit)}</td>
+              </tr>
+              <tr class="kpi-pl-subtotal">
+                <td><strong>Usage Subtotal</strong></td>
+                <td>$${fmt(o.usageRevenue)}</td>
+                <td class="kpi-cost">$${fmt(o.totalVendorCost)}</td>
+                <td style="color: ${plColor(o.usageRevenue - o.totalVendorCost)}; font-weight: 600;">$${fmt(o.usageRevenue - o.totalVendorCost)}</td>
+              </tr>
+              <tr>
+                <td><strong>Phone Number Fees (MRR)</strong><span class="kpi-pl-sub">${data.mrr.activeNumbers} numbers @ $2/mo</span></td>
+                <td>$${fmt(o.mrrRevenue)}</td>
+                <td class="kpi-cost">$0.00</td>
+                <td style="color: #10b981; font-weight: 600;">$${fmt(o.mrrProfit)}</td>
+              </tr>
+              <tr class="kpi-pl-total">
+                <td><strong>Total</strong></td>
+                <td><strong>$${fmt(o.totalRevenue)}</strong></td>
+                <td class="kpi-cost"><strong>$${fmt(o.totalVendorCost)}</strong></td>
+                <td style="color: ${plColor(o.profit)}; font-weight: 700; font-size: 1.1em;">$${fmt(o.profit)}</td>
+              </tr>
+            </tbody>
+          </table>
+          ${o.breakEvenMinutes > 0 ? `
+          <div class="kpi-pl-note">
+            MRR covers usage losses up to <strong>${o.breakEvenMinutes.toLocaleString()} minutes/month</strong>. Beyond that, per-call losses exceed MRR.
+          </div>` : ''}
         </div>
       </div>
       `})() : ''}
@@ -3573,6 +3618,35 @@ export default class AdminPage {
       .kpi-margin-bad {
         color: #ef4444;
         font-weight: 600;
+      }
+
+      .kpi-pl-table td:not(:first-child),
+      .kpi-pl-table th:not(:first-child) {
+        text-align: right;
+        min-width: 90px;
+      }
+      .kpi-pl-sub {
+        display: block;
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        font-weight: 400;
+        margin-top: 2px;
+      }
+      .kpi-pl-subtotal td {
+        border-top: 2px solid var(--border-color);
+        font-style: italic;
+      }
+      .kpi-pl-total td {
+        border-top: 3px double var(--border-color);
+        font-size: 1.05em;
+      }
+      .kpi-pl-note {
+        margin-top: 0.75rem;
+        padding: 0.625rem 1rem;
+        background: #fef3c7;
+        color: #92400e;
+        border-radius: 0.5rem;
+        font-size: 0.85rem;
       }
 
       /* Analytics Mobile Responsive */
