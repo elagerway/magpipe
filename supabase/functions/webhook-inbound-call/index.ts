@@ -188,10 +188,13 @@ Deno.serve(async (req) => {
     }
 
     // Return TwiML to connect to LiveKit via SIP
-    // Note: No SignalWire recording - LiveKit records the conversation
+    // SignalWire records the call
+    const supabaseFunctionsUrl = supabaseUrl.replace('.supabase.co', '.supabase.co/functions/v1')
+    const recordingCallback = `${supabaseFunctionsUrl}/sip-recording-callback?label=conversation`
+
     const response = `<?xml version="1.0" encoding="UTF-8"?>
     <Response>
-      <Dial>
+      <Dial record="record-from-ringing" recordingStatusCallback="${recordingCallback}">
         <Sip>${sipUri}</Sip>
       </Dial>
     </Response>`
