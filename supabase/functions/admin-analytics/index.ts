@@ -462,7 +462,7 @@ async function getActivityLocations(supabase: ReturnType<typeof createClient>) {
   // Get users with location data
   const { data: usersWithLocation } = await supabase
     .from('users')
-    .select('id, email, name, signup_city, signup_country')
+    .select('id, email, name, signup_city, signup_country, signup_lat, signup_lng')
     .not('signup_city', 'is', null)
 
   if (!usersWithLocation || usersWithLocation.length === 0) {
@@ -493,15 +493,72 @@ async function getActivityLocations(supabase: ReturnType<typeof createClient>) {
     .in('user_id', userIds)
     .gte('created_at', since)
 
-  // Aggregate by city
+  // Collect all unique cities that need geocoding
+  const cityKeys = new Set<string>()
+  for (const u of usersWithLocation) {
+    if (u.signup_city) cityKeys.add(`${u.signup_city}|${u.signup_country}`)
+  }
+
+  // Build coords map: use stored lat/lng if available, otherwise geocode
+  const coordsMap = new Map<string, { lat: number, lng: number }>()
+  const toGeocode: { city: string, country: string, key: string }[] = []
+
+  for (const key of cityKeys) {
+    const [city, country] = key.split('|')
+    // Check if any user for this city already has coordinates
+    const userWithCoords = usersWithLocation.find(
+      u => u.signup_city === city && u.signup_country === country && u.signup_lat && u.signup_lng
+    )
+    if (userWithCoords) {
+      coordsMap.set(key, { lat: userWithCoords.signup_lat, lng: userWithCoords.signup_lng })
+    } else {
+      toGeocode.push({ city, country, key })
+    }
+  }
+
+  // Geocode missing cities using OpenStreetMap Nominatim (free, no key needed)
+  for (const item of toGeocode) {
+    try {
+      const query = encodeURIComponent(`${item.city}, ${item.country}`)
+      const resp = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1`,
+        {
+          headers: { 'User-Agent': 'Magpipe-Admin/1.0' },
+          signal: AbortSignal.timeout(3000)
+        }
+      )
+      if (resp.ok) {
+        const results = await resp.json()
+        if (results.length > 0) {
+          const lat = parseFloat(results[0].lat)
+          const lng = parseFloat(results[0].lon)
+          coordsMap.set(item.key, { lat, lng })
+
+          // Store coordinates back to users table for future lookups
+          await supabase
+            .from('users')
+            .update({ signup_lat: lat, signup_lng: lng })
+            .eq('signup_city', item.city)
+            .eq('signup_country', item.country)
+            .is('signup_lat', null)
+        }
+      }
+    } catch {
+      // Skip failed geocodes
+    }
+  }
+
+  // Aggregate by city with coordinates
   function aggregateByCity(records: { user_id: string }[] | null) {
-    const cityMap = new Map<string, { city: string, country: string, count: number, users: string[] }>()
+    const cityMap = new Map<string, { city: string, country: string, lat: number, lng: number, count: number, users: string[] }>()
     for (const r of records || []) {
       const user = userMap.get(r.user_id)
       if (!user?.signup_city) continue
-      const key = `${user.signup_city}, ${user.signup_country}`
+      const key = `${user.signup_city}|${user.signup_country}`
+      const coords = coordsMap.get(key)
+      if (!coords) continue
       if (!cityMap.has(key)) {
-        cityMap.set(key, { city: user.signup_city, country: user.signup_country, count: 0, users: [] })
+        cityMap.set(key, { city: user.signup_city, country: user.signup_country, lat: coords.lat, lng: coords.lng, count: 0, users: [] })
       }
       const entry = cityMap.get(key)!
       entry.count++
@@ -511,23 +568,19 @@ async function getActivityLocations(supabase: ReturnType<typeof createClient>) {
     return Array.from(cityMap.values())
   }
 
-  // Signups with location (all time)
-  const signups = usersWithLocation.map(u => ({
-    city: u.signup_city,
-    country: u.signup_country,
-    name: u.name || u.email.split('@')[0]
-  }))
-
   // Aggregate signups by city
-  const signupsByCity = new Map<string, { city: string, country: string, count: number, users: string[] }>()
-  for (const s of signups) {
-    const key = `${s.city}, ${s.country}`
+  const signupsByCity = new Map<string, { city: string, country: string, lat: number, lng: number, count: number, users: string[] }>()
+  for (const u of usersWithLocation) {
+    if (!u.signup_city) continue
+    const key = `${u.signup_city}|${u.signup_country}`
+    const coords = coordsMap.get(key)
+    if (!coords) continue
     if (!signupsByCity.has(key)) {
-      signupsByCity.set(key, { city: s.city, country: s.country, count: 0, users: [] })
+      signupsByCity.set(key, { city: u.signup_city, country: u.signup_country, lat: coords.lat, lng: coords.lng, count: 0, users: [] })
     }
     const entry = signupsByCity.get(key)!
     entry.count++
-    entry.users.push(s.name)
+    entry.users.push(u.name || u.email.split('@')[0])
   }
 
   return {

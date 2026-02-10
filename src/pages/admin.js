@@ -1226,7 +1226,6 @@ export default class AdminPage {
   }
 
   addActivityMarkers(locations) {
-    const cityCoords = this.getCityCoordinates();
     const types = [
       { key: 'signups', label: 'signup', color: '#6366f1', border: '#4f46e5' },
       { key: 'calls', label: 'call', color: '#10b981', border: '#059669' },
@@ -1234,16 +1233,18 @@ export default class AdminPage {
       { key: 'chats', label: 'web chat', color: '#ef4444', border: '#dc2626' }
     ];
 
+    const bounds = [];
+
     for (const type of types) {
       const items = locations[type.key] || [];
       for (const item of items) {
-        const cityKey = item.city?.toLowerCase();
-        const coords = cityKey ? cityCoords[cityKey] : null;
-        if (!coords) continue;
+        if (!item.lat || !item.lng) continue;
 
         // Offset overlapping markers slightly by type
         const offset = types.indexOf(type) * 0.15;
-        const marker = L.circleMarker([coords.lat + offset, coords.lng + offset], {
+        const lat = item.lat + offset;
+        const lng = item.lng + offset;
+        const marker = L.circleMarker([lat, lng], {
           radius: Math.min(6 + item.count * 1.5, 18),
           fillColor: type.color,
           color: type.border,
@@ -1251,6 +1252,8 @@ export default class AdminPage {
           opacity: 1,
           fillOpacity: 0.7
         }).addTo(this.signupMap);
+
+        bounds.push([item.lat, item.lng]);
 
         const label = `${item.count} ${type.label}${item.count > 1 ? 's' : ''}`;
         const popupContent = `
@@ -1266,38 +1269,11 @@ export default class AdminPage {
         marker.bindPopup(popupContent);
       }
     }
-  }
 
-  getCityCoordinates() {
-    // Predefined coordinates for common cities
-    // In production, you'd use a geocoding service or store coords in the database
-    return {
-      'vancouver': { lat: 49.2827, lng: -123.1207 },
-      'toronto': { lat: 43.6532, lng: -79.3832 },
-      'montreal': { lat: 45.5017, lng: -73.5673 },
-      'new york': { lat: 40.7128, lng: -74.0060 },
-      'los angeles': { lat: 34.0522, lng: -118.2437 },
-      'san francisco': { lat: 37.7749, lng: -122.4194 },
-      'chicago': { lat: 41.8781, lng: -87.6298 },
-      'london': { lat: 51.5074, lng: -0.1278 },
-      'paris': { lat: 48.8566, lng: 2.3522 },
-      'berlin': { lat: 52.5200, lng: 13.4050 },
-      'tokyo': { lat: 35.6762, lng: 139.6503 },
-      'sydney': { lat: -33.8688, lng: 151.2093 },
-      'singapore': { lat: 1.3521, lng: 103.8198 },
-      'hong kong': { lat: 22.3193, lng: 114.1694 },
-      'mumbai': { lat: 19.0760, lng: 72.8777 },
-      'dubai': { lat: 25.2048, lng: 55.2708 },
-      'seattle': { lat: 47.6062, lng: -122.3321 },
-      'austin': { lat: 30.2672, lng: -97.7431 },
-      'miami': { lat: 25.7617, lng: -80.1918 },
-      'boston': { lat: 42.3601, lng: -71.0589 },
-      'denver': { lat: 39.7392, lng: -104.9903 },
-      'atlanta': { lat: 33.7490, lng: -84.3880 },
-      'phoenix': { lat: 33.4484, lng: -112.0740 },
-      'dallas': { lat: 32.7767, lng: -96.7970 },
-      'houston': { lat: 29.7604, lng: -95.3698 }
-    };
+    // Fit map to markers if we have any
+    if (bounds.length > 0) {
+      this.signupMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 8 });
+    }
   }
 
   async renderUsersTab() {

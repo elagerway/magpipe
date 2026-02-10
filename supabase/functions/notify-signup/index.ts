@@ -39,6 +39,8 @@ Deno.serve(async (req) => {
     if (ip) {
       let city = null
       let country = null
+      let lat = null
+      let lng = null
 
       // Try to get geolocation from IP (using ipapi.co - free HTTPS)
       try {
@@ -50,6 +52,8 @@ Deno.serve(async (req) => {
           if (geoData.city && geoData.country_name) {
             city = geoData.city
             country = geoData.country_name
+            lat = geoData.latitude || null
+            lng = geoData.longitude || null
           }
         }
       } catch (geoError) {
@@ -62,7 +66,9 @@ Deno.serve(async (req) => {
         .update({
           signup_ip: ip,
           signup_city: city,
-          signup_country: country
+          signup_country: country,
+          signup_lat: lat,
+          signup_lng: lng
         })
         .eq('email', email)
 
