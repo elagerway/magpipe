@@ -626,9 +626,19 @@ const VENDOR_COSTS = {
 }
 
 // Retail rates (what we charge users) - mirrors constants in deduct-credits
+// Retail rates match deduct-credits per-component pricing
 const RETAIL_RATES = {
-  voice: 0.15,  // Single blended per-minute rate (covers TTS, STT, LLM, telephony, LiveKit)
-  sms: 0.013,
+  // Voice is per-component: voiceEngine + LLM + telephony (not a single blended rate)
+  voiceEngine: { elevenlabs: 0.07, openai: 0.08, default: 0.07 },
+  llm: {
+    'gpt-4o': 0.05, 'gpt-4o-mini': 0.006,
+    'gpt-4.1': 0.045, 'gpt-4.1-mini': 0.016,
+    'gpt-5': 0.04, 'gpt-5-mini': 0.012, 'gpt-5-nano': 0.003,
+    'claude-3.5-sonnet': 0.05, 'claude-3-haiku': 0.006,
+    'default': 0.006,
+  },
+  telephony: 0.015,
+  sms: 0.01,
 }
 
 async function getKpiMetrics(supabase: ReturnType<typeof createClient>, since: string | null) {
@@ -661,6 +671,10 @@ async function getKpiMetrics(supabase: ReturnType<typeof createClient>, since: s
 
   // Monthly aggregation (last 6 months)
   const monthlyData = new Map<string, { revenue: number, cost: number }>()
+  // Daily aggregation
+  const dailyData = new Map<string, { revenue: number, cost: number }>()
+  // Hourly aggregation
+  const hourlyData = new Map<string, { revenue: number, cost: number }>()
 
   for (const tx of allDeductions) {
     const amount = Math.abs(parseFloat(tx.amount))
@@ -675,6 +689,16 @@ async function getKpiMetrics(supabase: ReturnType<typeof createClient>, since: s
     const month = tx.created_at?.split('T')[0]?.substring(0, 7) || 'unknown'
     if (!monthlyData.has(month)) monthlyData.set(month, { revenue: 0, cost: 0 })
     monthlyData.get(month)!.revenue += amount
+
+    // Daily bucket
+    const day = tx.created_at?.split('T')[0] || 'unknown'
+    if (!dailyData.has(day)) dailyData.set(day, { revenue: 0, cost: 0 })
+    dailyData.get(day)!.revenue += amount
+
+    // Hourly bucket (YYYY-MM-DDTHH)
+    const hour = tx.created_at?.substring(0, 13) || 'unknown'
+    if (!hourlyData.has(hour)) hourlyData.set(hour, { revenue: 0, cost: 0 })
+    hourlyData.get(hour)!.revenue += amount
 
     if (meta.type === 'voice') {
       const minutes = meta.minutes || 0
@@ -810,8 +834,9 @@ async function getKpiMetrics(supabase: ReturnType<typeof createClient>, since: s
   const totalSmsCost = smsOutboundCost + smsInboundCost
   totalVendorCost += totalSmsCost
 
-  const smsOutboundRevenue = smsOutbound * RETAIL_RATES.sms
-  const smsInboundRevenue = smsInbound * RETAIL_RATES.sms
+  const smsRetailRate = RETAIL_RATES.sms
+  const smsOutboundRevenue = smsOutbound * smsRetailRate
+  const smsInboundRevenue = smsInbound * smsRetailRate
   const smsCostBreakdown = [
     {
       component: 'SMS Outbound',
@@ -831,14 +856,18 @@ async function getKpiMetrics(supabase: ReturnType<typeof createClient>, since: s
     }
   ]
 
-  // Calculate monthly costs
-  // Re-process deductions to compute vendor costs per month
+  // Calculate monthly and daily costs
+  // Re-process deductions to compute vendor costs per month and per day
   for (const tx of allDeductions) {
     const meta2 = tx.metadata || {}
     if (meta2.type === 'monthly_fee') continue  // Skip - tracked in MRR
 
     const month = tx.created_at?.split('T')[0]?.substring(0, 7) || 'unknown'
+    const day = tx.created_at?.split('T')[0] || 'unknown'
+    const hour = tx.created_at?.substring(0, 13) || 'unknown'
     const entry = monthlyData.get(month)
+    const dayEntry = dailyData.get(day)
+    const hourEntry = hourlyData.get(hour)
     if (!entry) continue
 
     if (meta2.type === 'voice') {
@@ -850,12 +879,17 @@ async function getKpiMetrics(supabase: ReturnType<typeof createClient>, since: s
       const model = meta2.aiModel || 'default'
       const llmRate = VENDOR_COSTS.llm[model as keyof typeof VENDOR_COSTS.llm] || VENDOR_COSTS.llm.default
 
+      const txCost = ttsMinutes * ttsRate + minutes * (VENDOR_COSTS.stt.deepgram + VENDOR_COSTS.telephony.signalwire + VENDOR_COSTS.livekit + llmRate) + VENDOR_COSTS.telephony.sipBridge
       // TTS uses ttsMinutes (actual speech); everything else uses full call minutes
-      entry.cost += ttsMinutes * ttsRate + minutes * (VENDOR_COSTS.stt.deepgram + VENDOR_COSTS.telephony.signalwire + VENDOR_COSTS.livekit + llmRate)
-      entry.cost += VENDOR_COSTS.telephony.sipBridge // per call
+      entry.cost += txCost
+      if (dayEntry) dayEntry.cost += txCost
+      if (hourEntry) hourEntry.cost += txCost
     } else if (meta2.type === 'sms') {
+      const txCost = (meta2.messageCount || 1) * VENDOR_COSTS.sms.outbound
       // Approximate: assume outbound for cost calculation
-      entry.cost += (meta2.messageCount || 1) * VENDOR_COSTS.sms.outbound
+      entry.cost += txCost
+      if (dayEntry) dayEntry.cost += txCost
+      if (hourEntry) hourEntry.cost += txCost
     }
   }
 
@@ -874,6 +908,24 @@ async function getKpiMetrics(supabase: ReturnType<typeof createClient>, since: s
       profit: Math.round((data.revenue - data.cost) * 100) / 100
     }))
 
+  const dailyTrend = Array.from(dailyData.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([day, data]) => ({
+      date: day,
+      revenue: Math.round(data.revenue * 100) / 100,
+      cost: Math.round(data.cost * 100) / 100,
+      profit: Math.round((data.revenue - data.cost) * 100) / 100
+    }))
+
+  const hourlyTrend = Array.from(hourlyData.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([hour, data]) => ({
+      hour,
+      revenue: Math.round(data.revenue * 100) / 100,
+      cost: Math.round(data.cost * 100) / 100,
+      profit: Math.round((data.revenue - data.cost) * 100) / 100
+    }))
+
   // MRR: Monthly Recurring Revenue from phone number fees etc.
   // Get monthly billing log data
   let mrrQuery = supabase
@@ -884,6 +936,8 @@ async function getKpiMetrics(supabase: ReturnType<typeof createClient>, since: s
 
   let totalMrr = 0
   const mrrByType: Record<string, { count: number, revenue: number }> = {}
+  const mrrDailyData = new Map<string, number>()
+  const mrrMonthlyData = new Map<string, number>()
   for (const log of billingLogs || []) {
     const amount = parseFloat(log.amount)
     totalMrr += amount
@@ -891,8 +945,13 @@ async function getKpiMetrics(supabase: ReturnType<typeof createClient>, since: s
     mrrByType[log.fee_type].count++
     mrrByType[log.fee_type].revenue += amount
 
-    // Add to monthly data for chart
+    // MRR daily/monthly buckets
+    const day = log.created_at?.split('T')[0] || 'unknown'
+    mrrDailyData.set(day, (mrrDailyData.get(day) || 0) + amount)
     const month = log.created_at?.split('T')[0]?.substring(0, 7) || 'unknown'
+    mrrMonthlyData.set(month, (mrrMonthlyData.get(month) || 0) + amount)
+
+    // Add to monthly data for chart
     if (!monthlyData.has(month)) monthlyData.set(month, { revenue: 0, cost: 0 })
     monthlyData.get(month)!.revenue += amount
   }
@@ -903,25 +962,28 @@ async function getKpiMetrics(supabase: ReturnType<typeof createClient>, since: s
     .select('*', { count: 'exact', head: true })
     .eq('is_active', true)
 
-  // Get extra KB counts per user (beyond 20 included)
+  // Get KB counts per user (20 included per org)
   const { data: allKbs } = await supabase
     .from('knowledge_sources')
     .select('user_id')
+  const totalKbs = (allKbs || []).length
   const kbByUser = new Map<string, number>()
   for (const kb of allKbs || []) {
     kbByUser.set(kb.user_id, (kbByUser.get(kb.user_id) || 0) + 1)
   }
   let totalExtraKbs = 0
   for (const [, count] of kbByUser.entries()) {
-    if (count > 7) totalExtraKbs += (count - 7)
+    if (count > 20) totalExtraKbs += (count - 20)
   }
 
-  // Get extra concurrency slots
-  const { data: usersWithSlots } = await supabase
+  // Get concurrency slots (20 included per org)
+  const { data: allUsers } = await supabase
     .from('users')
     .select('extra_concurrency_slots')
-    .gt('extra_concurrency_slots', 0)
-  const totalExtraSlots = (usersWithSlots || []).reduce((sum, u) => sum + (u.extra_concurrency_slots || 0), 0)
+  const totalExtraSlots = (allUsers || []).reduce((sum, u) => sum + (u.extra_concurrency_slots || 0), 0)
+  const totalOrgs = new Set((allUsers || []).map(() => 1)).size  // placeholder — 1 org for now
+  const includedConcurrency = totalOrgs * 20
+  const totalConcurrency = includedConcurrency + totalExtraSlots
 
   const projectedPhoneNumberMrr = (activeNumbers || 0) * 2.00
   const projectedKbMrr = totalExtraKbs * 5.00
@@ -952,7 +1014,11 @@ async function getKpiMetrics(supabase: ReturnType<typeof createClient>, since: s
       totalCollected: Math.round(totalMrr * 100) / 100,
       projectedMonthly: Math.round(projectedMonthlyMrr * 100) / 100,
       activeNumbers: activeNumbers || 0,
+      totalKbs,
       extraKbs: totalExtraKbs,
+      includedKbsPerOrg: 20,
+      totalConcurrency,
+      includedConcurrency,
       extraSlots: totalExtraSlots,
       projectedPhoneNumberMrr: Math.round(projectedPhoneNumberMrr * 100) / 100,
       projectedKbMrr: Math.round(projectedKbMrr * 100) / 100,
@@ -984,23 +1050,24 @@ async function getKpiMetrics(supabase: ReturnType<typeof createClient>, since: s
     voiceBreakdown: voiceCostBreakdown,
     smsBreakdown: smsCostBreakdown,
     monthlyTrend,
+    dailyTrend,
+    hourlyTrend,
+    mrrDailyTrend: Array.from(mrrDailyData.entries()).sort(([a],[b]) => a.localeCompare(b)).map(([day, amount]) => ({ date: day, revenue: Math.round(amount * 100) / 100 })),
+    mrrMonthlyTrend: Array.from(mrrMonthlyData.entries()).sort(([a],[b]) => a.localeCompare(b)).map(([month, amount]) => ({ month, revenue: Math.round(amount * 100) / 100 })),
     rateCard: {
       voice: {
-        retailRate: RETAIL_RATES.voice,
-        vendorComponents: [
-          { component: 'ElevenLabs TTS', rate: VENDOR_COSTS.tts.elevenlabs, unit: '/min' },
-          { component: 'OpenAI TTS', rate: VENDOR_COSTS.tts.openai, unit: '/min' },
-          { component: 'Deepgram STT', rate: VENDOR_COSTS.stt.deepgram, unit: '/min' },
-          { component: 'SignalWire Telephony', rate: VENDOR_COSTS.telephony.signalwire, unit: '/min' },
-          { component: 'LiveKit', rate: VENDOR_COSTS.livekit, unit: '/min' },
-          { component: 'GPT-4o', rate: VENDOR_COSTS.llm['gpt-4o'], unit: '/min' },
-          { component: 'GPT-4o-mini', rate: VENDOR_COSTS.llm['gpt-4o-mini'], unit: '/min' },
-          { component: 'GPT-4.1', rate: VENDOR_COSTS.llm['gpt-4.1'], unit: '/min' },
-          { component: 'GPT-4.1-mini', rate: VENDOR_COSTS.llm['gpt-4.1-mini'], unit: '/min' },
-          { component: 'GPT-5', rate: VENDOR_COSTS.llm['gpt-5'], unit: '/min' },
-          { component: 'GPT-5-mini', rate: VENDOR_COSTS.llm['gpt-5-mini'], unit: '/min' },
-          { component: 'GPT-5-nano', rate: VENDOR_COSTS.llm['gpt-5-nano'], unit: '/min' },
+        retailComponents: [
+          { component: 'ElevenLabs/Cartesia', retailRate: RETAIL_RATES.voiceEngine.elevenlabs, vendorRate: VENDOR_COSTS.tts.elevenlabs, unit: '/min' },
+          { component: 'OpenAI Voices', retailRate: RETAIL_RATES.voiceEngine.openai, vendorRate: VENDOR_COSTS.tts.openai, unit: '/min' },
+          { component: 'Telephony', retailRate: RETAIL_RATES.telephony, vendorRate: VENDOR_COSTS.telephony.signalwire, unit: '/min' },
+          { component: 'Deepgram STT', retailRate: 0, vendorRate: VENDOR_COSTS.stt.deepgram, unit: '/min' },
+          { component: 'LiveKit', retailRate: 0, vendorRate: VENDOR_COSTS.livekit, unit: '/min' },
         ],
+        llmRates: Object.entries(RETAIL_RATES.llm).filter(([k]) => k !== 'default').map(([model, retail]) => ({
+          model,
+          retailRate: retail,
+          vendorRate: VENDOR_COSTS.llm[model as keyof typeof VENDOR_COSTS.llm] || VENDOR_COSTS.llm.default,
+        })),
       },
       sms: {
         retailRate: RETAIL_RATES.sms,

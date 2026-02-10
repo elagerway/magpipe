@@ -8,102 +8,83 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 }
 
-// Pricing rates
-const VOICE_RATE = 0.15   // Single blended per-minute rate (covers TTS, STT, LLM, telephony, LiveKit)
-const SMS_RATE = 0.013    // Per message
-
-// Add-on rates
-const ADDON_RATES = {
-  knowledge_base: 0.005,  // per minute - KB-augmented call surcharge
-  batch_call: 0.005,      // per dial attempt
-  branded_call: 0.10,     // per outbound call with branded caller ID
-  denoising: 0.005,       // per minute - advanced noise removal
-  pii_removal: 0.01,      // per minute - PII scrubbing from transcripts
+// Pricing rates (per minute for voice, per message for SMS)
+const VOICE_RATES = {
+  elevenlabs: 0.07,  // 11labs-* voices
+  openai: 0.08,      // openai-* voices
+  default: 0.07      // legacy voices default to ElevenLabs rate
 }
 
-// Monthly fee rates
-const MONTHLY_RATES = {
-  phone_number: 2.00,     // per phone number per month
-  concurrency_slot: 5.00, // per additional concurrency slot per month
-  extra_knowledge_base: 5.00, // per additional KB beyond included 7
+const LLM_RATES: Record<string, number> = {
+  'gpt-4o': 0.05,
+  'gpt-4o-mini': 0.006,
+  'gpt-4.1': 0.045,
+  'gpt-4.1-mini': 0.016,
+  'gpt-5': 0.04,
+  'gpt-5-mini': 0.012,
+  'gpt-5-nano': 0.003,
+  'claude-3.5-sonnet': 0.05,
+  'claude-3-haiku': 0.006,
+  'default': 0.006
 }
 
-// Vendor costs (what we actually pay) - used by admin KPI analytics
-// Updated 2026-02-09 from actual vendor rate cards
-export const VENDOR_COSTS = {
-  tts: {
-    elevenlabs: 0.22,    // per minute - Creator plan $22/mo ÷ ~100 min included
-    openai: 0.015,       // per minute - tts-1 standard
-  },
-  stt: {
-    deepgram: 0.0043,    // per minute - Nova-2 pay-as-you-go
-  },
-  telephony: {
-    signalwire: 0.007,   // per minute - blended local inbound $0.0066 / outbound $0.008
-    sipBridge: 0,         // no separate per-call fee, included in per-minute
-  },
-  livekit: 0.014,        // per minute - agent session + SIP + WebRTC combined
-  llm: {
-    'gpt-4o': 0.002,          // ~300 tokens/min at $2.50/$10 per 1M tokens
-    'gpt-4o-mini': 0.0001,    // ~300 tokens/min at $0.15/$0.60 per 1M tokens
-    'gpt-4.1': 0.0015,        // ~300 tokens/min at $2.00/$8.00 per 1M tokens
-    'gpt-4.1-mini': 0.0003,   // ~300 tokens/min at $0.40/$1.60 per 1M tokens
-    'gpt-5': 0.0017,          // ~300 tokens/min at $1.25/$10.00 per 1M tokens
-    'gpt-5-mini': 0.0003,     // ~300 tokens/min at $0.25/$2.00 per 1M tokens
-    'gpt-5-nano': 0.0001,     // ~300 tokens/min at $0.05/$0.40 per 1M tokens
-    'claude-3.5-sonnet': 0.003, // ~300 tokens/min at $3.00/$15.00 per 1M tokens
-    'claude-3-haiku': 0.0002, // ~300 tokens/min at $0.25/$1.25 per 1M tokens
-    'default': 0.0001,
-  },
-  sms: {
-    outbound: 0.008,     // per message - base $0.00415 + avg carrier surcharge ~$0.004
-    inbound: 0.005,      // per message - base $0.00415 + avg carrier surcharge ~$0.001
-  },
-}
+const TELEPHONY_RATE = 0.015  // Per minute
+const SMS_RATE = 0.01         // Per message
 
 interface DeductRequest {
   userId: string
-  type: 'voice' | 'sms' | 'addon' | 'monthly_fee'
+  type: 'voice' | 'sms'
   // For voice calls
   durationSeconds?: number
   voiceId?: string
   aiModel?: string
   // For SMS
   messageCount?: number
-  ttsCharacters?: number   // Total characters spoken by agent (for accurate TTS vendor cost)
-  // For add-ons
-  addonType?: string      // 'knowledge_base' | 'batch_call' | 'branded_call' | 'denoising' | 'pii_removal'
-  quantity?: number        // minutes for per-min addons, count for per-unit addons
-  // For monthly fees
-  feeType?: string        // 'phone_number' | 'concurrency_slot' | 'extra_knowledge_base'
-  feeQuantity?: number    // number of items
   // Reference info
-  referenceType?: string  // 'call', 'sms', 'addon', 'monthly_fee'
-  referenceId?: string    // call_record.id, sms_message.id, service_number.id
+  referenceType?: string  // 'call' or 'sms'
+  referenceId?: string    // call_record.id or sms_message.id
 }
 
 /**
- * Calculate the cost for a voice call - single blended per-minute rate
+ * Calculate the cost for a voice call
  */
 function calculateVoiceCost(durationSeconds: number, voiceId?: string, aiModel?: string): {
   totalCost: number
   breakdown: {
-    rate: number
+    voiceCost: number
+    llmCost: number
+    telephonyCost: number
     minutes: number
-    voiceId?: string
-    aiModel?: string
   }
 } {
   const minutes = durationSeconds / 60
-  const totalCost = minutes * VOICE_RATE
+
+  // Determine voice rate based on voice_id
+  let voiceRate = VOICE_RATES.default
+  if (voiceId?.startsWith('openai-')) {
+    voiceRate = VOICE_RATES.openai
+  } else if (voiceId?.startsWith('11labs-') || voiceId) {
+    voiceRate = VOICE_RATES.elevenlabs
+  }
+
+  // Determine LLM rate based on ai_model
+  let llmRate = LLM_RATES.default
+  if (aiModel && LLM_RATES[aiModel]) {
+    llmRate = LLM_RATES[aiModel]
+  }
+
+  const voiceCost = minutes * voiceRate
+  const llmCost = minutes * llmRate
+  const telephonyCost = minutes * TELEPHONY_RATE
+  const totalCost = voiceCost + llmCost + telephonyCost
 
   return {
-    totalCost: Math.round(totalCost * 10000) / 10000,
+    totalCost: Math.round(totalCost * 10000) / 10000, // Round to 4 decimal places
     breakdown: {
-      rate: VOICE_RATE,
-      minutes: Math.round(minutes * 100) / 100,
-      voiceId,
-      aiModel,
+      voiceCost: Math.round(voiceCost * 10000) / 10000,
+      llmCost: Math.round(llmCost * 10000) / 10000,
+      telephonyCost: Math.round(telephonyCost * 10000) / 10000,
+      minutes: Math.round(minutes * 100) / 100
     }
   }
 }
@@ -268,7 +249,7 @@ serve(async (req) => {
 
     // Parse request body
     const body: DeductRequest = await req.json()
-    const { userId, type, durationSeconds, voiceId, aiModel, ttsCharacters, messageCount, addonType, quantity, feeType, feeQuantity, referenceType, referenceId } = body
+    const { userId, type, durationSeconds, voiceId, aiModel, messageCount, referenceType, referenceId } = body
 
     if (!userId) {
       return new Response(JSON.stringify({ error: 'userId is required' }), {
@@ -292,16 +273,11 @@ serve(async (req) => {
       const { totalCost, breakdown } = calculateVoiceCost(durationSeconds, voiceId, aiModel)
       cost = totalCost
       description = `Voice call - ${breakdown.minutes.toFixed(2)} minutes`
-      // Compute TTS-only minutes from character count (~900 chars/min at 150 wpm, avg 6 chars/word)
-      const ttsChars = ttsCharacters || 0
-      const ttsMinutes = ttsChars > 0 ? Math.round((ttsChars / 900) * 100) / 100 : 0
       metadata = {
         type: 'voice',
         durationSeconds,
         voiceId,
         aiModel,
-        ttsCharacters: ttsChars,
-        ttsMinutes,
         ...breakdown
       }
     } else if (type === 'sms') {
@@ -313,47 +289,8 @@ serve(async (req) => {
         type: 'sms',
         ...breakdown
       }
-    } else if (type === 'addon') {
-      if (!addonType || !(addonType in ADDON_RATES)) {
-        return new Response(JSON.stringify({ error: `Invalid addonType. Must be one of: ${Object.keys(ADDON_RATES).join(', ')}` }), {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        })
-      }
-
-      const qty = quantity || 1
-      const rate = ADDON_RATES[addonType as keyof typeof ADDON_RATES]
-      cost = Math.round(qty * rate * 10000) / 10000
-      const unit = ['knowledge_base', 'denoising', 'pii_removal'].includes(addonType) ? 'minutes' : 'units'
-      description = `Add-on: ${addonType.replace(/_/g, ' ')} - ${qty} ${unit}`
-      metadata = {
-        type: 'addon',
-        addonType,
-        quantity: qty,
-        rate,
-      }
-
-    } else if (type === 'monthly_fee') {
-      if (!feeType || !(feeType in MONTHLY_RATES)) {
-        return new Response(JSON.stringify({ error: `Invalid feeType. Must be one of: ${Object.keys(MONTHLY_RATES).join(', ')}` }), {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        })
-      }
-
-      const qty = feeQuantity || 1
-      const rate = MONTHLY_RATES[feeType as keyof typeof MONTHLY_RATES]
-      cost = Math.round(qty * rate * 100) / 100
-      description = `Monthly fee: ${feeType.replace(/_/g, ' ')} x${qty}`
-      metadata = {
-        type: 'monthly_fee',
-        feeType,
-        quantity: qty,
-        rate,
-      }
-
     } else {
-      return new Response(JSON.stringify({ error: 'Invalid type. Must be "voice", "sms", "addon", or "monthly_fee"' }), {
+      return new Response(JSON.stringify({ error: 'Invalid type. Must be "voice" or "sms"' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })

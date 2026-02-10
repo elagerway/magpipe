@@ -7,9 +7,9 @@ import { renderPublicHeader, getPublicHeaderStyles } from '../components/PublicH
 
 export default class PricingPage {
   constructor() {
-    this.voiceRate = 0.15; // per minute (blended rate)
-    this.messageRate = 0.013; // per message
-    this.freeCredits = 20; // $20 free on signup
+    this.voiceRate = 0.07; // per minute
+    this.messageRate = 0.01; // per message
+    this.freeCredits = 20; // $20/month free
     this.expandedFaqs = new Set();
   }
 
@@ -55,13 +55,13 @@ export default class PricingPage {
                     <svg class="feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <polyline points="20 6 9 17 4 12"></polyline>
                     </svg>
-                    <span><strong>$0.15</strong> per voice minute</span>
+                    <span><strong>$0.07</strong> per voice minute</span>
                   </li>
                   <li>
                     <svg class="feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <polyline points="20 6 9 17 4 12"></polyline>
                     </svg>
-                    <span><strong>$0.013</strong> per SMS message</span>
+                    <span><strong>$0.01</strong> per SMS message</span>
                   </li>
                   <li>
                     <svg class="feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -79,7 +79,7 @@ export default class PricingPage {
                     <svg class="feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <polyline points="20 6 9 17 4 12"></polyline>
                     </svg>
-                    <span><strong>7</strong> Knowledge Bases included</span>
+                    <span><strong>20</strong> Knowledge Bases included</span>
                   </li>
                   <li>
                     <svg class="feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -190,22 +190,36 @@ export default class PricingPage {
                 </div>
               </div>
 
-              <!-- Phone Numbers -->
-              <div class="calculator-minutes-row">
-                <label>How many phone numbers?</label>
-                <input type="number" id="numbers-input" min="0" max="100" value="1" step="1">
+              <!-- LLM Selection -->
+              <div class="calculator-option-group">
+                <label>LLM Agent</label>
+                <div class="pill-group" id="llm-pills">
+                  <button class="pill-btn" data-value="0.04">GPT 5</button>
+                  <button class="pill-btn" data-value="0.012">GPT 5 mini</button>
+                  <button class="pill-btn" data-value="0.003">GPT 5 nano</button>
+                  <button class="pill-btn" data-value="0.045">GPT 4.1</button>
+                  <button class="pill-btn" data-value="0.016">GPT 4.1 mini</button>
+                  <button class="pill-btn" data-value="0.004">GPT 4.1 nano</button>
+                  <button class="pill-btn" data-value="0.05">GPT 4o</button>
+                  <button class="pill-btn active" data-value="0.006">GPT 4o mini</button>
+                </div>
               </div>
 
-              <!-- Included Features -->
+              <!-- Voice Selection -->
               <div class="calculator-option-group">
-                <label>INCLUDED IN EVERY MINUTE</label>
-                <div class="pill-group">
-                  <span class="pill-included">Premium Voice AI</span>
-                  <span class="pill-included">LLM Processing</span>
-                  <span class="pill-included">Speech-to-Text</span>
-                  <span class="pill-included">Telephony</span>
-                  <span class="pill-included">Call Recording</span>
-                  <span class="pill-included">Transcription</span>
+                <label>Voice Engine</label>
+                <div class="pill-group" id="voice-pills">
+                  <button class="pill-btn active" data-value="0.07">Elevenlabs/Cartesia Voices</button>
+                  <button class="pill-btn" data-value="0.08">OpenAI Voices</button>
+                </div>
+              </div>
+
+              <!-- Telephony Selection -->
+              <div class="calculator-option-group">
+                <label>Telephony</label>
+                <div class="pill-group" id="telephony-pills">
+                  <button class="pill-btn" data-value="0">Custom Telephony</button>
+                  <button class="pill-btn active" data-value="0.015">MAGPIPE Telephony</button>
                 </div>
               </div>
             </div>
@@ -213,29 +227,34 @@ export default class PricingPage {
             <!-- Right side: Cost Card -->
             <div class="calculator-cost-card">
               <div class="cost-per-minute-row">
-                <span class="cost-card-label">Voice Rate</span>
-                <span class="cost-card-value">$0.15/min</span>
+                <span class="cost-card-label">Cost Per Minute</span>
+                <span class="cost-card-value" id="per-minute-cost">$ 0.091</span>
               </div>
               <div class="cost-breakdown-list">
                 <div class="cost-breakdown-item">
                   <span class="breakdown-bullet"></span>
-                  <span class="breakdown-label">Voice Minutes</span>
-                  <span class="breakdown-value" id="voice-cost">$75.00</span>
+                  <span class="breakdown-label">LLM Cost</span>
+                  <span class="breakdown-value" id="llm-cost">$ 0.006</span>
                 </div>
                 <div class="cost-breakdown-item">
                   <span class="breakdown-bullet"></span>
-                  <span class="breakdown-label">SMS Messages</span>
-                  <span class="breakdown-value" id="sms-cost">$1.30</span>
+                  <span class="breakdown-label">Voice Engine Cost</span>
+                  <span class="breakdown-value" id="voice-cost">$ 0.070</span>
                 </div>
                 <div class="cost-breakdown-item">
                   <span class="breakdown-bullet"></span>
-                  <span class="breakdown-label">Phone Numbers</span>
-                  <span class="breakdown-value" id="numbers-cost">$2.00</span>
+                  <span class="breakdown-label">Telephony Cost</span>
+                  <span class="breakdown-value" id="telephony-cost">$ 0.015</span>
+                </div>
+                <div class="cost-breakdown-item" style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid #e5e7eb;">
+                  <span class="breakdown-bullet"></span>
+                  <span class="breakdown-label">SMS Cost</span>
+                  <span class="breakdown-value" id="sms-cost">$ 1.00</span>
                 </div>
               </div>
               <div class="cost-total-row">
-                <span class="total-label">Estimated Monthly Cost</span>
-                <span class="total-amount">$<span id="total-cost">78.30</span></span>
+                <span class="total-label">Total</span>
+                <span class="total-amount">$<span id="total-cost">45.50</span></span>
               </div>
             </div>
           </div>
@@ -257,10 +276,10 @@ export default class PricingPage {
           <div class="component-tab-content">
             <!-- Call Agent Pricing Tab -->
             <div class="tab-panel active" id="tab-call-agent">
-              <!-- Voice Calls Section -->
+              <!-- Voice Engine Section -->
               <div class="pricing-section">
                 <div class="pricing-section-header" data-section="voice">
-                  <h3>Voice Calls</h3>
+                  <h3>Conversation Voice Engine</h3>
                   <svg class="section-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="6 9 12 15 18 9"></polyline>
                   </svg>
@@ -269,34 +288,126 @@ export default class PricingPage {
                   <table class="component-table">
                     <thead>
                       <tr>
-                        <th>Component</th>
+                        <th>Provider</th>
                         <th>Price</th>
                       </tr>
                     </thead>
                     <tbody>
                       <tr>
-                        <td>
-                          <strong>All-inclusive voice minute</strong>
-                          <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">
-                            Includes: Premium Voice AI, LLM, Speech-to-Text, Telephony, Call Recording, Transcription
-                          </div>
-                        </td>
-                        <td>$0.15/minute</td>
+                        <td>Elevenlabs / Cartesia voices</td>
+                        <td>$0.07/minute</td>
+                      </tr>
+                      <tr>
+                        <td>OpenAI voices</td>
+                        <td>$0.08/minute</td>
                       </tr>
                     </tbody>
                   </table>
                 </div>
               </div>
 
-              <!-- SMS Section -->
+              <!-- LLM Section -->
               <div class="pricing-section">
-                <div class="pricing-section-header" data-section="sms">
-                  <h3>SMS Messages</h3>
+                <div class="pricing-section-header" data-section="llm">
+                  <h3>LLM</h3>
                   <svg class="section-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="6 9 12 15 18 9"></polyline>
                   </svg>
                 </div>
-                <div class="pricing-section-content expanded" id="section-sms">
+                <div class="pricing-section-content expanded" id="section-llm">
+                  <table class="component-table">
+                    <thead>
+                      <tr>
+                        <th>Model</th>
+                        <th>Price</th>
+                        <th>Fast Tier</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>GPT 5</td>
+                        <td>$0.04/minute</td>
+                        <td>$0.08/minute</td>
+                      </tr>
+                      <tr>
+                        <td>GPT 5 mini</td>
+                        <td>$0.012/minute</td>
+                        <td>$0.024/minute</td>
+                      </tr>
+                      <tr>
+                        <td>GPT 5 nano</td>
+                        <td>$0.003/minute</td>
+                        <td>$0.006/minute</td>
+                      </tr>
+                      <tr>
+                        <td>GPT 4.1</td>
+                        <td>$0.045/minute</td>
+                        <td>$0.0675/minute</td>
+                      </tr>
+                      <tr>
+                        <td>GPT 4.1 mini</td>
+                        <td>$0.016/minute</td>
+                        <td>$0.024/minute</td>
+                      </tr>
+                      <tr>
+                        <td>GPT 4.1 nano</td>
+                        <td>$0.004/minute</td>
+                        <td>$0.006/minute</td>
+                      </tr>
+                      <tr>
+                        <td>GPT 4o</td>
+                        <td>$0.05/minute</td>
+                        <td>$0.075/minute</td>
+                      </tr>
+                      <tr>
+                        <td>GPT 4o mini</td>
+                        <td>$0.006/minute</td>
+                        <td>$0.009/minute</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- Telephony Section -->
+              <div class="pricing-section">
+                <div class="pricing-section-header" data-section="telephony">
+                  <h3>Telephony</h3>
+                  <svg class="section-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </div>
+                <div class="pricing-section-content expanded" id="section-telephony">
+                  <table class="component-table">
+                    <thead>
+                      <tr>
+                        <th>Provider</th>
+                        <th>Price</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>MAGPIPE Telephony</td>
+                        <td>$0.015/min</td>
+                      </tr>
+                      <tr>
+                        <td>SIP Trunking / Custom Telephony</td>
+                        <td>No charge</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- Messaging Section -->
+              <div class="pricing-section">
+                <div class="pricing-section-header" data-section="messaging">
+                  <h3>Messaging</h3>
+                  <svg class="section-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </div>
+                <div class="pricing-section-content expanded" id="section-messaging">
                   <table class="component-table">
                     <thead>
                       <tr>
@@ -306,8 +417,12 @@ export default class PricingPage {
                     </thead>
                     <tbody>
                       <tr>
-                        <td>Inbound & Outbound SMS</td>
-                        <td>$0.013/message</td>
+                        <td>Inbound SMS</td>
+                        <td>$0.01/message</td>
+                      </tr>
+                      <tr>
+                        <td>Outbound SMS</td>
+                        <td>$0.01/message</td>
                       </tr>
                     </tbody>
                   </table>
@@ -335,6 +450,14 @@ export default class PricingPage {
                     <tbody>
                       <tr>
                         <td>Knowledge Base</td>
+                        <td>$0.005/minute</td>
+                      </tr>
+                      <tr>
+                        <td>Memory</td>
+                        <td>$0.005/minute</td>
+                      </tr>
+                      <tr>
+                        <td>Semantic Memory</td>
                         <td>$0.005/minute</td>
                       </tr>
                       <tr>
@@ -408,8 +531,8 @@ export default class PricingPage {
                 </svg>
               </div>
               <h3>Voice Calls</h3>
-              <div class="breakdown-price">$0.15<span>/minute</span></div>
-              <p>All-inclusive: Premium Voice AI, LLM, speech-to-text, telephony, call recording, and transcription.</p>
+              <div class="breakdown-price">$0.07<span>/minute</span></div>
+              <p>AI-powered voice calls with natural conversation, call recording, and transcription included.</p>
             </div>
 
             <div class="breakdown-card">
@@ -419,19 +542,20 @@ export default class PricingPage {
                 </svg>
               </div>
               <h3>SMS Messages</h3>
-              <div class="breakdown-price">$0.013<span>/message</span></div>
+              <div class="breakdown-price">$0.01<span>/message</span></div>
               <p>Intelligent SMS responses with context-aware AI and conversation threading.</p>
             </div>
 
             <div class="breakdown-card">
               <div class="breakdown-icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+                  <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                  <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
                 </svg>
               </div>
-              <h3>Phone Numbers</h3>
-              <div class="breakdown-price">$2<span>/month each</span></div>
-              <p>Dedicated local phone numbers for your AI agent with voice and SMS capabilities.</p>
+              <h3>Knowledge Bases</h3>
+              <div class="breakdown-price">$5<span>/month each</span></div>
+              <p>First 20 included free. Additional knowledge bases for expanded AI context.</p>
             </div>
           </div>
         </section>
@@ -456,12 +580,12 @@ export default class PricingPage {
                 </tr>
                 <tr>
                   <td>Voice rate</td>
-                  <td>$0.15/min</td>
+                  <td>$0.07/min</td>
                   <td>Volume discount</td>
                 </tr>
                 <tr>
                   <td>SMS rate</td>
-                  <td>$0.013/msg</td>
+                  <td>$0.01/msg</td>
                   <td>Volume discount</td>
                 </tr>
                 <tr>
@@ -476,7 +600,7 @@ export default class PricingPage {
                 </tr>
                 <tr>
                   <td>Phone numbers</td>
-                  <td>$2/mo each</td>
+                  <td>Included</td>
                   <td>Included</td>
                 </tr>
                 <tr>
@@ -930,16 +1054,6 @@ export default class PricingPage {
           background: #ffffff;
           border-color: #ffffff;
           color: #4f7df3;
-        }
-
-        .pill-included {
-          padding: 0.4rem 0.75rem;
-          font-size: 0.75rem;
-          font-weight: 500;
-          color: rgba(255, 255, 255, 0.9);
-          background: rgba(255, 255, 255, 0.15);
-          border: 1px solid rgba(255, 255, 255, 0.2);
-          border-radius: 0.375rem;
         }
 
         /* Cost Card */
@@ -1695,23 +1809,23 @@ export default class PricingPage {
     const faqs = [
       {
         question: 'How does billing work?',
-        answer: "You add credits to your account and pay only for what you use. Voice calls are $0.15/minute (all-inclusive) and SMS messages are $0.013 each. Phone numbers are $2/month each. You get $20 in free credits on signup."
-      },
-      {
-        question: 'What\u2019s included in the $0.15/minute rate?',
-        answer: 'Everything you need for AI voice calls: premium voice synthesis, LLM processing, speech-to-text, telephony, call recording, and transcription. One simple rate, no hidden fees.'
+        answer: "You're billed monthly based on actual usage. Voice calls are $0.07/minute and messages are $0.01 each. Your first $20 of usage each month is free."
       },
       {
         question: 'What counts as a minute?',
-        answer: 'Voice minutes are billed based on actual call duration. A 2 minute and 30 second call costs $0.375.'
+        answer: 'Voice minutes are billed per minute of call duration, rounded up to the nearest minute.'
+      },
+      {
+        question: 'Can I upgrade or downgrade?',
+        answer: 'You can switch between plans at any time. Contact us to discuss Custom plan options for high-volume usage.'
       },
       {
         question: 'Is there a free trial?',
-        answer: "Yes! Every account gets $20 in free credits on signup. That\u2019s over 130 minutes of voice calls. Credit card and phone verification required."
+        answer: "Yes! Every account gets $20 in free credits on signup. Credit card and phone verification required."
       },
       {
         question: 'What payment methods do you accept?',
-        answer: 'We accept all major credit cards through Stripe, including Visa, Mastercard, American Express, and Discover. You can also set up auto-recharge to keep your balance topped up.'
+        answer: 'We accept all major credit cards through Stripe, including Visa, Mastercard, American Express, and Discover.'
       }
     ];
 
@@ -1738,26 +1852,41 @@ export default class PricingPage {
     return amount.toFixed(2);
   }
 
+  formatCostPerMin(amount) {
+    return `$ ${amount.toFixed(3)}`;
+  }
+
+  getSelectedValue(groupId) {
+    const group = document.getElementById(groupId);
+    if (!group) return 0;
+    const activeBtn = group.querySelector('.pill-btn.active');
+    return activeBtn ? parseFloat(activeBtn.dataset.value) : 0;
+  }
+
   updateCalculator() {
     const minutesInput = document.getElementById('minutes-input');
     const smsInput = document.getElementById('sms-input');
-    const numbersInput = document.getElementById('numbers-input');
 
     if (!minutesInput) return;
 
     const minutes = parseInt(minutesInput.value) || 0;
     const smsCount = parseInt(smsInput?.value) || 0;
-    const phoneNumbers = parseInt(numbersInput?.value) || 0;
+    const llmRate = this.getSelectedValue('llm-pills');
+    const voiceRate = this.getSelectedValue('voice-pills');
+    const telephonyRate = this.getSelectedValue('telephony-pills');
 
-    const voiceCost = minutes * this.voiceRate;
-    const smsCost = smsCount * this.messageRate;
-    const numbersCost = phoneNumbers * 2; // $2/mo per number
-    const totalMonthlyCost = voiceCost + smsCost + numbersCost;
+    // Calculate cost per minute
+    const totalPerMinute = llmRate + voiceRate + telephonyRate;
+    const voiceMonthlyCost = minutes * totalPerMinute;
+    const smsMonthlyCost = smsCount * this.messageRate;
+    const totalMonthlyCost = voiceMonthlyCost + smsMonthlyCost;
 
     // Update cost breakdown
-    document.getElementById('voice-cost').textContent = '$' + this.formatCurrency(voiceCost);
-    document.getElementById('sms-cost').textContent = '$' + this.formatCurrency(smsCost);
-    document.getElementById('numbers-cost').textContent = '$' + this.formatCurrency(numbersCost);
+    document.getElementById('llm-cost').textContent = this.formatCostPerMin(llmRate);
+    document.getElementById('voice-cost').textContent = this.formatCostPerMin(voiceRate);
+    document.getElementById('telephony-cost').textContent = this.formatCostPerMin(telephonyRate);
+    document.getElementById('per-minute-cost').textContent = this.formatCostPerMin(totalPerMinute);
+    document.getElementById('sms-cost').textContent = '$ ' + this.formatCurrency(smsMonthlyCost);
     document.getElementById('total-cost').textContent = this.formatCurrency(totalMonthlyCost);
   }
 
@@ -1765,25 +1894,31 @@ export default class PricingPage {
     // Minutes input and slider
     const minutesInput = document.getElementById('minutes-input');
     const minutesSlider = document.getElementById('minutes-slider');
-    const smsInput = document.getElementById('sms-input');
-    const smsSlider = document.getElementById('sms-slider');
-    const numbersInput = document.getElementById('numbers-input');
 
-    // Sync minutes input and slider
     if (minutesInput) {
       minutesInput.addEventListener('input', () => {
-        if (minutesSlider) minutesSlider.value = Math.min(parseInt(minutesInput.value) || 0, 10000);
-        this.updateCalculator();
-      });
-    }
-    if (minutesSlider) {
-      minutesSlider.addEventListener('input', () => {
-        if (minutesInput) minutesInput.value = minutesSlider.value;
+        // Sync slider (clamp to slider max)
+        if (minutesSlider) {
+          minutesSlider.value = Math.min(parseInt(minutesInput.value) || 0, 10000);
+        }
         this.updateCalculator();
       });
     }
 
-    // Sync SMS input and slider
+    if (minutesSlider) {
+      minutesSlider.addEventListener('input', () => {
+        // Sync input with slider
+        if (minutesInput) {
+          minutesInput.value = minutesSlider.value;
+        }
+        this.updateCalculator();
+      });
+    }
+
+    // SMS input and slider
+    const smsInput = document.getElementById('sms-input');
+    const smsSlider = document.getElementById('sms-slider');
+
     if (smsInput) {
       smsInput.addEventListener('input', () => {
         if (smsSlider) smsSlider.value = Math.min(parseInt(smsInput.value) || 0, 5000);
@@ -1797,10 +1932,24 @@ export default class PricingPage {
       });
     }
 
-    // Phone numbers input
-    if (numbersInput) {
-      numbersInput.addEventListener('input', () => this.updateCalculator());
-    }
+    // Pill button groups
+    const pillGroups = ['llm-pills', 'voice-pills', 'telephony-pills'];
+    pillGroups.forEach(groupId => {
+      const group = document.getElementById(groupId);
+      if (group) {
+        group.addEventListener('click', (e) => {
+          const btn = e.target.closest('.pill-btn');
+          if (!btn) return;
+
+          // Remove active from siblings
+          group.querySelectorAll('.pill-btn').forEach(b => b.classList.remove('active'));
+          // Add active to clicked
+          btn.classList.add('active');
+
+          this.updateCalculator();
+        });
+      }
+    });
 
     // Initialize calculator
     this.updateCalculator();
