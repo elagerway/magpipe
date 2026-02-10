@@ -546,10 +546,16 @@ export default class AdminPage {
         </div>
       </div>
 
-      <!-- Signup Map -->
+      <!-- Activity Map -->
       <div class="analytics-section">
-        <h2>Signup Locations</h2>
+        <h2>Activity Map</h2>
         <div class="analytics-panel">
+          <div class="map-legend">
+            <span class="map-legend-item"><span class="map-legend-dot" style="background:#6366f1;"></span>Signups</span>
+            <span class="map-legend-item"><span class="map-legend-dot" style="background:#10b981;"></span>Calls</span>
+            <span class="map-legend-item"><span class="map-legend-dot" style="background:#f59e0b;"></span>Messages</span>
+            <span class="map-legend-item"><span class="map-legend-dot" style="background:#ef4444;"></span>Web Chats</span>
+          </div>
           <div id="signup-map" class="signup-map"></div>
         </div>
       </div>
@@ -1142,90 +1148,60 @@ export default class AdminPage {
       maxZoom: 20
     }).addTo(this.signupMap);
 
-    // Get signups with location data
-    const signupsWithLocation = (this.analyticsData.recentSignups || [])
-      .filter(u => u.ip);
-
-    if (signupsWithLocation.length === 0) {
-      // Show message if no location data
+    const locations = this.analyticsData.activityLocations;
+    if (!locations || (
+      (!locations.signups || locations.signups.length === 0) &&
+      (!locations.calls || locations.calls.length === 0) &&
+      (!locations.messages || locations.messages.length === 0) &&
+      (!locations.chats || locations.chats.length === 0)
+    )) {
       mapContainer.innerHTML = `
         <div class="map-no-data">
           <p>No location data available yet</p>
-          <p class="text-muted">IP addresses will be captured for new signups</p>
+          <p class="text-muted">Location will be captured for new signups</p>
         </div>
       `;
       return;
     }
 
-    // For now, we'll use a free IP geolocation API to get coordinates
-    // In production, you'd store lat/lng in the database
-    this.addSignupMarkers(signupsWithLocation);
+    this.addActivityMarkers(locations);
   }
 
-  async addSignupMarkers(signups) {
-    // Group signups by city/country for clustering
-    const locationCounts = new Map();
-
-    for (const signup of signups) {
-      const key = signup.city && signup.country
-        ? `${signup.city}, ${signup.country}`
-        : signup.ip;
-
-      if (!locationCounts.has(key)) {
-        locationCounts.set(key, {
-          count: 0,
-          users: [],
-          city: signup.city,
-          country: signup.country,
-          ip: signup.ip
-        });
-      }
-
-      const loc = locationCounts.get(key);
-      loc.count++;
-      loc.users.push(signup);
-    }
-
-    // For locations with city/country, try to geocode them
-    // Using a simple approach with predefined major cities
+  addActivityMarkers(locations) {
     const cityCoords = this.getCityCoordinates();
+    const types = [
+      { key: 'signups', label: 'signup', color: '#6366f1', border: '#4f46e5' },
+      { key: 'calls', label: 'call', color: '#10b981', border: '#059669' },
+      { key: 'messages', label: 'message', color: '#f59e0b', border: '#d97706' },
+      { key: 'chats', label: 'web chat', color: '#ef4444', border: '#dc2626' }
+    ];
 
-    for (const [key, data] of locationCounts) {
-      let coords = null;
+    for (const type of types) {
+      const items = locations[type.key] || [];
+      for (const item of items) {
+        const cityKey = item.city?.toLowerCase();
+        const coords = cityKey ? cityCoords[cityKey] : null;
+        if (!coords) continue;
 
-      // Check if we have coordinates for this city
-      if (data.city) {
-        const cityKey = data.city.toLowerCase();
-        if (cityCoords[cityKey]) {
-          coords = cityCoords[cityKey];
-        }
-      }
-
-      // If no city coords, try to get from IP (simplified - just show as unknown)
-      if (!coords && data.ip) {
-        // Skip IPs without geolocation for now
-        continue;
-      }
-
-      if (coords) {
-        // Create marker with popup
-        const marker = L.circleMarker([coords.lat, coords.lng], {
-          radius: Math.min(8 + data.count * 2, 20),
-          fillColor: '#6366f1',
-          color: '#4f46e5',
+        // Offset overlapping markers slightly by type
+        const offset = types.indexOf(type) * 0.15;
+        const marker = L.circleMarker([coords.lat + offset, coords.lng + offset], {
+          radius: Math.min(6 + item.count * 1.5, 18),
+          fillColor: type.color,
+          color: type.border,
           weight: 2,
           opacity: 1,
           fillOpacity: 0.7
         }).addTo(this.signupMap);
 
-        // Add popup with user details
+        const label = `${item.count} ${type.label}${item.count > 1 ? 's' : ''}`;
         const popupContent = `
           <div class="map-popup">
-            <strong>${key}</strong><br>
-            <span>${data.count} signup${data.count > 1 ? 's' : ''}</span>
+            <strong>${item.city}, ${item.country}</strong><br>
+            <span>${label}</span>
             <ul class="map-popup-users">
-              ${data.users.slice(0, 5).map(u => `<li>${u.name || u.email.split('@')[0]}</li>`).join('')}
-              ${data.users.length > 5 ? `<li>+${data.users.length - 5} more</li>` : ''}
+              ${item.users.slice(0, 5).map(u => `<li>${u}</li>`).join('')}
+              ${item.users.length > 5 ? `<li>+${item.users.length - 5} more</li>` : ''}
             </ul>
           </div>
         `;
@@ -2766,6 +2742,28 @@ export default class AdminPage {
 
       .map-no-data p {
         margin: 0.25rem 0;
+      }
+
+      .map-legend {
+        display: flex;
+        gap: 1rem;
+        margin-top: 0.5rem;
+        flex-wrap: wrap;
+      }
+
+      .map-legend-item {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        font-size: 0.75rem;
+        color: var(--text-muted);
+      }
+
+      .map-legend-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        display: inline-block;
       }
 
       .map-popup {
