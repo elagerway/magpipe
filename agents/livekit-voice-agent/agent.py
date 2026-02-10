@@ -837,6 +837,52 @@ async def check_phone_admin_access(caller_number: str) -> dict:
     return {"has_access": False}
 
 
+async def trigger_livekit_recording_fetch(
+    egress_id: str,
+    call_record_id: str,
+    transcript: str = None,
+    label: str = "conversation"
+):
+    """
+    Trigger Edge Function to fetch LiveKit recording.
+    The Edge Function runs independently and survives agent process exit.
+
+    Args:
+        label: Recording label - "conversation" for initial, "reconnect_conversation" for reconnect after declined transfer
+    """
+    try:
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+        logger.info(f"🎙️ Triggering Edge Function to fetch recording for egress {egress_id} with label {label}")
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{supabase_url}/functions/v1/fetch-livekit-recording",
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {supabase_key}",
+                },
+                json={
+                    "egress_id": egress_id,
+                    "call_record_id": call_record_id,
+                    "transcript": transcript,
+                    "label": label,
+                },
+                timeout=aiohttp.ClientTimeout(total=5)  # Quick timeout, fire and forget
+            ) as response:
+                if response.status == 200:
+                    logger.info(f"✅ Edge Function triggered for egress {egress_id}")
+                else:
+                    logger.warning(f"⚠️ Edge Function returned {response.status}")
+
+    except asyncio.TimeoutError:
+        # Expected - we don't wait for the full response
+        logger.info(f"🎙️ Edge Function triggered (fire and forget) for egress {egress_id}")
+    except Exception as e:
+        logger.error(f"❌ Error triggering recording fetch: {e}")
+
+
 async def verify_access_code(user_id: str, spoken_code: str, access_code_hash: str) -> bool:
     """Verify spoken access code against hashed value"""
     try:
@@ -2583,6 +2629,9 @@ CALL CONTEXT:
 
     log_call_state(ctx.room.name, "debug_10_session_created", "agent", {})
 
+    # Track egress (recording) ID
+    egress_id = None
+
     # Latency tracking
     latency_start_time = None
 
@@ -2701,13 +2750,27 @@ CALL CONTEXT:
                         logger.info(f"Found call_record by user_id only: {call_record_id}")
 
             if call_record_id:
-                # Save transcript and update status
-                # Recording is handled by SignalWire callback (sip-recording-callback)
+                # Save egress_id for deferred recording URL fetch
+                # Don't try to fetch URL immediately - egress takes time to process
                 update_data = {
                     "transcript": transcript_text,
                     "status": "completed",
                     "ended_at": "now()"
                 }
+
+                if egress_id:
+                    update_data["egress_id"] = egress_id
+                    logger.info(f"💾 Saving egress_id {egress_id} - will fetch recording proactively")
+
+                    # Trigger Edge Function to fetch recording (runs independently)
+                    # Use "reconnect_conversation" label if this is a reconnect after declined transfer
+                    recording_label = "reconnect_conversation" if reconnect_reason == "transfer_declined" else "conversation"
+                    asyncio.create_task(trigger_livekit_recording_fetch(
+                        egress_id=egress_id,
+                        call_record_id=call_record_id,
+                        transcript=transcript_text,
+                        label=recording_label
+                    ))
 
                 # Generate call summary and extract dynamic variables in parallel
                 if transcript_text:
@@ -2849,9 +2912,66 @@ CALL CONTEXT:
         "llm_model": llm_model,
     })
 
-    # Recording is now handled by SignalWire (LiveKit egress has 2 concurrent session limit)
-    # SignalWire records the call via TwiML record="record-from-answer" in webhook-inbound-call
-    logger.info("ℹ️ Recording handled by SignalWire (LiveKit egress disabled)")
+    # Start LiveKit Egress recording in background (captures initial conversation)
+    # Uses Supabase Storage's S3-compatible endpoint
+    async def start_recording_background():
+        nonlocal egress_id
+        try:
+            # Check for Supabase Storage S3 credentials
+            s3_access_key = os.getenv("SUPABASE_S3_ACCESS_KEY")
+            s3_secret = os.getenv("SUPABASE_S3_SECRET_KEY")
+            s3_endpoint = os.getenv("SUPABASE_S3_ENDPOINT")
+            s3_region = os.getenv("SUPABASE_S3_REGION", "us-east-1")
+            s3_bucket = "call-recordings"  # Use existing bucket
+
+            if not s3_access_key or not s3_secret or not s3_endpoint:
+                logger.info("ℹ️ Supabase S3 credentials not configured - LiveKit recording disabled")
+                return
+
+            logger.info(f"🎙️ Starting LiveKit recording for room: {ctx.room.name}")
+
+            from livekit.protocol import egress as proto_egress
+
+            # Configure S3 upload to Supabase Storage
+            # force_path_style=True is required for Supabase Storage (uses path-style URLs, not virtual-hosted)
+            s3_upload = proto_egress.S3Upload(
+                access_key=s3_access_key,
+                secret=s3_secret,
+                region=s3_region,
+                bucket=s3_bucket,
+                endpoint=s3_endpoint,
+                force_path_style=True,
+            )
+
+            # Create room composite egress to record audio
+            clean_room_name = ctx.room.name.replace("+", "").replace("_", "-")
+            timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+
+            egress_request = proto_egress.RoomCompositeEgressRequest(
+                room_name=ctx.room.name,
+                audio_only=True,
+                file_outputs=[
+                    proto_egress.EncodedFileOutput(
+                        file_type=proto_egress.EncodedFileType.MP4,
+                        filepath=f"livekit/{clean_room_name}-{timestamp}.mp4",
+                        s3=s3_upload,
+                    )
+                ],
+            )
+
+            egress_response = await asyncio.wait_for(
+                livekit_api.egress.start_room_composite_egress(egress_request),
+                timeout=10.0
+            )
+            egress_id = egress_response.egress_id
+            logger.info(f"✅ LiveKit recording started with egress_id: {egress_id}")
+        except asyncio.TimeoutError:
+            logger.error("❌ Recording start timed out")
+        except Exception as e:
+            logger.error(f"❌ Failed to start LiveKit recording: {e}")
+
+    # Fire and forget - recording starts while agent is already listening
+    asyncio.ensure_future(start_recording_background())
 
     # Handle phone admin authentication if applicable (after session started)
     is_admin_authenticated = False
