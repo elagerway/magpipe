@@ -45,17 +45,23 @@ Deno.serve(async (req) => {
     }
 
     // Check all services in parallel
-    const [supabaseStatus, signalwireStatus, livekitStatus, postmarkStatus, renderStatus, vercelStatus, firecrawlStatus] = await Promise.all([
+    const services = await Promise.all([
       checkSupabase(supabase),
       checkSignalWire(),
       checkLiveKit(),
       checkPostmark(),
       checkRender(),
       checkVercel(),
-      checkFirecrawl()
+      checkFirecrawl(),
+      checkStripe(),
+      checkOpenAI(),
+      checkElevenLabs(),
+      checkDeepgram(),
+      checkHubSpot(supabase),
+      checkSlack(supabase),
+      checkCalCom(supabase),
     ])
 
-    const services = [supabaseStatus, signalwireStatus, livekitStatus, postmarkStatus, renderStatus, vercelStatus, firecrawlStatus]
     const allOperational = services.every(s => s.status === 'operational')
     const anyDown = services.some(s => s.status === 'down')
 
@@ -348,5 +354,299 @@ async function checkFirecrawl(): Promise<ServiceStatus> {
     }
   } catch (error) {
     return { name: 'Firecrawl', status: 'down', latency: Date.now() - start, message: error.message, statusUrl }
+  }
+}
+
+async function checkStripe(): Promise<ServiceStatus> {
+  const start = Date.now()
+  const statusUrl = 'https://status.stripe.com/'
+  const secretKey = Deno.env.get('STRIPE_SECRET_KEY')
+
+  if (!secretKey) {
+    return { name: 'Stripe', status: 'down', message: 'Not configured', statusUrl }
+  }
+
+  try {
+    const response = await fetch('https://api.stripe.com/v1/balance', {
+      headers: {
+        'Authorization': `Bearer ${secretKey}`
+      },
+      signal: AbortSignal.timeout(5000)
+    })
+
+    const latency = Date.now() - start
+
+    if (!response.ok) {
+      return { name: 'Stripe', status: 'down', latency, message: `HTTP ${response.status}`, statusUrl }
+    }
+
+    return {
+      name: 'Stripe',
+      status: latency > 2000 ? 'degraded' : 'operational',
+      latency,
+      message: latency > 2000 ? 'High latency' : undefined,
+      statusUrl
+    }
+  } catch (error) {
+    return { name: 'Stripe', status: 'down', latency: Date.now() - start, message: error.message, statusUrl }
+  }
+}
+
+async function checkOpenAI(): Promise<ServiceStatus> {
+  const start = Date.now()
+  const statusUrl = 'https://status.openai.com/'
+  const apiKey = Deno.env.get('OPENAI_API_KEY')
+
+  if (!apiKey) {
+    return { name: 'OpenAI', status: 'down', message: 'Not configured', statusUrl }
+  }
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/models', {
+      headers: {
+        'Authorization': `Bearer ${apiKey}`
+      },
+      signal: AbortSignal.timeout(5000)
+    })
+
+    const latency = Date.now() - start
+
+    if (!response.ok) {
+      return { name: 'OpenAI', status: 'down', latency, message: `HTTP ${response.status}`, statusUrl }
+    }
+
+    return {
+      name: 'OpenAI',
+      status: latency > 3000 ? 'degraded' : 'operational',
+      latency,
+      message: latency > 3000 ? 'High latency' : undefined,
+      statusUrl
+    }
+  } catch (error) {
+    return { name: 'OpenAI', status: 'down', latency: Date.now() - start, message: error.message, statusUrl }
+  }
+}
+
+async function checkElevenLabs(): Promise<ServiceStatus> {
+  const start = Date.now()
+  const statusUrl = 'https://status.elevenlabs.io/'
+  const apiKey = Deno.env.get('ELEVENLABS_API_KEY')
+
+  if (!apiKey) {
+    return { name: 'ElevenLabs', status: 'down', message: 'Not configured', statusUrl }
+  }
+
+  try {
+    const response = await fetch('https://api.elevenlabs.io/v1/user', {
+      headers: {
+        'xi-api-key': apiKey
+      },
+      signal: AbortSignal.timeout(5000)
+    })
+
+    const latency = Date.now() - start
+
+    if (!response.ok) {
+      return { name: 'ElevenLabs', status: 'down', latency, message: `HTTP ${response.status}`, statusUrl }
+    }
+
+    const data = await response.json()
+    const used = data.subscription?.character_count ?? 0
+    const limit = data.subscription?.character_limit ?? 0
+    const remaining = limit - used
+    const pctUsed = limit > 0 ? Math.round((used / limit) * 100) : 0
+
+    if (remaining <= 0) {
+      return { name: 'ElevenLabs', status: 'down', latency, message: `0 chars left`, statusUrl }
+    } else if (pctUsed > 90) {
+      return { name: 'ElevenLabs', status: 'degraded', latency, message: `${pctUsed}% used`, statusUrl }
+    }
+
+    return {
+      name: 'ElevenLabs',
+      status: latency > 3000 ? 'degraded' : 'operational',
+      latency,
+      message: `${pctUsed}% used`,
+      statusUrl
+    }
+  } catch (error) {
+    return { name: 'ElevenLabs', status: 'down', latency: Date.now() - start, message: error.message, statusUrl }
+  }
+}
+
+async function checkDeepgram(): Promise<ServiceStatus> {
+  const start = Date.now()
+  const statusUrl = 'https://status.deepgram.com/'
+  const apiKey = Deno.env.get('DEEPGRAM_API_KEY')
+
+  if (!apiKey) {
+    return { name: 'Deepgram', status: 'down', message: 'Not configured', statusUrl }
+  }
+
+  try {
+    const response = await fetch('https://api.deepgram.com/v1/projects', {
+      headers: {
+        'Authorization': `Token ${apiKey}`
+      },
+      signal: AbortSignal.timeout(5000)
+    })
+
+    const latency = Date.now() - start
+
+    if (!response.ok) {
+      return { name: 'Deepgram', status: 'down', latency, message: `HTTP ${response.status}`, statusUrl }
+    }
+
+    return {
+      name: 'Deepgram',
+      status: latency > 3000 ? 'degraded' : 'operational',
+      latency,
+      message: latency > 3000 ? 'High latency' : undefined,
+      statusUrl
+    }
+  } catch (error) {
+    return { name: 'Deepgram', status: 'down', latency: Date.now() - start, message: error.message, statusUrl }
+  }
+}
+
+async function checkHubSpot(supabase: ReturnType<typeof createClient>): Promise<ServiceStatus> {
+  const start = Date.now()
+  const statusUrl = 'https://status.hubspot.com/'
+
+  try {
+    // Check if any user has HubSpot connected
+    const { data: integration } = await supabase
+      .from('user_integrations')
+      .select('access_token')
+      .eq('provider', 'hubspot')
+      .not('access_token', 'is', null)
+      .limit(1)
+      .single()
+
+    if (!integration) {
+      return { name: 'HubSpot', status: 'operational', latency: Date.now() - start, message: 'Not connected', statusUrl }
+    }
+
+    const response = await fetch('https://api.hubapi.com/crm/v3/objects/contacts?limit=1', {
+      headers: {
+        'Authorization': `Bearer ${integration.access_token}`
+      },
+      signal: AbortSignal.timeout(5000)
+    })
+
+    const latency = Date.now() - start
+
+    if (response.status === 401) {
+      return { name: 'HubSpot', status: 'degraded', latency, message: 'Token expired', statusUrl }
+    }
+
+    if (!response.ok) {
+      return { name: 'HubSpot', status: 'down', latency, message: `HTTP ${response.status}`, statusUrl }
+    }
+
+    return {
+      name: 'HubSpot',
+      status: latency > 3000 ? 'degraded' : 'operational',
+      latency,
+      message: latency > 3000 ? 'High latency' : undefined,
+      statusUrl
+    }
+  } catch (error) {
+    return { name: 'HubSpot', status: 'down', latency: Date.now() - start, message: error.message, statusUrl }
+  }
+}
+
+async function checkSlack(supabase: ReturnType<typeof createClient>): Promise<ServiceStatus> {
+  const start = Date.now()
+  const statusUrl = 'https://status.slack.com/'
+
+  try {
+    // Check if any user has Slack connected
+    const { data: integration } = await supabase
+      .from('user_integrations')
+      .select('access_token')
+      .eq('provider', 'slack')
+      .not('access_token', 'is', null)
+      .limit(1)
+      .single()
+
+    if (!integration) {
+      return { name: 'Slack', status: 'operational', latency: Date.now() - start, message: 'Not connected', statusUrl }
+    }
+
+    const response = await fetch('https://slack.com/api/auth.test', {
+      headers: {
+        'Authorization': `Bearer ${integration.access_token}`
+      },
+      signal: AbortSignal.timeout(5000)
+    })
+
+    const latency = Date.now() - start
+
+    if (!response.ok) {
+      return { name: 'Slack', status: 'down', latency, message: `HTTP ${response.status}`, statusUrl }
+    }
+
+    const data = await response.json()
+    if (!data.ok) {
+      return { name: 'Slack', status: 'degraded', latency, message: 'Token invalid', statusUrl }
+    }
+
+    return {
+      name: 'Slack',
+      status: latency > 3000 ? 'degraded' : 'operational',
+      latency,
+      message: latency > 3000 ? 'High latency' : undefined,
+      statusUrl
+    }
+  } catch (error) {
+    return { name: 'Slack', status: 'down', latency: Date.now() - start, message: error.message, statusUrl }
+  }
+}
+
+async function checkCalCom(supabase: ReturnType<typeof createClient>): Promise<ServiceStatus> {
+  const start = Date.now()
+  const statusUrl = 'https://cal.com/'
+
+  try {
+    // Check if any user has Cal.com connected
+    const { data: integration } = await supabase
+      .from('user_integrations')
+      .select('access_token')
+      .eq('provider', 'calcom')
+      .not('access_token', 'is', null)
+      .limit(1)
+      .single()
+
+    if (!integration) {
+      return { name: 'Cal.com', status: 'operational', latency: Date.now() - start, message: 'Not connected', statusUrl }
+    }
+
+    const response = await fetch('https://api.cal.com/v2/me', {
+      headers: {
+        'Authorization': `Bearer ${integration.access_token}`
+      },
+      signal: AbortSignal.timeout(5000)
+    })
+
+    const latency = Date.now() - start
+
+    if (response.status === 401) {
+      return { name: 'Cal.com', status: 'degraded', latency, message: 'Token expired', statusUrl }
+    }
+
+    if (!response.ok) {
+      return { name: 'Cal.com', status: 'down', latency, message: `HTTP ${response.status}`, statusUrl }
+    }
+
+    return {
+      name: 'Cal.com',
+      status: latency > 3000 ? 'degraded' : 'operational',
+      latency,
+      message: latency > 3000 ? 'High latency' : undefined,
+      statusUrl
+    }
+  } catch (error) {
+    return { name: 'Cal.com', status: 'down', latency: Date.now() - start, message: error.message, statusUrl }
   }
 }
