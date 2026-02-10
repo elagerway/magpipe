@@ -1456,6 +1456,61 @@ export default class AdminPage {
         </div>
       </div>
 
+      <!-- MRR (Monthly Recurring Revenue) -->
+      ${data.mrr ? `
+      <div class="analytics-section">
+        <h2>Monthly Recurring Revenue (MRR)</h2>
+        <div class="analytics-grid analytics-grid-4">
+          <div class="analytics-card">
+            <div class="analytics-card-value" style="color: #6366f1;">$${data.mrr.totalCollected.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
+            <div class="analytics-card-label">MRR Collected</div>
+          </div>
+          <div class="analytics-card">
+            <div class="analytics-card-value" style="color: #6366f1;">$${data.mrr.projectedMonthly.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
+            <div class="analytics-card-label">Projected Monthly</div>
+          </div>
+          <div class="analytics-card">
+            <div class="analytics-card-value">${data.mrr.activeNumbers}</div>
+            <div class="analytics-card-label">Active Phone Numbers</div>
+          </div>
+          <div class="analytics-card">
+            <div class="analytics-card-value">$2.00</div>
+            <div class="analytics-card-label">Per Number/Month</div>
+          </div>
+        </div>
+      </div>
+      ` : ''}
+
+      <!-- Overall P&L (Usage + MRR) -->
+      ${data.overall ? (() => {
+        const o = data.overall;
+        const oColor = o.profit >= 0 ? '#10b981' : '#ef4444';
+        const oMarginColor = o.margin >= 50 ? '#10b981' : o.margin >= 20 ? '#f59e0b' : '#ef4444';
+        return `
+      <div class="analytics-section">
+        <h2>Overall P&L (Usage + MRR)</h2>
+        <div class="analytics-grid analytics-grid-4">
+          <div class="analytics-card">
+            <div class="analytics-card-value">$${o.totalRevenue.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
+            <div class="analytics-card-label">Total Revenue</div>
+            <div class="analytics-card-sub">Usage: $${o.usageRevenue.toFixed(2)} + MRR: $${o.mrrRevenue.toFixed(2)}</div>
+          </div>
+          <div class="analytics-card">
+            <div class="analytics-card-value" style="color: #ef4444;">$${o.totalVendorCost.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
+            <div class="analytics-card-label">Total Vendor Cost</div>
+          </div>
+          <div class="analytics-card">
+            <div class="analytics-card-value" style="color: ${oColor};">$${o.profit.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
+            <div class="analytics-card-label">Overall Profit</div>
+          </div>
+          <div class="analytics-card">
+            <div class="analytics-card-value" style="color: ${oMarginColor};">${o.margin.toFixed(1)}%</div>
+            <div class="analytics-card-label">Overall Margin</div>
+          </div>
+        </div>
+      </div>
+      `})() : ''}
+
       <!-- Per-Call Economics -->
       <div class="analytics-section">
         <h2>Per-Call Economics</h2>
@@ -2883,6 +2938,13 @@ export default class AdminPage {
         font-size: 0.875rem;
         color: var(--text-muted);
         margin-top: 0.25rem;
+      }
+
+      .analytics-card-sub {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        margin-top: 0.25rem;
+        opacity: 0.7;
       }
 
       .analytics-card-header {
