@@ -8,7 +8,7 @@ import { renderPublicHeader, getPublicHeaderStyles } from '../components/PublicH
 export default class PricingPage {
   constructor() {
     this.voiceRate = 0.07; // per minute
-    this.messageRate = 0.001; // per message
+    this.messageRate = 0.01; // per message
     this.freeCredits = 20; // $20/month free
     this.expandedFaqs = new Set();
   }
@@ -61,7 +61,7 @@ export default class PricingPage {
                     <svg class="feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <polyline points="20 6 9 17 4 12"></polyline>
                     </svg>
-                    <span><strong>$0.001</strong> per SMS message</span>
+                    <span><strong>$0.01</strong> per SMS message</span>
                   </li>
                   <li>
                     <svg class="feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -486,7 +486,7 @@ export default class PricingPage {
                 </svg>
               </div>
               <h3>SMS Messages</h3>
-              <div class="breakdown-price">$0.001<span>/message</span></div>
+              <div class="breakdown-price">$0.01<span>/message</span></div>
               <p>Intelligent SMS responses with context-aware AI and conversation threading.</p>
             </div>
 
@@ -529,7 +529,7 @@ export default class PricingPage {
                 </tr>
                 <tr>
                   <td>SMS rate</td>
-                  <td>$0.001/msg</td>
+                  <td>$0.01/msg</td>
                   <td>Volume discount</td>
                 </tr>
                 <tr>
@@ -1753,7 +1753,7 @@ export default class PricingPage {
     const faqs = [
       {
         question: 'How does billing work?',
-        answer: "You're billed monthly based on actual usage. Voice calls are $0.07/minute and messages are $0.001 each. Your first $20 of usage each month is free."
+        answer: "You're billed monthly based on actual usage. Voice calls are $0.07/minute and messages are $0.01 each. Your first $20 of usage each month is free."
       },
       {
         question: 'What counts as a minute?',

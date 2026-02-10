@@ -509,6 +509,9 @@ async function executeSendSms(supabase: any, userId: string, toNumber: string, m
     status: 'sent',
   });
 
+  // Deduct credits for the SMS
+  deductSmsCredits(userId, 1).catch(err => console.error('Failed to deduct SMS credits:', err));
+
   return {
     success: true,
     message: `Message sent successfully.`,
@@ -2007,5 +2010,37 @@ async function handleMcpServerTool(
       success: false,
       message: `Failed to connect to ${serverName}: ${error instanceof Error ? error.message : 'Unknown error'}`,
     };
+  }
+}
+
+/**
+ * Deduct credits for SMS messages
+ */
+async function deductSmsCredits(userId: string, messageCount: number) {
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const response = await fetch(`${supabaseUrl}/functions/v1/deduct-credits`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseKey}`
+      },
+      body: JSON.stringify({
+        userId,
+        type: 'sms',
+        messageCount,
+        referenceType: 'sms'
+      })
+    });
+
+    const result = await response.json();
+    if (result.success) {
+      console.log(`Deducted $${result.cost} for ${messageCount} SMS, balance: $${result.balanceAfter}`);
+    } else {
+      console.error('Failed to deduct SMS credits:', result.error);
+    }
+  } catch (error) {
+    console.error('Error deducting SMS credits:', error);
   }
 }

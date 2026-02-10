@@ -240,5 +240,39 @@ async function processSendSms(
       is_ai_generated: false,
     })
 
+  // Deduct credits for the scheduled SMS
+  await deductSmsCredits(config.supabaseUrl, action.user_id, 1)
+
   console.log(`Scheduled SMS sent to ${recipient_phone} (SID: ${messageSid})`)
+}
+
+/**
+ * Deduct credits for SMS messages
+ */
+async function deductSmsCredits(supabaseUrl: string, userId: string, messageCount: number) {
+  try {
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const response = await fetch(`${supabaseUrl}/functions/v1/deduct-credits`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseKey}`
+      },
+      body: JSON.stringify({
+        userId,
+        type: 'sms',
+        messageCount,
+        referenceType: 'sms'
+      })
+    })
+
+    const result = await response.json()
+    if (result.success) {
+      console.log(`Deducted $${result.cost} for ${messageCount} scheduled SMS, balance: $${result.balanceAfter}`)
+    } else {
+      console.error('Failed to deduct SMS credits:', result.error)
+    }
+  } catch (error) {
+    console.error('Error deducting SMS credits:', error)
+  }
 }

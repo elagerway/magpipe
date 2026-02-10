@@ -29,7 +29,7 @@ const LLM_RATES: Record<string, number> = {
 }
 
 const TELEPHONY_RATE = 0.015  // Per minute
-const SMS_RATE = 0.001        // Per message
+const SMS_RATE = 0.01         // Per message
 
 interface DeductRequest {
   userId: string
