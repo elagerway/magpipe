@@ -831,27 +831,26 @@ async function getKpiMetrics(supabase: ReturnType<typeof createClient>, since: s
   // Calculate monthly costs
   // Re-process deductions to compute vendor costs per month
   for (const tx of allDeductions) {
-    const meta = tx.metadata || {}
-    if (meta.type === 'monthly_fee') continue  // Skip - tracked in MRR
+    const meta2 = tx.metadata || {}
+    if (meta2.type === 'monthly_fee') continue  // Skip - tracked in MRR
 
     const month = tx.created_at?.split('T')[0]?.substring(0, 7) || 'unknown'
     const entry = monthlyData.get(month)
     if (!entry) continue
 
-    const meta = tx.metadata || {}
-    if (meta.type === 'voice') {
-      const minutes = meta.minutes || 0
-      const voiceId = meta.voiceId || ''
+    if (meta2.type === 'voice') {
+      const minutes = meta2.minutes || 0
+      const voiceId = meta2.voiceId || ''
       const provider = voiceId.startsWith('openai-') ? 'openai' : 'elevenlabs'
       const ttsRate = VENDOR_COSTS.tts[provider as keyof typeof VENDOR_COSTS.tts] || 0.003
-      const model = meta.aiModel || 'default'
+      const model = meta2.aiModel || 'default'
       const llmRate = VENDOR_COSTS.llm[model as keyof typeof VENDOR_COSTS.llm] || VENDOR_COSTS.llm.default
 
       entry.cost += minutes * (ttsRate + VENDOR_COSTS.stt.deepgram + VENDOR_COSTS.telephony.signalwire + VENDOR_COSTS.livekit + llmRate)
       entry.cost += VENDOR_COSTS.telephony.sipBridge // per call
-    } else if (meta.type === 'sms') {
+    } else if (meta2.type === 'sms') {
       // Approximate: assume outbound for cost calculation
-      entry.cost += (meta.messageCount || 1) * VENDOR_COSTS.sms.outbound
+      entry.cost += (meta2.messageCount || 1) * VENDOR_COSTS.sms.outbound
     }
   }
 
