@@ -88,6 +88,9 @@ export default class AdminPage {
           </div>
         </header>
 
+        <!-- Admin Reminders -->
+        <div id="admin-reminders"></div>
+
         <!-- Tabs -->
         <div class="admin-tabs">
           <button class="admin-tab active" data-tab="analytics">
@@ -115,6 +118,14 @@ export default class AdminPage {
             </svg>
             Global Agent
           </button>
+          <button class="admin-tab" data-tab="kpi">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 20V10"/>
+              <path d="M18 20V4"/>
+              <path d="M6 20v-4"/>
+            </svg>
+            KPI
+          </button>
           <button class="admin-tab" data-tab="chat">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
@@ -131,10 +142,59 @@ export default class AdminPage {
     `;
 
     this.addStyles();
+    this.renderAdminReminders();
     this.attachTabListeners();
     this.attachStatusListeners();
     this.loadStatus();
     await this.switchTab('analytics');
+  }
+
+  renderAdminReminders() {
+    const container = document.getElementById('admin-reminders');
+    if (!container) return;
+
+    const reminders = [
+      {
+        id: 'elevenlabs-cost-review',
+        showAfter: '2026-04-09',
+        title: 'ElevenLabs Cost Review',
+        message: 'Review ElevenLabs TTS costs ($0.22/min vendor cost vs $0.15/min retail). Consider: switching default to OpenAI TTS ($0.015/min), tiered voice pricing, or negotiating ElevenLabs Business plan.',
+        type: 'warning',
+      },
+    ];
+
+    const now = new Date();
+    const dismissed = JSON.parse(localStorage.getItem('admin-dismissed-reminders') || '[]');
+
+    const activeReminders = reminders.filter(r =>
+      now >= new Date(r.showAfter) && !dismissed.includes(r.id)
+    );
+
+    if (activeReminders.length === 0) return;
+
+    container.innerHTML = activeReminders.map(r => `
+      <div class="admin-reminder admin-reminder-${r.type}" data-reminder-id="${r.id}">
+        <div class="admin-reminder-content">
+          <strong>${r.title}</strong>
+          <span>${r.message}</span>
+        </div>
+        <button class="admin-reminder-dismiss" title="Dismiss">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 6L6 18M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+    `).join('');
+
+    container.querySelectorAll('.admin-reminder-dismiss').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.closest('.admin-reminder').dataset.reminderId;
+        const list = JSON.parse(localStorage.getItem('admin-dismissed-reminders') || '[]');
+        list.push(id);
+        localStorage.setItem('admin-dismissed-reminders', JSON.stringify(list));
+        btn.closest('.admin-reminder').remove();
+      });
+    });
   }
 
   attachTabListeners() {
@@ -300,6 +360,8 @@ export default class AdminPage {
       await this.renderUsersTab();
     } else if (tabName === 'global-agent') {
       await this.renderGlobalAgentTab();
+    } else if (tabName === 'kpi') {
+      await this.renderKpiTab();
     } else if (tabName === 'chat') {
       await this.renderChatTab();
     }
@@ -1276,6 +1338,359 @@ export default class AdminPage {
     }
   }
 
+  async renderKpiTab() {
+    if (!this.kpiDateFilter) this.kpiDateFilter = 'all';
+
+    const content = document.getElementById('admin-tab-content');
+    content.innerHTML = `
+      <div class="admin-analytics kpi-tab">
+        <div class="kpi-filter-bar">
+          <span class="kpi-filter-label">Period:</span>
+          <div class="kpi-filter-buttons">
+            <button class="kpi-filter-btn ${this.kpiDateFilter === '7d' ? 'active' : ''}" data-filter="7d">7 days</button>
+            <button class="kpi-filter-btn ${this.kpiDateFilter === '30d' ? 'active' : ''}" data-filter="30d">30 days</button>
+            <button class="kpi-filter-btn ${this.kpiDateFilter === 'month' ? 'active' : ''}" data-filter="month">This month</button>
+            <button class="kpi-filter-btn ${this.kpiDateFilter === 'all' ? 'active' : ''}" data-filter="all">All time</button>
+          </div>
+        </div>
+        <div class="analytics-loading">
+          <div class="loading-spinner">Loading KPI data...</div>
+        </div>
+      </div>
+    `;
+
+    // Attach filter listeners
+    document.querySelectorAll('.kpi-filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this.kpiDateFilter = btn.dataset.filter;
+        this.renderKpiTab();
+      });
+    });
+
+    try {
+      // Build since parameter
+      let since = '';
+      if (this.kpiDateFilter === '7d') {
+        since = new Date(Date.now() - 7 * 86400000).toISOString();
+      } else if (this.kpiDateFilter === '30d') {
+        since = new Date(Date.now() - 30 * 86400000).toISOString();
+      } else if (this.kpiDateFilter === 'month') {
+        const now = new Date();
+        since = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      }
+
+      const params = new URLSearchParams({ type: 'kpi' });
+      if (since) params.set('since', since);
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-analytics?${params}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${this.session.access_token}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      if (!response.ok) throw new Error('Failed to load KPI data');
+
+      this.kpiData = await response.json();
+      this.renderKpiContent();
+
+      // Render monthly trend chart
+      await this.loadChartJs();
+      this.renderKpiChart();
+    } catch (error) {
+      console.error('Error loading KPI data:', error);
+      const loading = document.querySelector('.kpi-tab .analytics-loading');
+      if (loading) {
+        loading.innerHTML = `
+          <div class="analytics-error">
+            <p>Failed to load KPI data: ${error.message}</p>
+            <button class="btn btn-primary" onclick="window.adminPage.renderKpiTab()">Retry</button>
+          </div>
+        `;
+      }
+    }
+  }
+
+  renderKpiContent() {
+    const container = document.querySelector('.kpi-tab');
+    const data = this.kpiData;
+    const s = data.summary;
+
+    const profitColor = s.grossProfit >= 0 ? '#10b981' : '#ef4444';
+    const marginColor = s.grossMargin >= 50 ? '#10b981' : s.grossMargin >= 20 ? '#f59e0b' : '#ef4444';
+
+    // Remove loading spinner, keep filter bar
+    const loading = container.querySelector('.analytics-loading');
+    if (loading) loading.remove();
+
+    // Remove old kpi-content if re-rendering
+    const old = container.querySelector('.kpi-content');
+    if (old) old.remove();
+
+    const content = document.createElement('div');
+    content.className = 'kpi-content';
+    content.innerHTML = `
+      <!-- Summary Cards -->
+      <div class="analytics-section">
+        <h2>Profitability Overview</h2>
+        <div class="analytics-grid analytics-grid-4">
+          <div class="analytics-card">
+            <div class="analytics-card-value">$${s.totalRevenue.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
+            <div class="analytics-card-label">Total Revenue</div>
+          </div>
+          <div class="analytics-card">
+            <div class="analytics-card-value" style="color: #ef4444;">$${s.totalVendorCost.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
+            <div class="analytics-card-label">Vendor Costs</div>
+          </div>
+          <div class="analytics-card">
+            <div class="analytics-card-value" style="color: ${profitColor};">$${s.grossProfit.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
+            <div class="analytics-card-label">Gross Profit</div>
+          </div>
+          <div class="analytics-card">
+            <div class="analytics-card-value" style="color: ${marginColor};">${s.grossMargin.toFixed(1)}%</div>
+            <div class="analytics-card-label">Gross Margin</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Per-Call Economics -->
+      <div class="analytics-section">
+        <h2>Per-Call Economics</h2>
+        <div class="analytics-grid analytics-grid-4">
+          <div class="analytics-card">
+            <div class="analytics-card-value">${data.perCall.totalCalls.toLocaleString()}</div>
+            <div class="analytics-card-label">Total Calls</div>
+          </div>
+          <div class="analytics-card">
+            <div class="analytics-card-value">${data.perCall.totalMinutes.toLocaleString()}</div>
+            <div class="analytics-card-label">Total Minutes</div>
+          </div>
+          <div class="analytics-card">
+            <div class="analytics-card-value">$${data.perCall.avgRevenuePerMin.toFixed(4)}</div>
+            <div class="analytics-card-label">Avg Revenue/Min</div>
+          </div>
+          <div class="analytics-card">
+            <div class="analytics-card-value" style="color: #ef4444;">$${data.perCall.avgCostPerMin.toFixed(4)}</div>
+            <div class="analytics-card-label">Avg Cost/Min</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Voice Cost Breakdown -->
+      <div class="analytics-section">
+        <h2>Voice Cost Breakdown</h2>
+        <div class="analytics-panel">
+          <table class="kpi-table">
+            <thead>
+              <tr>
+                <th>Component</th>
+                <th>Quantity</th>
+                <th>Vendor Cost</th>
+                <th>Retail Revenue</th>
+                <th>Margin</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.voiceBreakdown.map(row => {
+                const marginClass = row.margin >= 50 ? 'kpi-margin-good' : row.margin >= 0 ? 'kpi-margin-ok' : 'kpi-margin-bad';
+                return `
+                  <tr>
+                    <td>${row.component}</td>
+                    <td>${row.quantity.toFixed(1)} ${row.unit}</td>
+                    <td class="kpi-cost">$${row.vendorCost.toFixed(2)}</td>
+                    <td>${row.retailRevenue > 0 ? '$' + row.retailRevenue.toFixed(2) : '<span class="kpi-bundled">bundled</span>'}</td>
+                    <td class="${marginClass}">${row.retailRevenue > 0 ? row.margin.toFixed(1) + '%' : '—'}</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- SMS Economics -->
+      <div class="analytics-section">
+        <h2>SMS Economics</h2>
+        <div class="analytics-panel">
+          <table class="kpi-table">
+            <thead>
+              <tr>
+                <th>Component</th>
+                <th>Quantity</th>
+                <th>Vendor Cost</th>
+                <th>Retail Revenue</th>
+                <th>Margin</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.smsBreakdown.map(row => {
+                const marginClass = row.margin >= 50 ? 'kpi-margin-good' : row.margin >= 0 ? 'kpi-margin-ok' : 'kpi-margin-bad';
+                return `
+                  <tr>
+                    <td>${row.component}</td>
+                    <td>${row.quantity.toLocaleString()} ${row.unit}</td>
+                    <td class="kpi-cost">$${row.vendorCost.toFixed(2)}</td>
+                    <td>${row.retailRevenue > 0 ? '$' + row.retailRevenue.toFixed(2) : '<span class="kpi-bundled">bundled</span>'}</td>
+                    <td class="${marginClass}">${row.retailRevenue > 0 ? row.margin.toFixed(1) + '%' : '—'}</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Vendor Rate Card -->
+      <div class="analytics-section">
+        <h2>Vendor Rate Card</h2>
+        ${data.rateCard ? `
+        <div class="analytics-grid analytics-grid-2">
+          <div class="analytics-panel">
+            <h3>Voice — $${data.rateCard.voice.retailRate.toFixed(2)}/min blended</h3>
+            <table class="kpi-table">
+              <thead>
+                <tr>
+                  <th>Vendor Component</th>
+                  <th>Cost${data.rateCard.voice.vendorComponents[0]?.unit || ''}</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${data.rateCard.voice.vendorComponents.map(row => `
+                  <tr>
+                    <td>${row.component}</td>
+                    <td class="kpi-cost">$${row.rate.toFixed(4)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+          <div class="analytics-panel">
+            <h3>SMS — $${data.rateCard.sms.retailRate.toFixed(3)}/msg blended</h3>
+            <table class="kpi-table">
+              <thead>
+                <tr>
+                  <th>Vendor Component</th>
+                  <th>Cost${data.rateCard.sms.vendorComponents[0]?.unit || ''}</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${data.rateCard.sms.vendorComponents.map(row => `
+                  <tr>
+                    <td>${row.component}</td>
+                    <td class="kpi-cost">$${row.rate.toFixed(4)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        ` : ''}
+      </div>
+
+      <!-- Monthly Trend -->
+      <div class="analytics-section">
+        <h2>Monthly Trend (Last 6 Months)</h2>
+        <div class="analytics-panel">
+          <div class="chart-container" style="height: 250px;">
+            <canvas id="kpi-trend-chart"></canvas>
+          </div>
+        </div>
+      </div>
+    `;
+    container.appendChild(content);
+  }
+
+  renderKpiChart() {
+    const data = this.kpiData;
+    if (!data?.monthlyTrend?.length) return;
+
+    const canvas = document.getElementById('kpi-trend-chart');
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+
+    // Destroy existing chart if any
+    if (this.charts.kpiTrend) {
+      this.charts.kpiTrend.destroy();
+    }
+
+    const labels = data.monthlyTrend.map(m => {
+      const [year, month] = m.month.split('-');
+      return new Date(year, month - 1).toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+    });
+
+    this.charts.kpiTrend = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Revenue',
+            data: data.monthlyTrend.map(m => m.revenue),
+            backgroundColor: 'rgba(99, 102, 241, 0.7)',
+            borderRadius: 4,
+          },
+          {
+            label: 'Vendor Cost',
+            data: data.monthlyTrend.map(m => m.cost),
+            backgroundColor: 'rgba(239, 68, 68, 0.7)',
+            borderRadius: 4,
+          },
+          {
+            label: 'Profit',
+            data: data.monthlyTrend.map(m => m.profit),
+            type: 'line',
+            borderColor: '#10b981',
+            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 4,
+            pointBackgroundColor: '#10b981',
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+          intersect: false,
+          mode: 'index'
+        },
+        plugins: {
+          legend: {
+            position: 'top',
+            labels: {
+              color: getComputedStyle(document.body).getPropertyValue('--text-primary').trim() || '#e2e8f0',
+              boxWidth: 12,
+              padding: 16,
+            }
+          },
+          tooltip: {
+            callbacks: {
+              label: (context) => `${context.dataset.label}: $${context.parsed.y.toFixed(2)}`
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: { color: getComputedStyle(document.body).getPropertyValue('--text-muted').trim() || '#94a3b8' }
+          },
+          y: {
+            grid: { color: 'rgba(148, 163, 184, 0.1)' },
+            ticks: {
+              color: getComputedStyle(document.body).getPropertyValue('--text-muted').trim() || '#94a3b8',
+              callback: (value) => '$' + value
+            }
+          }
+        }
+      }
+    });
+  }
+
   async renderUsersTab() {
     const content = document.getElementById('admin-tab-content');
     content.innerHTML = `
@@ -1540,6 +1955,41 @@ export default class AdminPage {
         height: 100vh;
         background: var(--bg-secondary);
       }
+
+      /* Admin Reminders */
+      .admin-reminder {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.75rem 1.5rem;
+        font-size: 0.85rem;
+        border-bottom: 1px solid var(--border-color);
+      }
+      .admin-reminder-warning {
+        background: #fef3c7;
+        color: #92400e;
+        border-bottom-color: #f59e0b;
+      }
+      .admin-reminder-content {
+        flex: 1;
+        display: flex;
+        gap: 0.5rem;
+        align-items: baseline;
+        flex-wrap: wrap;
+      }
+      .admin-reminder-content strong {
+        white-space: nowrap;
+      }
+      .admin-reminder-dismiss {
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: inherit;
+        opacity: 0.6;
+        padding: 4px;
+        flex-shrink: 0;
+      }
+      .admin-reminder-dismiss:hover { opacity: 1; }
 
       .admin-header {
         display: flex;
@@ -2962,6 +3412,107 @@ export default class AdminPage {
         text-align: center;
       }
 
+      /* KPI Filter Bar */
+      .kpi-filter-bar {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin-bottom: 1.5rem;
+      }
+
+      .kpi-filter-label {
+        font-size: 0.875rem;
+        color: var(--text-muted);
+        font-weight: 500;
+      }
+
+      .kpi-filter-buttons {
+        display: flex;
+        gap: 0.25rem;
+        background: var(--bg-primary);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 0.25rem;
+      }
+
+      .kpi-filter-btn {
+        padding: 0.375rem 0.75rem;
+        border: none;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--text-muted);
+        font-size: 0.8rem;
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+
+      .kpi-filter-btn:hover {
+        color: var(--text-primary);
+        background: var(--bg-secondary);
+      }
+
+      .kpi-filter-btn.active {
+        background: var(--primary-color);
+        color: white;
+      }
+
+      /* KPI Table Styles */
+      .kpi-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.875rem;
+      }
+
+      .kpi-table th {
+        text-align: left;
+        padding: 0.75rem;
+        border-bottom: 2px solid var(--border-color);
+        color: var(--text-muted);
+        font-weight: 600;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      .kpi-table td {
+        padding: 0.75rem;
+        border-bottom: 1px solid var(--border-color);
+        color: var(--text-primary);
+      }
+
+      .kpi-table tr:last-child td {
+        border-bottom: none;
+      }
+
+      .kpi-table tr:hover td {
+        background: var(--bg-secondary);
+      }
+
+      .kpi-cost {
+        color: #ef4444;
+      }
+
+      .kpi-bundled {
+        color: var(--text-muted);
+        font-style: italic;
+        font-size: 0.8rem;
+      }
+
+      .kpi-margin-good {
+        color: #10b981;
+        font-weight: 600;
+      }
+
+      .kpi-margin-ok {
+        color: #f59e0b;
+        font-weight: 600;
+      }
+
+      .kpi-margin-bad {
+        color: #ef4444;
+        font-weight: 600;
+      }
+
       /* Analytics Mobile Responsive */
       @media (max-width: 1200px) {
         .analytics-grid-4 {
@@ -3039,6 +3590,15 @@ export default class AdminPage {
 
         .modal-stat-value {
           font-size: 1.25rem;
+        }
+
+        .kpi-table {
+          font-size: 0.75rem;
+        }
+
+        .kpi-table th,
+        .kpi-table td {
+          padding: 0.5rem 0.375rem;
         }
       }
     `;
