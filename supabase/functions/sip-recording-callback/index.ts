@@ -242,9 +242,12 @@ Deno.serve(async (req) => {
 
     console.log(`✅ Updated call record ${callRecord.id} with recording (label: ${label})`);
 
-    // Deduct credits for completed calls (only for main recording to avoid double billing)
+    // Deduct credits for completed calls
+    // Bill for: main, transfer_conference, back_to_agent, reconnect_conversation
+    // Don't bill for: transferee_consult (AI briefing transferee, very short)
+    const billableLabels = ['main', 'transfer_conference', 'back_to_agent', 'reconnect_conversation'];
     const durationSeconds = parseInt(RecordingDuration as string) || 0;
-    if (label === 'main' && durationSeconds > 0 && callRecord.user_id) {
+    if (billableLabels.includes(label) && durationSeconds > 0 && callRecord.user_id) {
       deductCallCredits(
         supabaseUrl,
         supabaseKey,

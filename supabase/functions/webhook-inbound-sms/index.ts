@@ -231,6 +231,10 @@ Deno.serve(async (req) => {
       // Still process the message even if logging failed
       processAndReplySMS(serviceNumber.user_id, from, to, body, supabase, agentConfig, null)
     } else {
+      // Deduct credits for inbound SMS (fire and forget)
+      deductSmsCredits(supabaseUrl, supabaseKey, serviceNumber.user_id, 1)
+        .catch(err => console.error('Failed to deduct inbound SMS credits:', err))
+
       // Auto-enrich contact if not exists (fire and forget)
       autoEnrichContact(serviceNumber.user_id, from, supabase)
         .catch(err => console.error('Auto-enrich error:', err))
