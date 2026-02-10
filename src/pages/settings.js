@@ -917,7 +917,7 @@ export default class SettingsPage {
               </div>
               <div style="display: flex; justify-content: space-between;">
                 <span>SMS messages</span>
-                <span>$0.001/msg</span>
+                <span>$0.01/msg</span>
               </div>
             </div>
             <p class="text-muted" style="margin: 0.75rem 0 0 0; font-size: 0.75rem;">
