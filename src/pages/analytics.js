@@ -797,6 +797,7 @@ export default class AnalyticsPage {
         <div class="analytics-section">
           <h2>Session Records</h2>
           <div class="analytics-panel call-records-panel">
+            ${this.renderPagination(data.callRecords.length, 'top')}
             <div class="call-records-table-wrapper">
               <table class="call-records-table">
                 <thead>
@@ -818,7 +819,7 @@ export default class AnalyticsPage {
                 </tbody>
               </table>
             </div>
-            ${this.renderPagination(data.callRecords.length)}
+            ${this.renderPagination(data.callRecords.length, 'bottom')}
           </div>
         </div>
       ` : ''}
@@ -905,7 +906,7 @@ export default class AnalyticsPage {
     `).join('');
   }
 
-  renderPagination(totalRecords) {
+  renderPagination(totalRecords, position = 'bottom') {
     const totalPages = Math.ceil(totalRecords / this.recordsPerPage);
     if (totalRecords === 0) return '';
 
@@ -913,27 +914,27 @@ export default class AnalyticsPage {
     const endRecord = Math.min(this.currentPage * this.recordsPerPage, totalRecords);
 
     return `
-      <div class="pagination-container">
+      <div class="pagination-container pagination-${position}">
         <div class="pagination-info">
           Showing ${startRecord}-${endRecord} of ${totalRecords} records
         </div>
         <div class="pagination-controls">
           <div class="per-page-selector">
-            <label for="records-per-page">Show:</label>
-            <select id="records-per-page">
+            <label>Show:</label>
+            <select class="records-per-page-select">
               <option value="25" ${this.recordsPerPage === 25 ? 'selected' : ''}>25</option>
               <option value="50" ${this.recordsPerPage === 50 ? 'selected' : ''}>50</option>
               <option value="100" ${this.recordsPerPage === 100 ? 'selected' : ''}>100</option>
             </select>
           </div>
-          <button class="pagination-btn" id="prev-page" ${this.currentPage === 1 ? 'disabled' : ''}>
+          <button class="pagination-btn prev-page-btn" ${this.currentPage === 1 ? 'disabled' : ''}>
             <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
             </svg>
             Previous
           </button>
           <span class="pagination-pages">Page ${this.currentPage} of ${totalPages}</span>
-          <button class="pagination-btn" id="next-page" ${this.currentPage === totalPages ? 'disabled' : ''}>
+          <button class="pagination-btn next-page-btn" ${this.currentPage === totalPages ? 'disabled' : ''}>
             Next
             <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
@@ -945,36 +946,37 @@ export default class AnalyticsPage {
   }
 
   attachPaginationListeners() {
-    const prevBtn = document.getElementById('prev-page');
-    const nextBtn = document.getElementById('next-page');
-    const perPageSelect = document.getElementById('records-per-page');
+    // Use querySelectorAll to handle both top and bottom pagination controls
+    const prevBtns = document.querySelectorAll('.prev-page-btn');
+    const nextBtns = document.querySelectorAll('.next-page-btn');
+    const perPageSelects = document.querySelectorAll('.records-per-page-select');
 
-    if (prevBtn) {
-      prevBtn.addEventListener('click', () => {
+    prevBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
         if (this.currentPage > 1) {
           this.currentPage--;
           this.updateSessionRecordsTable();
         }
       });
-    }
+    });
 
-    if (nextBtn) {
-      nextBtn.addEventListener('click', () => {
+    nextBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
         const totalPages = Math.ceil(this.analyticsData.callRecords.length / this.recordsPerPage);
         if (this.currentPage < totalPages) {
           this.currentPage++;
           this.updateSessionRecordsTable();
         }
       });
-    }
+    });
 
-    if (perPageSelect) {
-      perPageSelect.addEventListener('change', (e) => {
+    perPageSelects.forEach(select => {
+      select.addEventListener('change', (e) => {
         this.recordsPerPage = parseInt(e.target.value, 10);
         this.currentPage = 1; // Reset to first page
         this.updateSessionRecordsTable();
       });
-    }
+    });
   }
 
   updateSessionRecordsTable() {
@@ -983,10 +985,17 @@ export default class AnalyticsPage {
       tbody.innerHTML = this.renderSessionRecords(this.analyticsData.callRecords);
     }
 
-    // Update pagination
-    const paginationContainer = document.querySelector('.pagination-container');
-    if (paginationContainer && this.analyticsData?.callRecords) {
-      paginationContainer.outerHTML = this.renderPagination(this.analyticsData.callRecords.length);
+    // Update both top and bottom pagination
+    const topPagination = document.querySelector('.pagination-top');
+    const bottomPagination = document.querySelector('.pagination-bottom');
+
+    if (this.analyticsData?.callRecords) {
+      if (topPagination) {
+        topPagination.outerHTML = this.renderPagination(this.analyticsData.callRecords.length, 'top');
+      }
+      if (bottomPagination) {
+        bottomPagination.outerHTML = this.renderPagination(this.analyticsData.callRecords.length, 'bottom');
+      }
       this.attachPaginationListeners();
     }
   }
