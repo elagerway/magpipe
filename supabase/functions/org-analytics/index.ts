@@ -411,18 +411,19 @@ async function getCallSessions(supabase: ReturnType<typeof createClient>, userId
   }
 
   // Get costs from credit_transactions (reference_id links to call_records.id)
-  const callIds = records.map(r => r.id)
+  // Note: Don't use .in() with hundreds of IDs - it causes query size errors
   const { data: transactions } = await supabase
     .from('credit_transactions')
     .select('reference_id, amount, metadata')
-    .in('reference_id', callIds)
+    .in('user_id', userIds)
     .eq('reference_type', 'call')
 
   const costMap: Record<string, number> = {}
   if (transactions) {
     transactions.forEach(t => {
       if (t.reference_id) {
-        costMap[t.reference_id] = Math.abs(parseFloat(t.amount) || 0)
+        // Sum costs if there are multiple transactions for the same call
+        costMap[t.reference_id] = (costMap[t.reference_id] || 0) + Math.abs(parseFloat(t.amount) || 0)
       }
     })
   }
@@ -594,8 +595,8 @@ async function getCallRecords(supabase: ReturnType<typeof createClient>, userIds
     query = query.lte('started_at', endDate.toISOString())
   }
 
-  // Limit records
-  query = query.limit(startDate || endDate ? 1000 : 50)
+  // Limit records - show up to 500 by default, 1000 with date filter
+  query = query.limit(startDate || endDate ? 1000 : 500)
 
   const { data: records, error } = await query
 
@@ -624,18 +625,20 @@ async function getCallRecords(supabase: ReturnType<typeof createClient>, userIds
   }
 
   // Get costs from credit_transactions (reference_id links to call_records.id)
-  const callIds = records.map(r => r.id)
+  // Note: Don't use .in() with hundreds of IDs - it causes query size errors
+  // Instead, get all call transactions for these users and filter in memory
   const { data: transactions } = await supabase
     .from('credit_transactions')
     .select('reference_id, amount')
-    .in('reference_id', callIds)
+    .in('user_id', userIds)
     .eq('reference_type', 'call')
 
   const costMap: Record<string, number> = {}
   if (transactions) {
     transactions.forEach(t => {
       if (t.reference_id) {
-        costMap[t.reference_id] = Math.abs(parseFloat(t.amount) || 0)
+        // Sum costs if there are multiple transactions for the same call (e.g., transfer segments)
+        costMap[t.reference_id] = (costMap[t.reference_id] || 0) + Math.abs(parseFloat(t.amount) || 0)
       }
     })
   }

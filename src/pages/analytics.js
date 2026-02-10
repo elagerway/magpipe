@@ -408,6 +408,28 @@ export default class AnalyticsPage {
           color: var(--text-secondary);
         }
 
+        .per-page-selector {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          margin-right: 1rem;
+        }
+
+        .per-page-selector label {
+          font-size: 0.875rem;
+          color: var(--text-secondary);
+        }
+
+        .per-page-selector select {
+          padding: 0.375rem 0.5rem;
+          border: 1px solid var(--border-color);
+          border-radius: 4px;
+          background: var(--bg-secondary);
+          color: var(--text-primary);
+          font-size: 0.875rem;
+          cursor: pointer;
+        }
+
         @media (max-width: 768px) {
           .analytics-page {
             padding: 1rem;
@@ -858,12 +880,8 @@ export default class AnalyticsPage {
 
   formatCost(cost) {
     const num = parseFloat(cost) || 0;
-    if (num === 0) return '0.00';
-    // Show 4 decimal places for small amounts, 2 for larger
-    if (num < 0.01) {
-      return num.toFixed(4);
-    }
-    return num.toFixed(2);
+    // Always show 4 decimal places so small costs are visible
+    return num.toFixed(4);
   }
 
   renderSessionRecords(records) {
@@ -889,7 +907,7 @@ export default class AnalyticsPage {
 
   renderPagination(totalRecords) {
     const totalPages = Math.ceil(totalRecords / this.recordsPerPage);
-    if (totalPages <= 1) return '';
+    if (totalRecords === 0) return '';
 
     const startRecord = (this.currentPage - 1) * this.recordsPerPage + 1;
     const endRecord = Math.min(this.currentPage * this.recordsPerPage, totalRecords);
@@ -900,6 +918,14 @@ export default class AnalyticsPage {
           Showing ${startRecord}-${endRecord} of ${totalRecords} records
         </div>
         <div class="pagination-controls">
+          <div class="per-page-selector">
+            <label for="records-per-page">Show:</label>
+            <select id="records-per-page">
+              <option value="25" ${this.recordsPerPage === 25 ? 'selected' : ''}>25</option>
+              <option value="50" ${this.recordsPerPage === 50 ? 'selected' : ''}>50</option>
+              <option value="100" ${this.recordsPerPage === 100 ? 'selected' : ''}>100</option>
+            </select>
+          </div>
           <button class="pagination-btn" id="prev-page" ${this.currentPage === 1 ? 'disabled' : ''}>
             <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
@@ -921,6 +947,7 @@ export default class AnalyticsPage {
   attachPaginationListeners() {
     const prevBtn = document.getElementById('prev-page');
     const nextBtn = document.getElementById('next-page');
+    const perPageSelect = document.getElementById('records-per-page');
 
     if (prevBtn) {
       prevBtn.addEventListener('click', () => {
@@ -938,6 +965,14 @@ export default class AnalyticsPage {
           this.currentPage++;
           this.updateSessionRecordsTable();
         }
+      });
+    }
+
+    if (perPageSelect) {
+      perPageSelect.addEventListener('change', (e) => {
+        this.recordsPerPage = parseInt(e.target.value, 10);
+        this.currentPage = 1; // Reset to first page
+        this.updateSessionRecordsTable();
       });
     }
   }
