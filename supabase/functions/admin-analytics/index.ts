@@ -654,7 +654,7 @@ async function getKpiMetrics(supabase: ReturnType<typeof createClient>, since: s
   let totalRevenue = 0
   let totalVoiceMinutes = 0
   let totalCalls = 0
-  let voiceRevenueByProvider: Record<string, { minutes: number, revenue: number }> = {}
+  let voiceRevenueByProvider: Record<string, { minutes: number, ttsMinutes: number, revenue: number }> = {}
   let llmRevenueByModel: Record<string, { minutes: number, revenue: number }> = {}
   let smsRevenue = 0
   let smsCount = 0
@@ -678,14 +678,17 @@ async function getKpiMetrics(supabase: ReturnType<typeof createClient>, since: s
 
     if (meta.type === 'voice') {
       const minutes = meta.minutes || 0
+      // Use TTS-only minutes for vendor cost; fall back to full duration for old records
+      const ttsMinutes = meta.ttsMinutes || minutes
       totalVoiceMinutes += minutes
       totalCalls++
 
-      // Voice provider breakdown
+      // Voice provider breakdown - use ttsMinutes for TTS cost
       const voiceId = meta.voiceId || ''
       const provider = voiceId.startsWith('openai-') ? 'openai' : 'elevenlabs'
-      if (!voiceRevenueByProvider[provider]) voiceRevenueByProvider[provider] = { minutes: 0, revenue: 0 }
+      if (!voiceRevenueByProvider[provider]) voiceRevenueByProvider[provider] = { minutes: 0, ttsMinutes: 0, revenue: 0 }
       voiceRevenueByProvider[provider].minutes += minutes
+      voiceRevenueByProvider[provider].ttsMinutes += ttsMinutes
       voiceRevenueByProvider[provider].revenue += meta.voiceCost || 0
 
       // LLM breakdown
@@ -716,18 +719,18 @@ async function getKpiMetrics(supabase: ReturnType<typeof createClient>, since: s
     component: string, vendorCost: number, retailRevenue: number, margin: number, unit: string, quantity: number
   }> = []
 
-  // TTS costs
+  // TTS costs - use ttsMinutes (actual agent speech) instead of full call minutes
   for (const [provider, data] of Object.entries(voiceRevenueByProvider)) {
     const vendorRate = VENDOR_COSTS.tts[provider as keyof typeof VENDOR_COSTS.tts] || 0.003
-    const vendorCost = data.minutes * vendorRate
+    const vendorCost = data.ttsMinutes * vendorRate
     totalVendorCost += vendorCost
     voiceCostBreakdown.push({
       component: `TTS (${provider === 'elevenlabs' ? 'ElevenLabs' : 'OpenAI'})`,
       vendorCost,
       retailRevenue: data.revenue,
       margin: data.revenue > 0 ? ((data.revenue - vendorCost) / data.revenue) * 100 : 0,
-      unit: 'min',
-      quantity: data.minutes
+      unit: 'tts-min',
+      quantity: data.ttsMinutes
     })
   }
 
@@ -840,13 +843,15 @@ async function getKpiMetrics(supabase: ReturnType<typeof createClient>, since: s
 
     if (meta2.type === 'voice') {
       const minutes = meta2.minutes || 0
+      const ttsMinutes = meta2.ttsMinutes || minutes  // fall back for old records
       const voiceId = meta2.voiceId || ''
       const provider = voiceId.startsWith('openai-') ? 'openai' : 'elevenlabs'
       const ttsRate = VENDOR_COSTS.tts[provider as keyof typeof VENDOR_COSTS.tts] || 0.003
       const model = meta2.aiModel || 'default'
       const llmRate = VENDOR_COSTS.llm[model as keyof typeof VENDOR_COSTS.llm] || VENDOR_COSTS.llm.default
 
-      entry.cost += minutes * (ttsRate + VENDOR_COSTS.stt.deepgram + VENDOR_COSTS.telephony.signalwire + VENDOR_COSTS.livekit + llmRate)
+      // TTS uses ttsMinutes (actual speech); everything else uses full call minutes
+      entry.cost += ttsMinutes * ttsRate + minutes * (VENDOR_COSTS.stt.deepgram + VENDOR_COSTS.telephony.signalwire + VENDOR_COSTS.livekit + llmRate)
       entry.cost += VENDOR_COSTS.telephony.sipBridge // per call
     } else if (meta2.type === 'sms') {
       // Approximate: assume outbound for cost calculation

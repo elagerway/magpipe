@@ -70,6 +70,7 @@ interface DeductRequest {
   aiModel?: string
   // For SMS
   messageCount?: number
+  ttsCharacters?: number   // Total characters spoken by agent (for accurate TTS vendor cost)
   // For add-ons
   addonType?: string      // 'knowledge_base' | 'batch_call' | 'branded_call' | 'denoising' | 'pii_removal'
   quantity?: number        // minutes for per-min addons, count for per-unit addons
@@ -267,7 +268,7 @@ serve(async (req) => {
 
     // Parse request body
     const body: DeductRequest = await req.json()
-    const { userId, type, durationSeconds, voiceId, aiModel, messageCount, addonType, quantity, feeType, feeQuantity, referenceType, referenceId } = body
+    const { userId, type, durationSeconds, voiceId, aiModel, ttsCharacters, messageCount, addonType, quantity, feeType, feeQuantity, referenceType, referenceId } = body
 
     if (!userId) {
       return new Response(JSON.stringify({ error: 'userId is required' }), {
@@ -291,11 +292,16 @@ serve(async (req) => {
       const { totalCost, breakdown } = calculateVoiceCost(durationSeconds, voiceId, aiModel)
       cost = totalCost
       description = `Voice call - ${breakdown.minutes.toFixed(2)} minutes`
+      // Compute TTS-only minutes from character count (~900 chars/min at 150 wpm, avg 6 chars/word)
+      const ttsChars = ttsCharacters || 0
+      const ttsMinutes = ttsChars > 0 ? Math.round((ttsChars / 900) * 100) / 100 : 0
       metadata = {
         type: 'voice',
         durationSeconds,
         voiceId,
         aiModel,
+        ttsCharacters: ttsChars,
+        ttsMinutes,
         ...breakdown
       }
     } else if (type === 'sms') {
