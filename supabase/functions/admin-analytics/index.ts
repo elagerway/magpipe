@@ -38,6 +38,23 @@ Deno.serve(async (req) => {
       return errorResponse(error.message, 403)
     }
 
+    // Check if this is a KPI-specific request
+    const url = new URL(req.url)
+    const requestType = url.searchParams.get('type')
+
+    if (requestType === 'kpi') {
+      const since = url.searchParams.get('since') || null  // ISO date string filter
+      const kpiMetrics = await getKpiMetrics(supabase, since)
+
+      await logAdminAction(supabase, {
+        adminUserId: adminUser.id,
+        action: 'view_kpi',
+        details: {}
+      })
+
+      return successResponse(kpiMetrics)
+    }
+
     // Get all analytics data in parallel
     const [
       userMetrics,
@@ -588,5 +605,309 @@ async function getActivityLocations(supabase: ReturnType<typeof createClient>) {
     calls: aggregateByCity(callData),
     messages: aggregateByCity(msgData),
     chats: aggregateByCity(chatData)
+  }
+}
+
+// Vendor costs (what we pay) - mirrors constants in deduct-credits
+// Updated 2026-02-09 from actual vendor rate cards
+const VENDOR_COSTS = {
+  tts: { elevenlabs: 0.22, openai: 0.015 },
+  stt: { deepgram: 0.0043 },
+  telephony: { signalwire: 0.007, sipBridge: 0 },
+  livekit: 0.014,
+  llm: {
+    'gpt-4o': 0.002, 'gpt-4o-mini': 0.0001,
+    'gpt-4.1': 0.0015, 'gpt-4.1-mini': 0.0003,
+    'gpt-5': 0.0017, 'gpt-5-mini': 0.0003, 'gpt-5-nano': 0.0001,
+    'claude-3.5-sonnet': 0.003, 'claude-3-haiku': 0.0002,
+    'default': 0.0001,
+  },
+  sms: { outbound: 0.008, inbound: 0.005 },
+}
+
+// Retail rates (what we charge users) - mirrors constants in deduct-credits
+const RETAIL_RATES = {
+  voice: 0.15,  // Single blended per-minute rate (covers TTS, STT, LLM, telephony, LiveKit)
+  sms: 0.013,
+}
+
+async function getKpiMetrics(supabase: ReturnType<typeof createClient>, since: string | null) {
+  // Get deduction transactions with their metadata
+  let deductionQuery = supabase
+    .from('credit_transactions')
+    .select('amount, metadata, created_at')
+    .eq('transaction_type', 'deduction')
+  if (since) deductionQuery = deductionQuery.gte('created_at', since)
+  const { data: deductions } = await deductionQuery
+
+  // Get SMS messages with direction for inbound/outbound breakdown
+  let smsQuery = supabase
+    .from('sms_messages')
+    .select('direction, sent_at')
+  if (since) smsQuery = smsQuery.gte('sent_at', since)
+  const { data: smsMessages } = await smsQuery
+
+  const allDeductions = deductions || []
+  const allSms = smsMessages || []
+
+  // Aggregate totals
+  let totalRevenue = 0
+  let totalVoiceMinutes = 0
+  let totalCalls = 0
+  let voiceRevenueByProvider: Record<string, { minutes: number, revenue: number }> = {}
+  let llmRevenueByModel: Record<string, { minutes: number, revenue: number }> = {}
+  let smsRevenue = 0
+  let smsCount = 0
+
+  // Monthly aggregation (last 6 months)
+  const monthlyData = new Map<string, { revenue: number, cost: number }>()
+
+  for (const tx of allDeductions) {
+    const amount = Math.abs(parseFloat(tx.amount))
+    totalRevenue += amount
+
+    // Monthly bucket
+    const month = tx.created_at?.split('T')[0]?.substring(0, 7) || 'unknown'
+    if (!monthlyData.has(month)) monthlyData.set(month, { revenue: 0, cost: 0 })
+    monthlyData.get(month)!.revenue += amount
+
+    const meta = tx.metadata || {}
+
+    if (meta.type === 'voice') {
+      const minutes = meta.minutes || 0
+      totalVoiceMinutes += minutes
+      totalCalls++
+
+      // Voice provider breakdown
+      const voiceId = meta.voiceId || ''
+      const provider = voiceId.startsWith('openai-') ? 'openai' : 'elevenlabs'
+      if (!voiceRevenueByProvider[provider]) voiceRevenueByProvider[provider] = { minutes: 0, revenue: 0 }
+      voiceRevenueByProvider[provider].minutes += minutes
+      voiceRevenueByProvider[provider].revenue += meta.voiceCost || 0
+
+      // LLM breakdown
+      const model = meta.aiModel || 'default'
+      if (!llmRevenueByModel[model]) llmRevenueByModel[model] = { minutes: 0, revenue: 0 }
+      llmRevenueByModel[model].minutes += minutes
+      llmRevenueByModel[model].revenue += meta.llmCost || 0
+
+    } else if (meta.type === 'sms') {
+      smsRevenue += amount
+      smsCount += meta.messageCount || 1
+    }
+  }
+
+  // Count SMS by direction
+  let smsOutbound = 0
+  let smsInbound = 0
+  for (const msg of allSms) {
+    if (msg.direction === 'outbound') smsOutbound++
+    else smsInbound++
+  }
+
+  // Calculate vendor costs
+  let totalVendorCost = 0
+
+  // Voice vendor costs
+  const voiceCostBreakdown: Array<{
+    component: string, vendorCost: number, retailRevenue: number, margin: number, unit: string, quantity: number
+  }> = []
+
+  // TTS costs
+  for (const [provider, data] of Object.entries(voiceRevenueByProvider)) {
+    const vendorRate = VENDOR_COSTS.tts[provider as keyof typeof VENDOR_COSTS.tts] || 0.003
+    const vendorCost = data.minutes * vendorRate
+    totalVendorCost += vendorCost
+    voiceCostBreakdown.push({
+      component: `TTS (${provider === 'elevenlabs' ? 'ElevenLabs' : 'OpenAI'})`,
+      vendorCost,
+      retailRevenue: data.revenue,
+      margin: data.revenue > 0 ? ((data.revenue - vendorCost) / data.revenue) * 100 : 0,
+      unit: 'min',
+      quantity: data.minutes
+    })
+  }
+
+  // STT cost (Deepgram - all voice minutes)
+  const sttCost = totalVoiceMinutes * VENDOR_COSTS.stt.deepgram
+  totalVendorCost += sttCost
+  voiceCostBreakdown.push({
+    component: 'STT (Deepgram)',
+    vendorCost: sttCost,
+    retailRevenue: 0, // bundled
+    margin: -100,
+    unit: 'min',
+    quantity: totalVoiceMinutes
+  })
+
+  // Telephony cost (SignalWire per minute)
+  const telephonyCost = totalVoiceMinutes * VENDOR_COSTS.telephony.signalwire
+  totalVendorCost += telephonyCost
+  // Telephony retail revenue
+  let telephonyRetail = 0
+  for (const tx of allDeductions) {
+    if (tx.metadata?.type === 'voice') {
+      telephonyRetail += tx.metadata.telephonyCost || 0
+    }
+  }
+  voiceCostBreakdown.push({
+    component: 'Telephony (SignalWire)',
+    vendorCost: telephonyCost,
+    retailRevenue: telephonyRetail,
+    margin: telephonyRetail > 0 ? ((telephonyRetail - telephonyCost) / telephonyRetail) * 100 : 0,
+    unit: 'min',
+    quantity: totalVoiceMinutes
+  })
+
+  // SIP bridge cost (per call)
+  const sipBridgeCost = totalCalls * VENDOR_COSTS.telephony.sipBridge
+  totalVendorCost += sipBridgeCost
+  voiceCostBreakdown.push({
+    component: 'SIP Bridge',
+    vendorCost: sipBridgeCost,
+    retailRevenue: 0, // bundled
+    margin: -100,
+    unit: 'call',
+    quantity: totalCalls
+  })
+
+  // LiveKit cost
+  const livekitCost = totalVoiceMinutes * VENDOR_COSTS.livekit
+  totalVendorCost += livekitCost
+  voiceCostBreakdown.push({
+    component: 'LiveKit',
+    vendorCost: livekitCost,
+    retailRevenue: 0, // bundled
+    margin: -100,
+    unit: 'min',
+    quantity: totalVoiceMinutes
+  })
+
+  // LLM costs
+  for (const [model, data] of Object.entries(llmRevenueByModel)) {
+    const vendorRate = VENDOR_COSTS.llm[model as keyof typeof VENDOR_COSTS.llm] || VENDOR_COSTS.llm.default
+    const vendorCost = data.minutes * vendorRate
+    totalVendorCost += vendorCost
+    voiceCostBreakdown.push({
+      component: `LLM (${model})`,
+      vendorCost,
+      retailRevenue: data.revenue,
+      margin: data.revenue > 0 ? ((data.revenue - vendorCost) / data.revenue) * 100 : 0,
+      unit: 'min',
+      quantity: data.minutes
+    })
+  }
+
+  // SMS costs
+  const smsOutboundCost = smsOutbound * VENDOR_COSTS.sms.outbound
+  const smsInboundCost = smsInbound * VENDOR_COSTS.sms.inbound
+  const totalSmsCost = smsOutboundCost + smsInboundCost
+  totalVendorCost += totalSmsCost
+
+  const smsOutboundRevenue = smsOutbound * RETAIL_RATES.sms
+  const smsInboundRevenue = smsInbound * RETAIL_RATES.sms
+  const smsCostBreakdown = [
+    {
+      component: 'SMS Outbound',
+      vendorCost: smsOutboundCost,
+      retailRevenue: smsOutboundRevenue,
+      margin: smsOutboundRevenue > 0 ? ((smsOutboundRevenue - smsOutboundCost) / smsOutboundRevenue) * 100 : 0,
+      unit: 'msg',
+      quantity: smsOutbound
+    },
+    {
+      component: 'SMS Inbound',
+      vendorCost: smsInboundCost,
+      retailRevenue: smsInboundRevenue,
+      margin: smsInboundRevenue > 0 ? ((smsInboundRevenue - smsInboundCost) / smsInboundRevenue) * 100 : 0,
+      unit: 'msg',
+      quantity: smsInbound
+    }
+  ]
+
+  // Calculate monthly costs
+  // Re-process deductions to compute vendor costs per month
+  for (const tx of allDeductions) {
+    const month = tx.created_at?.split('T')[0]?.substring(0, 7) || 'unknown'
+    const entry = monthlyData.get(month)
+    if (!entry) continue
+
+    const meta = tx.metadata || {}
+    if (meta.type === 'voice') {
+      const minutes = meta.minutes || 0
+      const voiceId = meta.voiceId || ''
+      const provider = voiceId.startsWith('openai-') ? 'openai' : 'elevenlabs'
+      const ttsRate = VENDOR_COSTS.tts[provider as keyof typeof VENDOR_COSTS.tts] || 0.003
+      const model = meta.aiModel || 'default'
+      const llmRate = VENDOR_COSTS.llm[model as keyof typeof VENDOR_COSTS.llm] || VENDOR_COSTS.llm.default
+
+      entry.cost += minutes * (ttsRate + VENDOR_COSTS.stt.deepgram + VENDOR_COSTS.telephony.signalwire + VENDOR_COSTS.livekit + llmRate)
+      entry.cost += VENDOR_COSTS.telephony.sipBridge // per call
+    } else if (meta.type === 'sms') {
+      // Approximate: assume outbound for cost calculation
+      entry.cost += (meta.messageCount || 1) * VENDOR_COSTS.sms.outbound
+    }
+  }
+
+  // Get last 6 months sorted
+  const sixMonthsAgo = new Date()
+  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6)
+  const sixMonthsAgoStr = sixMonthsAgo.toISOString().substring(0, 7)
+
+  const monthlyTrend = Array.from(monthlyData.entries())
+    .filter(([month]) => month >= sixMonthsAgoStr)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, data]) => ({
+      month,
+      revenue: Math.round(data.revenue * 100) / 100,
+      cost: Math.round(data.cost * 100) / 100,
+      profit: Math.round((data.revenue - data.cost) * 100) / 100
+    }))
+
+  const grossProfit = totalRevenue - totalVendorCost
+  const grossMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0
+
+  return {
+    summary: {
+      totalRevenue: Math.round(totalRevenue * 100) / 100,
+      totalVendorCost: Math.round(totalVendorCost * 100) / 100,
+      grossProfit: Math.round(grossProfit * 100) / 100,
+      grossMargin: Math.round(grossMargin * 10) / 10,
+    },
+    perCall: {
+      totalCalls,
+      totalMinutes: Math.round(totalVoiceMinutes * 100) / 100,
+      avgRevenuePerMin: totalVoiceMinutes > 0 ? Math.round(((totalRevenue - smsRevenue) / totalVoiceMinutes) * 10000) / 10000 : 0,
+      avgCostPerMin: totalVoiceMinutes > 0 ? Math.round(((totalVendorCost - totalSmsCost) / totalVoiceMinutes) * 10000) / 10000 : 0,
+    },
+    voiceBreakdown: voiceCostBreakdown,
+    smsBreakdown: smsCostBreakdown,
+    monthlyTrend,
+    rateCard: {
+      voice: {
+        retailRate: RETAIL_RATES.voice,
+        vendorComponents: [
+          { component: 'ElevenLabs TTS', rate: VENDOR_COSTS.tts.elevenlabs, unit: '/min' },
+          { component: 'OpenAI TTS', rate: VENDOR_COSTS.tts.openai, unit: '/min' },
+          { component: 'Deepgram STT', rate: VENDOR_COSTS.stt.deepgram, unit: '/min' },
+          { component: 'SignalWire Telephony', rate: VENDOR_COSTS.telephony.signalwire, unit: '/min' },
+          { component: 'LiveKit', rate: VENDOR_COSTS.livekit, unit: '/min' },
+          { component: 'GPT-4o', rate: VENDOR_COSTS.llm['gpt-4o'], unit: '/min' },
+          { component: 'GPT-4o-mini', rate: VENDOR_COSTS.llm['gpt-4o-mini'], unit: '/min' },
+          { component: 'GPT-4.1', rate: VENDOR_COSTS.llm['gpt-4.1'], unit: '/min' },
+          { component: 'GPT-4.1-mini', rate: VENDOR_COSTS.llm['gpt-4.1-mini'], unit: '/min' },
+          { component: 'GPT-5', rate: VENDOR_COSTS.llm['gpt-5'], unit: '/min' },
+          { component: 'GPT-5-mini', rate: VENDOR_COSTS.llm['gpt-5-mini'], unit: '/min' },
+          { component: 'GPT-5-nano', rate: VENDOR_COSTS.llm['gpt-5-nano'], unit: '/min' },
+        ],
+      },
+      sms: {
+        retailRate: RETAIL_RATES.sms,
+        vendorComponents: [
+          { component: 'SMS Outbound', rate: VENDOR_COSTS.sms.outbound, unit: '/msg' },
+          { component: 'SMS Inbound', rate: VENDOR_COSTS.sms.inbound, unit: '/msg' },
+        ],
+      },
+    },
   }
 }
