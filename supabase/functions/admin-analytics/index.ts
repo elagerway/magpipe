@@ -864,8 +864,43 @@ async function getKpiMetrics(supabase: ReturnType<typeof createClient>, since: s
       profit: Math.round((data.revenue - data.cost) * 100) / 100
     }))
 
-  const grossProfit = totalRevenue - totalVendorCost
+  // MRR: Monthly Recurring Revenue from phone number fees etc.
+  // Get monthly billing log data
+  let mrrQuery = supabase
+    .from('monthly_billing_log')
+    .select('fee_type, amount, created_at')
+  if (since) mrrQuery = mrrQuery.gte('created_at', since)
+  const { data: billingLogs } = await mrrQuery
+
+  let totalMrr = 0
+  const mrrByType: Record<string, { count: number, revenue: number }> = {}
+  for (const log of billingLogs || []) {
+    const amount = parseFloat(log.amount)
+    totalMrr += amount
+    if (!mrrByType[log.fee_type]) mrrByType[log.fee_type] = { count: 0, revenue: 0 }
+    mrrByType[log.fee_type].count++
+    mrrByType[log.fee_type].revenue += amount
+
+    // Add to monthly data for chart
+    const month = log.created_at?.split('T')[0]?.substring(0, 7) || 'unknown'
+    if (!monthlyData.has(month)) monthlyData.set(month, { revenue: 0, cost: 0 })
+    monthlyData.get(month)!.revenue += amount
+  }
+
+  // Get active phone numbers count for projected MRR
+  const { count: activeNumbers } = await supabase
+    .from('service_numbers')
+    .select('*', { count: 'exact', head: true })
+    .eq('is_active', true)
+
+  const projectedMonthlyMrr = (activeNumbers || 0) * 2.00  // $2/mo per number
+
+  // Combine usage revenue + MRR for overall P&L
+  const totalCombinedRevenue = totalRevenue + totalMrr
+  const grossProfit = totalRevenue - totalVendorCost  // usage-only P&L
   const grossMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0
+  const overallProfit = totalCombinedRevenue - totalVendorCost  // includes MRR
+  const overallMargin = totalCombinedRevenue > 0 ? (overallProfit / totalCombinedRevenue) * 100 : 0
 
   return {
     summary: {
@@ -879,6 +914,24 @@ async function getKpiMetrics(supabase: ReturnType<typeof createClient>, since: s
       totalMinutes: Math.round(totalVoiceMinutes * 100) / 100,
       avgRevenuePerMin: totalVoiceMinutes > 0 ? Math.round(((totalRevenue - smsRevenue) / totalVoiceMinutes) * 10000) / 10000 : 0,
       avgCostPerMin: totalVoiceMinutes > 0 ? Math.round(((totalVendorCost - totalSmsCost) / totalVoiceMinutes) * 10000) / 10000 : 0,
+    },
+    mrr: {
+      totalCollected: Math.round(totalMrr * 100) / 100,
+      projectedMonthly: Math.round(projectedMonthlyMrr * 100) / 100,
+      activeNumbers: activeNumbers || 0,
+      breakdown: Object.entries(mrrByType).map(([type, data]) => ({
+        type: type.replace(/_/g, ' '),
+        count: data.count,
+        revenue: Math.round(data.revenue * 100) / 100,
+      })),
+    },
+    overall: {
+      totalRevenue: Math.round(totalCombinedRevenue * 100) / 100,
+      usageRevenue: Math.round(totalRevenue * 100) / 100,
+      mrrRevenue: Math.round(totalMrr * 100) / 100,
+      totalVendorCost: Math.round(totalVendorCost * 100) / 100,
+      profit: Math.round(overallProfit * 100) / 100,
+      margin: Math.round(overallMargin * 10) / 10,
     },
     voiceBreakdown: voiceCostBreakdown,
     smsBreakdown: smsCostBreakdown,
