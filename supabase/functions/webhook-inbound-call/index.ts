@@ -159,8 +159,8 @@ Deno.serve(async (req) => {
 
     console.log('Dialing SIP URI:', sipUri)
 
-    // Log the call to database with agent_id (return the record for recording callback)
-    const { data: callRecord, error: insertError } = await supabase
+    // Log the call to database with agent_id
+    const { error: insertError } = await supabase
       .from('call_records')
       .insert({
         user_id: serviceNumber.user_id,
@@ -178,8 +178,6 @@ Deno.serve(async (req) => {
         disposition: 'answered_by_pat',
         started_at: new Date().toISOString(),
       })
-      .select('id')
-      .single()
 
     if (insertError) {
       console.error('Error logging call:', insertError)
@@ -190,14 +188,10 @@ Deno.serve(async (req) => {
     }
 
     // Return TwiML to connect to LiveKit via SIP
-    // SignalWire records the call (LiveKit egress has 2 concurrent session limit)
-    const supabaseFunctionsUrl = `${supabaseUrl}/functions/v1`
-    const callRecordId = callRecord?.id || ''
-    const recordingCallback = `${supabaseFunctionsUrl}/sip-recording-callback?label=conversation&call_record_id=${callRecordId}`
-
+    // Note: No SignalWire recording - LiveKit records the conversation
     const response = `<?xml version="1.0" encoding="UTF-8"?>
     <Response>
-      <Dial record="record-from-answer" recordingStatusCallback="${recordingCallback}" recordingStatusCallbackMethod="POST" recordingStatusCallbackEvent="completed">
+      <Dial>
         <Sip>${sipUri}</Sip>
       </Dial>
     </Response>`
