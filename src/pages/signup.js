@@ -3,12 +3,34 @@
  */
 
 import { User } from '../models/User.js';
+import { supabase } from '../lib/supabase.js';
+import { OrganizationMember } from '../models/OrganizationMember.js';
 import { renderPublicFooter, getPublicFooterStyles } from '../components/PublicFooter.js';
 import { renderPublicHeader, getPublicHeaderStyles } from '../components/PublicHeader.js';
 
 export default class SignupPage {
   async render() {
     const appElement = document.getElementById('app');
+
+    // Check for team invitation
+    const urlParams = new URLSearchParams(window.location.search);
+    const inviteId = urlParams.get('invite');
+    let invitation = null;
+
+    if (inviteId) {
+      // Fetch invitation details to pre-fill form
+      const { data } = await supabase
+        .from('organization_members')
+        .select('*, organizations(name)')
+        .eq('id', inviteId)
+        .eq('status', 'pending')
+        .single();
+
+      // Check if invitation has expired (60 days)
+      if (data && !OrganizationMember.isExpired(data)) {
+        invitation = data;
+      }
+    }
 
     appElement.innerHTML = `
       <div class="signup-page">
@@ -42,7 +64,13 @@ export default class SignupPage {
           <div class="signup-container">
             <div class="signup-card">
               <h1>Create Account</h1>
-              <p class="signup-subtitle">Get started with your AI assistant</p>
+              ${invitation ? `
+                <div class="invite-banner">
+                  You've been invited to join <strong>${invitation.organizations?.name || 'a team'}</strong>
+                </div>
+              ` : `
+                <p class="signup-subtitle">Get started with your AI assistant</p>
+              `}
 
               <div id="error-message" class="hidden"></div>
 
@@ -91,6 +119,7 @@ export default class SignupPage {
                     placeholder="John Doe"
                     required
                     autocomplete="name"
+                    ${invitation?.full_name ? `value="${invitation.full_name}"` : ''}
                   />
                 </div>
 
@@ -103,6 +132,7 @@ export default class SignupPage {
                     placeholder="you@example.com"
                     required
                     autocomplete="email"
+                    ${invitation?.email ? `value="${invitation.email}" readonly` : ''}
                   />
                 </div>
 
@@ -292,6 +322,17 @@ export default class SignupPage {
           font-size: 0.875rem;
         }
 
+        .invite-banner {
+          text-align: center;
+          background: rgba(99, 102, 241, 0.1);
+          border: 1px solid rgba(99, 102, 241, 0.2);
+          border-radius: 0.5rem;
+          padding: 0.6rem 1rem;
+          margin-bottom: 1rem;
+          font-size: 0.85rem;
+          color: var(--text-primary);
+        }
+
         /* SSO Buttons */
         .sso-buttons {
           display: flex;
@@ -477,6 +518,13 @@ export default class SignupPage {
     const errorMessage = document.getElementById('error-message');
     errorMessage.classList.add('hidden');
 
+    // Store invite ID for processing after OAuth redirect
+    const urlParams = new URLSearchParams(window.location.search);
+    const inviteId = urlParams.get('invite');
+    if (inviteId) {
+      localStorage.setItem('pending_team_invite', inviteId);
+    }
+
     try {
       const { error } = await User.signInWithOAuth(provider);
 
@@ -547,6 +595,20 @@ export default class SignupPage {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name, email })
         }).catch(() => {}); // Ignore errors
+
+        // If this signup was from a team invitation, approve membership
+        if (invitation && user) {
+          try {
+            await OrganizationMember.approve(invitation.id, user.id);
+            // Set user's current organization
+            await supabase
+              .from('users')
+              .update({ current_organization_id: invitation.organization_id })
+              .eq('id', user.id);
+          } catch (inviteErr) {
+            console.error('Failed to process invitation:', inviteErr);
+          }
+        }
 
         // Redirect to phone verification
         navigateTo('/verify-phone');

@@ -19,6 +19,26 @@ window.addEventListener('beforeinstallprompt', (e) => {
   }
 });
 
+// Global install handler
+window._installApp = async () => {
+  const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+  if (deferredPrompt) {
+    // Android/Chrome - use native prompt
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      deferredPrompt = null;
+      const btn = document.getElementById('install-app-btn');
+      if (btn) btn.style.display = 'none';
+    }
+  } else if (isIos) {
+    // iOS - show instructions modal
+    const modal = document.getElementById('ios-install-modal');
+    if (modal) modal.classList.add('show');
+  }
+};
+
 export default class HomePage {
   async render() {
     const appElement = document.getElementById('app');
@@ -51,6 +71,16 @@ export default class HomePage {
                 View Pricing
               </button>
             </div>
+            ${!isStandalone ? `
+              <button class="btn btn-install-app" id="install-app-btn" onclick="window._installApp()">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/>
+                  <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                Install Mobile App
+              </button>
+            ` : ''}
             <p class="hero-note">$20 in free credits on signup, credit card and verification required.</p>
           </div>
         </section>
@@ -413,6 +443,35 @@ export default class HomePage {
           font-size: 0.875rem;
           color: rgba(255, 255, 255, 0.5);
           margin: 0;
+        }
+
+        .btn-install-app {
+          display: none;
+          align-items: center;
+          justify-content: center;
+          gap: 0.5rem;
+          margin-top: 1rem;
+          padding: 0.7rem 1.5rem;
+          background: rgba(255, 255, 255, 0.1);
+          backdrop-filter: blur(10px);
+          color: white;
+          border: 1px solid rgba(255, 255, 255, 0.25);
+          border-radius: 0.75rem;
+          font-size: 0.9rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .btn-install-app:hover {
+          background: rgba(255, 255, 255, 0.2);
+          border-color: rgba(255, 255, 255, 0.4);
+        }
+
+        @media (max-width: 768px) {
+          .btn-install-app {
+            display: inline-flex;
+          }
         }
 
         /* Features Section */

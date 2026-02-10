@@ -109,6 +109,24 @@ class App {
         return;
       }
 
+      // Process pending team invitation (from OAuth signup flow)
+      const pendingInviteId = localStorage.getItem('pending_team_invite');
+      if (pendingInviteId && session?.user) {
+        localStorage.removeItem('pending_team_invite');
+        try {
+          const { OrganizationMember } = await import('./models/OrganizationMember.js');
+          const { member } = await OrganizationMember.approve(pendingInviteId, session.user.id);
+          if (member) {
+            await supabase
+              .from('users')
+              .update({ current_organization_id: member.organization_id })
+              .eq('id', session.user.id);
+          }
+        } catch (inviteErr) {
+          console.error('Failed to process team invitation:', inviteErr);
+        }
+      }
+
       // Check if user has verified phone number
       const { User } = await import('./models/User.js');
       const { profile } = await User.getProfile(session.user.id);

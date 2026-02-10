@@ -69,6 +69,24 @@ export class Organization {
       return { organization: null, error };
     }
 
+    // Create owner membership record so getForUser() and team page work
+    await supabase
+      .from('organization_members')
+      .insert({
+        organization_id: data.id,
+        user_id: ownerId,
+        email: '', // Will be filled by trigger or manually
+        role: 'owner',
+        status: 'approved',
+        approved_at: new Date().toISOString(),
+      });
+
+    // Set user's current organization
+    await supabase
+      .from('users')
+      .update({ current_organization_id: data.id })
+      .eq('id', ownerId);
+
     return { organization: data, error: null };
   }
 
