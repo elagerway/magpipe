@@ -46,7 +46,8 @@ Deno.serve(async (req) => {
       creditsMetrics,
       timeSeries,
       leaderboards,
-      recentSignups
+      recentSignups,
+      activityLocations
     ] = await Promise.all([
       getUserMetrics(supabase),
       getCallMetrics(supabase),
@@ -54,7 +55,8 @@ Deno.serve(async (req) => {
       getCreditsMetrics(supabase),
       getTimeSeries(supabase),
       getLeaderboards(supabase),
-      getRecentSignups(supabase)
+      getRecentSignups(supabase),
+      getActivityLocations(supabase)
     ])
 
     // Log admin action
@@ -71,7 +73,8 @@ Deno.serve(async (req) => {
       credits: creditsMetrics,
       timeSeries,
       leaderboards,
-      recentSignups
+      recentSignups,
+      activityLocations
     })
   } catch (error) {
     console.error('Error in admin-analytics:', error)
@@ -449,4 +452,88 @@ async function getRecentSignups(supabase: ReturnType<typeof createClient>) {
     phoneVerified: user.phone_verified,
     status: user.account_status
   }))
+}
+
+async function getActivityLocations(supabase: ReturnType<typeof createClient>) {
+  const thirtyDaysAgo = new Date()
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+  const since = thirtyDaysAgo.toISOString()
+
+  // Get users with location data
+  const { data: usersWithLocation } = await supabase
+    .from('users')
+    .select('id, email, name, signup_city, signup_country')
+    .not('signup_city', 'is', null)
+
+  if (!usersWithLocation || usersWithLocation.length === 0) {
+    return { signups: [], calls: [], messages: [], chats: [] }
+  }
+
+  const userMap = new Map(usersWithLocation.map(u => [u.id, u]))
+  const userIds = usersWithLocation.map(u => u.id)
+
+  // Get calls per user (last 30 days)
+  const { data: callData } = await supabase
+    .from('call_records')
+    .select('user_id')
+    .in('user_id', userIds)
+    .gte('started_at', since)
+
+  // Get messages per user (last 30 days)
+  const { data: msgData } = await supabase
+    .from('sms_messages')
+    .select('user_id')
+    .in('user_id', userIds)
+    .gte('sent_at', since)
+
+  // Get chat sessions per user (last 30 days)
+  const { data: chatData } = await supabase
+    .from('chat_sessions')
+    .select('user_id')
+    .in('user_id', userIds)
+    .gte('created_at', since)
+
+  // Aggregate by city
+  function aggregateByCity(records: { user_id: string }[] | null) {
+    const cityMap = new Map<string, { city: string, country: string, count: number, users: string[] }>()
+    for (const r of records || []) {
+      const user = userMap.get(r.user_id)
+      if (!user?.signup_city) continue
+      const key = `${user.signup_city}, ${user.signup_country}`
+      if (!cityMap.has(key)) {
+        cityMap.set(key, { city: user.signup_city, country: user.signup_country, count: 0, users: [] })
+      }
+      const entry = cityMap.get(key)!
+      entry.count++
+      const name = user.name || user.email.split('@')[0]
+      if (!entry.users.includes(name)) entry.users.push(name)
+    }
+    return Array.from(cityMap.values())
+  }
+
+  // Signups with location (all time)
+  const signups = usersWithLocation.map(u => ({
+    city: u.signup_city,
+    country: u.signup_country,
+    name: u.name || u.email.split('@')[0]
+  }))
+
+  // Aggregate signups by city
+  const signupsByCity = new Map<string, { city: string, country: string, count: number, users: string[] }>()
+  for (const s of signups) {
+    const key = `${s.city}, ${s.country}`
+    if (!signupsByCity.has(key)) {
+      signupsByCity.set(key, { city: s.city, country: s.country, count: 0, users: [] })
+    }
+    const entry = signupsByCity.get(key)!
+    entry.count++
+    entry.users.push(s.name)
+  }
+
+  return {
+    signups: Array.from(signupsByCity.values()),
+    calls: aggregateByCity(callData),
+    messages: aggregateByCity(msgData),
+    chats: aggregateByCity(chatData)
+  }
 }

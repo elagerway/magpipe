@@ -40,16 +40,16 @@ Deno.serve(async (req) => {
       let city = null
       let country = null
 
-      // Try to get geolocation from IP (using free ip-api.com)
+      // Try to get geolocation from IP (using ipapi.co - free HTTPS)
       try {
-        const geoResponse = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,city`, {
+        const geoResponse = await fetch(`https://ipapi.co/${ip}/json/`, {
           signal: AbortSignal.timeout(3000)
         })
         if (geoResponse.ok) {
           const geoData = await geoResponse.json()
-          if (geoData.status === 'success') {
+          if (geoData.city && geoData.country_name) {
             city = geoData.city
-            country = geoData.country
+            country = geoData.country_name
           }
         }
       } catch (geoError) {
