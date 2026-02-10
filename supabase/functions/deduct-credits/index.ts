@@ -25,7 +25,7 @@ const ADDON_RATES = {
 const MONTHLY_RATES = {
   phone_number: 2.00,     // per phone number per month
   concurrency_slot: 5.00, // per additional concurrency slot per month
-  extra_knowledge_base: 5.00, // per additional KB beyond included 20
+  extra_knowledge_base: 5.00, // per additional KB beyond included 7
 }
 
 // Vendor costs (what we actually pay) - used by admin KPI analytics
