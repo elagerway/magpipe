@@ -367,9 +367,11 @@ export default class TeamPage {
     let actions = '';
     let meta = '';
 
+    const isExpired = member.status === 'pending' && OrganizationMember.isExpired(member);
+
     switch (member.status) {
       case 'pending':
-        meta = `Invited ${invitedDate}`;
+        meta = `Invited ${invitedDate}${isExpired ? ' — Expired' : ''}`;
         actions = `
           <button class="btn btn-sm btn-secondary" onclick="window.teamPage.resendInvite('${member.id}')">Resend</button>
           <button class="btn btn-sm btn-secondary" onclick="window.teamPage.cancelInvite('${member.id}')">Cancel</button>

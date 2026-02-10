@@ -70,15 +70,17 @@ serve(async (req) => {
       })
     }
 
-    // Check if user is an organization owner (only owners can manage billing)
-    const { data: membership } = await supabase
+    // Check if user is an organization member - only owners can manage billing
+    const { data: memberships } = await supabase
       .from('organization_members')
       .select('role')
       .eq('user_id', user.id)
       .eq('status', 'approved')
-      .single()
 
-    if (membership && membership.role !== 'owner') {
+    const hasNonOwnerMembership = memberships?.some(m => m.role !== 'owner')
+    const hasOwnerMembership = memberships?.some(m => m.role === 'owner')
+
+    if (hasNonOwnerMembership && !hasOwnerMembership) {
       return new Response(JSON.stringify({ error: 'Only organization owners can manage billing' }), {
         status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }

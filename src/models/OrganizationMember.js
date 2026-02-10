@@ -51,7 +51,7 @@ export class OrganizationMember {
    * @param {string} orgId - Organization UUID
    * @param {string} email - Invitee's email
    * @param {string} fullName - Invitee's name
-   * @param {string} role - Role (admin, member)
+   * @param {string} role - Role (editor, support)
    * @param {string} invitedBy - UUID of user sending invite
    * @returns {Promise<{member: Object|null, error: Error|null}>}
    */
@@ -200,6 +200,17 @@ export class OrganizationMember {
    * @param {string} email - Email to check
    * @returns {Promise<{invitations: Array|null, error: Error|null}>}
    */
+  /**
+   * Check if an invitation has expired (60 day limit)
+   * @param {Object} member - Member record with invited_at
+   * @returns {boolean}
+   */
+  static isExpired(member) {
+    if (!member?.invited_at) return false;
+    const sixtyDaysMs = 60 * 24 * 60 * 60 * 1000;
+    return (Date.now() - new Date(member.invited_at).getTime()) > sixtyDaysMs;
+  }
+
   static async getPendingInvitations(email) {
     const { data, error } = await supabase
       .from('organization_members')
@@ -211,6 +222,9 @@ export class OrganizationMember {
       return { invitations: null, error };
     }
 
-    return { invitations: data, error: null };
+    // Filter out expired invitations (older than 60 days)
+    const valid = data?.filter(inv => !OrganizationMember.isExpired(inv)) || [];
+
+    return { invitations: valid, error: null };
   }
 }

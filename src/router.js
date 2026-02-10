@@ -176,6 +176,16 @@ export class Router {
 
     // Check authentication (getCurrentUser uses caching)
     if (route.requiresAuth) {
+      // If URL contains OAuth callback tokens, wait for Supabase to process them
+      // before checking auth. This prevents a race where the router redirects to
+      // /login before the session is established from the OAuth return.
+      const hash = window.location.hash;
+      if (hash && (hash.includes('access_token') || hash.includes('refresh_token'))) {
+        // Let Supabase exchange the tokens - getSession() won't see them yet,
+        // but onAuthStateChange will fire and handle the redirect. Just return.
+        return;
+      }
+
       const { user } = await getCurrentUser();
 
       if (!user) {

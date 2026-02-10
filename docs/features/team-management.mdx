@@ -58,14 +58,14 @@ Magpipe uses three roles with different permission levels:
 
 | Role | Description |
 |------|-------------|
-| **Owner** | Full control. Can delete org, manage billing, transfer ownership. |
-| **Admin** | Can manage team members, agents, and all resources. |
-| **Member** | Can view and use resources but cannot change settings. |
+| **Owner** | Full control. Can delete org, manage billing, manage team. |
+| **Editor** | Full access to resources. Can create, edit, and manage agents, numbers, and knowledge. |
+| **Support** | View and edit access. Can view resources and respond to messages but cannot delete. |
 
 ### Permission Matrix
 
-| Permission | Owner | Admin | Member |
-|------------|:-----:|:-----:|:------:|
+| Permission | Owner | Editor | Support |
+|------------|:-----:|:------:|:-------:|
 | View agents | ✓ | ✓ | ✓ |
 | Create/edit agents | ✓ | ✓ | ✗ |
 | Delete agents | ✓ | ✓ | ✗ |
@@ -79,9 +79,9 @@ Magpipe uses three roles with different permission levels:
 | Edit contacts | ✓ | ✓ | ✓ |
 | View apps | ✓ | ✓ | ✓ |
 | Configure apps | ✓ | ✓ | ✗ |
-| Invite team members | ✓ | ✓ | ✗ |
-| Remove team members | ✓ | ✓ | ✗ |
-| Change member roles | ✓ | ✓ | ✗ |
+| Invite team members | ✓ | ✗ | ✗ |
+| Remove team members | ✓ | ✗ | ✗ |
+| Change member roles | ✓ | ✗ | ✗ |
 | Manage billing | ✓ | ✗ | ✗ |
 | Delete organization | ✓ | ✗ | ✗ |
 | Transfer ownership | ✓ | ✗ | ✗ |
@@ -101,7 +101,7 @@ Magpipe uses three roles with different permission levels:
     Enter the person's email address.
   </Step>
   <Step title="Select Role">
-    Choose **Admin** or **Member**.
+    Choose **Editor** or **Support**.
   </Step>
   <Step title="Send Invitation">
     Click **Send Invite**.
@@ -117,9 +117,10 @@ Magpipe uses three roles with different permission levels:
 
 ### Invitation Expiry
 
-- Invitations expire after **7 days**
-- Expired invitations can be resent
-- Pending invitations show in the team list
+- Invitations expire after **60 days**
+- Expired invitations can be resent from the team list
+- Pending invitations show in the team list with expiry status
+- Invitations can be cancelled by the Owner
 
 ### Resending Invitations
 
@@ -147,7 +148,7 @@ To change someone's role:
 4. Confirm the change
 
 <Note>
-Only Owners can promote someone to Admin or demote an Admin.
+Only Owners can change team member roles.
 </Note>
 
 ### Removing Members
@@ -175,7 +176,7 @@ As an Owner, you can transfer ownership to another member:
 4. Confirm the transfer
 
 **After transfer:**
-- You become an Admin
+- You become an Editor
 - They become the new Owner
 - All Owner permissions transfer
 
@@ -185,7 +186,7 @@ Ownership transfer is immediate and cannot be undone except by the new Owner.
 
 ### Leaving an Organization
 
-**As a Member or Admin:**
+**As an Editor or Support member:**
 1. Go to **Settings** → **Team**
 2. Click **Leave Organization**
 3. Confirm
@@ -216,9 +217,9 @@ Recommended role assignments:
 | Client Type | Recommended Role |
 |-------------|------------------|
 | Hands-off client | No access (you manage everything) |
-| View-only client | Member |
-| Self-service client | Admin |
-| Full control client | Owner (you become Admin) |
+| View-only client | Support |
+| Self-service client | Editor |
+| Full control client | Owner (you become Editor) |
 
 ### White Label + Teams
 
