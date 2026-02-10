@@ -439,7 +439,7 @@ async function getRecentSignups(supabase: ReturnType<typeof createClient>) {
     .from('users')
     .select('id, email, name, created_at, signup_ip, signup_country, signup_city, phone_verified, account_status')
     .order('created_at', { ascending: false })
-    .limit(50)
+    .limit(100)
 
   return (signups || []).map(user => ({
     id: user.id,

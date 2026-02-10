@@ -337,7 +337,12 @@ export default class AdminPage {
       }
 
       this.analyticsData = await response.json();
+      this.signupsPage = 1;
+      this.signupsPerPage = 25;
       this.renderAnalyticsContent();
+
+      // Render signups table with pagination
+      this.renderSignupsTable();
 
       // Render sparklines (SVG-based, no library needed)
       this.renderSparklines();
@@ -562,20 +567,51 @@ export default class AdminPage {
 
       <!-- Recent Signups -->
       <div class="analytics-section">
-        <h2>Recent Signups (Last 50)</h2>
-        <div class="analytics-panel signups-panel">
-          ${this.renderRecentSignups(data.recentSignups)}
+        <h2>Recent Signups</h2>
+        <div class="analytics-panel signups-panel" id="signups-panel">
         </div>
       </div>
     `;
   }
 
-  renderRecentSignups(signups) {
-    if (!signups || signups.length === 0) {
-      return '<p class="signups-empty">No signups yet</p>';
+  renderSignupsTable() {
+    const panel = document.getElementById('signups-panel');
+    if (!panel) return;
+
+    const signups = this.analyticsData?.recentSignups || [];
+    if (signups.length === 0) {
+      panel.innerHTML = '<p class="signups-empty">No signups yet</p>';
+      return;
     }
 
-    return `
+    const total = signups.length;
+    const totalPages = Math.ceil(total / this.signupsPerPage);
+    const start = (this.signupsPage - 1) * this.signupsPerPage;
+    const end = Math.min(start + this.signupsPerPage, total);
+    const pageSignups = signups.slice(start, end);
+
+    const paginationBar = `
+      <div class="signups-pagination">
+        <div class="signups-pagination-info">
+          Showing ${start + 1}–${end} of ${total}
+        </div>
+        <div class="signups-pagination-controls">
+          <select class="signups-per-page">
+            ${[25, 50, 100].map(n => `<option value="${n}" ${n === this.signupsPerPage ? 'selected' : ''}>${n} per page</option>`).join('')}
+          </select>
+          <button class="signups-page-btn" data-page="prev" ${this.signupsPage <= 1 ? 'disabled' : ''}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+          <span class="signups-page-num">${this.signupsPage} / ${totalPages}</span>
+          <button class="signups-page-btn" data-page="next" ${this.signupsPage >= totalPages ? 'disabled' : ''}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+          </button>
+        </div>
+      </div>
+    `;
+
+    panel.innerHTML = `
+      ${paginationBar}
       <div class="signups-table-wrapper">
         <table class="signups-table">
           <thead>
@@ -587,7 +623,7 @@ export default class AdminPage {
             </tr>
           </thead>
           <tbody>
-            ${signups.map(user => `
+            ${pageSignups.map(user => `
               <tr class="clickable-user" data-user-id="${user.id}" data-user-email="${user.email}">
                 <td>
                   <div class="signup-user">
@@ -621,7 +657,29 @@ export default class AdminPage {
           </tbody>
         </table>
       </div>
+      ${paginationBar}
     `;
+
+    // Attach pagination event listeners
+    panel.querySelectorAll('.signups-per-page').forEach(select => {
+      select.addEventListener('change', (e) => {
+        this.signupsPerPage = parseInt(e.target.value);
+        this.signupsPage = 1;
+        this.renderSignupsTable();
+      });
+    });
+
+    panel.querySelectorAll('.signups-page-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const action = btn.dataset.page;
+        if (action === 'prev' && this.signupsPage > 1) this.signupsPage--;
+        if (action === 'next' && this.signupsPage < totalPages) this.signupsPage++;
+        this.renderSignupsTable();
+      });
+    });
+
+    // Re-attach user click listeners for the new rows
+    this.attachAnalyticsClickListeners();
   }
 
   formatRelativeTime(dateStr) {
@@ -2863,6 +2921,69 @@ export default class AdminPage {
         padding: 2rem;
         text-align: center;
         color: var(--text-muted);
+      }
+
+      .signups-pagination {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.5rem 1rem;
+        border-bottom: 1px solid var(--border-color);
+        font-size: 0.8rem;
+      }
+
+      .signups-table-wrapper + .signups-pagination {
+        border-bottom: none;
+        border-top: 1px solid var(--border-color);
+      }
+
+      .signups-pagination-info {
+        color: var(--text-muted);
+      }
+
+      .signups-pagination-controls {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .signups-per-page {
+        padding: 0.25rem 0.5rem;
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        font-size: 0.8rem;
+        cursor: pointer;
+      }
+
+      .signups-page-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        cursor: pointer;
+      }
+
+      .signups-page-btn:hover:not(:disabled) {
+        background: var(--bg-secondary);
+      }
+
+      .signups-page-btn:disabled {
+        opacity: 0.3;
+        cursor: default;
+      }
+
+      .signups-page-num {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        min-width: 3rem;
+        text-align: center;
       }
 
       /* Analytics Mobile Responsive */
