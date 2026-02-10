@@ -373,6 +373,20 @@ export default class AdminPage {
     const data = this.analyticsData;
 
     container.innerHTML = `
+      <!-- Activity Map -->
+      <div class="analytics-section">
+        <h2>Activity Map</h2>
+        <div class="analytics-panel">
+          <div class="map-legend">
+            <span class="map-legend-item"><span class="map-legend-dot" style="background:#6366f1;"></span>Signups</span>
+            <span class="map-legend-item"><span class="map-legend-dot" style="background:#10b981;"></span>Calls</span>
+            <span class="map-legend-item"><span class="map-legend-dot" style="background:#f59e0b;"></span>Messages</span>
+            <span class="map-legend-item"><span class="map-legend-dot" style="background:#ef4444;"></span>Web Chats</span>
+          </div>
+          <div id="signup-map" class="signup-map"></div>
+        </div>
+      </div>
+
       <!-- Overview Metrics -->
       <div class="analytics-section">
         <h2>Overview</h2>
@@ -548,20 +562,6 @@ export default class AdminPage {
             <h3>Top Spenders</h3>
             ${this.renderLeaderboard(data.leaderboards.topSpenders, 'credits_spent', 'credits', true)}
           </div>
-        </div>
-      </div>
-
-      <!-- Activity Map -->
-      <div class="analytics-section">
-        <h2>Activity Map</h2>
-        <div class="analytics-panel">
-          <div class="map-legend">
-            <span class="map-legend-item"><span class="map-legend-dot" style="background:#6366f1;"></span>Signups</span>
-            <span class="map-legend-item"><span class="map-legend-dot" style="background:#10b981;"></span>Calls</span>
-            <span class="map-legend-item"><span class="map-legend-dot" style="background:#f59e0b;"></span>Messages</span>
-            <span class="map-legend-item"><span class="map-legend-dot" style="background:#ef4444;"></span>Web Chats</span>
-          </div>
-          <div id="signup-map" class="signup-map"></div>
         </div>
       </div>
 
