@@ -2782,7 +2782,7 @@ export default class AdminPage {
 
       /* Signup Map */
       .signup-map {
-        height: 300px;
+        height: 500px;
         border-radius: 8px;
         overflow: hidden;
         background: var(--bg-secondary);
