@@ -1025,7 +1025,7 @@ export default class InboxPage {
     calls?.forEach(call => {
       console.log('Processing call:', call);
 
-      const duration = call.duration_seconds || 0;
+      const duration = this.calculateTotalDuration(call);
       const durationText = duration > 0
         ? `${Math.floor(duration / 60)}:${String(duration % 60).padStart(2, '0')}`
         : '0:00';
@@ -1656,7 +1656,7 @@ export default class InboxPage {
   }
 
   renderCallDetailView(call) {
-    const duration = call.duration_seconds || call.duration || 0;
+    const duration = this.calculateTotalDuration(call);
     const durationText = duration > 0
       ? `${Math.floor(duration / 60)}:${String(duration % 60).padStart(2, '0')}`
       : '0:00';
@@ -1843,6 +1843,56 @@ export default class InboxPage {
   }
 
   /**
+   * Calculate total duration from all recordings in a call
+   */
+  calculateTotalDuration(call) {
+    const recordings = call.recordings || [];
+    if (recordings.length > 0) {
+      return recordings.reduce((sum, rec) => sum + (parseInt(rec.duration) || 0), 0);
+    }
+    return call.duration_seconds || 0;
+  }
+
+  /**
+   * Trigger on-demand sync for pending recordings
+   */
+  async syncPendingRecordings(callId) {
+    if (this._syncingCallId === callId) {
+      console.log('⏳ Already syncing recordings for', callId);
+      return;
+    }
+
+    console.log('📥 Triggering sync for pending recordings:', callId);
+    this._syncingCallId = callId;
+
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      const response = await fetch(`${supabaseUrl}/functions/v1/sync-recording`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseAnonKey}`
+        },
+        body: JSON.stringify({ call_record_id: callId })
+      });
+
+      const result = await response.json();
+      console.log('📥 Sync result:', result);
+
+      if (result.success && result.synced > 0) {
+        // Refresh the call data from the database
+        await this.refreshCallRecordings(callId);
+      }
+    } catch (err) {
+      console.error('Error syncing recordings:', err);
+    } finally {
+      this._syncingCallId = null;
+    }
+  }
+
+  /**
    * Refresh call recordings from the database and re-render if updated
    */
   async refreshCallRecordings(callId) {
@@ -1869,9 +1919,11 @@ export default class InboxPage {
         // Check if recordings are now complete
         const recordings = updatedCall.recordings || [];
         const stillPending = recordings.some(rec => {
-          const isSupabaseUrl = rec.url && rec.url.includes('supabase.co');
+          // Pending if: status is pending_sync, OR no valid URL, OR no transcript
+          if (rec.status === 'pending_sync') return true;
+          const hasValidUrl = rec.url && rec.url.includes('supabase.co');
           const hasTranscript = !!rec.transcript;
-          return !isSupabaseUrl || !hasTranscript;
+          return !hasValidUrl || !hasTranscript;
         });
 
         // Re-render if this call is currently selected
@@ -1905,21 +1957,28 @@ export default class InboxPage {
       recordings.push({ url: call.recording_url, label: 'main', duration: call.duration_seconds });
     }
 
-    // Check if any recordings are still syncing (no Supabase URL or no transcript)
+    // Check if any recordings need syncing (pending_sync status or no Supabase URL)
     const hasPendingRecordings = recordings.some(rec => {
-      // Recording is pending if it doesn't have a Supabase URL yet
-      const isSupabaseUrl = rec.url && rec.url.includes('supabase.co');
+      // Recording is pending if: status is pending_sync, OR no valid URL, OR no transcript
+      if (rec.status === 'pending_sync') return true;
+      const hasValidUrl = rec.url && rec.url.includes('supabase.co');
       const hasTranscript = !!rec.transcript;
-      return !isSupabaseUrl || !hasTranscript;
+      return !hasValidUrl || !hasTranscript;
     });
 
-    // If recordings are pending and we haven't already set up a refresh timer
-    if (hasPendingRecordings && recordings.length > 0 && !this._recordingRefreshTimer) {
-      console.log('📥 Recordings still syncing, will retry in 10s...');
-      this._recordingRefreshTimer = setTimeout(() => {
-        this._recordingRefreshTimer = null;
-        this.refreshCallRecordings(call.id);
-      }, 10000);
+    // If recordings are pending, trigger on-demand sync
+    if (hasPendingRecordings && recordings.length > 0) {
+      // Trigger sync (will only run once, debounced internally)
+      this.syncPendingRecordings(call.id);
+
+      // Also set up refresh timer to update UI after sync completes
+      if (!this._recordingRefreshTimer) {
+        console.log('📥 Recordings pending sync, will refresh in 5s...');
+        this._recordingRefreshTimer = setTimeout(() => {
+          this._recordingRefreshTimer = null;
+          this.refreshCallRecordings(call.id);
+        }, 5000);
+      }
     }
 
     // If no recordings, just show transcript if available
@@ -2012,22 +2071,26 @@ export default class InboxPage {
       }
 
       // Check if this recording is still syncing
-      // A recording is ready if it has a valid URL (Supabase or SignalWire fallback)
+      // A recording needs sync if: status is pending_sync, OR no valid URL, OR no transcript
       const hasValidUrl = rec.url && (
         rec.url.includes('supabase.co') ||
         rec.url.includes('signalwire.com') ||
         rec.note === 'fallback_signalwire_url'
       );
-      const isSyncing = !hasValidUrl;
+      const isSyncing = rec.status === 'pending_sync' || !hasValidUrl;
+      const needsTranscript = !rec.transcript && hasValidUrl;
 
-      const syncingIndicator = isSyncing ? `
+      const syncingIndicator = (isSyncing || needsTranscript) ? `
         <div style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem; background: var(--bg-secondary); border-radius: 6px; margin-top: 0.5rem;">
           <svg class="spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--primary-color)" stroke-width="2">
             <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
           </svg>
-          <span style="font-size: 0.8rem; color: var(--text-secondary);">Syncing recording...</span>
+          <span style="font-size: 0.8rem; color: var(--text-secondary);">${isSyncing ? 'Syncing recording...' : 'Generating transcript...'}</span>
         </div>
       ` : '';
+
+      // Hide audio player if URL is not ready
+      const audioHtml = rec.url ? `<audio controls src="${rec.url}" style="width: 100%; height: 36px;"></audio>` : '';
 
       return `
         <div style="width: 100%; margin-bottom: 0.75rem; padding: 0.75rem; background: var(--bg-tertiary); border-radius: 8px;">
@@ -2038,7 +2101,7 @@ export default class InboxPage {
             </span>
             ${rec.duration || rec.duration_seconds ? `<span>${this.formatDurationShort(rec.duration || rec.duration_seconds)}</span>` : ''}
           </div>
-          <audio controls src="${rec.url}" style="width: 100%; height: 36px;"></audio>
+          ${audioHtml}
           ${syncingIndicator}
           ${transcriptHtml ? `<div style="margin-top: 0.5rem;">${transcriptHtml}</div>` : ''}
         </div>
