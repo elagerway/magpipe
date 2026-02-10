@@ -664,14 +664,17 @@ async function getKpiMetrics(supabase: ReturnType<typeof createClient>, since: s
 
   for (const tx of allDeductions) {
     const amount = Math.abs(parseFloat(tx.amount))
+    const meta = tx.metadata || {}
+
+    // Skip monthly fees - they're tracked separately in MRR section
+    if (meta.type === 'monthly_fee') continue
+
     totalRevenue += amount
 
     // Monthly bucket
     const month = tx.created_at?.split('T')[0]?.substring(0, 7) || 'unknown'
     if (!monthlyData.has(month)) monthlyData.set(month, { revenue: 0, cost: 0 })
     monthlyData.get(month)!.revenue += amount
-
-    const meta = tx.metadata || {}
 
     if (meta.type === 'voice') {
       const minutes = meta.minutes || 0
@@ -828,6 +831,9 @@ async function getKpiMetrics(supabase: ReturnType<typeof createClient>, since: s
   // Calculate monthly costs
   // Re-process deductions to compute vendor costs per month
   for (const tx of allDeductions) {
+    const meta = tx.metadata || {}
+    if (meta.type === 'monthly_fee') continue  // Skip - tracked in MRR
+
     const month = tx.created_at?.split('T')[0]?.substring(0, 7) || 'unknown'
     const entry = monthlyData.get(month)
     if (!entry) continue
