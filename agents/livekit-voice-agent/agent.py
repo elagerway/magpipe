@@ -108,6 +108,34 @@ def log_call_state(room_name: str, state: str, component: str = 'agent', details
         logger.error(f"Failed to log call state: {e}")
         # Don't raise - logging should never break the call flow
 
+def is_within_schedule(schedule: dict, timezone: str = "America/Los_Angeles") -> bool:
+    """Check if the current time is within the agent's schedule.
+    Mirrors the webhook isWithinSchedule() logic.
+    """
+    try:
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo(timezone)
+        now = datetime.datetime.now(tz)
+        weekday = now.strftime("%A").lower()  # e.g. "monday"
+        current_time = now.strftime("%H:%M")  # e.g. "14:30"
+
+        day_schedule = schedule.get(weekday)
+        if not day_schedule:
+            return True  # No schedule for this day = available
+
+        if not day_schedule.get("enabled"):
+            return False  # Day is disabled
+
+        start = day_schedule.get("start", "00:00")
+        end = day_schedule.get("end", "23:59")
+        is_within = start <= current_time <= end
+        logger.info(f"Schedule check: {weekday} {current_time} in {start}-{end}: {is_within}")
+        return is_within
+    except Exception as e:
+        logger.error(f"Error checking schedule: {e}")
+        return True  # Default to available on error
+
+
 # LiveKit API credentials (client initialized in entrypoint where event loop exists)
 livekit_url = os.getenv("LIVEKIT_URL")
 livekit_api_key = os.getenv("LIVEKIT_API_KEY")
@@ -2388,6 +2416,43 @@ CALL CONTEXT:
 
         system_prompt = f"{INBOUND_ROLE_PREFIX}{base_prompt}{INBOUND_CONTEXT_SUFFIX}"
         logger.info("📥 Inbound call - Agent handling customer service")
+
+        # Check after-hours for inbound calls and inject context
+        calls_schedule = user_config.get("calls_schedule")
+        if calls_schedule:
+            schedule_tz = user_config.get("schedule_timezone", "America/Los_Angeles")
+            call_is_after_hours = not is_within_schedule(calls_schedule, schedule_tz)
+            if call_is_after_hours:
+                forwarding_number = user_config.get("after_hours_call_forwarding")
+                if forwarding_number:
+                    after_hours_context = f"""
+
+AFTER-HOURS CONTEXT:
+- This call is being received OUTSIDE of scheduled business hours
+- Greet the caller warmly and let them know they've reached you after hours
+- TRANSFER the call to {forwarding_number} - this is the after-hours forwarding number
+- Tell the caller you'll transfer them, then use the transfer tool"""
+                    # Add forwarding number as a dynamic transfer target
+                    functions_config_obj = user_config.get("functions", {}) if user_config else {}
+                    transfer_cfg = functions_config_obj.get("transfer", {})
+                    existing_nums = transfer_cfg.get("numbers", [])
+                    # Check if forwarding number is already in the list
+                    fwd_already_listed = any(n.get("phone_number") == forwarding_number for n in existing_nums)
+                    if not fwd_already_listed:
+                        existing_nums.append({
+                            "phone_number": forwarding_number,
+                            "label": "After-Hours Forwarding",
+                            "description": "Forward calls to this number outside business hours"
+                        })
+                        transfer_cfg["numbers"] = existing_nums
+                        transfer_cfg["enabled"] = True
+                        if not functions_config_obj.get("transfer"):
+                            functions_config_obj["transfer"] = transfer_cfg
+                        if user_config.get("functions") is None:
+                            user_config["functions"] = functions_config_obj
+                    logger.info(f"📞 After-hours: added forwarding number {forwarding_number} to transfer targets")
+                    system_prompt += after_hours_context
+                    logger.info(f"🕐 After-hours context injected into system prompt (forwarding to {forwarding_number})")
 
     logger.info(f"Voice system prompt applied for {direction} call")
 

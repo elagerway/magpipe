@@ -2137,6 +2137,22 @@ THIS IS AN OUTBOUND CALL:
             `).join('')}
           </select>
         </div>
+
+        <div class="form-group">
+          <label class="form-label" for="after-hours-call-forwarding">After-Hours Call Forwarding</label>
+          <input type="tel" id="after-hours-call-forwarding" class="form-input"
+            placeholder="+1 (555) 123-4567"
+            value="${this.agent.after_hours_call_forwarding || ''}" />
+          <p class="form-help">Forward calls to this number outside scheduled hours. Leave empty to take a message instead.</p>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="after-hours-sms-forwarding">After-Hours SMS Forwarding</label>
+          <input type="tel" id="after-hours-sms-forwarding" class="form-input"
+            placeholder="+1 (555) 123-4567"
+            value="${this.agent.after_hours_sms_forwarding || ''}" />
+          <p class="form-help">Forward texts to this number outside scheduled hours. Leave empty to auto-reply.</p>
+        </div>
       </div>
 
       <div class="config-section">
@@ -2160,7 +2176,7 @@ THIS IS AN OUTBOUND CALL:
             <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
             <polyline points="22 4 12 14.01 9 11.01"/>
           </svg>
-          <span><strong>Schedule Active</strong> - Calls outside these hours will hear a message.</span>
+          <span><strong>Schedule Active</strong> - Calls outside these hours will be handled by your agent.</span>
         </div>
         `}
 
@@ -2199,7 +2215,7 @@ THIS IS AN OUTBOUND CALL:
             <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
             <polyline points="22 4 12 14.01 9 11.01"/>
           </svg>
-          <span><strong>Schedule Active</strong> - Texts outside these hours will be queued.</span>
+          <span><strong>Schedule Active</strong> - Texts outside these hours will be handled by your agent.</span>
         </div>
         `}
 
@@ -3349,6 +3365,23 @@ THIS IS AN OUTBOUND CALL:
         });
       });
     });
+
+    // After-hours forwarding number inputs
+    const callForwardingInput = document.getElementById('after-hours-call-forwarding');
+    if (callForwardingInput) {
+      callForwardingInput.addEventListener('change', () => {
+        const value = callForwardingInput.value.trim() || null;
+        this.updateAgentField('after_hours_call_forwarding', value);
+      });
+    }
+
+    const smsForwardingInput = document.getElementById('after-hours-sms-forwarding');
+    if (smsForwardingInput) {
+      smsForwardingInput.addEventListener('change', () => {
+        const value = smsForwardingInput.value.trim() || null;
+        this.updateAgentField('after_hours_sms_forwarding', value);
+      });
+    }
   }
 
   showConfirmModal({ title, message, confirmText = 'Confirm', cancelText = 'Cancel', onConfirm }) {

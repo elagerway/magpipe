@@ -72,8 +72,16 @@ test.describe('Schedule Tab', () => {
     await expect(page.locator('#calls-monday-enabled')).toBeVisible();
     await expect(page.locator('#texts-monday-enabled')).toBeVisible();
 
+    // Verify after-hours forwarding fields are present
+    const callForwarding = page.locator('#after-hours-call-forwarding');
+    const smsForwarding = page.locator('#after-hours-sms-forwarding');
+    await expect(callForwarding).toBeVisible();
+    await expect(smsForwarding).toBeVisible();
+    console.log('- After-hours call forwarding input visible: true');
+    console.log('- After-hours SMS forwarding input visible: true');
+
     // Take screenshot
-    await page.screenshot({ path: 'tests/screenshots/schedule-tab.png' });
+    await page.screenshot({ path: 'tests/screenshots/schedule-tab.png', fullPage: true });
     console.log('Screenshot saved');
 
     console.log('Schedule tab test passed');
