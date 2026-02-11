@@ -712,7 +712,7 @@ async function getSmsRecords(supabase: ReturnType<typeof createClient>, userIds:
       end: m.status || 'sent',
       status: m.status || 'sent',
       sentiment: m.sentiment || 'Neutral',
-      cost: '0.0000',
+      cost: '0.0100',
       type: 'SMS'
     }
   })
