@@ -825,28 +825,38 @@ export default class InboxPage {
   }
 
   async handleCallUpdate(call) {
-    console.log('Handling call update:', call);
+    console.log('Handling call update:', call.id, call.status);
 
-    // Reload conversations to update list
-    await this.loadConversations(this.userId);
+    const isCurrentCall = this.selectedCallId === call.id;
 
-    // Update conversation list
+    // Update the call in our local conversations array (avoid full reload)
+    const convIndex = this.conversations?.findIndex(c => c.type === 'call' && c.callId === call.id);
+    if (convIndex !== -1 && convIndex !== undefined) {
+      this.conversations[convIndex].call = call;
+      this.conversations[convIndex].lastActivity = call.ended_at || call.started_at || call.created_at;
+    }
+
+    // Update conversation list sidebar
     const conversationsEl = document.getElementById('conversations');
     if (conversationsEl) {
       conversationsEl.innerHTML = this.renderConversationList();
       this.attachConversationListeners();
     }
 
-    // If viewing this call, update the thread
-    if (this.selectedCallId === call.id) {
-      const threadElement = document.getElementById('message-thread');
-      if (threadElement) {
-        threadElement.innerHTML = this.renderMessageThread();
+    // If viewing this call, update the thread (but not during audio playback)
+    if (isCurrentCall) {
+      const audioPlaying = document.querySelector('#thread-messages audio');
+      const isPlaying = audioPlaying && !audioPlaying.paused;
+      if (!isPlaying) {
+        const threadElement = document.getElementById('message-thread');
+        if (threadElement) {
+          threadElement.innerHTML = this.renderMessageThread();
+        }
       }
     }
 
-    // Auto-sync recordings when a call completes
-    if (call.status === 'completed') {
+    // Auto-sync recordings when a call completes (only if actually pending)
+    if (call.status === 'completed' && this.callHasPendingRecordings(call)) {
       console.log('📥 Call completed, auto-syncing recordings for', call.id);
       this.syncPendingRecordings(call.id);
     }
@@ -2043,11 +2053,15 @@ export default class InboxPage {
 
     // Check if any recordings need syncing (pending_sync status or no Supabase URL)
     const hasPendingRecordings = recordings.some(rec => {
-      // Recording is pending if: status is pending_sync, OR no valid URL, OR no transcript
       if (rec.status === 'pending_sync') return true;
       const hasValidUrl = rec.url && rec.url.includes('supabase.co');
-      const hasTranscript = !!rec.transcript;
-      return !hasValidUrl || !hasTranscript;
+      if (!hasValidUrl) return true;
+      // Duration too short for speech = complete (no transcription needed)
+      const recDuration = parseInt(rec.duration) || 0;
+      if (recDuration < 3) return false;
+      // transcript: undefined/null = not yet attempted, "" = attempted but no speech (complete)
+      if (rec.transcript !== undefined && rec.transcript !== null) return false;
+      return true;
     });
 
     // If recordings are pending, trigger on-demand sync
