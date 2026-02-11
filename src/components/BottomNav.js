@@ -103,7 +103,7 @@ async function fetchNavUserData() {
 
       const { data: profile } = await supabase
         .from('users')
-        .select('name, avatar_url, logo_url, favicon_url, favicon_white_bg, plan, stripe_current_period_end, created_at')
+        .select('name, avatar_url, logo_url, favicon_url, favicon_white_bg, plan, credits_balance, stripe_current_period_end, created_at')
         .eq('id', user.id)
         .single();
 
@@ -200,6 +200,7 @@ async function fetchNavUserData() {
         favicon_url: profile?.favicon_url || null,
         favicon_white_bg: profile?.favicon_white_bg || false,
         plan: profile?.plan || 'free',
+        creditsBalance: parseFloat(profile?.credits_balance) || 0,
         minutesUsed,
         messagesUsed,
         perMinuteRate,
@@ -324,9 +325,20 @@ function updateNavPlanSection(userData) {
   const planSection = document.getElementById('nav-plan-section');
   if (!planSection || !userData) return;
 
-  const maxBudget = 2000; // $2000 max for progress bar
+  const plan = userData.plan || 'free';
   const hasUsage = (userData.minutesUsed > 0 || userData.messagesUsed > 0);
-  let percentage = ((userData.totalCost || 0) / maxBudget) * 100;
+  let percentage;
+
+  if (plan === 'free') {
+    // New user plan: show credits used out of $20 included credits
+    const startingCredits = 20;
+    const creditsUsed = Math.max(0, startingCredits - (userData.creditsBalance || 0));
+    percentage = (creditsUsed / startingCredits) * 100;
+  } else {
+    // Paid plan: show total cost on $0-$2000 scale
+    percentage = ((userData.totalCost || 0) / 2000) * 100;
+  }
+
   // Ensure minimum visible width when there's any usage
   if (hasUsage && percentage < 3) {
     percentage = 3;
