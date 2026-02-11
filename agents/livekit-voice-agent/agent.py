@@ -537,10 +537,11 @@ async def search_similar_memories(query_text: str, agent_id: str, user_id: str, 
         return []
 
 
-async def get_semantic_context(transcript_text: str, agent_id: str, user_id: str, current_contact_id: str = None, config: dict = None) -> str:
-    """Get semantic context from similar past conversations"""
+async def get_semantic_context(transcript_text: str, agent_id: str, user_id: str, current_contact_id: str = None, config: dict = None) -> tuple:
+    """Get semantic context from similar past conversations.
+    Returns (context_string, match_count, matched_topics_list, matched_memory_ids)."""
     if not transcript_text:
-        return ""
+        return "", 0, [], []
 
     try:
         # Search for similar memories (excluding current caller)
@@ -553,7 +554,7 @@ async def get_semantic_context(transcript_text: str, agent_id: str, user_id: str
         )
 
         if not similar:
-            return ""
+            return "", 0, [], []
 
         # Increment semantic_match_count for each matched memory
         try:
@@ -563,6 +564,25 @@ async def get_semantic_context(transcript_text: str, agent_id: str, user_id: str
                     supabase.rpc("increment_semantic_match_count", {"memory_id": mem_id}).execute()
         except Exception as inc_err:
             logger.warning(f"Failed to increment semantic match counts: {inc_err}")
+
+        # Collect matched memory IDs
+        matched_memory_ids = [mem.get("id") for mem in similar if mem.get("id")]
+
+        # Collect all matched topics
+        all_matched_topics = []
+        for mem in similar:
+            if mem.get("key_topics"):
+                topics = mem["key_topics"]
+                if isinstance(topics, list):
+                    all_matched_topics.extend(topics)
+        # Deduplicate while preserving order
+        seen = set()
+        unique_matched_topics = []
+        for t in all_matched_topics:
+            tl = t.lower()
+            if tl not in seen:
+                seen.add(tl)
+                unique_matched_topics.append(t)
 
         # Format similar memories for injection
         context_parts = ["## SIMILAR PAST CONVERSATIONS"]
@@ -580,11 +600,44 @@ async def get_semantic_context(transcript_text: str, agent_id: str, user_id: str
 
         context_parts.append("\nUse this context to identify patterns or common issues. Don't reference other callers directly.")
 
-        return "\n".join(context_parts)
+        return "\n".join(context_parts), len(similar), unique_matched_topics, matched_memory_ids
 
     except Exception as e:
         logger.error(f"Failed to get semantic context: {e}")
-        return ""
+        return "", 0, [], []
+
+
+async def _check_semantic_actions(agent_id: str, user_id: str, matched_topics: list, match_count: int, triggering_summary: str, agent_name: str, matched_memory_ids: list = None):
+    """Fire-and-forget: POST to execute-semantic-action edge function to check and fire alerts."""
+    try:
+        supabase_url = os.environ.get("SUPABASE_URL", "")
+        supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+        if not supabase_url or not supabase_key:
+            return
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{supabase_url}/functions/v1/execute-semantic-action",
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {supabase_key}"
+                },
+                json={
+                    "agent_id": agent_id,
+                    "user_id": user_id,
+                    "matched_topics": matched_topics,
+                    "match_count": match_count,
+                    "triggering_summary": triggering_summary,
+                    "agent_name": agent_name,
+                    "matched_memory_ids": matched_memory_ids or []
+                }
+            ) as resp:
+                result = await resp.json()
+                triggered = result.get("triggered", 0)
+                if triggered > 0:
+                    logger.info(f"🔔 Semantic actions: {triggered} alert(s) fired")
+    except Exception as e:
+        logger.warning(f"Failed to check semantic actions: {e}")
 
 
 async def deduct_call_credits(user_id: str, agent_id: str, duration_seconds: int, call_record_id: str, tts_characters: int = 0) -> bool:
@@ -2506,7 +2559,7 @@ AFTER-HOURS CONTEXT:
                 caller_topics = ctx_response.data[0].get("key_topics") or []
                 search_text = f"{caller_summary}\n\nTopics: {', '.join(caller_topics)}"
 
-                semantic_context = await get_semantic_context(
+                semantic_context, semantic_match_count, semantic_matched_topics, semantic_memory_ids = await get_semantic_context(
                     transcript_text=search_text,
                     agent_id=agent_id,
                     user_id=user_id,
@@ -2517,6 +2570,17 @@ AFTER-HOURS CONTEXT:
                 if semantic_context:
                     system_prompt = f"{system_prompt}\n\n{semantic_context}"
                     logger.info(f"🔮 Semantic context injected into system prompt")
+
+                    # Fire-and-forget: check semantic match actions (alerts)
+                    asyncio.create_task(_check_semantic_actions(
+                        agent_id=agent_id,
+                        user_id=user_id,
+                        matched_topics=caller_topics + semantic_matched_topics,
+                        match_count=semantic_match_count,
+                        triggering_summary=caller_summary,
+                        agent_name=user_config.get("name", "Maggie"),
+                        matched_memory_ids=semantic_memory_ids
+                    ))
         else:
             logger.info(f"🔮 Semantic memory enabled but no existing caller context to search from")
 

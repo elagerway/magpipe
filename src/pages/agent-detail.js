@@ -8,6 +8,7 @@ import { renderBottomNav, attachBottomNav } from '../components/BottomNav.js';
 import { AgentConfig } from '../models/AgentConfig.js';
 import { ChatWidget } from '../models/ChatWidget.js';
 import { CustomFunction } from '../models/CustomFunction.js';
+import { SemanticMatchAction } from '../models/SemanticMatchAction.js';
 import { getAgentMemories, getMemory, updateMemory, clearMemory, searchSimilarMemories } from '../services/memoryService.js';
 
 /* global navigateTo */
@@ -57,6 +58,7 @@ export default class AgentDetailPage {
     this.memories = []; // Agent memory entries
     this.memoryCount = 0; // Count of memory entries
     this.customFunctions = []; // Custom webhook functions for this agent
+    this.semanticActions = []; // Semantic match alert actions
     // Voice cloning state
     this.mediaRecorder = null;
     this.audioChunks = [];
@@ -170,6 +172,10 @@ export default class AgentDetailPage {
     // Load custom functions for this agent
     const { functions: customFunctions } = await CustomFunction.listByAgent(this.agent.id);
     this.customFunctions = customFunctions || [];
+
+    // Load semantic match actions for this agent
+    const { actions: semanticActions } = await SemanticMatchAction.listByAgent(this.agent.id);
+    this.semanticActions = semanticActions || [];
 
     // Add styles
     this.addStyles();
@@ -1797,7 +1803,10 @@ THIS IS AN OUTBOUND CALL:
           </div>
         </div>
 
-        <button type="button" class="btn btn-secondary" id="close-semantic-detail" style="width: 100%;">Close</button>
+        <div style="display: flex; gap: 0.5rem;">
+          <button type="button" class="btn btn-secondary" id="close-semantic-detail" style="flex: 1;">Close</button>
+          <button type="button" class="btn btn-primary" id="create-semantic-alert-btn" style="flex: 1;">Create Alert</button>
+        </div>
       </div>
     `;
 
@@ -1808,6 +1817,17 @@ THIS IS AN OUTBOUND CALL:
     document.getElementById('close-semantic-modal')?.addEventListener('click', closeModal);
     document.getElementById('close-semantic-detail')?.addEventListener('click', closeModal);
     document.getElementById('semantic-modal-back')?.addEventListener('click', closeModal);
+
+    // Create Alert button: navigate to Functions tab and open config modal
+    document.getElementById('create-semantic-alert-btn')?.addEventListener('click', () => {
+      const topics = mem.keyTopics || [];
+      closeModal();
+      // Switch to Functions tab
+      const functionsTab = document.querySelector('[data-tab="functions"]');
+      if (functionsTab) functionsTab.click();
+      // Open semantic match config modal, then immediately open add-alert with pre-filled topics
+      setTimeout(() => this.showSemanticMatchConfigModal(false, topics), 200);
+    });
   }
 
   renderFunctionsTab() {
@@ -1870,6 +1890,17 @@ THIS IS AN OUTBOUND CALL:
               </div>
             </label>
             <button id="configure-end-call-btn" type="button" class="configure-btn">Configure</button>
+          </div>
+
+          <div class="function-toggle semantic-match-toggle-container" style="padding: 0; cursor: default;">
+            <label style="display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem; cursor: pointer; flex: 1;">
+              <input type="checkbox" id="func-semantic-match" ${this.agent.functions?.semantic_match?.enabled ? 'checked' : ''} style="margin-top: 0.2rem;" />
+              <div class="toggle-content">
+                <span class="toggle-label">Semantic Match</span>
+                <span class="toggle-desc">Get notified when recurring patterns are detected across conversations</span>
+              </div>
+            </label>
+            <button id="configure-semantic-match-btn" type="button" class="configure-btn">Configure</button>
           </div>
         </div>
       </div>
@@ -2888,6 +2919,7 @@ THIS IS AN OUTBOUND CALL:
     const funcBooking = document.getElementById('func-booking');
     const funcExtract = document.getElementById('func-extract');
     const funcEndCall = document.getElementById('func-end-call');
+    const funcSemanticMatch = document.getElementById('func-semantic-match');
 
     const updateFunctions = () => {
       const functions = {
@@ -2897,6 +2929,7 @@ THIS IS AN OUTBOUND CALL:
         booking: { ...this.agent.functions?.booking, enabled: funcBooking?.checked ?? false },
         extract_data: { ...this.agent.functions?.extract_data, enabled: funcExtract?.checked ?? false },
         end_call: { ...this.agent.functions?.end_call, enabled: funcEndCall?.checked ?? true },
+        semantic_match: { ...this.agent.functions?.semantic_match, enabled: funcSemanticMatch?.checked ?? false },
       };
       this.agent.functions = functions;
       this.scheduleAutoSave({ functions });
@@ -3063,6 +3096,34 @@ THIS IS AN OUTBOUND CALL:
 
     // Edit/Delete buttons for existing custom functions
     this.attachCustomFunctionListeners();
+
+    // Semantic Match toggle - must configure alerts before enabling
+    if (funcSemanticMatch) {
+      funcSemanticMatch.addEventListener('change', (e) => {
+        if (funcSemanticMatch.checked) {
+          const hasAlerts = this.semanticActions.length > 0;
+          if (!hasAlerts) {
+            e.preventDefault();
+            funcSemanticMatch.checked = false;
+            this.showSemanticMatchConfigModal(true);
+          } else {
+            updateFunctions();
+          }
+        } else {
+          updateFunctions();
+        }
+      });
+    }
+
+    // Configure semantic match button
+    const configureSemanticMatchBtn = document.getElementById('configure-semantic-match-btn');
+    if (configureSemanticMatchBtn) {
+      configureSemanticMatchBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.showSemanticMatchConfigModal();
+      });
+    }
   }
 
   attachCustomFunctionListeners() {
@@ -4941,6 +5002,526 @@ THIS IS AN OUTBOUND CALL:
         </div>
       </div>
     `;
+  }
+
+  renderSemanticActionCard(action) {
+    const typeColors = {
+      'sms': '#22c55e',
+      'email': '#3b82f6',
+      'slack': '#e11d48',
+      'hubspot': '#f97316',
+      'webhook': '#8b5cf6'
+    };
+    const typeLabels = {
+      'sms': 'SMS',
+      'email': 'Email',
+      'slack': 'Slack',
+      'hubspot': 'HubSpot',
+      'webhook': 'Webhook'
+    };
+    const typeColor = typeColors[action.action_type] || '#6b7280';
+    const typeLabel = typeLabels[action.action_type] || action.action_type;
+    const topics = action.monitored_topics || [];
+    const lastTriggered = action.last_triggered_at
+      ? new Date(action.last_triggered_at).toLocaleDateString()
+      : 'Never';
+
+    return `
+      <div class="semantic-action-card" data-action-id="${action.id}" style="
+        background: var(--bg-secondary, #f9fafb);
+        border: 1px solid var(--border-color, #e5e7eb);
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 0.75rem;
+      ">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem;">
+          <div style="flex: 1; min-width: 0;">
+            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; flex-wrap: wrap;">
+              <span style="
+                background: ${typeColor};
+                color: white;
+                font-size: 0.625rem;
+                font-weight: 600;
+                padding: 0.125rem 0.375rem;
+                border-radius: 4px;
+              ">${typeLabel}</span>
+              <span style="font-weight: 600; font-size: 0.9rem;">${action.name}</span>
+              <span style="
+                background: ${action.is_active ? '#dcfce7' : '#f3f4f6'};
+                color: ${action.is_active ? '#15803d' : '#6b7280'};
+                font-size: 0.625rem;
+                font-weight: 500;
+                padding: 0.125rem 0.375rem;
+                border-radius: 4px;
+              ">${action.is_active ? 'Active' : 'Inactive'}</span>
+            </div>
+            ${topics.length > 0 ? `
+              <div style="display: flex; gap: 0.25rem; flex-wrap: wrap; margin: 0.35rem 0;">
+                ${topics.map(t => `<span style="
+                  background: #fef3c7;
+                  color: #92400e;
+                  font-size: 0.7rem;
+                  padding: 0.1rem 0.4rem;
+                  border-radius: 10px;
+                ">${t}</span>`).join('')}
+              </div>
+            ` : ''}
+            <div style="display: flex; gap: 1rem; font-size: 0.75rem; color: var(--text-tertiary, #9ca3af); margin-top: 0.25rem;">
+              <span>Threshold: ${action.match_threshold}+</span>
+              <span>Triggered: ${action.trigger_count || 0}x</span>
+              <span>Last: ${lastTriggered}</span>
+            </div>
+          </div>
+          <div style="display: flex; gap: 0.25rem; flex-shrink: 0;">
+            <button class="toggle-semantic-action-btn btn btn-sm ${action.is_active ? 'btn-secondary' : 'btn-primary'}" data-action-id="${action.id}" title="${action.is_active ? 'Disable' : 'Enable'}">
+              ${action.is_active ? `
+                <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+              ` : `
+                <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+              `}
+            </button>
+            <button class="edit-semantic-action-btn btn btn-sm btn-secondary" data-action-id="${action.id}" title="Edit">
+              <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+              </svg>
+            </button>
+            <button class="delete-semantic-action-btn btn btn-sm btn-secondary" data-action-id="${action.id}" title="Delete" style="color: #ef4444;">
+              <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  showSemanticMatchConfigModal(enablingMode = false, prefillTopicsForNew = null) {
+    this._semanticMatchEnablingMode = enablingMode;
+
+    const modal = document.createElement('div');
+    modal.className = 'voice-modal-overlay';
+    modal.id = 'semantic-match-config-modal';
+    modal.innerHTML = `
+      <div class="voice-modal" style="max-width: 520px; max-height: 90vh; display: flex; flex-direction: column;">
+        <div class="voice-modal-header">
+          <h3>Semantic Match Alerts</h3>
+          <button class="close-modal-btn">&times;</button>
+        </div>
+        <div class="voice-modal-content" style="padding: 1rem; flex: 1; overflow-y: auto;">
+          <p style="margin: 0 0 1rem; color: var(--text-secondary); font-size: 0.875rem;">
+            Define alerts that fire when recurring patterns are detected across conversations. Each alert monitors specific topics and sends notifications via your chosen channel.
+          </p>
+          <div id="semantic-alerts-list" style="display: flex; flex-direction: column; gap: 0.75rem;">
+            ${this.semanticActions.length === 0
+              ? '<p style="color: var(--text-secondary); text-align: center; padding: 1rem;">No alerts configured</p>'
+              : this.semanticActions.map(action => this.renderSemanticActionCard(action)).join('')}
+          </div>
+          <button id="add-semantic-alert-btn" style="
+            width: 100%;
+            margin-top: 1rem;
+            padding: 0.75rem;
+            background: var(--bg-secondary, #f3f4f6);
+            border: 1px dashed var(--border-color, #e5e7eb);
+            border-radius: 8px;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+          ">
+            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            Add Alert
+          </button>
+        </div>
+        <div style="padding: 1rem; border-top: 1px solid var(--border-color, #e5e7eb);">
+          <button id="close-semantic-config-btn" class="btn btn-primary" style="width: 100%;">Done</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const closeModal = () => {
+      modal.remove();
+      // Sync toggle with whether alerts exist
+      const funcSemanticMatch = document.getElementById('func-semantic-match');
+      if (funcSemanticMatch) {
+        const hasAlerts = this.semanticActions.length > 0;
+        if (hasAlerts && !funcSemanticMatch.checked) {
+          funcSemanticMatch.checked = true;
+          funcSemanticMatch.dispatchEvent(new Event('change'));
+        } else if (!hasAlerts && funcSemanticMatch.checked) {
+          funcSemanticMatch.checked = false;
+          funcSemanticMatch.dispatchEvent(new Event('change'));
+        }
+      }
+    };
+
+    modal.querySelector('.close-modal-btn').addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+    document.getElementById('close-semantic-config-btn').addEventListener('click', closeModal);
+
+    // Add alert button
+    document.getElementById('add-semantic-alert-btn').addEventListener('click', () => {
+      this.showSemanticActionModal(null, prefillTopicsForNew || []);
+      prefillTopicsForNew = null; // Only pre-fill for the first add
+    });
+
+    // Attach edit/delete/toggle listeners for cards in the list
+    this.attachSemanticActionListeners();
+
+    // If we came from Memory tab with pre-filled topics, auto-open the add modal
+    if (prefillTopicsForNew && prefillTopicsForNew.length > 0) {
+      this.showSemanticActionModal(null, prefillTopicsForNew);
+      prefillTopicsForNew = null;
+    }
+  }
+
+  _refreshSemanticConfigList() {
+    const listContainer = document.getElementById('semantic-alerts-list');
+    if (listContainer) {
+      listContainer.innerHTML = this.semanticActions.length === 0
+        ? '<p style="color: var(--text-secondary); text-align: center; padding: 1rem;">No alerts configured</p>'
+        : this.semanticActions.map(a => this.renderSemanticActionCard(a)).join('');
+      this.attachSemanticActionListeners();
+    }
+  }
+
+  showSemanticActionModal(existingAction = null, prefillTopics = []) {
+    const isEdit = !!existingAction;
+    const action = existingAction || {
+      name: prefillTopics.length > 0 ? `Alert: ${prefillTopics.slice(0, 3).join(', ')}` : '',
+      monitored_topics: prefillTopics,
+      match_threshold: 3,
+      action_type: 'email',
+      action_config: {},
+      cooldown_minutes: 60,
+      is_active: true
+    };
+
+    const modal = document.createElement('div');
+    modal.className = 'voice-modal-overlay';
+    modal.id = 'semantic-action-modal';
+
+    const cooldownOptions = [
+      { value: 15, label: '15 minutes' },
+      { value: 30, label: '30 minutes' },
+      { value: 60, label: '1 hour' },
+      { value: 240, label: '4 hours' },
+      { value: 1440, label: '24 hours' }
+    ];
+
+    const thresholdOptions = [2, 3, 5, 10];
+
+    modal.innerHTML = `
+      <div class="voice-modal" style="max-width: 520px; max-height: 90vh; display: flex; flex-direction: column;">
+        <div class="voice-modal-header">
+          <h3>${isEdit ? 'Edit' : 'Add'} Semantic Alert</h3>
+          <button class="close-modal-btn">&times;</button>
+        </div>
+        <div class="voice-modal-content" style="padding: 1rem; flex: 1; overflow-y: auto;">
+          <div class="form-group" style="margin-bottom: 1rem;">
+            <label class="form-label">Alert Name <span style="color: #ef4444;">*</span></label>
+            <input type="text" id="sa-name" class="form-input" value="${action.name}" placeholder="e.g., Login Issues Alert" />
+          </div>
+
+          <div class="form-group" style="margin-bottom: 1rem;">
+            <label class="form-label">Monitored Topics</label>
+            <div id="sa-topics-container" style="display: flex; gap: 0.25rem; flex-wrap: wrap; margin-bottom: 0.5rem;">
+              ${(action.monitored_topics || []).map(t => `
+                <span class="sa-topic-chip" style="
+                  background: #fef3c7;
+                  color: #92400e;
+                  font-size: 0.8rem;
+                  padding: 0.2rem 0.5rem;
+                  border-radius: 10px;
+                  display: inline-flex;
+                  align-items: center;
+                  gap: 0.25rem;
+                ">${t}<button type="button" class="sa-remove-topic" data-topic="${t}" style="background: none; border: none; cursor: pointer; color: #92400e; font-size: 1rem; line-height: 1; padding: 0;">&times;</button></span>
+              `).join('')}
+            </div>
+            <div style="display: flex; gap: 0.5rem;">
+              <input type="text" id="sa-topic-input" class="form-input" placeholder="Add topic..." style="flex: 1;" />
+              <button type="button" id="sa-add-topic-btn" class="btn btn-secondary btn-sm">Add</button>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 1rem; margin-bottom: 1rem;">
+            <div class="form-group" style="flex: 1;">
+              <label class="form-label">Match Threshold</label>
+              <select id="sa-threshold" class="form-input">
+                ${thresholdOptions.map(n => `<option value="${n}" ${action.match_threshold === n ? 'selected' : ''}>${n}+ matches</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-group" style="flex: 1;">
+              <label class="form-label">Cooldown</label>
+              <select id="sa-cooldown" class="form-input">
+                ${cooldownOptions.map(o => `<option value="${o.value}" ${action.cooldown_minutes === o.value ? 'selected' : ''}>${o.label}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 1rem;">
+            <label class="form-label">Alert Channel <span style="color: #ef4444;">*</span></label>
+            <select id="sa-action-type" class="form-input">
+              <option value="email" ${action.action_type === 'email' ? 'selected' : ''}>Email</option>
+              <option value="sms" ${action.action_type === 'sms' ? 'selected' : ''}>SMS</option>
+              <option value="slack" ${action.action_type === 'slack' ? 'selected' : ''}>Slack</option>
+              <option value="hubspot" ${action.action_type === 'hubspot' ? 'selected' : ''}>HubSpot</option>
+              <option value="webhook" ${action.action_type === 'webhook' ? 'selected' : ''}>Webhook</option>
+            </select>
+          </div>
+
+          <div id="sa-config-fields">
+            ${this._renderActionConfigFields(action.action_type, action.action_config)}
+          </div>
+        </div>
+        <div style="padding: 1rem; border-top: 1px solid var(--border-color, #e5e7eb); display: flex; gap: 0.5rem;">
+          <button type="button" class="btn btn-secondary" id="sa-cancel-btn" style="flex: 1;">Cancel</button>
+          <button type="button" class="btn btn-primary" id="sa-save-btn" style="flex: 1;">${isEdit ? 'Save Changes' : 'Create Alert'}</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // Event listeners
+    const closeModal = () => modal.remove();
+    modal.querySelector('.close-modal-btn').addEventListener('click', closeModal);
+    document.getElementById('sa-cancel-btn').addEventListener('click', closeModal);
+
+    // Topic management
+    const addTopic = () => {
+      const input = document.getElementById('sa-topic-input');
+      const topic = input.value.trim();
+      if (!topic) return;
+      const container = document.getElementById('sa-topics-container');
+      const chip = document.createElement('span');
+      chip.className = 'sa-topic-chip';
+      chip.style.cssText = 'background: #fef3c7; color: #92400e; font-size: 0.8rem; padding: 0.2rem 0.5rem; border-radius: 10px; display: inline-flex; align-items: center; gap: 0.25rem;';
+      chip.innerHTML = `${topic}<button type="button" class="sa-remove-topic" data-topic="${topic}" style="background: none; border: none; cursor: pointer; color: #92400e; font-size: 1rem; line-height: 1; padding: 0;">&times;</button>`;
+      chip.querySelector('.sa-remove-topic').addEventListener('click', () => chip.remove());
+      container.appendChild(chip);
+      input.value = '';
+      input.focus();
+    };
+
+    document.getElementById('sa-add-topic-btn').addEventListener('click', addTopic);
+    document.getElementById('sa-topic-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); addTopic(); }
+    });
+
+    // Remove topic chips
+    document.querySelectorAll('.sa-remove-topic').forEach(btn => {
+      btn.addEventListener('click', () => btn.closest('.sa-topic-chip').remove());
+    });
+
+    // Dynamic config fields based on action type
+    document.getElementById('sa-action-type').addEventListener('change', (e) => {
+      document.getElementById('sa-config-fields').innerHTML = this._renderActionConfigFields(e.target.value, {});
+    });
+
+    // Save
+    document.getElementById('sa-save-btn').addEventListener('click', async () => {
+      const name = document.getElementById('sa-name').value.trim();
+      if (!name) {
+        document.getElementById('sa-name').style.borderColor = '#ef4444';
+        return;
+      }
+
+      const topicChips = document.querySelectorAll('#sa-topics-container .sa-topic-chip');
+      const topics = Array.from(topicChips).map(chip => chip.textContent.replace('×', '').trim());
+
+      const actionType = document.getElementById('sa-action-type').value;
+      const actionConfig = this._getActionConfig(actionType);
+
+      // Validate config
+      if (actionType === 'sms' && !actionConfig.phone_number) {
+        return;
+      }
+      if (actionType === 'email' && !actionConfig.email_address) {
+        return;
+      }
+      if (actionType === 'webhook' && !actionConfig.url) {
+        return;
+      }
+
+      const saveBtn = document.getElementById('sa-save-btn');
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+
+      try {
+        const actionData = {
+          name,
+          monitored_topics: topics,
+          match_threshold: parseInt(document.getElementById('sa-threshold').value),
+          action_type: actionType,
+          action_config: actionConfig,
+          cooldown_minutes: parseInt(document.getElementById('sa-cooldown').value)
+        };
+
+        let result;
+        if (isEdit) {
+          result = await SemanticMatchAction.update(existingAction.id, actionData);
+        } else {
+          result = await SemanticMatchAction.create(this.agent.user_id, this.agent.id, actionData);
+        }
+
+        if (result.error) {
+          console.error('Error saving semantic action:', result.error);
+          saveBtn.disabled = false;
+          saveBtn.textContent = isEdit ? 'Save Changes' : 'Create Alert';
+          return;
+        }
+
+        // Refresh list
+        const { actions } = await SemanticMatchAction.listByAgent(this.agent.id);
+        this.semanticActions = actions || [];
+        this._refreshSemanticConfigList();
+
+        closeModal();
+      } catch (err) {
+        console.error('Error saving semantic action:', err);
+        saveBtn.disabled = false;
+        saveBtn.textContent = isEdit ? 'Save Changes' : 'Create Alert';
+      }
+    });
+  }
+
+  _renderActionConfigFields(actionType, config = {}) {
+    switch (actionType) {
+      case 'sms':
+        return `
+          <div class="form-group">
+            <label class="form-label">Phone Number <span style="color: #ef4444;">*</span></label>
+            <input type="tel" id="sa-config-phone" class="form-input" value="${config.phone_number || ''}" placeholder="+1234567890" />
+          </div>
+        `;
+      case 'email':
+        return `
+          <div class="form-group" style="margin-bottom: 0.75rem;">
+            <label class="form-label">Email Address <span style="color: #ef4444;">*</span></label>
+            <input type="email" id="sa-config-email" class="form-input" value="${config.email_address || ''}" placeholder="alerts@example.com" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Subject (optional)</label>
+            <input type="text" id="sa-config-subject" class="form-input" value="${config.subject_template || ''}" placeholder="Auto-generated if blank" />
+          </div>
+        `;
+      case 'slack':
+        return `
+          <div class="form-group">
+            <label class="form-label">Channel Name</label>
+            <input type="text" id="sa-config-channel" class="form-input" value="${config.channel_name || ''}" placeholder="#alerts" />
+            <small style="color: var(--text-tertiary, #9ca3af);">Requires Slack connected in Apps</small>
+          </div>
+        `;
+      case 'hubspot':
+        return `
+          <div class="form-group">
+            <label class="form-label">Contact Email (optional)</label>
+            <input type="email" id="sa-config-hubspot-email" class="form-input" value="${config.contact_email || ''}" placeholder="Creates standalone note if blank" />
+            <small style="color: var(--text-tertiary, #9ca3af);">Requires HubSpot connected in Apps</small>
+          </div>
+        `;
+      case 'webhook':
+        return `
+          <div class="form-group">
+            <label class="form-label">Webhook URL <span style="color: #ef4444;">*</span></label>
+            <input type="url" id="sa-config-url" class="form-input" value="${config.url || ''}" placeholder="https://example.com/webhook" />
+          </div>
+        `;
+      default:
+        return '';
+    }
+  }
+
+  _getActionConfig(actionType) {
+    switch (actionType) {
+      case 'sms':
+        return { phone_number: document.getElementById('sa-config-phone')?.value?.trim() || '' };
+      case 'email':
+        return {
+          email_address: document.getElementById('sa-config-email')?.value?.trim() || '',
+          subject_template: document.getElementById('sa-config-subject')?.value?.trim() || ''
+        };
+      case 'slack':
+        return { channel_name: document.getElementById('sa-config-channel')?.value?.trim() || '' };
+      case 'hubspot':
+        return { contact_email: document.getElementById('sa-config-hubspot-email')?.value?.trim() || '' };
+      case 'webhook':
+        return { url: document.getElementById('sa-config-url')?.value?.trim() || '' };
+      default:
+        return {};
+    }
+  }
+
+  attachSemanticActionListeners() {
+    document.querySelectorAll('.edit-semantic-action-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const actionId = btn.dataset.actionId;
+        const action = this.semanticActions.find(a => a.id === actionId);
+        if (action) this.showSemanticActionModal(action);
+      });
+    });
+
+    document.querySelectorAll('.delete-semantic-action-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const actionId = btn.dataset.actionId;
+        const action = this.semanticActions.find(a => a.id === actionId);
+        if (action) this.deleteSemanticAction(action);
+      });
+    });
+
+    document.querySelectorAll('.toggle-semantic-action-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const actionId = btn.dataset.actionId;
+        const action = this.semanticActions.find(a => a.id === actionId);
+        if (action) {
+          const { error } = await SemanticMatchAction.toggleActive(action.id, !action.is_active);
+          if (!error) {
+            action.is_active = !action.is_active;
+            const card = document.querySelector(`.semantic-action-card[data-action-id="${action.id}"]`);
+            if (card) {
+              card.outerHTML = this.renderSemanticActionCard(action);
+              this.attachSemanticActionListeners();
+            }
+          }
+        }
+      });
+    });
+  }
+
+  async deleteSemanticAction(action) {
+    this.showConfirmModal({
+      title: 'Delete Alert',
+      message: `Are you sure you want to delete <strong>${action.name}</strong>? This cannot be undone.`,
+      confirmText: 'Delete',
+      onConfirm: async () => {
+        try {
+          const { error } = await SemanticMatchAction.delete(action.id);
+          if (error) {
+            console.error('Error deleting semantic action:', error);
+            return;
+          }
+          this.semanticActions = this.semanticActions.filter(a => a.id !== action.id);
+          this._refreshSemanticConfigList();
+        } catch (err) {
+          console.error('Error deleting semantic action:', err);
+        }
+      }
+    });
   }
 
   showCustomFunctionModal(existingFunction = null) {
