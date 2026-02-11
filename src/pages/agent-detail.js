@@ -504,6 +504,31 @@ export default class AgentDetailPage {
             <option value="formal" ${this.agent.response_style === 'formal' ? 'selected' : ''}>Formal</option>
           </select>
         </div>
+
+        <div class="form-group">
+          <label class="form-label">Language</label>
+          <select id="agent-language" class="form-select">
+            <option value="en-US" ${!this.agent.language || this.agent.language === 'en-US' ? 'selected' : ''}>English</option>
+            <option value="multi" ${this.agent.language === 'multi' ? 'selected' : ''}>Multilingual (auto-detect)</option>
+            <option value="fr" ${this.agent.language === 'fr' ? 'selected' : ''}>French</option>
+            <option value="es" ${this.agent.language === 'es' ? 'selected' : ''}>Spanish</option>
+            <option value="de" ${this.agent.language === 'de' ? 'selected' : ''}>German</option>
+          </select>
+          <p class="form-help">Multilingual starts in English and adapts to the caller's language.</p>
+          <p id="language-voice-warning" class="form-help" style="color: #d97706; display: ${this.agent.language && this.agent.language !== 'en-US' ? 'block' : 'none'};">
+            Voices cloned from English speech may have an accent in other languages.
+          </p>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Unknown Caller Vetting</label>
+          <select id="vetting-strategy" class="form-select">
+            <option value="name-and-purpose" ${this.agent.vetting_strategy === 'name-and-purpose' ? 'selected' : ''}>Name and Purpose (Recommended)</option>
+            <option value="strict" ${this.agent.vetting_strategy === 'strict' ? 'selected' : ''}>Strict (More questions)</option>
+            <option value="lenient" ${this.agent.vetting_strategy === 'lenient' ? 'selected' : ''}>Lenient (Basic screening)</option>
+          </select>
+          <p class="form-help">How your assistant should screen unknown callers</p>
+        </div>
       </div>
 
       <div class="config-section">
@@ -2479,6 +2504,26 @@ THIS IS AN OUTBOUND CALL:
     if (responseStyle) {
       responseStyle.addEventListener('change', () => {
         this.scheduleAutoSave({ response_style: responseStyle.value });
+      });
+    }
+
+    // Language
+    const agentLanguage = document.getElementById('agent-language');
+    if (agentLanguage) {
+      agentLanguage.addEventListener('change', () => {
+        this.scheduleAutoSave({ language: agentLanguage.value });
+        const warning = document.getElementById('language-voice-warning');
+        if (warning) {
+          warning.style.display = agentLanguage.value !== 'en-US' ? 'block' : 'none';
+        }
+      });
+    }
+
+    // Vetting strategy
+    const vettingStrategy = document.getElementById('vetting-strategy');
+    if (vettingStrategy) {
+      vettingStrategy.addEventListener('change', () => {
+        this.scheduleAutoSave({ vetting_strategy: vettingStrategy.value });
       });
     }
 

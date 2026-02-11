@@ -2312,6 +2312,26 @@ async def entrypoint(ctx: JobContext):
     # Get greeting message and base prompt
     base_prompt = user_config.get("system_prompt", "You are Maggie, a helpful AI assistant answering calls for a business. The caller is a customer - treat them professionally and helpfully.")
 
+    # Language configuration
+    agent_language = user_config.get("language", "en-US") if user_config else "en-US"
+    logger.info(f"🌐 Agent language: {agent_language}")
+
+    DEFAULT_GREETINGS = {
+        "en-US": "Hello! This is {name}. How can I help you today?",
+        "multi": "Hello! This is {name}. How can I help you today?",
+        "fr": "Bonjour! Ici {name}. Comment puis-je vous aider?",
+        "es": "¡Hola! Soy {name}. ¿Cómo puedo ayudarle hoy?",
+        "de": "Hallo! Hier ist {name}. Wie kann ich Ihnen helfen?",
+    }
+
+    LANGUAGE_INSTRUCTIONS = {
+        "en-US": "",
+        "multi": "LANGUAGE: Start in English. If the caller speaks another language, switch to it seamlessly.\n\n",
+        "fr": "LANGUE: Tu DOIS répondre UNIQUEMENT en français.\nLANGUAGE: You MUST respond ONLY in French.\n\n",
+        "es": "IDIOMA: Debes responder ÚNICAMENTE en español.\nLANGUAGE: You MUST respond ONLY in Spanish.\n\n",
+        "de": "SPRACHE: Du musst AUSSCHLIESSLICH auf Deutsch antworten.\nLANGUAGE: You MUST respond ONLY in German.\n\n",
+    }
+
     # Different prompts and behavior based on call direction
     if direction == "outbound":
         # OUTBOUND: Agent is calling someone on behalf of the owner
@@ -2350,7 +2370,9 @@ THIS IS AN OUTBOUND CALL:
             logger.info(f"📋 Added template context to outbound prompt: contact='{contact_phone}', purpose='{call_purpose}', goal='{call_goal}'")
     else:
         # INBOUND: Agent handles the call for the user (traditional behavior)
-        greeting = user_config.get("greeting_template", "Hello! This is Maggie. How can I help you today?")
+        agent_name = user_config.get("agent_name", "Maggie")
+        default_greeting = DEFAULT_GREETINGS.get(agent_language, DEFAULT_GREETINGS["en-US"]).format(name=agent_name)
+        greeting = user_config.get("greeting_template") or default_greeting
 
         # Get the actual caller phone number for the prompt
         # Try sip_caller_number first, then caller_number, then parse from participants
@@ -2443,7 +2465,7 @@ THIS IS AN OUTBOUND CALL:
             greeting = f"I'm sorry, {transfer_target} wasn't available. How else can I help you?"
             logger.info(f"🔄 Using reconnect greeting for declined transfer to {transfer_target}")
         else:
-            greeting = user_config.get("greeting_template", "Hello! This is Maggie. How can I help you today?")
+            greeting = user_config.get("greeting_template") or default_greeting
 
         caller_phone_info = f"\n- The caller's phone number is: {actual_caller_phone}" if actual_caller_phone else ""
         reconnect_context = ""
@@ -2509,6 +2531,12 @@ AFTER-HOURS CONTEXT:
                     logger.info(f"📞 After-hours: added forwarding number {forwarding_number} to transfer targets")
                     system_prompt += after_hours_context
                     logger.info(f"🕐 After-hours context injected into system prompt (forwarding to {forwarding_number})")
+
+    # Prepend language instruction to system prompt
+    lang_instruction = LANGUAGE_INSTRUCTIONS.get(agent_language, "")
+    if lang_instruction:
+        system_prompt = lang_instruction + system_prompt
+        logger.info(f"🌐 Language instruction prepended for: {agent_language}")
 
     logger.info(f"Voice system prompt applied for {direction} call")
 
@@ -2749,7 +2777,15 @@ AFTER-HOURS CONTEXT:
     # Get voice settings from voice_config (or use defaults)
     tts_voice_id = voice_config.get("voice_id", "21m00Tcm4TlvDq8ikWAM") if voice_config else "21m00Tcm4TlvDq8ikWAM"
 
-    logger.info(f"🎙️ Using LLM: {llm_model}, Voice: {tts_voice_id}")
+    # Pick STT model based on language (nova-2-phonecall is English-optimized)
+    if agent_language == "multi":
+        stt_model, stt_language = "nova-2", "multi"
+    elif agent_language in ("fr", "es", "de"):
+        stt_model, stt_language = "nova-2", agent_language
+    else:
+        stt_model, stt_language = "nova-2-phonecall", "en-US"
+
+    logger.info(f"🎙️ Using LLM: {llm_model}, Voice: {tts_voice_id}, STT: {stt_model}/{stt_language}")
 
     log_call_state(ctx.room.name, "debug_9_creating_session", "agent", {"llm": llm_model, "voice": tts_voice_id})
 
@@ -2763,8 +2799,8 @@ AFTER-HOURS CONTEXT:
                 activation_threshold=0.6,   # Higher = less sensitive to background noise (default 0.5)
             ),
             stt=deepgram.STT(
-                model="nova-2-phonecall",
-                language="en-US",
+                model=stt_model,
+                language=stt_language,
                 api_key=os.getenv("DEEPGRAM_API_KEY"),
             ),
             llm=lkopenai.LLM(
