@@ -170,20 +170,28 @@ Configure when your agent is available:
 
 #### Call Schedule
 Set business hours for phone calls:
-- Monday: 9:00 AM - 5:00 PM
-- Tuesday: 9:00 AM - 5:00 PM
-- etc.
+- Enable/disable each day of the week
+- Set start and end times per day (e.g., Monday 9:00 AM - 5:00 PM)
 
 Outside scheduled hours:
-- Calls can go to voicemail
-- Play a custom closed message
-- Forward to an after-hours number
+- **With forwarding number**: Calls are routed to the agent, which greets the caller and transfers them to your after-hours forwarding number
+- **Without forwarding number**: Callers hear "This Magpipe agent is currently off duty" and the call ends
 
 #### SMS Schedule
 Set hours for SMS responses:
-- Same as call schedule or different
-- Outside hours, messages queue for later
-- Or respond 24/7
+- Configure independently from call schedule
+- Enable/disable each day with custom hours
+
+Outside scheduled hours:
+- **With forwarding number**: The inbound message is forwarded to your after-hours SMS number, and the sender receives an off-duty message
+- **Without forwarding number**: The sender receives "This Magpipe agent is currently off duty"
+
+#### After-Hours Forwarding
+Configure forwarding numbers in the Schedule Settings section:
+- **After-Hours Call Forwarding**: Phone number to transfer calls to outside business hours
+- **After-Hours SMS Forwarding**: Phone number to forward text messages to outside business hours
+
+Leave these empty to simply play the off-duty message.
 
 #### Timezone
 Select your business timezone for accurate scheduling.
@@ -287,7 +295,7 @@ AI generates summaries after each call:
 
 ### Scheduling
 1. **Set realistic hours**: Match actual availability
-2. **Handle after-hours**: Configure voicemail or forwarding
+2. **Handle after-hours**: Configure forwarding numbers for calls and SMS, or let the off-duty message handle it
 3. **Update for holidays**: Adjust schedule as needed
 
 <CardGroup cols={2}>

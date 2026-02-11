@@ -56,14 +56,20 @@ All calls are recorded by default:
 
 Access recordings in the **Inbox** by clicking on any call.
 
-## Voicemail
+## After-Hours Calls
 
-If your agent is unavailable (outside business hours or system issue), callers can leave a voicemail:
+When a call comes in outside your agent's scheduled hours, behavior depends on your configuration:
 
-1. Caller reaches voicemail greeting
-2. Message is recorded
-3. Recording appears in your Inbox
-4. You're notified of new voicemail
+### With Forwarding Number
+If you've configured an **After-Hours Call Forwarding** number in your agent's Schedule Settings:
+1. The call is routed to your AI agent
+2. The agent greets the caller and lets them know it's after hours
+3. The agent transfers the call to your forwarding number
+
+### Without Forwarding Number
+If no forwarding number is configured:
+1. The caller hears: "This Magpipe agent is currently off duty."
+2. The call ends
 
 ## Agent Schedule
 
@@ -73,10 +79,9 @@ Set business hours for your agent:
 2. Go to **Schedule** tab
 3. Configure available hours for each day
 4. Set timezone
+5. Optionally set an **After-Hours Call Forwarding** number
 
-Outside scheduled hours:
-- Calls go to voicemail
-- Custom after-hours message plays
+During scheduled hours, calls are handled normally by the AI agent. Outside scheduled hours, the after-hours behavior above applies.
 
 ## Monitoring Calls
 
@@ -85,7 +90,7 @@ View all incoming calls in the **Inbox**:
 - Filter by "Calls" to see only voice calls
 - Click any call to view transcript and play recording
 - See caller ID and call duration
-- Check if call was answered or went to voicemail
+- Check call status and disposition
 
 ## Tips
 
