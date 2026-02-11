@@ -5,26 +5,26 @@ description: "Enable your AI agent to remember past conversations with callers"
 
 ## Overview
 
-Agent Memory allows your AI agent to remember information about callers across conversations. When a caller phones back, the agent automatically recalls their history, preferences, and past topics discussed - enabling personalized, contextual service.
+Agent Memory allows your AI agent to remember information about contacts across conversations. When someone calls or texts back, the agent automatically recalls their history, preferences, and past topics discussed - enabling personalized, contextual service.
 
-Without memory, every call is treated as a new conversation. With memory enabled, your agent can say things like:
+Memory works across both phone calls and SMS conversations. Without memory, every interaction is treated as a new conversation. With memory enabled, your agent can say things like:
 
 > "Hi Sarah! Good to hear from you again. Last time we spoke about your order #4521 - did that arrive okay?"
 
 ## How It Works
 
 ```
-FIRST CALL
-├── Caller: "Hi, I'm Sarah, calling about order 4521"
-├── Agent handles the call
-└── After call ends:
+FIRST INTERACTION (call or SMS)
+├── Contact: "Hi, I'm Sarah, calling about order 4521"
+├── Agent handles the conversation
+└── After interaction ends:
     ├── AI generates summary
     ├── Extracts key topics
     ├── Identifies preferences
     └── Stores in memory database
 
-NEXT CALL (same caller)
-├── Agent recognizes caller's phone number
+NEXT INTERACTION (same contact - call or SMS)
+├── Agent recognizes contact's phone number
 ├── Loads their memory:
 │   ├── "Sarah, 2 previous interactions"
 │   ├── "Topics: order 4521, delivery issues"
@@ -81,7 +81,7 @@ Caller's stated preferences and communication style:
   </Step>
 </Steps>
 
-Memory starts building immediately. After each call, the agent automatically updates the caller's memory.
+Memory starts building immediately. After each call or SMS conversation, the agent automatically updates the contact's memory.
 
 ## Configuration
 
@@ -100,7 +100,7 @@ Start with defaults. If your agents are getting too much context (responses are 
 
 ### How Context is Injected
 
-When a call comes in, memory is injected into the system prompt:
+When a call or SMS comes in, memory is injected into the system prompt:
 
 ```
 ## CALLER MEMORY
@@ -119,12 +119,12 @@ conversations naturally when relevant, but don't be creepy about it.
 
 ## Semantic Memory
 
-Semantic Memory is an advanced feature that uses AI to find patterns across **all callers**, not just individual caller history.
+Semantic Memory is an advanced feature that uses AI to find patterns across **all contacts**, not just individual contact history. It works across both calls and SMS conversations.
 
 ### How It Works
 
-1. After each call, an AI embedding (vector) is generated from the conversation
-2. When a call comes in, the system searches for similar past conversations
+1. After each call or SMS conversation, an AI embedding (vector) is generated from the interaction
+2. When a new interaction comes in, the system searches for similar past conversations
 3. If patterns are found, they're added to the agent's context
 
 ### Use Cases

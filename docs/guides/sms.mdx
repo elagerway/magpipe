@@ -63,6 +63,27 @@ Agent: You're welcome! Have a great day.
 
 The agent remembers the conversation flow and responds appropriately.
 
+## SMS Schedule & After-Hours
+
+You can set a separate schedule for SMS responses, independent of your call schedule.
+
+### Configuring SMS Schedule
+
+1. Open the agent settings
+2. Go to **Schedule** tab
+3. Configure the **Texts Schedule** section with hours for each day
+4. Optionally set an **After-Hours SMS Forwarding** number
+
+### After-Hours Behavior
+
+When a text comes in outside your agent's SMS schedule:
+
+**With forwarding number**: The inbound message is forwarded to your after-hours SMS number, and the sender receives: "This Magpipe agent is currently off duty."
+
+**Without forwarding number**: The sender receives: "This Magpipe agent is currently off duty." No AI response is generated.
+
+During scheduled hours, texts are handled normally by the AI agent.
+
 ## Best Practices
 
 <AccordionGroup>
