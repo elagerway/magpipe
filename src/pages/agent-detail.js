@@ -2164,9 +2164,9 @@ THIS IS AN OUTBOUND CALL:
           </div>
         </div>
 
-        <!-- Row 5: Recent Calls -->
+        <!-- Row 5: Recent Sessions -->
         <div class="analytics-panel aa-recent-calls-panel" style="margin-top: 1.5rem;">
-          <h3>Recent Calls</h3>
+          <h3>Recent Sessions</h3>
           <div id="recent-calls-container">
             <div class="aa-breakdown-empty">Loading...</div>
           </div>
@@ -3623,7 +3623,7 @@ THIS IS AN OUTBOUND CALL:
           .limit(500),
         supabase
           .from('sms_messages')
-          .select('id, direction, status, sentiment, sent_at')
+          .select('id, direction, status, sentiment, sent_at, sender_number, recipient_number')
           .eq('agent_id', this.agent.id)
           .order('sent_at', { ascending: false })
           .limit(500)
@@ -3710,8 +3710,33 @@ THIS IS AN OUTBOUND CALL:
       // --- Call Volume Chart ---
       await this.renderAgentCallChart(calls);
 
-      // --- Recent Calls Table ---
-      this.renderRecentCallsTable(calls.slice(0, 20));
+      // --- Recent Sessions Table (calls + SMS merged) ---
+      const callSessions = calls.slice(0, 50).map(c => ({
+        type: 'Phone',
+        id: c.id,
+        time: c.started_at,
+        phone: c.direction === 'inbound' ? (c.caller_number || '--') : (c.contact_phone || '--'),
+        direction: c.direction || '--',
+        duration: c.duration_seconds ? this.formatAgentDuration(c.duration_seconds) : '--',
+        disposition: c.disposition,
+        sentiment: c.user_sentiment,
+        navigable: true
+      }));
+      const smsSessions = messages.slice(0, 50).map(m => ({
+        type: 'SMS',
+        id: m.id,
+        time: m.sent_at,
+        phone: m.direction === 'inbound' ? (m.sender_number || '--') : (m.recipient_number || '--'),
+        direction: m.direction || '--',
+        duration: '-',
+        disposition: m.status || 'sent',
+        sentiment: m.sentiment,
+        navigable: false
+      }));
+      const allSessions = [...callSessions, ...smsSessions]
+        .sort((a, b) => new Date(b.time) - new Date(a.time))
+        .slice(0, 20);
+      this.renderRecentSessionsTable(allSessions);
 
     } catch (err) {
       console.error('Error loading analytics:', err);
@@ -3829,12 +3854,12 @@ THIS IS AN OUTBOUND CALL:
     });
   }
 
-  renderRecentCallsTable(calls) {
+  renderRecentSessionsTable(sessions) {
     const container = document.getElementById('recent-calls-container');
     if (!container) return;
 
-    if (calls.length === 0) {
-      container.innerHTML = '<div class="aa-breakdown-empty">No calls recorded yet</div>';
+    if (sessions.length === 0) {
+      container.innerHTML = '<div class="aa-breakdown-empty">No sessions recorded yet</div>';
       return;
     }
 
@@ -3847,7 +3872,9 @@ THIS IS AN OUTBOUND CALL:
         'no_answer': 'No Answer',
         'voicemail': 'Voicemail',
         'transferred': 'Transferred',
-        'answered_by_pat': 'Answered'
+        'answered_by_pat': 'Answered',
+        'sent': 'Sent',
+        'delivered': 'Delivered'
       };
       return map[d?.toLowerCase()] || d || '--';
     };
@@ -3871,27 +3898,28 @@ THIS IS AN OUTBOUND CALL:
         <table class="aa-calls-table">
           <thead>
             <tr>
+              <th>Type</th>
               <th>Time</th>
               <th>From / To</th>
               <th>Dir</th>
               <th>Duration</th>
-              <th>Disposition</th>
+              <th>Status</th>
               <th>Sentiment</th>
             </tr>
           </thead>
           <tbody>
-            ${calls.map(c => {
-              const phone = c.direction === 'inbound' ? (c.caller_number || '--') : (c.contact_phone || '--');
-              const dur = c.duration_seconds ? this.formatAgentDuration(c.duration_seconds) : '--';
-              const time = c.started_at ? new Date(c.started_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) : '--';
+            ${sessions.map(s => {
+              const typeClass = s.type === 'SMS' ? 'sms' : 'phone';
+              const time = s.time ? new Date(s.time).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) : '--';
               return `
-                <tr class="aa-call-row" data-call-id="${c.id}">
+                <tr class="aa-call-row${s.navigable ? '' : ' aa-no-nav'}" ${s.navigable ? `data-call-id="${s.id}"` : ''}>
+                  <td><span class="type-badge ${typeClass}">${s.type}</span></td>
                   <td>${time}</td>
-                  <td>${phone}</td>
-                  <td><span class="direction-badge ${c.direction || ''}">${c.direction || '--'}</span></td>
-                  <td>${dur}</td>
-                  <td>${formatDisp(c.disposition)}</td>
-                  <td><span class="sentiment-badge ${sentimentClass(c.user_sentiment)}">${formatSentiment(c.user_sentiment)}</span></td>
+                  <td>${s.phone}</td>
+                  <td><span class="direction-badge ${s.direction}">${s.direction}</span></td>
+                  <td>${s.duration}</td>
+                  <td>${formatDisp(s.disposition)}</td>
+                  <td><span class="sentiment-badge ${sentimentClass(s.sentiment)}">${formatSentiment(s.sentiment)}</span></td>
                 </tr>
               `;
             }).join('')}
@@ -3900,8 +3928,8 @@ THIS IS AN OUTBOUND CALL:
       </div>
     `;
 
-    // Attach click handlers for rows → navigate to inbox
-    container.querySelectorAll('.aa-call-row').forEach(row => {
+    // Attach click handlers for navigable rows → navigate to inbox
+    container.querySelectorAll('.aa-call-row:not(.aa-no-nav)').forEach(row => {
       row.style.cursor = 'pointer';
       row.addEventListener('click', () => {
         const callId = row.dataset.callId;
@@ -7972,6 +8000,24 @@ THIS IS AN OUTBOUND CALL:
       .sentiment-badge.negative {
         background: rgba(239, 68, 68, 0.1);
         color: var(--error-color);
+      }
+
+      .type-badge {
+        display: inline-block;
+        padding: 0.2rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 500;
+      }
+
+      .type-badge.phone {
+        background: rgba(99, 102, 241, 0.1);
+        color: var(--primary-color);
+      }
+
+      .type-badge.sms {
+        background: rgba(16, 185, 129, 0.1);
+        color: var(--success-color);
       }
 
       .placeholder-message {
