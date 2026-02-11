@@ -118,6 +118,14 @@ export default class InboxPage {
     // Load voice recognition early (small module) for UI check
     loadVoiceRecognition(); // Don't await - load in background
 
+    // Inject spin keyframes for syncing badge
+    if (!document.getElementById('inbox-spin-style')) {
+      const spinStyle = document.createElement('style');
+      spinStyle.id = 'inbox-spin-style';
+      spinStyle.textContent = `@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`;
+      document.head.appendChild(spinStyle);
+    }
+
     this.userId = user.id;
 
     // Fetch user profile for bottom nav
@@ -836,6 +844,12 @@ export default class InboxPage {
         threadElement.innerHTML = this.renderMessageThread();
       }
     }
+
+    // Auto-sync recordings when a call completes
+    if (call.status === 'completed') {
+      console.log('📥 Call completed, auto-syncing recordings for', call.id);
+      this.syncPendingRecordings(call.id);
+    }
   }
 
   handleSmsUpdate(message) {
@@ -979,6 +993,15 @@ export default class InboxPage {
       this.subscription.unsubscribe();
       this.subscription = null;
     }
+    // Clear any pending recording refresh timers
+    if (this._recordingRefreshTimers) {
+      for (const timer of this._recordingRefreshTimers.values()) {
+        clearTimeout(timer);
+      }
+      this._recordingRefreshTimers.clear();
+    }
+    if (this._recordingRetryCount) this._recordingRetryCount.clear();
+    if (this._syncingCallIds) this._syncingCallIds.clear();
     // Reset the flag so BottomNav can track unread count again
     resetInboxManagedCount();
   }
@@ -1159,6 +1182,15 @@ export default class InboxPage {
           console.log('Auto-unhiding conversation with recent activity:', convKey);
           this.unhideConversation(convKey);
         }
+      }
+    });
+
+    // Auto-sync recordings for calls that still need data
+    this.conversations.forEach(conv => {
+      if (conv.type !== 'call') return;
+      if (this.callHasPendingRecordings(conv.call)) {
+        console.log('📥 Found call with pending data:', conv.callId, conv.call?.status);
+        this.syncPendingRecordings(conv.callId);
       }
     });
 
@@ -1386,7 +1418,7 @@ export default class InboxPage {
                 <div class="conversation-preview" style="display: flex; align-items: center;">
                   <span class="call-status-indicator ${conv.statusInfo.class}" style="color: ${conv.statusInfo.color}; margin-right: 0.25rem;">${conv.statusInfo.icon}</span>
                   <span style="flex: 1;">${conv.lastMessage}</span>
-                  ${this.formatSentimentLabel(this.getConversationSentiment(conv))}
+                  ${this.callHasPendingRecordings(conv.call) ? this.renderSyncingBadge() : this.formatSentimentLabel(this.getConversationSentiment(conv))}
                 </div>
               </div>
             </div>
@@ -1889,13 +1921,14 @@ export default class InboxPage {
    * Trigger on-demand sync for pending recordings
    */
   async syncPendingRecordings(callId) {
-    if (this._syncingCallId === callId) {
+    if (!this._syncingCallIds) this._syncingCallIds = new Set();
+    if (this._syncingCallIds.has(callId)) {
       console.log('⏳ Already syncing recordings for', callId);
       return;
     }
 
     console.log('📥 Triggering sync for pending recordings:', callId);
-    this._syncingCallId = callId;
+    this._syncingCallIds.add(callId);
 
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -1920,7 +1953,7 @@ export default class InboxPage {
     } catch (err) {
       console.error('Error syncing recordings:', err);
     } finally {
-      this._syncingCallId = null;
+      this._syncingCallIds.delete(callId);
     }
   }
 
@@ -1928,7 +1961,13 @@ export default class InboxPage {
    * Refresh call recordings from the database and re-render if updated
    */
   async refreshCallRecordings(callId) {
-    console.log('📥 Refreshing recordings for call:', callId);
+    if (!this._recordingRefreshTimers) this._recordingRefreshTimers = new Map();
+    if (!this._recordingRetryCount) this._recordingRetryCount = new Map();
+
+    const retryCount = this._recordingRetryCount.get(callId) || 0;
+    const maxRetries = 12; // ~2 minutes at 10s intervals
+
+    console.log(`📥 Refreshing recordings for call: ${callId} (attempt ${retryCount + 1}/${maxRetries})`);
 
     try {
       // Fetch latest call record from database
@@ -1966,15 +2005,24 @@ export default class InboxPage {
           }
         }
 
-        // If still pending, schedule another refresh
-        if (stillPending && recordings.length > 0) {
+        // If still pending and under retry limit, schedule another refresh
+        if (stillPending && recordings.length > 0 && retryCount < maxRetries) {
+          this._recordingRetryCount.set(callId, retryCount + 1);
           console.log('📥 Recordings still syncing, will retry in 10s...');
-          this._recordingRefreshTimer = setTimeout(() => {
-            this._recordingRefreshTimer = null;
-            this.refreshCallRecordings(callId);
+          const timer = setTimeout(() => {
+            this._recordingRefreshTimers.delete(callId);
+            this.syncPendingRecordings(callId);
           }, 10000);
+          this._recordingRefreshTimers.set(callId, timer);
         } else {
-          console.log('✅ Recordings fully synced');
+          // Done - clean up tracking
+          this._recordingRetryCount.delete(callId);
+          this._recordingRefreshTimers.delete(callId);
+          if (stillPending) {
+            console.log('⚠️ Recordings still pending after max retries for', callId);
+          } else {
+            console.log('✅ Recordings fully synced for', callId);
+          }
         }
       }
     } catch (err) {
@@ -2000,16 +2048,19 @@ export default class InboxPage {
 
     // If recordings are pending, trigger on-demand sync
     if (hasPendingRecordings && recordings.length > 0) {
-      // Trigger sync (will only run once, debounced internally)
+      if (!this._recordingRefreshTimers) this._recordingRefreshTimers = new Map();
+
+      // Trigger sync (will only run once per call, debounced internally)
       this.syncPendingRecordings(call.id);
 
       // Also set up refresh timer to update UI after sync completes
-      if (!this._recordingRefreshTimer) {
+      if (!this._recordingRefreshTimers.has(call.id)) {
         console.log('📥 Recordings pending sync, will refresh in 5s...');
-        this._recordingRefreshTimer = setTimeout(() => {
-          this._recordingRefreshTimer = null;
+        const timer = setTimeout(() => {
+          this._recordingRefreshTimers.delete(call.id);
           this.refreshCallRecordings(call.id);
         }, 5000);
+        this._recordingRefreshTimers.set(call.id, timer);
       }
     }
 
@@ -2503,6 +2554,42 @@ export default class InboxPage {
       font-weight: 500;
       margin-left: 0.5rem;
     ">${cfg.label}</span>`;
+  }
+
+  /**
+   * Check if a call has recordings still pending sync (only for recent calls)
+   */
+  callHasPendingRecordings(call) {
+    if (!call || call.status !== 'completed') return false;
+    const recordings = call.recordings || [];
+    if (recordings.length === 0) return false;
+    // Only show syncing indicator for calls from the last 24 hours
+    const callDate = new Date(call.started_at || call.created_at);
+    if (Date.now() - callDate.getTime() > 24 * 60 * 60 * 1000) return false;
+    return recordings.some(rec => {
+      if (rec.status === 'pending_sync') return true;
+      const hasValidUrl = rec.url && rec.url.includes('supabase.co');
+      const hasTranscript = !!rec.transcript;
+      return !hasValidUrl || !hasTranscript;
+    });
+  }
+
+  /**
+   * Render a small syncing spinner badge (same size/position as sentiment label)
+   */
+  renderSyncingBadge() {
+    return `<span style="
+      font-size: 0.65rem;
+      padding: 0.125rem 0.375rem;
+      border-radius: 0.25rem;
+      background: var(--bg-tertiary, #f3f4f6);
+      color: var(--text-secondary, #6b7280);
+      font-weight: 500;
+      margin-left: 0.5rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+    "><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="animation: spin 1s linear infinite;"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>Syncing</span>`;
   }
 
   /**
