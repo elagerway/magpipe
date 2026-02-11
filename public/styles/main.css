@@ -1918,27 +1918,7 @@ p {
   gap: 0.75rem;
 }
 
-.transcript-bubble {
-  max-width: 70%;
-  padding: 0.75rem 1rem;
-  border-radius: 1.125rem;
-  word-wrap: break-word;
-}
 
-.transcript-bubble.agent {
-  align-self: flex-start;
-  background: var(--primary-color);
-  color: white;
-  border-bottom-left-radius: 0.375rem;
-}
-
-.transcript-bubble.user {
-  align-self: flex-end;
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  border-bottom-right-radius: 0.375rem;
-  box-shadow: var(--shadow-sm);
-}
 
 .transcript-content {
   font-size: 0.9375rem;
@@ -2149,10 +2129,6 @@ p {
     max-width: 85%;
   }
 
-  .transcript-bubble {
-    max-width: 85%;
-    padding-bottom: calc(0.75rem + 4px);
-  }
 }
 
 /* Desktop-only styles */
@@ -2161,9 +2137,6 @@ p {
     padding: 0.625rem;
   }
 
-  .transcript-bubble {
-    padding: 0.5rem 0.5625rem;
-  }
 
   /* Inbox - fixed positioning on desktop to fill viewport */
   .inbox-container {
