@@ -394,6 +394,21 @@ export default class AgentConfigPage {
             </div>
 
             <div class="form-group">
+              <label class="form-label" for="agent-language">Language</label>
+              <select id="agent-language" class="form-select">
+                <option value="en-US" ${!activeConfig?.language || activeConfig?.language === 'en-US' ? 'selected' : ''}>English</option>
+                <option value="multi" ${activeConfig?.language === 'multi' ? 'selected' : ''}>Multilingual (auto-detect)</option>
+                <option value="fr" ${activeConfig?.language === 'fr' ? 'selected' : ''}>French</option>
+                <option value="es" ${activeConfig?.language === 'es' ? 'selected' : ''}>Spanish</option>
+                <option value="de" ${activeConfig?.language === 'de' ? 'selected' : ''}>German</option>
+              </select>
+              <p class="form-help">Multilingual starts in English and adapts to the caller's language.</p>
+              <p id="language-voice-warning" class="form-help" style="color: #d97706; display: ${activeConfig?.language && activeConfig.language !== 'en-US' ? 'block' : 'none'};">
+                Voices cloned from English speech may have an accent in other languages.
+              </p>
+            </div>
+
+            <div class="form-group">
               <label class="form-label" for="vetting-strategy">Unknown Caller Vetting</label>
               <select id="vetting-strategy" class="form-select">
                 <option value="name-and-purpose" ${activeConfig?.vetting_strategy === 'name-and-purpose' ? 'selected' : ''}>
@@ -1458,6 +1473,7 @@ export default class AgentConfigPage {
         ambient_sound: document.getElementById('adv-ambient-sound').value,
         ambient_sound_volume: parseFloat(document.getElementById('adv-ambient-volume').value),
         noise_suppression: document.getElementById('adv-noise-suppression').value,
+        language: document.getElementById('agent-language').value,
       };
 
       // Handle global agent save separately
@@ -1976,6 +1992,14 @@ Always sound approachable, keep things simple, and update the user with a quick 
 
         const isVoiceField = field.id === 'voice-id';
 
+        // Toggle voice accent warning when language changes
+        if (field.id === 'agent-language') {
+          const warning = document.getElementById('language-voice-warning');
+          if (warning) {
+            warning.style.display = field.value !== 'en-US' ? 'block' : 'none';
+          }
+        }
+
         // Stop preview audio when voice changes
         if (isVoiceField && this.isPreviewPlaying && this.previewAudio) {
           this.previewAudio.pause();
@@ -2024,6 +2048,7 @@ Always sound approachable, keep things simple, and update the user with a quick 
         ambient_sound: document.getElementById('adv-ambient-sound').value,
         ambient_sound_volume: parseFloat(document.getElementById('adv-ambient-volume').value),
         noise_suppression: document.getElementById('adv-noise-suppression').value,
+        language: document.getElementById('agent-language').value,
       };
 
       // Validate
