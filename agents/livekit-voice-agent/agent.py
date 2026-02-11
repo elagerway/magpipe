@@ -1363,7 +1363,7 @@ def create_end_call_tool(room_name: str, description: str = None, pre_disconnect
     return end_call
 
 
-def create_sms_tool(user_id: str, service_number: str, description: str = None, templates: list = None):
+def create_sms_tool(user_id: str, service_number: str, description: str = None, templates: list = None, agent_id: str = None):
     """Create SMS tool that allows the agent to send text messages during calls"""
 
     tool_description = description or "Send an SMS text message to a phone number. Use this to send confirmations, follow-up information, or any text the caller requests."
@@ -1420,15 +1420,18 @@ def create_sms_tool(user_id: str, service_number: str, description: str = None, 
 
                         # Save to database
                         try:
-                            supabase.table("sms_messages").insert({
+                            insert_data = {
                                 "user_id": user_id,
-                                "direction": "outgoing",
+                                "direction": "outbound",
                                 "sender_number": service_number,
                                 "recipient_number": to_number,
                                 "content": message,
                                 "is_ai_generated": True,
                                 "status": "sent",
-                            }).execute()
+                            }
+                            if agent_id:
+                                insert_data["agent_id"] = agent_id
+                            supabase.table("sms_messages").insert(insert_data).execute()
                         except Exception as db_err:
                             logger.error(f"Failed to save SMS to database: {db_err}")
 
@@ -2697,7 +2700,7 @@ AFTER-HOURS CONTEXT:
                     logger.info(f"📱 Loaded {len(sms_templates)} SMS templates")
             except Exception as e:
                 logger.warning(f"Could not load SMS templates: {e}")
-            sms_tool = create_sms_tool(user_id, sms_from_number, sms_description, sms_templates)
+            sms_tool = create_sms_tool(user_id, sms_from_number, sms_description, sms_templates, agent_id=agent_id)
             custom_tools.append(sms_tool)
             logger.info(f"📱 Registered SMS tool with SMS-capable number {sms_from_number}")
 

@@ -498,16 +498,31 @@ async function executeSendSms(supabase: any, userId: string, toNumber: string, m
     return { success: false, message: `SMS failed: ${result.error_message || 'Unknown error'}` };
   }
 
+  // Look up agent_id from service number
+  let agentId: string | null = null;
+  const { data: snRows } = await supabase
+    .from('service_numbers')
+    .select('agent_id')
+    .eq('phone_number', senderNumber)
+    .eq('user_id', userId)
+    .limit(1);
+  if (snRows && snRows.length > 0 && snRows[0].agent_id) {
+    agentId = snRows[0].agent_id;
+  }
+
   // Save to sms_messages table
-  await supabase.from('sms_messages').insert({
+  const insertData: any = {
     user_id: userId,
-    direction: 'outgoing',
-    service_number: senderNumber,
-    contact_phone: toNumber,
-    message_body: message,
+    direction: 'outbound',
+    sender_number: senderNumber,
+    recipient_number: toNumber,
+    content: message,
     is_ai_generated: false,
     status: 'sent',
-  });
+    sent_at: new Date().toISOString(),
+  };
+  if (agentId) insertData.agent_id = agentId;
+  await supabase.from('sms_messages').insert(insertData);
 
   // Deduct credits for the SMS
   deductSmsCredits(userId, 1).catch(err => console.error('Failed to deduct SMS credits:', err));
