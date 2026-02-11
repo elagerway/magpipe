@@ -8,7 +8,7 @@ import { renderBottomNav, attachBottomNav } from '../components/BottomNav.js';
 import { AgentConfig } from '../models/AgentConfig.js';
 import { ChatWidget } from '../models/ChatWidget.js';
 import { CustomFunction } from '../models/CustomFunction.js';
-import { getAgentMemories, getMemory, updateMemory, clearMemory } from '../services/memoryService.js';
+import { getAgentMemories, getMemory, updateMemory, clearMemory, searchSimilarMemories } from '../services/memoryService.js';
 
 /* global navigateTo */
 
@@ -1153,6 +1153,17 @@ THIS IS AN OUTBOUND CALL:
             </select>
             <p class="form-help">How similar conversations must be to be included.</p>
           </div>
+
+          <div class="form-group">
+            <label class="form-label">Semantic Match Threshold</label>
+            <select id="semantic-match-threshold" class="form-select">
+              <option value="2" ${semanticConfig.semantic_match_threshold === 2 ? 'selected' : ''}>2 matches</option>
+              <option value="3" ${(semanticConfig.semantic_match_threshold || 3) === 3 ? 'selected' : ''}>3 matches (Default)</option>
+              <option value="5" ${semanticConfig.semantic_match_threshold === 5 ? 'selected' : ''}>5 matches</option>
+              <option value="10" ${semanticConfig.semantic_match_threshold === 10 ? 'selected' : ''}>10 matches</option>
+            </select>
+            <p class="form-help">How many times a memory must be matched before it's labeled as a semantic pattern.</p>
+          </div>
         </div>
 
         <div class="semantic-info-box">
@@ -1161,15 +1172,23 @@ THIS IS AN OUTBOUND CALL:
           </svg>
           <span>Semantic memory helps identify common issues across callers. For example, if multiple customers report the same problem, your agent will recognize the pattern.</span>
         </div>
+
       </div>
 
       <div class="config-section" id="memory-list-section">
         <div class="memory-section-header">
-          <h3>Caller Memory <span id="memory-count-badge" class="memory-count-badge">${this.memoryCount}</span></h3>
+          <h3>Agent Memory <span id="memory-count-badge" class="memory-count-badge">${this.memoryCount}</span></h3>
           ${this.memoryCount > 0 ? `
             <button type="button" id="clear-all-memories-btn" class="btn-text-danger">Clear All</button>
           ` : ''}
         </div>
+        ${semanticEnabled ? `
+          <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem;">
+            <input type="text" id="semantic-search-input" class="form-input" placeholder="Search memories..." style="flex: 1;" />
+            <button type="button" id="semantic-search-btn" class="btn btn-secondary" style="white-space: nowrap;">Search</button>
+          </div>
+          <div id="semantic-search-results"></div>
+        ` : ''}
         <div id="memories-container" class="memories-container">
           <div class="memory-loading">Loading memories...</div>
         </div>
@@ -1196,17 +1215,37 @@ THIS IS AN OUTBOUND CALL:
       <div class="memory-card" data-memory-id="${mem.id}">
         <div class="memory-card-header">
           <div class="memory-contact">
-            <div class="memory-contact-avatar">
-              <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
-              </svg>
+            <div class="memory-contact-avatar" ${mem.contact?.avatar_url ? 'style="padding: 0; background: none;"' : ''}>
+              ${mem.contact?.avatar_url
+                ? `<img src="${mem.contact.avatar_url}" alt="${mem.contact.name || ''}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" />`
+                : `<svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                  </svg>`
+              }
             </div>
             <div class="memory-contact-details">
               <span class="memory-contact-phone">${mem.contact?.phone_number || 'Unknown'}</span>
               ${mem.contact?.name ? `<span class="memory-contact-name">${mem.contact.name}</span>` : ''}
             </div>
           </div>
-          <span class="memory-call-count">${mem.interactionCount} call${mem.interactionCount !== 1 ? 's' : ''}</span>
+          <div class="memory-header-right">
+            ${mem.direction ? `<span class="memory-direction-badge memory-direction-${mem.direction}">${mem.direction === 'inbound' ? 'Inbound' : 'Outbound'}</span>` : ''}
+            ${mem.hasEmbedding ? (() => {
+              const matchThreshold = this.agent?.semantic_memory_config?.semantic_match_threshold || 3;
+              if (mem.semanticMatchCount >= matchThreshold) {
+                return `<button type="button" class="memory-direction-badge memory-semantic-match-badge semantic-match-pill" data-memory-id="${mem.id}" data-match-count="${mem.semanticMatchCount}">${mem.semanticMatchCount} Semantic Match${mem.semanticMatchCount !== 1 ? 'es' : ''}</button>`;
+              }
+              return `<span class="memory-direction-badge memory-semantic-badge">Indexed${mem.semanticMatchCount > 0 ? ` · ${mem.semanticMatchCount} match${mem.semanticMatchCount !== 1 ? 'es' : ''}` : ''}</span>`;
+            })() : ''}
+            <span class="memory-call-count">${(() => {
+              const calls = mem.interactionCount || 0;
+              const texts = mem.smsInteractionCount || 0;
+              const parts = [];
+              if (calls > 0) parts.push(`${calls} call${calls !== 1 ? 's' : ''}`);
+              if (texts > 0) parts.push(`${texts} text${texts !== 1 ? 's' : ''}`);
+              return parts.length > 0 ? parts.join(', ') : '0 interactions';
+            })()}</span>
+          </div>
         </div>
         <p class="memory-card-summary">${mem.summary || 'No summary available'}</p>
         ${mem.keyTopics && mem.keyTopics.length > 0 ? `
@@ -1228,6 +1267,7 @@ THIS IS AN OUTBOUND CALL:
             </svg>
             Clear
           </button>
+          <span class="copy-memory-id-btn" data-memory-id="${mem.id}" title="Click to copy">${mem.id}</span>
         </div>
       </div>
     `).join('');
@@ -1413,18 +1453,78 @@ THIS IS AN OUTBOUND CALL:
     // Semantic Memory config options
     const semanticMaxResults = document.getElementById('semantic-max-results');
     const semanticThreshold = document.getElementById('semantic-threshold');
+    const semanticMatchThreshold = document.getElementById('semantic-match-threshold');
 
     const updateSemanticConfig = async () => {
       const config = {
         max_results: parseInt(semanticMaxResults?.value || '3'),
         similarity_threshold: parseFloat(semanticThreshold?.value || '0.75'),
+        semantic_match_threshold: parseInt(semanticMatchThreshold?.value || '3'),
         include_other_callers: true,
       };
+      this.agent.semantic_memory_config = config;
       await this.updateAgentField('semantic_memory_config', config);
     };
 
     semanticMaxResults?.addEventListener('change', updateSemanticConfig);
     semanticThreshold?.addEventListener('change', updateSemanticConfig);
+    semanticMatchThreshold?.addEventListener('change', updateSemanticConfig);
+
+    // Semantic search tool
+    const searchBtn = document.getElementById('semantic-search-btn');
+    const searchInput = document.getElementById('semantic-search-input');
+    const searchResults = document.getElementById('semantic-search-results');
+
+    if (searchBtn && searchInput) {
+      const doSearch = async () => {
+        const query = searchInput.value.trim();
+        if (!query) return;
+
+        searchBtn.disabled = true;
+        searchBtn.textContent = 'Searching...';
+        if (searchResults) searchResults.innerHTML = '<div class="text-muted" style="font-size: 0.85rem;">Searching...</div>';
+
+        try {
+          const results = await searchSimilarMemories({ agentId: this.agentId, query });
+
+          if (!searchResults) return;
+          if (results.length === 0) {
+            searchResults.innerHTML = '<div class="text-muted" style="font-size: 0.85rem;">No matching memories found.</div>';
+            return;
+          }
+
+          searchResults.innerHTML = results.map(r => {
+            const pct = Math.round((r.similarity || 0) * 100);
+            return `
+              <div style="padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 0.5rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                  <span style="font-weight: 500; font-size: 0.85rem;">${r.contact_name || r.contact_phone || 'Unknown'}</span>
+                  <span class="memory-direction-badge memory-semantic-badge">${pct}%</span>
+                </div>
+                <div style="font-size: 0.8rem; color: var(--text-secondary);">${r.summary || 'No summary'}</div>
+                ${r.key_topics && r.key_topics.length > 0 ? `
+                  <div style="display: flex; gap: 0.25rem; flex-wrap: wrap; margin-top: 0.25rem;">
+                    ${r.key_topics.slice(0, 4).map(t => `<span class="memory-topic-tag">${t}</span>`).join('')}
+                  </div>
+                ` : ''}
+              </div>
+            `;
+          }).join('');
+        } catch (err) {
+          console.error('Semantic search failed:', err);
+          if (searchResults) searchResults.innerHTML = '<div class="text-muted" style="font-size: 0.85rem;">Search failed. Please try again.</div>';
+        } finally {
+          searchBtn.disabled = false;
+          searchBtn.textContent = 'Search';
+        }
+      };
+
+      searchBtn.addEventListener('click', doSearch);
+      searchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') doSearch();
+      });
+    }
+
   }
 
   attachMemoryListListeners() {
@@ -1433,6 +1533,33 @@ THIS IS AN OUTBOUND CALL:
       btn.addEventListener('click', async () => {
         const memoryId = btn.dataset.memoryId;
         await this.showMemoryDetailModal(memoryId);
+      });
+    });
+
+    // Copy memory ID buttons
+    document.querySelectorAll('.copy-memory-id-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const memoryId = btn.dataset.memoryId;
+        if (memoryId) {
+          navigator.clipboard.writeText(memoryId).then(() => {
+            const tooltip = document.createElement('span');
+            tooltip.textContent = 'Copied';
+            tooltip.style.cssText = `position: fixed; top: ${e.clientY - 30}px; left: ${e.clientX}px; transform: translateX(-50%); background: var(--bg-primary); color: var(--text-primary); padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.2); z-index: 10000; pointer-events: none;`;
+            document.body.appendChild(tooltip);
+            setTimeout(() => tooltip.remove(), 3000);
+          });
+        }
+      });
+    });
+
+    // Semantic match pill buttons
+    document.querySelectorAll('.semantic-match-pill').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const memoryId = btn.dataset.memoryId;
+        this.showSemanticMatchModal(memoryId);
       });
     });
 
@@ -1463,67 +1590,88 @@ THIS IS AN OUTBOUND CALL:
     try {
       const memory = await getMemory(memoryId);
 
-      const modalHtml = `
-        <div class="modal-overlay" id="memory-detail-modal">
-          <div class="modal memory-detail-modal">
-            <div class="modal-header">
-              <h3>Caller Memory: ${memory.contact?.name || 'Unknown'}</h3>
-              <button type="button" class="modal-close" id="close-memory-modal">&times;</button>
+      // Remove existing modal
+      document.getElementById('memory-detail-modal')?.remove();
+
+      const modal = document.createElement('div');
+      modal.id = 'memory-detail-modal';
+      modal.className = 'modal';
+      modal.innerHTML = `
+        <div class="modal-backdrop"></div>
+        <div class="modal-content memory-detail-modal">
+          <div class="modal-mobile-header">
+            <button type="button" class="back-btn" id="memory-modal-back">
+              <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+              </svg>
+            </button>
+            <span>Agent Memory</span>
+          </div>
+
+          <div class="desktop-only" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3 style="margin: 0;">Agent Memory: ${memory.contact?.name || memory.contact?.phone_number || 'Unknown'}</h3>
+            <button type="button" id="close-memory-modal" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-secondary);">&times;</button>
+          </div>
+
+          <div class="memory-detail-phone">${memory.contact?.phone_number || ''}</div>
+
+          <div class="memory-detail-section">
+            <label class="form-label">Summary</label>
+            <textarea id="memory-summary-edit" class="form-textarea" rows="3">${memory.summary || ''}</textarea>
+          </div>
+
+          <div class="memory-detail-section">
+            <label class="form-label">Key Topics</label>
+            <div class="memory-topics-display">
+              ${(memory.keyTopics || []).map(t => `<span class="topic-tag">${t}</span>`).join('') || '<span class="text-muted">No topics</span>'}
             </div>
-            <div class="modal-body">
-              <div class="memory-detail-phone">${memory.contact?.phone_number || ''}</div>
+          </div>
 
-              <div class="memory-detail-section">
-                <label class="form-label">Summary</label>
-                <textarea id="memory-summary-edit" class="form-textarea" rows="3">${memory.summary || ''}</textarea>
-              </div>
-
-              <div class="memory-detail-section">
-                <label class="form-label">Key Topics</label>
-                <div class="memory-topics-display">
-                  ${(memory.keyTopics || []).map(t => `<span class="topic-tag">${t}</span>`).join('') || '<span class="text-muted">No topics</span>'}
-                </div>
-              </div>
-
-              ${memory.preferences && Object.keys(memory.preferences).length > 0 ? `
-                <div class="memory-detail-section">
-                  <label class="form-label">Preferences</label>
-                  <pre class="memory-prefs-display">${JSON.stringify(memory.preferences, null, 2)}</pre>
-                </div>
-              ` : ''}
-
-              <div class="memory-detail-section">
-                <label class="form-label">Call History (${memory.callHistory?.length || 0} calls)</label>
-                <div class="call-history-list">
-                  ${memory.callHistory && memory.callHistory.length > 0 ? memory.callHistory.map(call => `
-                    <div class="call-history-item">
-                      <span class="call-date">${new Date(call.started_at).toLocaleDateString()}</span>
-                      <span class="call-duration">${Math.floor((call.duration_seconds || 0) / 60)} min</span>
-                      <span class="call-summary-preview">${call.call_summary || 'No summary'}</span>
-                    </div>
-                  `).join('') : '<div class="text-muted">No call history available</div>'}
-                </div>
-              </div>
+          ${memory.preferences && Object.keys(memory.preferences).length > 0 ? `
+            <div class="memory-detail-section">
+              <label class="form-label">Preferences</label>
+              <pre class="memory-prefs-display">${JSON.stringify(memory.preferences, null, 2)}</pre>
             </div>
-            <div class="modal-footer">
-              <button type="button" class="btn-secondary" id="close-memory-detail">Close</button>
-              <button type="button" class="btn-primary" id="save-memory-changes">Save Changes</button>
+          ` : ''}
+
+          <div class="memory-detail-section">
+            <label class="form-label">Call History (${memory.callHistory?.length || 0} calls)</label>
+            <div class="call-history-list">
+              ${memory.callHistory && memory.callHistory.length > 0 ? memory.callHistory.map(call => `
+                <div class="call-history-item">
+                  <span class="call-date">${new Date(call.started_at).toLocaleDateString()}</span>
+                  <span class="call-duration">${Math.floor((call.duration_seconds || 0) / 60)} min</span>
+                  <span class="call-summary-preview">${call.call_summary || 'No summary'}</span>
+                </div>
+              `).join('') : '<div class="text-muted">No call history available</div>'}
             </div>
+          </div>
+
+          <div class="memory-detail-section">
+            <label class="form-label">Similar Memories</label>
+            <div id="similar-memories-container">
+              <div class="text-muted" style="font-size: 0.85rem;">Loading...</div>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
+            <button type="button" class="btn btn-secondary" id="close-memory-detail" style="flex: 1;">Close</button>
+            <button type="button" class="btn btn-primary" id="save-memory-changes" style="flex: 1;">Save Changes</button>
           </div>
         </div>
       `;
 
-      document.body.insertAdjacentHTML('beforeend', modalHtml);
+      document.body.appendChild(modal);
 
-      // Close modal handlers
-      const closeModal = () => {
-        document.getElementById('memory-detail-modal')?.remove();
-      };
+      const closeModal = () => modal.remove();
 
+      modal.querySelector('.modal-backdrop').addEventListener('click', closeModal);
       document.getElementById('close-memory-modal')?.addEventListener('click', closeModal);
+      document.getElementById('memory-modal-back')?.addEventListener('click', closeModal);
       document.getElementById('close-memory-detail')?.addEventListener('click', closeModal);
-      document.getElementById('memory-detail-modal')?.addEventListener('click', (e) => {
-        if (e.target.id === 'memory-detail-modal') closeModal();
+
+      modal.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeModal();
       });
 
       // Save changes handler
@@ -1538,9 +1686,128 @@ THIS IS AN OUTBOUND CALL:
         }
       });
 
+      // Load similar memories
+      const memFromList = this.memories.find(m => m.id === memoryId);
+      const similarContainer = document.getElementById('similar-memories-container');
+      if (memFromList?.hasEmbedding && this.agent.semantic_memory_enabled) {
+        const excludeContactId = memory.contact?.id || null;
+        searchSimilarMemories({ agentId: this.agentId, memoryId, excludeContactId })
+          .then(results => {
+            if (!similarContainer) return;
+            if (results.length === 0) {
+              similarContainer.innerHTML = '<div class="text-muted" style="font-size: 0.85rem;">No similar memories found.</div>';
+              return;
+            }
+            similarContainer.innerHTML = results.map(r => {
+              const pct = Math.round((r.similarity || 0) * 100);
+              return `
+                <div style="padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 0.5rem;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                    <span style="font-weight: 500; font-size: 0.85rem;">${r.contact_name || r.contact_phone || 'Unknown'}</span>
+                    <span class="memory-direction-badge memory-semantic-badge">${pct}% similar</span>
+                  </div>
+                  <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.25rem;">${r.summary || 'No summary'}</div>
+                  ${r.key_topics && r.key_topics.length > 0 ? `
+                    <div style="display: flex; gap: 0.25rem; flex-wrap: wrap;">
+                      ${r.key_topics.slice(0, 4).map(t => `<span class="memory-topic-tag">${t}</span>`).join('')}
+                    </div>
+                  ` : ''}
+                </div>
+              `;
+            }).join('');
+          })
+          .catch(() => {
+            if (similarContainer) {
+              similarContainer.innerHTML = '<div class="text-muted" style="font-size: 0.85rem;">Failed to load similar memories.</div>';
+            }
+          });
+      } else if (similarContainer) {
+        similarContainer.innerHTML = '<div class="text-muted" style="font-size: 0.85rem;">Enable semantic memory to find similar conversations.</div>';
+      }
+
     } catch (error) {
       console.error('Failed to load memory detail:', error);
     }
+  }
+
+  async showSemanticMatchModal(memoryId) {
+    const mem = this.memories.find(m => m.id === memoryId);
+    if (!mem) return;
+
+    const contactName = mem.contact?.name || mem.contact?.phone_number || 'Unknown';
+    const matchCount = mem.semanticMatchCount || 0;
+
+    document.getElementById('semantic-match-modal')?.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'semantic-match-modal';
+    modal.className = 'modal';
+    modal.innerHTML = `
+      <div class="modal-backdrop"></div>
+      <div class="modal-content" style="max-width: 480px;">
+        <div class="modal-mobile-header">
+          <button type="button" class="back-btn" id="semantic-modal-back">
+            <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+          </button>
+          <span>Semantic Pattern</span>
+        </div>
+
+        <div class="desktop-only" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+          <h3 style="margin: 0;">Semantic Pattern</h3>
+          <button type="button" id="close-semantic-modal" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-secondary);">&times;</button>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.25rem; padding: 0.75rem; background: var(--bg-secondary, #f9fafb); border-radius: 10px;">
+          <div style="width: 40px; height: 40px; border-radius: 50%; background: #fef3c7; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+            <svg width="20" height="20" fill="none" stroke="#d97706" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+          </div>
+          <div>
+            <div style="font-weight: 600; font-size: 0.95rem;">${matchCount} Semantic Match${matchCount !== 1 ? 'es' : ''}</div>
+            <div style="font-size: 0.8rem; color: var(--text-secondary);">This memory was surfaced ${matchCount} time${matchCount !== 1 ? 's' : ''} during other conversations</div>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 1rem;">
+          <label class="form-label" style="font-size: 0.8rem; margin-bottom: 0.25rem;">Contact</label>
+          <div style="font-size: 0.9rem; font-weight: 500;">${contactName}</div>
+          ${mem.contact?.phone_number && mem.contact?.name ? `<div style="font-size: 0.8rem; color: var(--text-secondary);">${mem.contact.phone_number}</div>` : ''}
+        </div>
+
+        <div style="margin-bottom: 1rem;">
+          <label class="form-label" style="font-size: 0.8rem; margin-bottom: 0.25rem;">Summary</label>
+          <div style="font-size: 0.85rem; line-height: 1.5; color: var(--text-primary);">${mem.summary || 'No summary available'}</div>
+        </div>
+
+        ${mem.keyTopics && mem.keyTopics.length > 0 ? `
+          <div style="margin-bottom: 1rem;">
+            <label class="form-label" style="font-size: 0.8rem; margin-bottom: 0.25rem;">Topics</label>
+            <div style="display: flex; gap: 0.3rem; flex-wrap: wrap;">
+              ${mem.keyTopics.map(t => `<span class="memory-topic-tag">${t}</span>`).join('')}
+            </div>
+          </div>
+        ` : ''}
+
+        <div style="padding: 0.75rem; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; margin-bottom: 1.25rem;">
+          <div style="font-size: 0.8rem; color: #92400e; line-height: 1.5;">
+            This pattern is appearing across multiple callers. Consider whether this represents a recurring issue that needs attention.
+          </div>
+        </div>
+
+        <button type="button" class="btn btn-secondary" id="close-semantic-detail" style="width: 100%;">Close</button>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const closeModal = () => modal.remove();
+    modal.querySelector('.modal-backdrop').addEventListener('click', closeModal);
+    document.getElementById('close-semantic-modal')?.addEventListener('click', closeModal);
+    document.getElementById('close-semantic-detail')?.addEventListener('click', closeModal);
+    document.getElementById('semantic-modal-back')?.addEventListener('click', closeModal);
   }
 
   renderFunctionsTab() {
@@ -6922,6 +7189,48 @@ THIS IS AN OUTBOUND CALL:
         color: var(--text-secondary);
       }
 
+      .memory-header-right {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        flex-shrink: 0;
+      }
+
+      .memory-direction-badge {
+        font-size: 0.7rem;
+        padding: 0.2rem 0.5rem;
+        border-radius: 10px;
+        font-weight: 500;
+      }
+
+      .memory-direction-inbound {
+        color: #059669;
+        background: #ecfdf5;
+      }
+
+      .memory-direction-outbound {
+        color: #7c3aed;
+        background: #f5f3ff;
+      }
+
+      .memory-semantic-badge {
+        color: #d97706;
+        background: #fffbeb;
+      }
+
+      .memory-semantic-match-badge {
+        color: #fff;
+        background: #6366f1;
+        border: none;
+        cursor: pointer;
+        font-family: inherit;
+        transition: background 0.15s;
+      }
+
+      .memory-semantic-match-badge:hover {
+        background: #8b5cf6;
+      }
+
       .memory-call-count {
         font-size: 0.75rem;
         color: var(--text-secondary);
@@ -6960,9 +7269,28 @@ THIS IS AN OUTBOUND CALL:
 
       .memory-card-actions {
         display: flex;
+        align-items: center;
         gap: 0.5rem;
         padding-top: 0.75rem;
         border-top: 1px solid var(--border-color);
+      }
+
+      .copy-memory-id-btn {
+        margin-left: auto;
+        font-family: monospace;
+        font-size: 0.65rem;
+        color: var(--text-secondary);
+        cursor: pointer;
+        opacity: 0.5;
+        transition: opacity 0.2s;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 140px;
+      }
+
+      .copy-memory-id-btn:hover {
+        opacity: 1;
       }
 
       .memory-action-btn {
@@ -7035,7 +7363,7 @@ THIS IS AN OUTBOUND CALL:
       }
 
       /* Memory Detail Modal */
-      .memory-detail-modal {
+      #memory-detail-modal .modal-content.memory-detail-modal {
         max-width: 500px;
         max-height: 90vh;
         overflow-y: auto;
