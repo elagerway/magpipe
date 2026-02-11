@@ -2019,6 +2019,7 @@ export default class InboxPage {
         const lines = call.transcript.split('\n').filter(l => l.trim());
         if (lines.length > 0 && lines[0].includes(':')) {
           const bubbles = [];
+          let lastIsAgent = true;
           for (const line of lines) {
             const colonIndex = line.indexOf(':');
             if (colonIndex > 0 && colonIndex < 20) {
@@ -2026,6 +2027,7 @@ export default class InboxPage {
               let text = line.substring(colonIndex + 1).trim();
               // Caller/User are always the caller; any other name is the agent (supports custom agent names)
               const isAgent = !['caller', 'user'].includes(speaker);
+              lastIsAgent = isAgent;
 
               // Split text into segments by detecting speaker changes
               const segments = this.splitTranscriptBySpeaker(text, isAgent);
@@ -2035,7 +2037,11 @@ export default class InboxPage {
                 </div>`);
               }
             } else {
-              bubbles.push(`<div style="color: var(--text-secondary);">${this.linkifyPhoneNumbers(line)}</div>`);
+              const trimmed = line.trim();
+              if (trimmed === '...' || trimmed === '…') continue;
+              bubbles.push(`<div class="message-bubble ${lastIsAgent ? 'outbound' : 'inbound'}">
+                <div class="message-content">${this.linkifyPhoneNumbers(trimmed)}</div>
+              </div>`);
             }
           }
           return `<div style="display: flex; flex-direction: column; gap: 0.5rem; padding: 0.5rem;">${bubbles.join('')}</div>`;
@@ -2060,14 +2066,19 @@ export default class InboxPage {
     const firstConversationIdx = sortedRecordings.findIndex(r => r.label === 'conversation');
 
     return sortedRecordings.map((rec, idx) => {
-      // Show transcript under the recording - use the recording's own transcript
+      // Show transcript under the recording
+      // Prefer call.transcript (from LiveKit) over rec.transcript (from SignalWire)
+      // because SignalWire's transcription often swaps speaker labels
       let transcriptHtml = '';
-      let recTranscript = rec.transcript;
+      let recTranscript = null;
 
-      // Show call.transcript under the first "conversation" recording (LiveKit initial conversation)
-      // This is where the main agent conversation transcript belongs
-      if (!recTranscript && rec.label === 'conversation' && idx === firstConversationIdx && call.transcript) {
+      // Use call.transcript for the first conversation/main recording (has correct speaker labels)
+      const isFirstMainRecording = (rec.label === 'conversation' && idx === firstConversationIdx) ||
+        (rec.label === 'main' && firstConversationIdx === -1 && idx === sortedRecordings.findIndex(r => r.label === 'main'));
+      if (isFirstMainRecording && call.transcript) {
         recTranscript = call.transcript;
+      } else {
+        recTranscript = rec.transcript;
       }
 
       if (recTranscript) {
@@ -2075,6 +2086,7 @@ export default class InboxPage {
         const lines = recTranscript.split('\n').filter(l => l.trim());
         if (lines.length > 0 && lines[0].includes(':')) {
           const bubbles = [];
+          let lastIsAgent = true; // Track last speaker for continuation lines
           for (const line of lines) {
             const colonIndex = line.indexOf(':');
             if (colonIndex > 0 && colonIndex < 20) {
@@ -2082,6 +2094,7 @@ export default class InboxPage {
               let text = line.substring(colonIndex + 1).trim();
               // Caller/User are always the caller; any other name is the agent (supports custom agent names)
               const isAgent = !['caller', 'user'].includes(speaker);
+              lastIsAgent = isAgent;
 
               // Split text into segments by detecting speaker changes at question marks
               const segments = this.splitTranscriptBySpeaker(text, isAgent);
@@ -2091,7 +2104,12 @@ export default class InboxPage {
                 </div>`);
               }
             } else {
-              bubbles.push(`<div style="color: var(--text-secondary); margin: 0.25rem 0;">${this.linkifyPhoneNumbers(line)}</div>`);
+              // Continuation of previous speaker (no label) — skip filler like "..."
+              const trimmed = line.trim();
+              if (trimmed === '...' || trimmed === '…') continue;
+              bubbles.push(`<div class="message-bubble ${lastIsAgent ? 'outbound' : 'inbound'}">
+                <div class="message-content">${this.linkifyPhoneNumbers(trimmed)}</div>
+              </div>`);
             }
           }
           // Wrap in flex container for proper bubble alignment
