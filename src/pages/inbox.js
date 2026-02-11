@@ -1633,24 +1633,14 @@ export default class InboxPage {
   renderSmsMessage(msg) {
     const isInbound = msg.direction === 'inbound';
     const isAI = msg.is_ai_generated === true;
+    const isHuman = !isInbound && !isAI;
     const timestamp = new Date(msg.sent_at || msg.created_at);
 
     // Get delivery status indicator for outbound messages
     const deliveryStatus = this.getDeliveryStatusIcon(msg);
 
     return `
-      <div class="message-bubble ${isInbound ? 'inbound' : 'outbound'} ${isAI ? 'ai-message' : ''}" data-message-id="${msg.id}">
-        ${isAI ? `
-          <div class="ai-badge">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="11" width="18" height="10" rx="2"></rect>
-              <circle cx="8" cy="16" r="1"></circle>
-              <circle cx="16" cy="16" r="1"></circle>
-              <path d="M9 7h6"></path>
-              <path d="M12 7v4"></path>
-            </svg>
-          </div>
-        ` : ''}
+      <div class="message-bubble ${isInbound ? 'inbound' : 'outbound'} ${isAI ? 'ai-message' : ''} ${isHuman ? 'human-message' : ''}" data-message-id="${msg.id}">
         <div class="message-content">${this.linkifyPhoneNumbers(msg.content)}</div>
         <div class="message-time">
           ${this.formatTime(timestamp)}
@@ -6300,21 +6290,11 @@ Examples:
       container.innerHTML = messages.map(msg => {
         const isVisitor = msg.role === 'visitor';
         const isAI = msg.is_ai_generated === true;
+        const isHuman = !isVisitor && !isAI;
         const timestamp = new Date(msg.created_at);
 
         return `
-          <div class="message-bubble ${isVisitor ? 'inbound' : 'outbound'} ${isAI ? 'ai-message' : ''}" data-message-id="${msg.id}">
-            ${isAI ? `
-              <div class="ai-badge">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <rect x="3" y="11" width="18" height="10" rx="2"></rect>
-                  <circle cx="8" cy="16" r="1"></circle>
-                  <circle cx="16" cy="16" r="1"></circle>
-                  <path d="M9 7h6"></path>
-                  <path d="M12 7v4"></path>
-                </svg>
-              </div>
-            ` : ''}
+          <div class="message-bubble ${isVisitor ? 'inbound' : 'outbound'} ${isAI ? 'ai-message' : ''} ${isHuman ? 'human-message' : ''}" data-message-id="${msg.id}">
             <div class="message-content">${this.escapeHtml(msg.content)}</div>
             <div class="message-time">
               ${this.formatTime(timestamp)}
@@ -6525,7 +6505,7 @@ Examples:
       if (!existingMsg) {
         const statusIcon = this.getDeliveryStatusIcon({ status: newMsgData?.status || 'pending', direction: 'outbound' });
         const newMessage = `
-          <div class="message-bubble outbound" data-message-id="${msgId}">
+          <div class="message-bubble outbound human-message" data-message-id="${msgId}">
             <div class="message-content">${this.linkifyPhoneNumbers(message)}</div>
             <div class="message-time">
               ${this.formatTime(new Date())}

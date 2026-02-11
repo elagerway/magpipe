@@ -1539,23 +1539,24 @@ p {
 
 .message-bubble {
   max-width: 70%;
-  padding: 0.75rem 1rem;
+  padding: 0.75rem;
   border-radius: 1.125rem;
   word-wrap: break-word;
 }
 
 .message-bubble.inbound {
-  align-self: flex-start;
-  background: var(--bg-primary);
-  border-bottom-left-radius: 0.375rem;
-  box-shadow: var(--shadow-sm);
+  align-self: flex-end;
+  background: #eef0ff;
+  color: var(--text-primary);
+  border-bottom-right-radius: 0.375rem;
 }
 
 .message-bubble.outbound {
-  align-self: flex-end;
-  background: var(--primary-color);
-  color: white;
-  border-bottom-right-radius: 0.375rem;
+  align-self: flex-start;
+  background: white;
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-bottom-left-radius: 0.375rem;
 }
 
 .message-content {
@@ -1569,7 +1570,7 @@ p {
   opacity: 0.7;
 }
 
-.message-bubble.outbound .message-time {
+.message-bubble.inbound .message-time {
   text-align: right;
   display: flex;
   align-items: center;
@@ -1585,15 +1586,15 @@ p {
 }
 
 .delivery-status.delivered svg {
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--primary-color);
 }
 
 .delivery-status.sent svg {
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--text-tertiary);
 }
 
 .delivery-status.pending svg {
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-tertiary);
 }
 
 .delivery-status.failed svg {
@@ -1601,9 +1602,8 @@ p {
 }
 
 .message-bubble.ai-message {
-  position: relative;
-  background: linear-gradient(135deg, #f0f4ff 0%, #e8eeff 100%);
-  border: 1px solid rgba(99, 102, 241, 0.1);
+  background: white;
+  border: 1px solid var(--border-color);
   color: var(--text-primary);
 }
 
@@ -1616,24 +1616,8 @@ p {
   opacity: 0.7;
 }
 
-.ai-badge {
-  position: absolute;
-  top: -6px;
-  left: 12px;
-  background: var(--primary-color);
-  color: white;
-  border-radius: 50%;
-  width: 20px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 2px 4px rgba(99, 102, 241, 0.3);
-}
-
-.ai-badge svg {
-  width: 11px;
-  height: 11px;
+.message-bubble.human-message {
+  border: 2px solid rgba(99, 102, 241, 0.25);
 }
 
 .call-indicator {
@@ -2163,7 +2147,6 @@ p {
 
   .message-bubble {
     max-width: 85%;
-    padding-bottom: calc(0.75rem + 4px);
   }
 
   .transcript-bubble {
@@ -2175,7 +2158,7 @@ p {
 /* Desktop-only styles */
 @media (min-width: 769px) {
   .message-bubble {
-    padding: 0.5rem 0.5625rem;
+    padding: 0.625rem;
   }
 
   .transcript-bubble {
