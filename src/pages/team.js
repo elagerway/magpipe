@@ -123,7 +123,7 @@ export default class TeamPage {
         </div>
 
         <!-- Members List -->
-        <div id="members-list" style="margin-bottom: 2rem;">
+        <div id="members-list" class="members-grid" style="margin-bottom: 2rem;">
           ${this.renderMembersList()}
         </div>
       </div>
@@ -198,53 +198,82 @@ export default class TeamPage {
           color: white;
           border-color: var(--primary-color);
         }
+        .members-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+          gap: 1.25rem;
+        }
         .member-card {
-          background: var(--bg-primary);
+          background: white;
           border: 1px solid var(--border-color);
-          border-radius: var(--radius-md);
-          padding: 1rem;
-          margin-bottom: 0.75rem;
-        }
-        .member-card:last-child {
-          margin-bottom: 0;
-        }
-        .member-header {
+          border-radius: var(--radius-lg);
+          padding: 1.25rem;
+          transition: all 0.2s ease;
           display: flex;
-          justify-content: space-between;
+          flex-direction: column;
+        }
+        .member-card:hover {
+          border-color: var(--primary-color);
+          box-shadow: var(--shadow-md);
+          transform: translateY(-2px);
+        }
+        .member-card-header {
+          display: flex;
           align-items: flex-start;
-          margin-bottom: 0.5rem;
+          justify-content: space-between;
+          margin-bottom: 1rem;
         }
-        .member-info h3 {
-          margin: 0;
-          font-size: 1rem;
+        .member-avatar {
+          width: 56px;
+          height: 56px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: white;
+          font-weight: 600;
+          font-size: 1.25rem;
+          overflow: hidden;
         }
-        .member-info .email {
+        .member-card-body {
+          flex: 1;
+          margin-bottom: 1rem;
+        }
+        .member-name {
+          font-size: 1.125rem;
+          font-weight: 600;
+          margin: 0 0 0.25rem 0;
+          color: var(--text-primary);
+        }
+        .member-email {
           color: var(--text-secondary);
           font-size: 0.875rem;
+          margin-bottom: 0.25rem;
         }
         .member-role {
-          padding: 0.25rem 0.5rem;
+          display: inline-block;
+          padding: 0.25rem 0.625rem;
           border-radius: var(--radius-sm);
           font-size: 0.75rem;
-          font-weight: 600;
+          font-weight: 500;
           text-transform: capitalize;
         }
         .member-role.owner {
-          background: var(--primary-color);
-          color: white;
+          background: #e0e7ff;
+          color: #4338ca;
         }
         .member-role.editor {
-          background: #3b82f6;
-          color: white;
+          background: #dbeafe;
+          color: #1d4ed8;
         }
         .member-role.support {
-          background: #8b5cf6;
-          color: white;
+          background: #ede9fe;
+          color: #6d28d9;
         }
         .member-meta {
-          color: var(--text-secondary);
-          font-size: 0.75rem;
-          margin-bottom: 0.75rem;
+          color: var(--text-tertiary);
+          font-size: 0.8rem;
+          margin-top: 0.5rem;
         }
         .member-actions {
           display: flex;
@@ -252,28 +281,48 @@ export default class TeamPage {
           flex-wrap: wrap;
         }
         .member-actions .btn {
+          flex: 1;
           font-size: 0.875rem;
-          padding: 0.375rem 0.75rem;
+          padding: 0.5rem 0.75rem;
         }
         .member-card.member-removed {
           opacity: 0.6;
           background: var(--bg-secondary);
         }
-        .member-status.cancelled {
+        .member-card.member-removed:hover {
+          transform: none;
+          box-shadow: none;
+        }
+        .member-status {
           padding: 0.25rem 0.5rem;
           border-radius: var(--radius-sm);
-          font-size: 0.75rem;
-          font-weight: 600;
+          font-size: 0.7rem;
+          font-weight: 500;
+        }
+        .member-status.active {
+          background: #dcfce7;
+          color: #15803d;
+        }
+        .member-status.pending {
+          background: #fef3c7;
+          color: #92400e;
+        }
+        .member-status.suspended {
+          background: #fee2e2;
+          color: #991b1b;
+        }
+        .member-status.cancelled {
           background: var(--error-color);
           color: white;
         }
         .member-status.removed {
-          padding: 0.25rem 0.5rem;
-          border-radius: var(--radius-sm);
-          font-size: 0.75rem;
-          font-weight: 600;
           background: #6b7280;
           color: white;
+        }
+        @media (max-width: 600px) {
+          .members-grid {
+            grid-template-columns: 1fr;
+          }
         }
 
         /* Modal Styles */
@@ -409,20 +458,44 @@ export default class TeamPage {
     const isCancelled = isRemoved && !member.approved_at;
     const wasRemoved = isRemoved && member.approved_at;
 
+    const name = member.full_name || 'Unnamed';
+    const initials = name.trim().split(' ').length > 1
+      ? (name.trim().split(' ')[0][0] + name.trim().split(' ').slice(-1)[0][0]).toUpperCase()
+      : name.substring(0, 2).toUpperCase();
+
+    const roleColors = {
+      owner: { bg: 'linear-gradient(135deg, #6366f1, #8b5cf6)', badge: 'var(--primary-color)' },
+      editor: { bg: 'linear-gradient(135deg, #3b82f6, #60a5fa)', badge: '#3b82f6' },
+      support: { bg: 'linear-gradient(135deg, #8b5cf6, #a78bfa)', badge: '#8b5cf6' },
+    };
+    const colors = roleColors[member.role] || roleColors.editor;
+
+    const statusBadge = isCancelled
+      ? '<span class="member-status cancelled">Cancelled</span>'
+      : wasRemoved
+        ? '<span class="member-status removed">Removed</span>'
+        : member.status === 'pending'
+          ? `<span class="member-status pending">${isExpired ? 'Expired' : 'Pending'}</span>`
+          : member.status === 'suspended'
+            ? '<span class="member-status suspended">Suspended</span>'
+            : '<span class="member-status active">Active</span>';
+
     return `
       <div class="member-card ${isRemoved ? 'member-removed' : ''}">
-        <div class="member-header">
-          <div class="member-info">
-            <h3>${member.full_name || 'Unnamed'}</h3>
-            <div class="email">${member.email}</div>
+        <div class="member-card-header">
+          <div class="member-avatar" style="background: ${colors.bg};">
+            <span>${initials}</span>
           </div>
           <div style="display: flex; align-items: center; gap: 0.5rem;">
-            ${isCancelled ? '<span class="member-status cancelled">Cancelled</span>' : ''}
-            ${wasRemoved ? '<span class="member-status removed">Removed</span>' : ''}
+            ${statusBadge}
             <span class="member-role ${member.role}">${member.role}</span>
           </div>
         </div>
-        <div class="member-meta">${meta}</div>
+        <div class="member-card-body">
+          <h3 class="member-name">${name}</h3>
+          <div class="member-email">${member.email}</div>
+          <div class="member-meta">${meta}</div>
+        </div>
         <div class="member-actions">
           ${actions}
         </div>
