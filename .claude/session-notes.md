@@ -631,3 +631,130 @@ The sidebar consumption progress bar was showing stale data because `cachedUserD
   - Added `refreshConsumptionData()` export function
   - Updated persistent nav logic to refresh consumption data on each navigation
 
+---
+
+## Session: 2026-02-09 (Continued)
+
+### Completed - Analytics Page & Org-Wide Data
+
+#### 1. ✅ Added Organization-Wide Analytics
+Updated `org-analytics` edge function to show all activity for ALL users in the organization, not just the current user.
+
+**Changes:**
+- Fetch user's `current_organization_id`
+- Get all user IDs in that organization
+- Query call_records, sms_messages, credit_transactions for ALL org users
+- Aggregate credits balance across all team members
+
+#### 2. ✅ Fixed Call Records Not Appearing
+**Root cause:** Type mismatch in Supabase join - `agent_id` (text) cannot join with `agent_configs.id` (UUID)
+
+**Fix:**
+- Removed broken inline join (`agent_configs(name)`)
+- Fetch call records without the join first
+- Get unique agent IDs from records
+- Fetch agent names in separate query
+- Map agent names to records manually
+
+### Files Modified
+- `supabase/functions/org-analytics/index.ts`
+  - Changed all functions from `userId: string` to `userIds: string[]`
+  - Changed all queries from `.eq('user_id', userId)` to `.in('user_id', userIds)`
+  - Added organization lookup and team member fetching
+  - Fixed `getCallRecords()` to fetch agent names separately
+
+### Edge Functions Deployed
+- `org-analytics` - Now shows org-wide data with working call records table
+
+#### 3. ✅ Fixed Billing Not Working for Inbound Calls (Since Feb 6)
+
+**Problem:** Calls after Feb 6 weren't being billed - cost showed as $0.00 in analytics.
+
+**Investigation findings:**
+- Last billed call: Feb 6 at 18:46
+- `sip-recording-callback` WAS being called (sets `duration_seconds` and `status: 'completed'`)
+- But it didn't trigger billing
+- `webhook-call-status` HAS billing code but isn't called for inbound LiveKit calls
+- Root cause: `<Dial>` TwiML in `webhook-inbound-call` has no `statusCallback` URL
+
+**Fix applied:**
+Added billing call to `sip-recording-callback` since it's already being called successfully when recordings complete:
+- Added `deductCallCredits()` function
+- Calls `deduct-credits` edge function with user_id, duration, voice_id, ai_model
+- Safety checks:
+  - Only bills for `label === 'main'` recordings (avoids double billing for transfer legs)
+  - Only bills if `durationSeconds > 0` and `user_id` exists
+  - Checks if credits were already deducted (prevents double billing)
+  - Fire-and-forget (doesn't block response)
+
+**Deployed:** `sip-recording-callback`
+
+**Result:** Future inbound calls will be billed properly when recording completes.
+
+---
+
+## Session: 2026-02-09 (Late)
+
+### Completed - TTS Character Tracking for Accurate Vendor Costs
+
+**Problem:** KPI dashboard was calculating ElevenLabs TTS vendor cost as `full_call_minutes × $0.22/min`, but ElevenLabs only charges for actual agent speech (~30-50% of a call). This inflated vendor costs ~2x.
+
+**Fix:**
+1. **agent.py** - Count TTS characters from `transcript_messages` (agent speech only), pass to billing
+2. **deduct-credits** - Accept `ttsCharacters`, compute `ttsMinutes` (chars/900), store in metadata
+3. **admin-analytics** - Use `ttsMinutes` for TTS vendor cost instead of full call minutes; other costs (STT, telephony, LiveKit, LLM) still use full call minutes
+
+**Fallback:** Old records without `ttsMinutes` fall back to full duration — improvement gradual as new calls come in.
+
+### Files Modified
+- `agents/livekit-voice-agent/agent.py`
+- `supabase/functions/deduct-credits/index.ts`
+- `supabase/functions/admin-analytics/index.ts`
+
+### Deployed
+- Edge functions: `deduct-credits`, `admin-analytics`
+- Agent: pushed to master (Render auto-deploy)
+
+### Commit
+`d148194` - Track actual TTS characters for accurate vendor cost in KPI
+
+---
+
+## Session: 2026-02-10
+
+### Completed - Agent Memory Fix (End-to-End)
+
+**Problem:** Memory and Semantic Memory features were implemented in code but didn't work in practice for inbound calls.
+
+**Root causes found and fixed:**
+
+1. **Memory save failed at call end** - SIP participant already disconnected when code tried to re-extract caller phone. Fixed by introducing `remote_party_phone` variable captured early while participant is still connected.
+
+2. **`locals().get('actual_caller_phone')` fragile pattern** - Replaced with `remote_party_phone` reference.
+
+3. **Room deleted before memory could save** - `end_call` tool called `delete_room()` immediately, killing async `on_call_end` task. Fixed with `pre_disconnect_callback` that runs `on_call_end()` synchronously BEFORE room deletion.
+
+4. **Frontend couldn't see memory records** - `user_id` was NULL on `conversation_contexts` records, blocked by RLS policy. Fixed by adding `user_id` to insert.
+
+5. **Missing direction context** - Added `direction` column to DB, direction badge in UI (Inbound/Outbound).
+
+6. **Memory prompt too passive** - LLM had memory but was too cautious to use it. Tuned prompt to be more useful while respecting security (always confirm caller identity).
+
+7. **SMS sending from voice-only number** - SMS tool now looks up SMS-capable number from `service_numbers` table.
+
+8. **SMS false success logging** - Now checks `error_code` in API response, not just HTTP status.
+
+9. **Broken memory detail modal** - Rewrote from `.modal-overlay` to standard `.modal`/`.modal-backdrop`/`.modal-content` pattern.
+
+10. **UI renamed** - "Caller Memory" → "Agent Memory" (future text message memory support).
+
+### Files Modified
+- `agents/livekit-voice-agent/agent.py` - Memory save/inject fixes, SMS fixes, pre-disconnect callback
+- `src/pages/agent-detail.js` - Direction badge, copiable UUID, modal fix, "Agent Memory" rename
+- `src/services/memoryService.js` - Added direction, service_number, contact_phone fields
+
+### Key Design Decisions
+- **No auto contact name update** - Multiple people may call from same number (company lines)
+- **Agent asks for name** - Security layer, not a bug
+- **Memory prompt balanced** - Gives context but instructs agent to confirm identity first
+
