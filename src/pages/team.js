@@ -30,7 +30,7 @@ export default class TeamPage {
     const { organization, error: orgError } = await Organization.getForUser(user.id);
     if (orgError || !organization) {
       console.error('Error loading organization:', orgError);
-      navigateTo('/agent');
+      navigateTo('/inbox');
       return;
     }
 
@@ -44,7 +44,7 @@ export default class TeamPage {
 
     // Only owners can access team management
     if (this.userRole !== 'owner') {
-      navigateTo('/agent');
+      navigateTo('/inbox');
       return;
     }
 

@@ -524,7 +524,7 @@ export default class LoginPage {
         } else if (!profile.phone_verified) {
           navigateTo('/verify-phone');
         } else {
-          navigateTo('/agent');
+          navigateTo('/inbox');
         }
       } catch (error) {
         console.error('Login error:', error);
@@ -660,7 +660,7 @@ export default class LoginPage {
         if (!profile?.phone_verified) {
           navigateTo('/verify-phone');
         } else {
-          navigateTo('/agent');
+          navigateTo('/inbox');
         }
       } catch (error) {
         console.error('Password change error:', error);

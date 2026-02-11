@@ -2056,7 +2056,7 @@ Always sound approachable, keep things simple, and update the user with a quick 
           successMessage.textContent = 'Agent configured successfully! Redirecting...';
 
           setTimeout(() => {
-            navigateTo('/agent');
+            navigateTo('/inbox');
           }, 1500);
         } else if (this.isEditingGlobalAgent) {
           // Update global agent config

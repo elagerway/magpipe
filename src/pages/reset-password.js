@@ -371,7 +371,7 @@ export default class ResetPasswordPage {
 
         // Redirect to agent after 2 seconds
         setTimeout(() => {
-          navigateTo('/agent');
+          navigateTo('/inbox');
         }, 2000);
       } catch (error) {
         console.error('Password update error:', error);
