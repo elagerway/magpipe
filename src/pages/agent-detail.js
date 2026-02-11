@@ -2059,34 +2059,117 @@ THIS IS AN OUTBOUND CALL:
 
   renderAnalyticsTab() {
     return `
-      <div class="config-section">
+      <div class="config-section agent-analytics">
         <h3>Analytics</h3>
         <p class="section-desc">View performance metrics for this agent.</p>
 
-        <div class="analytics-grid">
+        <!-- Row 1: Summary Cards -->
+        <div class="analytics-grid analytics-grid-4">
           <div class="analytics-card">
-            <span class="analytics-label">Total Calls</span>
-            <span class="analytics-value" id="stat-calls">--</span>
+            <div class="analytics-card-value" id="stat-calls">--</div>
+            <div class="analytics-card-label">Total Calls</div>
           </div>
           <div class="analytics-card">
-            <span class="analytics-label">Total Messages</span>
-            <span class="analytics-value" id="stat-messages">--</span>
+            <div class="analytics-card-value" id="stat-messages">--</div>
+            <div class="analytics-card-label">Total Messages</div>
           </div>
           <div class="analytics-card">
-            <span class="analytics-label">Avg. Call Duration</span>
-            <span class="analytics-value" id="stat-duration">--</span>
+            <div class="analytics-card-value" id="stat-duration">--</div>
+            <div class="analytics-card-label">Avg. Call Duration</div>
           </div>
           <div class="analytics-card">
-            <span class="analytics-label">Success Rate</span>
-            <span class="analytics-value" id="stat-success">--</span>
+            <div class="analytics-card-value" id="stat-success">--</div>
+            <div class="analytics-card-label">Success Rate</div>
           </div>
         </div>
 
-        <div class="placeholder-message" style="margin-top: 2rem;">
-          <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-          </svg>
-          <span>Detailed analytics coming soon</span>
+        <!-- Row 2: Calls & Messages Panels -->
+        <div class="analytics-grid analytics-grid-2" style="margin-top: 1.5rem;">
+          <div class="analytics-panel">
+            <h3>
+              <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/>
+              </svg>
+              Calls
+            </h3>
+            <div class="analytics-stats">
+              <div class="analytics-stat">
+                <span class="analytics-stat-value" id="stat-calls-inbound">--</span>
+                <span class="analytics-stat-label">Inbound</span>
+              </div>
+              <div class="analytics-stat">
+                <span class="analytics-stat-value" id="stat-calls-outbound">--</span>
+                <span class="analytics-stat-label">Outbound</span>
+              </div>
+              <div class="analytics-stat">
+                <span class="analytics-stat-value" id="stat-calls-month">--</span>
+                <span class="analytics-stat-label">This Month</span>
+              </div>
+              <div class="analytics-stat">
+                <span class="analytics-stat-value" id="stat-calls-minutes">--</span>
+                <span class="analytics-stat-label">Total Minutes</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="analytics-panel">
+            <h3>
+              <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
+              </svg>
+              Messages
+            </h3>
+            <div class="analytics-stats">
+              <div class="analytics-stat">
+                <span class="analytics-stat-value" id="stat-msgs-inbound">--</span>
+                <span class="analytics-stat-label">Inbound</span>
+              </div>
+              <div class="analytics-stat">
+                <span class="analytics-stat-value" id="stat-msgs-outbound">--</span>
+                <span class="analytics-stat-label">Outbound</span>
+              </div>
+              <div class="analytics-stat">
+                <span class="analytics-stat-value" id="stat-msgs-month">--</span>
+                <span class="analytics-stat-label">This Month</span>
+              </div>
+              <div class="analytics-stat">
+                <span class="analytics-stat-value" id="stat-msgs-delivery">--</span>
+                <span class="analytics-stat-label">Delivery Rate</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Row 3: Call Volume Chart -->
+        <div class="analytics-panel" style="margin-top: 1.5rem;">
+          <h3>Call Volume (Last 30 Days)</h3>
+          <div class="aa-chart-container">
+            <canvas id="agent-calls-chart"></canvas>
+          </div>
+        </div>
+
+        <!-- Row 4: Disposition & Sentiment -->
+        <div class="analytics-grid analytics-grid-2" style="margin-top: 1.5rem;">
+          <div class="analytics-panel">
+            <h3>Disposition</h3>
+            <div id="disposition-breakdown" class="aa-breakdown-list">
+              <div class="aa-breakdown-empty">Loading...</div>
+            </div>
+          </div>
+          <div class="analytics-panel">
+            <h3>Sentiment</h3>
+            <div id="sentiment-breakdown" class="aa-breakdown-list">
+              <div class="aa-breakdown-empty">Loading...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Row 5: Recent Calls -->
+        <div class="analytics-panel aa-recent-calls-panel" style="margin-top: 1.5rem;">
+          <h3>Recent Calls</h3>
+          <div id="recent-calls-container">
+            <div class="aa-breakdown-empty">Loading...</div>
+          </div>
         </div>
       </div>
     `;
@@ -3530,32 +3613,301 @@ THIS IS AN OUTBOUND CALL:
 
   async loadAnalytics() {
     try {
-      // Get call count
-      const { count: callCount } = await supabase
-        .from('call_records')
-        .select('*', { count: 'exact', head: true })
-        .eq('agent_id', this.agent.id);
+      // Fetch call records and SMS messages in parallel
+      const [callsResult, msgsResult] = await Promise.all([
+        supabase
+          .from('call_records')
+          .select('id, direction, duration_seconds, call_successful, status, disposition, user_sentiment, started_at, caller_number, service_number, contact_phone')
+          .eq('agent_id', this.agent.id)
+          .order('started_at', { ascending: false })
+          .limit(500),
+        supabase
+          .from('sms_messages')
+          .select('id, direction, status, sentiment, sent_at')
+          .eq('agent_id', this.agent.id)
+          .order('sent_at', { ascending: false })
+          .limit(500)
+      ]);
 
-      // Get message count
-      const { count: msgCount } = await supabase
-        .from('sms_messages')
-        .select('*', { count: 'exact', head: true })
-        .eq('agent_id', this.agent.id);
+      const calls = callsResult.data || [];
+      const messages = msgsResult.data || [];
 
-      // Update UI
-      const callsEl = document.getElementById('stat-calls');
-      const msgsEl = document.getElementById('stat-messages');
-      if (callsEl) callsEl.textContent = callCount || 0;
-      if (msgsEl) msgsEl.textContent = msgCount || 0;
+      // --- Summary Cards ---
+      const totalCalls = calls.length;
+      const totalMessages = messages.length;
 
-      // These would need more complex queries
-      const durationEl = document.getElementById('stat-duration');
-      const successEl = document.getElementById('stat-success');
-      if (durationEl) durationEl.textContent = '--';
-      if (successEl) successEl.textContent = '--';
+      const durationsWithValues = calls.filter(c => c.duration_seconds && c.duration_seconds > 0);
+      const avgDuration = durationsWithValues.length > 0
+        ? durationsWithValues.reduce((sum, c) => sum + c.duration_seconds, 0) / durationsWithValues.length
+        : 0;
+
+      const successfulCalls = calls.filter(c => c.call_successful === true || (c.status && c.status !== 'failed'));
+      const successRate = totalCalls > 0 ? Math.round((successfulCalls.length / totalCalls) * 100) : 0;
+
+      const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+
+      setText('stat-calls', totalCalls.toLocaleString());
+      setText('stat-messages', totalMessages.toLocaleString());
+      setText('stat-duration', this.formatAgentDuration(avgDuration));
+      setText('stat-success', totalCalls > 0 ? `${successRate}%` : '--');
+
+      // --- Calls Panel ---
+      const callsInbound = calls.filter(c => c.direction === 'inbound').length;
+      const callsOutbound = calls.filter(c => c.direction === 'outbound').length;
+      const now = new Date();
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const callsThisMonth = calls.filter(c => new Date(c.started_at) >= monthStart).length;
+      const totalMinutes = Math.round(calls.reduce((sum, c) => sum + (c.duration_seconds || 0), 0) / 60);
+
+      setText('stat-calls-inbound', callsInbound.toLocaleString());
+      setText('stat-calls-outbound', callsOutbound.toLocaleString());
+      setText('stat-calls-month', callsThisMonth.toLocaleString());
+      setText('stat-calls-minutes', totalMinutes.toLocaleString());
+
+      // --- Messages Panel ---
+      const msgsInbound = messages.filter(m => m.direction === 'inbound').length;
+      const msgsOutbound = messages.filter(m => m.direction === 'outbound').length;
+      const msgsThisMonth = messages.filter(m => new Date(m.sent_at) >= monthStart).length;
+      const deliveredMsgs = messages.filter(m => m.status === 'delivered' || m.status === 'sent');
+      const deliveryRate = messages.length > 0 ? Math.round((deliveredMsgs.length / messages.length) * 100) : 0;
+
+      setText('stat-msgs-inbound', msgsInbound.toLocaleString());
+      setText('stat-msgs-outbound', msgsOutbound.toLocaleString());
+      setText('stat-msgs-month', msgsThisMonth.toLocaleString());
+      setText('stat-msgs-delivery', messages.length > 0 ? `${deliveryRate}%` : '--');
+
+      // --- Disposition Breakdown ---
+      const dispositionCounts = {};
+      calls.forEach(c => {
+        const d = c.disposition || 'unknown';
+        dispositionCounts[d] = (dispositionCounts[d] || 0) + 1;
+      });
+      this.renderBreakdownBars('disposition-breakdown', dispositionCounts, totalCalls, {
+        'answered_by_pat': { label: 'Answered', color: '#10b981' },
+        'transferred': { label: 'Transferred', color: '#6366f1' },
+        'voicemail': { label: 'Voicemail', color: '#f59e0b' },
+        'user_hung_up': { label: 'User Hung Up', color: '#8b5cf6' },
+        'agent_hung_up': { label: 'Agent Hung Up', color: '#64748b' },
+        'failed': { label: 'Failed', color: '#ef4444' },
+        'no_answer': { label: 'No Answer', color: '#94a3b8' },
+        'completed': { label: 'Completed', color: '#10b981' },
+        'unknown': { label: 'Unknown', color: '#94a3b8' }
+      });
+
+      // --- Sentiment Breakdown ---
+      const sentimentCounts = {};
+      calls.forEach(c => {
+        const s = (c.user_sentiment || 'unknown').toLowerCase();
+        sentimentCounts[s] = (sentimentCounts[s] || 0) + 1;
+      });
+      this.renderBreakdownBars('sentiment-breakdown', sentimentCounts, totalCalls, {
+        'positive': { label: 'Positive', color: '#10b981' },
+        'neutral': { label: 'Neutral', color: '#64748b' },
+        'negative': { label: 'Negative', color: '#ef4444' },
+        'unknown': { label: 'Unknown', color: '#94a3b8' }
+      });
+
+      // --- Call Volume Chart ---
+      await this.renderAgentCallChart(calls);
+
+      // --- Recent Calls Table ---
+      this.renderRecentCallsTable(calls.slice(0, 20));
+
     } catch (err) {
       console.error('Error loading analytics:', err);
     }
+  }
+
+  formatAgentDuration(seconds) {
+    if (!seconds || seconds === 0) return '0s';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.round(seconds % 60);
+    if (mins === 0) return `${secs}s`;
+    return `${mins}m ${secs}s`;
+  }
+
+  renderBreakdownBars(containerId, counts, total, config) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+
+    if (sorted.length === 0 || total === 0) {
+      container.innerHTML = '<div class="aa-breakdown-empty">No data yet</div>';
+      return;
+    }
+
+    container.innerHTML = sorted.map(([key, count]) => {
+      const cfg = config[key] || { label: key, color: '#94a3b8' };
+      const pct = Math.round((count / total) * 100);
+      return `
+        <div class="aa-bar-row">
+          <div class="aa-bar-header">
+            <span class="aa-bar-label">${cfg.label}</span>
+            <span class="aa-bar-value">${count} (${pct}%)</span>
+          </div>
+          <div class="aa-bar-track">
+            <div class="aa-bar-fill" style="width: ${pct}%; background: ${cfg.color};"></div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  async renderAgentCallChart(calls) {
+    // Load Chart.js if needed
+    if (!window.Chart) {
+      try {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = 'https://cdn.jsdelivr.net/npm/chart.js';
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      } catch (e) {
+        console.error('Failed to load Chart.js:', e);
+        return;
+      }
+    }
+
+    const canvas = document.getElementById('agent-calls-chart');
+    if (!canvas) return;
+
+    // Build daily counts for last 30 days
+    const labels = [];
+    const today = new Date();
+    for (let i = 29; i >= 0; i--) {
+      const date = new Date(today);
+      date.setDate(date.getDate() - i);
+      labels.push(date.toISOString().split('T')[0]);
+    }
+
+    const dailyCounts = {};
+    calls.forEach(c => {
+      if (!c.started_at) return;
+      const day = new Date(c.started_at).toISOString().split('T')[0];
+      dailyCounts[day] = (dailyCounts[day] || 0) + 1;
+    });
+
+    const chartData = labels.map(d => dailyCounts[d] || 0);
+
+    new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          data: chartData,
+          backgroundColor: 'rgba(99, 102, 241, 0.8)',
+          borderRadius: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: {
+            display: true,
+            grid: { display: false },
+            ticks: {
+              maxTicksLimit: 7,
+              callback: function(val, index) {
+                const date = new Date(labels[index]);
+                return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+              }
+            }
+          },
+          y: {
+            display: true,
+            beginAtZero: true,
+            grid: { color: 'rgba(0,0,0,0.05)' },
+            ticks: { stepSize: 1 }
+          }
+        }
+      }
+    });
+  }
+
+  renderRecentCallsTable(calls) {
+    const container = document.getElementById('recent-calls-container');
+    if (!container) return;
+
+    if (calls.length === 0) {
+      container.innerHTML = '<div class="aa-breakdown-empty">No calls recorded yet</div>';
+      return;
+    }
+
+    const formatDisp = (d) => {
+      const map = {
+        'user_hung_up': 'User Hung Up',
+        'agent_hung_up': 'Agent Hung Up',
+        'completed': 'Completed',
+        'failed': 'Failed',
+        'no_answer': 'No Answer',
+        'voicemail': 'Voicemail',
+        'transferred': 'Transferred',
+        'answered_by_pat': 'Answered'
+      };
+      return map[d?.toLowerCase()] || d || '--';
+    };
+
+    const formatSentiment = (s) => {
+      if (!s || s === 'unknown') return '--';
+      return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+    };
+
+    const sentimentClass = (s) => {
+      if (!s) return '';
+      const lower = s.toLowerCase();
+      if (lower === 'positive') return 'positive';
+      if (lower === 'negative') return 'negative';
+      if (lower === 'neutral') return 'neutral';
+      return '';
+    };
+
+    container.innerHTML = `
+      <div class="aa-table-wrapper">
+        <table class="aa-calls-table">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>From / To</th>
+              <th>Dir</th>
+              <th>Duration</th>
+              <th>Disposition</th>
+              <th>Sentiment</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${calls.map(c => {
+              const phone = c.direction === 'inbound' ? (c.caller_number || '--') : (c.contact_phone || '--');
+              const dur = c.duration_seconds ? this.formatAgentDuration(c.duration_seconds) : '--';
+              const time = c.started_at ? new Date(c.started_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) : '--';
+              return `
+                <tr class="aa-call-row" data-call-id="${c.id}">
+                  <td>${time}</td>
+                  <td>${phone}</td>
+                  <td><span class="direction-badge ${c.direction || ''}">${c.direction || '--'}</span></td>
+                  <td>${dur}</td>
+                  <td>${formatDisp(c.disposition)}</td>
+                  <td><span class="sentiment-badge ${sentimentClass(c.user_sentiment)}">${formatSentiment(c.user_sentiment)}</span></td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    // Attach click handlers for rows → navigate to inbox
+    container.querySelectorAll('.aa-call-row').forEach(row => {
+      row.style.cursor = 'pointer';
+      row.addEventListener('click', () => {
+        const callId = row.dataset.callId;
+        if (callId) navigateTo(`/inbox?call=${callId}`);
+      });
+    });
   }
 
   scheduleAutoSave(updates) {
@@ -7411,31 +7763,215 @@ THIS IS AN OUTBOUND CALL:
         flex: 1;
       }
 
-      .analytics-grid {
+      /* Agent Analytics */
+      .agent-analytics .analytics-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
         gap: 1rem;
       }
 
-      .analytics-card {
-        background: var(--bg-secondary);
-        border-radius: var(--radius-md);
-        padding: 1rem;
-        text-align: center;
+      .agent-analytics .analytics-grid-4 {
+        grid-template-columns: repeat(4, 1fr);
       }
 
-      .analytics-label {
-        display: block;
-        font-size: 0.8rem;
+      .agent-analytics .analytics-grid-2 {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .agent-analytics .analytics-card {
+        background: var(--bg-primary);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-lg);
+        padding: 1.25rem;
+      }
+
+      .agent-analytics .analytics-card-value {
+        font-size: 1.75rem;
+        font-weight: 700;
+        color: var(--text-primary);
+        line-height: 1.2;
+      }
+
+      .agent-analytics .analytics-card-label {
+        font-size: 0.875rem;
         color: var(--text-secondary);
-        margin-bottom: 0.5rem;
+        margin-top: 0.25rem;
       }
 
-      .analytics-value {
-        display: block;
-        font-size: 1.5rem;
+      .agent-analytics .analytics-panel {
+        background: var(--bg-primary);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-lg);
+        padding: 1.25rem;
+      }
+
+      .agent-analytics .analytics-panel h3 {
+        font-size: 1rem;
+        font-weight: 600;
+        margin-bottom: 1rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .agent-analytics .analytics-stats {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1rem;
+      }
+
+      .agent-analytics .analytics-stat {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .agent-analytics .analytics-stat-value {
+        font-size: 1.25rem;
         font-weight: 600;
         color: var(--text-primary);
+      }
+
+      .agent-analytics .analytics-stat-label {
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      .aa-chart-container {
+        height: 200px;
+        margin-top: 0.5rem;
+      }
+
+      .aa-breakdown-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+
+      .aa-breakdown-empty {
+        text-align: center;
+        padding: 1.5rem;
+        color: var(--text-secondary);
+        font-size: 0.875rem;
+      }
+
+      .aa-bar-row {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+      }
+
+      .aa-bar-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .aa-bar-label {
+        font-size: 0.875rem;
+        color: var(--text-primary);
+      }
+
+      .aa-bar-value {
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+      }
+
+      .aa-bar-track {
+        height: 6px;
+        background: var(--bg-secondary);
+        border-radius: 3px;
+        overflow: hidden;
+      }
+
+      .aa-bar-fill {
+        height: 100%;
+        border-radius: 3px;
+        transition: width 0.4s ease;
+      }
+
+      .aa-recent-calls-panel {
+        padding: 1.25rem;
+      }
+
+      .aa-table-wrapper {
+        overflow-x: auto;
+        margin-top: 0.5rem;
+      }
+
+      .aa-calls-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.875rem;
+      }
+
+      .aa-calls-table th,
+      .aa-calls-table td {
+        padding: 0.625rem 0.75rem;
+        text-align: left;
+        white-space: nowrap;
+      }
+
+      .aa-calls-table th {
+        font-weight: 600;
+        color: var(--text-secondary);
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        border-bottom: 1px solid var(--border-color);
+      }
+
+      .aa-calls-table td {
+        border-bottom: 1px solid var(--border-color);
+      }
+
+      .aa-calls-table tbody tr:hover {
+        background: var(--bg-secondary);
+      }
+
+      .aa-calls-table tbody tr:last-child td {
+        border-bottom: none;
+      }
+
+      .direction-badge {
+        display: inline-block;
+        padding: 0.2rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 500;
+      }
+
+      .direction-badge.inbound {
+        background: rgba(16, 185, 129, 0.1);
+        color: var(--success-color);
+      }
+
+      .direction-badge.outbound {
+        background: rgba(99, 102, 241, 0.1);
+        color: var(--primary-color);
+      }
+
+      .sentiment-badge {
+        display: inline-block;
+        padding: 0.2rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 500;
+      }
+
+      .sentiment-badge.positive {
+        background: rgba(16, 185, 129, 0.1);
+        color: var(--success-color);
+      }
+
+      .sentiment-badge.neutral {
+        background: rgba(107, 114, 128, 0.1);
+        color: var(--text-secondary);
+      }
+
+      .sentiment-badge.negative {
+        background: rgba(239, 68, 68, 0.1);
+        color: var(--error-color);
       }
 
       .placeholder-message {
@@ -8256,21 +8792,28 @@ THIS IS AN OUTBOUND CALL:
           padding: 0.6rem 0.75rem;
         }
 
-        .analytics-grid {
+        .agent-analytics .analytics-grid-4 {
           grid-template-columns: repeat(2, 1fr);
           gap: 0.75rem;
         }
 
-        .analytics-card {
-          padding: 0.75rem;
+        .agent-analytics .analytics-grid-2 {
+          grid-template-columns: 1fr;
         }
 
-        .analytics-label {
-          font-size: 0.7rem;
+        .agent-analytics .analytics-card {
+          padding: 0.875rem;
         }
 
-        .analytics-value {
-          font-size: 1.25rem;
+        .agent-analytics .analytics-card-value {
+          font-size: 1.4rem;
+        }
+
+        .aa-calls-table th:nth-child(5),
+        .aa-calls-table td:nth-child(5),
+        .aa-calls-table th:nth-child(6),
+        .aa-calls-table td:nth-child(6) {
+          display: none;
         }
 
         .voice-modal {
