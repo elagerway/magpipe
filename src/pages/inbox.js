@@ -1993,8 +1993,12 @@ export default class InboxPage {
           // Pending if: status is pending_sync, OR no valid URL, OR no transcript
           if (rec.status === 'pending_sync') return true;
           const hasValidUrl = rec.url && rec.url.includes('supabase.co');
-          const hasTranscript = !!rec.transcript;
-          return !hasValidUrl || !hasTranscript;
+          if (!hasValidUrl) return true;
+          // Complete if: has transcript (even empty string means Deepgram checked), OR duration too short
+          const recDuration = parseInt(rec.duration) || 0;
+          if (recDuration < 3) return false;
+          if (rec.transcript !== undefined && rec.transcript !== null) return false;
+          return true;
         });
 
         // Re-render if this call is currently selected
@@ -2179,7 +2183,8 @@ export default class InboxPage {
         rec.note === 'fallback_signalwire_url'
       );
       const isSyncing = rec.status === 'pending_sync' || !hasValidUrl;
-      const needsTranscript = !rec.transcript && hasValidUrl;
+      // transcript: undefined/null = not yet attempted, "" = no speech detected (complete)
+      const needsTranscript = (rec.transcript === undefined || rec.transcript === null) && hasValidUrl;
 
       const syncingIndicator = (isSyncing || needsTranscript) ? `
         <div style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem; background: var(--bg-secondary); border-radius: 6px; margin-top: 0.5rem;">
@@ -2569,8 +2574,13 @@ export default class InboxPage {
     return recordings.some(rec => {
       if (rec.status === 'pending_sync') return true;
       const hasValidUrl = rec.url && rec.url.includes('supabase.co');
-      const hasTranscript = !!rec.transcript;
-      return !hasValidUrl || !hasTranscript;
+      if (!hasValidUrl) return true;
+      // Complete if: has transcript (even empty string means Deepgram checked), OR duration too short for speech
+      const recDuration = parseInt(rec.duration) || 0;
+      if (recDuration < 3) return false;
+      // transcript is undefined/null = not yet attempted, empty string = attempted but no speech
+      if (rec.transcript !== undefined && rec.transcript !== null) return false;
+      return true;
     });
   }
 
