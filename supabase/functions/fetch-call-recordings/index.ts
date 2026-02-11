@@ -325,16 +325,21 @@ Deno.serve(async (req) => {
           status: isUpdate ? 'updated' : 'added'
         })
 
-        // Transcribe asynchronously
-        transcribeRecording(
-          audioBlob,
-          call_record_id,
-          label,
-          swRec.sid,
-          agentName,
-          callRecord.direction || 'inbound',
-          supabase
-        ).catch(err => console.error('Transcription error:', err))
+        // Transcribe asynchronously (skip if too short for meaningful speech)
+        const recDuration = parseInt(swRec.duration) || 0
+        if (recDuration < 3) {
+          console.log(`⏭️ Skipping transcription for ${label}: duration ${recDuration}s (too short for speech)`)
+        } else {
+          transcribeRecording(
+            audioBlob,
+            call_record_id,
+            label,
+            swRec.sid,
+            agentName,
+            callRecord.direction || 'inbound',
+            supabase
+          ).catch(err => console.error('Transcription error:', err))
+        }
 
       } catch (recError: any) {
         console.error(`Error processing recording ${swRec.sid}:`, recError)

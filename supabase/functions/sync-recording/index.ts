@@ -71,8 +71,10 @@ Deno.serve(async (req) => {
     const needsTranscription = recordings
       .map((rec: any, idx: number) => ({ ...rec, _index: idx }))
       .filter((rec: any) => {
-        // Has Supabase URL but no transcript
-        return rec.url && rec.url.includes('supabase.co') && !rec.transcript;
+        // Has Supabase URL but transcript not yet attempted
+        // transcript: undefined/null = not attempted, "" = no speech detected (skip)
+        if (rec.transcript !== undefined && rec.transcript !== null) return false;
+        return rec.url && rec.url.includes('supabase.co');
       });
 
     if (pendingRecordings.length === 0 && needsTranscription.length === 0) {
@@ -189,24 +191,34 @@ Deno.serve(async (req) => {
           console.error('Upload error:', uploadError);
         }
 
-        // Transcribe with Deepgram
+        // Transcribe with Deepgram (skip if recording too short for meaningful speech)
         let transcript = '';
-        try {
-          transcript = await transcribeAudio(
-            audioBlob,
-            agentName,
-            callRecord.direction || 'inbound'
-          );
-          console.log(`✅ Transcribed: ${transcript.substring(0, 80)}...`);
-        } catch (err) {
-          console.error('Transcription error:', err);
+        const recDuration = parseInt(rec.duration) || 0;
+        if (recDuration < 3) {
+          console.log(`⏭️ Skipping transcription for ${label}: duration ${recDuration}s (too short for speech)`);
+        } else {
+          try {
+            transcript = await transcribeAudio(
+              audioBlob,
+              agentName,
+              callRecord.direction || 'inbound'
+            );
+            if (transcript) {
+              console.log(`✅ Transcribed: ${transcript.substring(0, 80)}...`);
+            } else {
+              console.log(`⏭️ No speech detected in ${label} recording`);
+            }
+          } catch (err) {
+            console.error('Transcription error:', err);
+          }
         }
 
         // Update the recording entry
+        // transcript: string = speech found, "" = no speech detected, undefined = not attempted
         updatedRecordings[idx] = {
           ...updatedRecordings[idx],
           url: publicRecordingUrl,
-          transcript: transcript || undefined,
+          transcript: transcript !== undefined ? transcript : undefined,
           status: 'synced',
         };
 
@@ -227,6 +239,13 @@ Deno.serve(async (req) => {
     for (const rec of needsTranscription) {
       const idx = rec._index;
       const label = rec.label || 'main';
+
+      // Skip if recording too short for meaningful speech
+      const recDuration = parseInt(rec.duration) || 0;
+      if (recDuration < 3) {
+        console.log(`⏭️ Skipping transcription for ${label}: duration ${recDuration}s (too short for speech)`);
+        continue;
+      }
 
       console.log(`🎤 Transcribing ${label} (already synced)...`);
 
@@ -249,24 +268,26 @@ Deno.serve(async (req) => {
             agentName,
             callRecord.direction || 'inbound'
           );
-          console.log(`✅ Transcribed: ${transcript.substring(0, 80)}...`);
+          if (transcript) {
+            console.log(`✅ Transcribed: ${transcript.substring(0, 80)}...`);
+          } else {
+            console.log(`⏭️ No speech detected in ${label} recording`);
+          }
         } catch (err) {
           console.error('Transcription error:', err);
         }
 
-        if (transcript) {
-          // Update the recording entry with transcript
-          updatedRecordings[idx] = {
-            ...updatedRecordings[idx],
-            transcript,
-          };
+        // Update recording entry (even empty string = no speech detected, prevents retries)
+        updatedRecordings[idx] = {
+          ...updatedRecordings[idx],
+          transcript: transcript !== undefined ? transcript : '',
+        };
 
-          results.push({
-            index: idx,
-            status: 'transcribed',
-            has_transcript: true
-          });
-        }
+        results.push({
+          index: idx,
+          status: 'transcribed',
+          has_transcript: !!transcript
+        });
       } catch (recError: any) {
         console.error(`Error transcribing recording ${idx}:`, recError);
         results.push({ index: idx, status: 'error', error: recError.message });
