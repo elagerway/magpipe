@@ -136,9 +136,43 @@ export default class InboxPage {
       this.lastFetchTime = now;
     }
 
-    // Handle initial selection
+    // Check for deep-link parameters in URL (take priority over default selection)
+    const urlParams = new URLSearchParams(window.location.search);
+    const deepLinkCallId = urlParams.get('call');
+    const deepLinkSmsPhone = urlParams.get('sms');
+    const deepLinkSmsService = urlParams.get('service');
+    const deepLinkContact = urlParams.get('contact');
+
+    if (deepLinkCallId) {
+      window.history.replaceState({}, '', '/inbox');
+      const callConv = this.conversations.find(c => c.type === 'call' && c.callId === deepLinkCallId);
+      if (callConv) {
+        this.selectedCallId = deepLinkCallId;
+        this.selectedContact = null;
+        this.selectedServiceNumber = null;
+        this.selectedChatSessionId = null;
+      }
+    } else if (deepLinkSmsPhone) {
+      window.history.replaceState({}, '', '/inbox');
+      const smsConv = this.conversations.find(c => c.type === 'sms' && c.phone === deepLinkSmsPhone && (!deepLinkSmsService || c.serviceNumber === deepLinkSmsService));
+      if (smsConv) {
+        this.selectedContact = smsConv.phone;
+        this.selectedServiceNumber = smsConv.serviceNumber;
+        this.selectedCallId = null;
+        this.selectedChatSessionId = null;
+      }
+    } else if (deepLinkContact) {
+      window.history.replaceState({}, '', '/inbox');
+      // Defer to afterRender for openNewConversation (needs DOM)
+      this._pendingContactOpen = deepLinkContact;
+    }
+
+    // Handle initial selection (skip if deep-link already set selection)
+    const hasDeepLink = deepLinkCallId || deepLinkSmsPhone;
     const isMobile = window.innerWidth <= 768;
-    if (isMobile) {
+    if (hasDeepLink) {
+      // Deep-link already set the selection above
+    } else if (isMobile) {
       // Clear selection on mobile (no item should be highlighted on first view)
       this.selectedContact = null;
       this.selectedServiceNumber = null;
@@ -460,13 +494,10 @@ export default class InboxPage {
     // Expose showCallInterface globally for phone nav button
     window.showDialpad = () => this.showCallInterface();
 
-    // Check for contact parameter in URL (e.g., /inbox?contact=+16045551234)
-    const urlParams = new URLSearchParams(window.location.search);
-    const contactNumber = urlParams.get('contact');
-    if (contactNumber) {
-      // Clear the URL parameter without reloading
-      window.history.replaceState({}, '', '/inbox');
-      // Open new conversation with this contact
+    // Handle deferred contact open from deep-link (needs DOM to be ready)
+    if (this._pendingContactOpen) {
+      const contactNumber = this._pendingContactOpen;
+      this._pendingContactOpen = null;
       this.openNewConversation(contactNumber);
     }
   }
