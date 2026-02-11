@@ -171,7 +171,7 @@ export default class InboxPage {
     const hasDeepLink = deepLinkCallId || deepLinkSmsPhone;
     const isMobile = window.innerWidth <= 768;
     if (hasDeepLink) {
-      // Deep-link already set the selection above
+      this._deepLinkUsed = true;
     } else if (isMobile) {
       // Clear selection on mobile (no item should be highlighted on first view)
       this.selectedContact = null;
@@ -499,6 +499,17 @@ export default class InboxPage {
       const contactNumber = this._pendingContactOpen;
       this._pendingContactOpen = null;
       this.openNewConversation(contactNumber);
+    }
+
+    // Scroll the deep-linked conversation into view in the sidebar
+    if (this._deepLinkUsed) {
+      this._deepLinkUsed = false;
+      requestAnimationFrame(() => {
+        const selected = document.querySelector('.conversation-item.selected');
+        if (selected) {
+          selected.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        }
+      });
     }
   }
 
