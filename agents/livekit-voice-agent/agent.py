@@ -1370,9 +1370,9 @@ def create_sms_tool(user_id: str, service_number: str, description: str = None, 
                             supabase.table("sms_messages").insert({
                                 "user_id": user_id,
                                 "direction": "outgoing",
-                                "service_number": service_number,
-                                "contact_phone": to_number,
-                                "message_body": message,
+                                "sender_number": service_number,
+                                "recipient_number": to_number,
+                                "content": message,
                                 "is_ai_generated": True,
                                 "status": "sent",
                             }).execute()
@@ -2618,10 +2618,9 @@ AFTER-HOURS CONTEXT:
         except Exception as e:
             logger.warning(f"Could not look up SMS-capable number: {e}")
 
-        # Fall back to service_number if no SMS-capable number found
+        # Do NOT fall back to service_number — it may be voice-only
         if not sms_from_number:
-            sms_from_number = service_number
-            logger.warning(f"📱 No SMS-capable number found for agent, falling back to {service_number}")
+            logger.warning(f"📱 No SMS-capable number found for agent, SMS tool disabled (service_number {service_number} may be voice-only)")
 
         if sms_from_number:
             sms_description = sms_config.get("description")
