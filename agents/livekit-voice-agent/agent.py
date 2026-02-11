@@ -365,6 +365,7 @@ Provide only the 3-sentence summary, no additional text."""
 async def get_caller_memory(caller_phone: str, user_id: str, agent_id: str, memory_config: dict) -> str:
     """Retrieve conversation memory for a caller to inject into system prompt"""
     if not caller_phone or not user_id or not agent_id:
+        logger.info(f"🧠 Memory lookup skipped - missing: phone={bool(caller_phone)}, user_id={bool(user_id)}, agent_id={bool(agent_id)}")
         return ""
 
     try:
@@ -402,20 +403,30 @@ async def get_caller_memory(caller_phone: str, user_id: str, agent_id: str, memo
             return ""
 
         ctx = context_response.data[0]
-        interaction_count = ctx.get("interaction_count", 0)
+        call_count = ctx.get("interaction_count", 0)
+        sms_count = ctx.get("sms_interaction_count", 0)
+        total_interactions = call_count + sms_count
 
-        if interaction_count == 0:
+        if total_interactions == 0:
             logger.info(f"🧠 Contact {contact_name} has no previous interactions")
             return ""
+
+        # Build interaction description
+        parts = []
+        if call_count > 0:
+            parts.append(f"{call_count} call{'s' if call_count != 1 else ''}")
+        if sms_count > 0:
+            parts.append(f"{sms_count} text{'s' if sms_count != 1 else ''}")
+        interaction_desc = ", ".join(parts)
 
         # Build memory context string based on config
         memory_parts = []
         memory_parts.append(f"## CALLER MEMORY")
-        memory_parts.append(f"You have spoken with this caller ({contact_name}) {interaction_count} time(s) before.")
+        memory_parts.append(f"This phone number has interacted {total_interactions} time(s) before ({interaction_desc}). Note: multiple people may share the same number, so always confirm who you're speaking with.")
 
         # Include summary if configured
         if memory_config.get("include_summaries", True) and ctx.get("summary"):
-            memory_parts.append(f"\nSummary of relationship: {ctx['summary']}")
+            memory_parts.append(f"\nPrevious conversation summary: {ctx['summary']}")
 
         # Include key topics if configured
         if memory_config.get("include_key_topics", True) and ctx.get("key_topics"):
@@ -429,10 +440,10 @@ async def get_caller_memory(caller_phone: str, user_id: str, agent_id: str, memo
             if isinstance(prefs, dict) and len(prefs) > 0:
                 memory_parts.append(f"\nCaller preferences: {json.dumps(prefs)}")
 
-        memory_parts.append("\nUse this context to provide personalized service. Reference past conversations naturally when relevant, but don't be creepy about it.")
+        memory_parts.append("\nUse this context to provide personalized service once the caller identifies themselves. If they mention something from a previous call, acknowledge it naturally.")
 
         memory_context = "\n".join(memory_parts)
-        logger.info(f"🧠 Loaded memory for {contact_name}: {interaction_count} interactions")
+        logger.info(f"🧠 Loaded memory for {contact_name}: {total_interactions} interactions ({interaction_desc})")
 
         return memory_context
 
@@ -515,6 +526,15 @@ async def get_semantic_context(transcript_text: str, agent_id: str, user_id: str
 
         if not similar:
             return ""
+
+        # Increment semantic_match_count for each matched memory
+        try:
+            for mem in similar:
+                mem_id = mem.get("id")
+                if mem_id:
+                    supabase.rpc("increment_semantic_match_count", {"memory_id": mem_id}).execute()
+        except Exception as inc_err:
+            logger.warning(f"Failed to increment semantic match counts: {inc_err}")
 
         # Format similar memories for injection
         context_parts = ["## SIMILAR PAST CONVERSATIONS"]
@@ -602,7 +622,7 @@ async def deduct_call_credits(user_id: str, agent_id: str, duration_seconds: int
         return False
 
 
-async def update_caller_memory(caller_phone: str, user_id: str, agent_id: str, call_summary: str, call_record_id: str, transcript_text: str, generate_embedding_flag: bool = True) -> bool:
+async def update_caller_memory(caller_phone: str, user_id: str, agent_id: str, call_summary: str, call_record_id: str, transcript_text: str, generate_embedding_flag: bool = True, direction: str = None, service_number: str = None) -> bool:
     """Update conversation memory for a caller after a call ends"""
     if not caller_phone or not user_id or not agent_id or not call_summary:
         logger.info(f"🧠 Skipping memory update - missing required data (phone={bool(caller_phone)}, user={bool(user_id)}, agent={bool(agent_id)}, summary={bool(call_summary)})")
@@ -740,7 +760,7 @@ Keep the most important information. Focus on the overall relationship and key n
                 .eq("id", existing_ctx["id"]) \
                 .execute()
 
-            logger.info(f"🧠 Updated memory for {contact_name}: now {(existing_ctx.get('interaction_count') or 0) + 1} interactions{' (with embedding)' if embedding else ''}")
+            logger.info(f"🧠 Updated memory for {contact_name} ({normalized_phone}): now {(existing_ctx.get('interaction_count') or 0) + 1} interactions{' (with embedding)' if embedding else ''}")
         else:
             # Generate embedding for new context
             embedding = None
@@ -751,12 +771,18 @@ Keep the most important information. Focus on the overall relationship and key n
             insert_data = {
                 "contact_id": contact_id,
                 "agent_id": agent_id,
+                "user_id": user_id,
+                "contact_phone": normalized_phone,
                 "summary": call_summary,
                 "key_topics": key_topics,
                 "interaction_count": 1,
                 "last_call_ids": [call_record_id] if call_record_id else [],
             }
 
+            if direction:
+                insert_data["direction"] = direction
+            if service_number:
+                insert_data["service_number"] = service_number
             if embedding:
                 insert_data["embedding"] = embedding
 
@@ -765,7 +791,7 @@ Keep the most important information. Focus on the overall relationship and key n
                 .insert(insert_data) \
                 .execute()
 
-            logger.info(f"🧠 Created new memory for {contact_name}{' (with embedding)' if embedding else ''}")
+            logger.info(f"🧠 Created new memory for {contact_name} ({normalized_phone}){' (with embedding)' if embedding else ''}")
 
         return True
 
@@ -1223,7 +1249,7 @@ def create_collect_data_tool(user_id: str):
     return collect_caller_data
 
 
-def create_end_call_tool(room_name: str, description: str = None):
+def create_end_call_tool(room_name: str, description: str = None, pre_disconnect_callback=None):
     """Create end call tool that allows the agent to hang up when appropriate"""
 
     tool_description = description or "End the phone call. Use this when the conversation is complete, the caller says goodbye, or there's nothing more to discuss."
@@ -1234,6 +1260,13 @@ def create_end_call_tool(room_name: str, description: str = None):
         logger.info(f"📞 Agent ending call for room: {room_name}")
 
         try:
+            # Save transcript and memory BEFORE deleting the room
+            if pre_disconnect_callback:
+                try:
+                    await pre_disconnect_callback()
+                except Exception as cb_err:
+                    logger.error(f"Error in pre-disconnect callback: {cb_err}")
+
             livekit_url = os.getenv("LIVEKIT_URL")
             livekit_api_key = os.getenv("LIVEKIT_API_KEY")
             livekit_api_secret = os.getenv("LIVEKIT_API_SECRET")
@@ -1294,9 +1327,15 @@ def create_sms_tool(user_id: str, service_number: str, description: str = None, 
                     }
                 ) as resp:
                     result = await resp.json()
+                    sms_status = result.get('status', 'unknown')
+                    sms_sid = result.get('sid', 'none')
+                    error_code = result.get('error_code')
+                    error_msg = result.get('error_message') or result.get('message', '')
 
-                    if resp.status == 201:
-                        logger.info(f"SMS sent successfully to {to_number}")
+                    logger.info(f"📱 SMS API response: HTTP {resp.status}, status={sms_status}, sid={sms_sid}, error_code={error_code}")
+
+                    if resp.status == 201 and not error_code:
+                        logger.info(f"✅ SMS sent to {to_number} (sid={sms_sid})")
 
                         # Save to database
                         try:
@@ -1314,8 +1353,7 @@ def create_sms_tool(user_id: str, service_number: str, description: str = None, 
 
                         return f"I've sent the text message to {to_number}."
                     else:
-                        error_msg = result.get('message', 'Unknown error')
-                        logger.error(f"SMS send failed: {error_msg}")
+                        logger.error(f"❌ SMS failed: HTTP {resp.status}, error_code={error_code}, error={error_msg}")
                         return "I had trouble sending that text message. Let me note the information instead."
 
         except Exception as e:
@@ -1768,6 +1806,7 @@ async def entrypoint(ctx: JobContext):
     call_start_time = asyncio.get_event_loop().time()
     service_number = room_metadata.get("service_number")
     caller_number = None
+    remote_party_phone = None  # Phone of the person on the other end (for memory)
     fast_path_complete = False
     user_config = None
     voice_config = None
@@ -1824,6 +1863,7 @@ async def entrypoint(ctx: JobContext):
         )
 
         logger.info(f"✅ Configs loaded - proceeding to session start")
+        remote_party_phone = contact_phone
 
         # Skip to session creation (jump past inbound logic)
         admin_check_info = None
@@ -2253,6 +2293,8 @@ THIS IS AN OUTBOUND CALL:
                 actual_caller_phone = sip_phone
                 break
 
+        remote_party_phone = actual_caller_phone
+
         # Check for reconnect context from SIP headers (e.g., after declined transfer)
         reconnect_reason = None
         transfer_target = None
@@ -2363,14 +2405,7 @@ CALL CONTEXT:
             "include_preferences": True
         }
 
-        # Get the remote party's phone number
-        # For outbound: use contact_phone (the person we're calling)
-        # For inbound: use actual_caller_phone (the person who called us)
-        if direction == "outbound":
-            memory_caller_phone = contact_phone
-        else:
-            # actual_caller_phone is set in the inbound block above
-            memory_caller_phone = locals().get('actual_caller_phone')
+        memory_caller_phone = remote_party_phone
 
         if memory_caller_phone and agent_id:
             memory_context = await get_caller_memory(memory_caller_phone, user_id, agent_id, memory_config)
@@ -2445,12 +2480,23 @@ CALL CONTEXT:
     # Add system function tools based on functions config
     functions_config = user_config.get("functions", {}) if user_config else {}
 
+    # Mutable holder for on_call_end callback and cleanup flag (set later, used by end_call tool)
+    call_end_callback = [None]
+    cleanup_state = [False]  # shared flag to prevent duplicate cleanup
+
+    async def _pre_disconnect():
+        if cleanup_state[0]:
+            return
+        cleanup_state[0] = True
+        if call_end_callback[0]:
+            await call_end_callback[0]()
+
     # End Call function (default: enabled)
     end_call_config = functions_config.get("end_call", {})
     end_call_enabled = end_call_config.get("enabled", True)  # Default enabled
     if end_call_enabled:
         end_call_description = end_call_config.get("description")
-        end_call_tool = create_end_call_tool(ctx.room.name, end_call_description)
+        end_call_tool = create_end_call_tool(ctx.room.name, end_call_description, pre_disconnect_callback=_pre_disconnect)
         custom_tools.append(end_call_tool)
         logger.info(f"📞 Registered end_call tool for room {ctx.room.name}")
 
@@ -2488,20 +2534,44 @@ CALL CONTEXT:
     # SMS function
     sms_config = functions_config.get("sms", {})
     sms_enabled = sms_config.get("enabled", False)
-    if sms_enabled and service_number:
-        sms_description = sms_config.get("description")
-        # Load SMS templates for this user
-        sms_templates = []
+    if sms_enabled:
+        # Find an SMS-capable number for this agent (may differ from the voice service_number)
+        sms_from_number = None
         try:
-            templates_result = supabase.table("sms_templates").select("name, content").eq("user_id", user_id).execute()
-            if templates_result.data:
-                sms_templates = templates_result.data
-                logger.info(f"📱 Loaded {len(sms_templates)} SMS templates")
+            agent_id_for_sms = user_config.get("id")
+            sms_numbers = supabase.table("service_numbers") \
+                .select("phone_number, capabilities") \
+                .eq("agent_id", agent_id_for_sms) \
+                .eq("is_active", True) \
+                .execute()
+            if sms_numbers.data:
+                for sn in sms_numbers.data:
+                    caps = sn.get("capabilities") or {}
+                    if caps.get("sms"):
+                        sms_from_number = sn["phone_number"]
+                        break
         except Exception as e:
-            logger.warning(f"Could not load SMS templates: {e}")
-        sms_tool = create_sms_tool(user_id, service_number, sms_description, sms_templates)
-        custom_tools.append(sms_tool)
-        logger.info(f"📱 Registered SMS tool for service number {service_number}")
+            logger.warning(f"Could not look up SMS-capable number: {e}")
+
+        # Fall back to service_number if no SMS-capable number found
+        if not sms_from_number:
+            sms_from_number = service_number
+            logger.warning(f"📱 No SMS-capable number found for agent, falling back to {service_number}")
+
+        if sms_from_number:
+            sms_description = sms_config.get("description")
+            # Load SMS templates for this user
+            sms_templates = []
+            try:
+                templates_result = supabase.table("sms_templates").select("name, content").eq("user_id", user_id).execute()
+                if templates_result.data:
+                    sms_templates = templates_result.data
+                    logger.info(f"📱 Loaded {len(sms_templates)} SMS templates")
+            except Exception as e:
+                logger.warning(f"Could not load SMS templates: {e}")
+            sms_tool = create_sms_tool(user_id, sms_from_number, sms_description, sms_templates)
+            custom_tools.append(sms_tool)
+            logger.info(f"📱 Registered SMS tool with SMS-capable number {sms_from_number}")
 
     # Booking function (get_availability + book_appointment)
     booking_config = functions_config.get("booking", {})
@@ -2755,31 +2825,7 @@ CALL CONTEXT:
                 # Update caller memory if enabled
                 if user_config and user_config.get("memory_enabled") and update_data.get("call_summary"):
                     agent_id = user_config.get("id")
-                    # Get the remote party's phone number (same logic as memory retrieval)
-                    if direction == "outbound":
-                        memory_phone = contact_phone
-                    else:
-                        # For inbound, get caller phone from SIP participant
-                        memory_phone = None
-                        for participant in ctx.room.remote_participants.values():
-                            attrs = participant.attributes
-                            sip_phone = (
-                                attrs.get("sip.remoteUri") or
-                                attrs.get("sip.from") or
-                                attrs.get("sip.caller") or
-                                participant.identity
-                            )
-                            if sip_phone:
-                                if sip_phone.startswith("sip:"):
-                                    sip_phone = sip_phone[4:]
-                                if sip_phone.startswith("sip_"):
-                                    sip_phone = sip_phone[4:]
-                                if "@" in sip_phone:
-                                    sip_phone = sip_phone.split("@")[0]
-                                if sip_phone and not sip_phone.startswith("+"):
-                                    sip_phone = "+" + sip_phone
-                                memory_phone = sip_phone
-                                break
+                    memory_phone = remote_party_phone
 
                     if memory_phone and agent_id:
                         # Generate embeddings if semantic memory is enabled
@@ -2791,7 +2837,9 @@ CALL CONTEXT:
                             call_summary=update_data["call_summary"],
                             call_record_id=call_record_id,
                             transcript_text=transcript_text,
-                            generate_embedding_flag=should_generate_embedding
+                            generate_embedding_flag=should_generate_embedding,
+                            direction=direction,
+                            service_number=service_number
                         )
                     else:
                         logger.info(f"🧠 Memory enabled but missing phone or agent_id (phone={memory_phone}, agent_id={agent_id})")
@@ -2801,20 +2849,19 @@ CALL CONTEXT:
         except Exception as e:
             logger.error(f"Error saving transcript: {e}", exc_info=True)
 
-    # Track if cleanup has been triggered to avoid duplicate saves
-    cleanup_triggered = False
+    # Wire up the end_call tool's pre-disconnect callback now that on_call_end is defined
+    call_end_callback[0] = on_call_end
 
     # Register cleanup handler for participant disconnect
     @ctx.room.on("participant_disconnected")
     def on_participant_disconnected(participant):
-        nonlocal cleanup_triggered
         logger.info(f"📞 Participant disconnected: {participant.identity}")
         logger.info(f"📝 Transcript has {len(transcript_messages)} messages before save")
 
-        if cleanup_triggered:
+        if cleanup_state[0]:
             logger.info("⚠️ Cleanup already triggered, skipping")
             return
-        cleanup_triggered = True
+        cleanup_state[0] = True
 
         # Wait a moment for any pending transcriptions to complete
         async def delayed_cleanup():
@@ -2829,13 +2876,12 @@ CALL CONTEXT:
     # Also handle room disconnection as fallback (fires when room closes)
     @ctx.room.on("disconnected")
     def on_room_disconnected():
-        nonlocal cleanup_triggered
         logger.info(f"🚪 Room disconnected event fired")
 
-        if cleanup_triggered:
+        if cleanup_state[0]:
             logger.info("⚠️ Cleanup already triggered, skipping")
             return
-        cleanup_triggered = True
+        cleanup_state[0] = True
 
         async def room_cleanup():
             logger.info("⏳ Room disconnected - saving transcript...")

@@ -25,18 +25,33 @@ export async function getAgentMemories(agentId) {
         preferences,
         relationship_notes,
         interaction_count,
+        sms_interaction_count,
+        semantic_match_count,
         last_updated,
         last_call_ids,
+        direction,
+        service_number,
+        contact_phone,
         contacts (
           id,
           name,
-          phone_number
+          phone_number,
+          avatar_url
         )
       `)
       .eq('agent_id', agentId)
       .order('last_updated', { ascending: false });
 
     if (error) { throw error; }
+
+    // Check which memories have embeddings (lightweight query)
+    const { data: embeddingRows } = await supabase
+      .from('conversation_contexts')
+      .select('id')
+      .eq('agent_id', agentId)
+      .not('embedding', 'is', null);
+
+    const embeddingIds = new Set((embeddingRows || []).map(r => r.id));
 
     return (data || []).map(entry => ({
       id: entry.id,
@@ -46,8 +61,14 @@ export async function getAgentMemories(agentId) {
       preferences: entry.preferences || {},
       relationshipNotes: entry.relationship_notes,
       interactionCount: entry.interaction_count || 0,
+      smsInteractionCount: entry.sms_interaction_count || 0,
+      semanticMatchCount: entry.semantic_match_count || 0,
       lastUpdated: entry.last_updated,
       lastCallIds: entry.last_call_ids || [],
+      direction: entry.direction,
+      serviceNumber: entry.service_number,
+      contactPhone: entry.contact_phone,
+      hasEmbedding: embeddingIds.has(entry.id),
     }));
 
   } catch (error) {
@@ -76,13 +97,15 @@ export async function getMemory(memoryId) {
         preferences,
         relationship_notes,
         interaction_count,
+        sms_interaction_count,
         last_updated,
         last_call_ids,
         created_at,
         contacts (
           id,
           name,
-          phone_number
+          phone_number,
+          avatar_url
         )
       `)
       .eq('id', memoryId)
@@ -117,6 +140,7 @@ export async function getMemory(memoryId) {
       preferences: data.preferences || {},
       relationshipNotes: data.relationship_notes,
       interactionCount: data.interaction_count || 0,
+      smsInteractionCount: data.sms_interaction_count || 0,
       lastUpdated: data.last_updated,
       createdAt: data.created_at,
       callHistory,
@@ -223,6 +247,44 @@ export async function getMemoryCount(agentId) {
   } catch (error) {
     console.error('Get memory count error:', error);
     return 0;
+  }
+}
+
+/**
+ * Search for similar memories using semantic search
+ * @param {object} params - Search parameters
+ * @param {string} params.agentId - The agent ID
+ * @param {string} [params.query] - Text query to search for
+ * @param {string} [params.memoryId] - Memory ID to find similar to
+ * @param {string} [params.excludeContactId] - Contact ID to exclude from results
+ * @returns {Promise<Array<{id: string, contact_name: string, contact_phone: string, summary: string, key_topics: string[], similarity: number}>>}
+ */
+export async function searchSimilarMemories({ agentId, query, memoryId, excludeContactId }) {
+  if (!agentId || (!query && !memoryId)) {
+    return [];
+  }
+
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error('Not authenticated');
+
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/semantic-memory-search`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ agentId, query, memoryId, excludeContactId }),
+      }
+    );
+
+    const data = await response.json();
+    return data.results || [];
+  } catch (error) {
+    console.error('Search similar memories error:', error);
+    return [];
   }
 }
 
