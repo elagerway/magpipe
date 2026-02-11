@@ -3,7 +3,7 @@
  * Handles caching, offline support, and background sync
  */
 
-const CACHE_NAME = 'pat-v18';
+const CACHE_NAME = 'pat-v19';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
