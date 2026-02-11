@@ -1396,7 +1396,6 @@ p {
 
 .conversation-item.selected {
   background: #EEF2FF;
-  border-left: 3px solid var(--primary-color);
 }
 
 .conversation-item.selected:hover {
@@ -1407,7 +1406,7 @@ p {
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.8), rgba(139, 92, 246, 0.8));
   color: white;
   display: flex;
   align-items: center;
@@ -1555,7 +1554,6 @@ p {
   align-self: flex-start;
   background: white;
   color: var(--text-primary);
-  border: 1px solid var(--border-color);
   border-bottom-left-radius: 0.375rem;
 }
 
@@ -1603,7 +1601,6 @@ p {
 
 .message-bubble.ai-message {
   background: white;
-  border: 1px solid var(--border-color);
   color: var(--text-primary);
 }
 
@@ -1617,7 +1614,7 @@ p {
 }
 
 .message-bubble.human-message {
-  border: 2px solid rgba(99, 102, 241, 0.25);
+  border: 2px solid rgba(99, 102, 241, 0.1);
 }
 
 .call-indicator {
@@ -1793,7 +1790,7 @@ p {
 
 /* Call Avatar */
 .call-avatar {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.8) 0%, rgba(139, 92, 246, 0.8) 100%);
   color: white;
   display: flex;
   align-items: center;
@@ -1806,7 +1803,7 @@ p {
 
 /* SMS Avatar */
 .sms-avatar {
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.8) 0%, rgba(139, 92, 246, 0.8) 100%);
   color: white;
   display: flex;
   align-items: center;
@@ -1819,7 +1816,7 @@ p {
 
 /* Chat Avatar */
 .chat-avatar {
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.8) 0%, rgba(139, 92, 246, 0.8) 100%);
   color: white;
   display: flex;
   align-items: center;
