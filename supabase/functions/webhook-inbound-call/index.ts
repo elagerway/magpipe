@@ -131,17 +131,25 @@ Deno.serve(async (req) => {
     if (agentConfig.calls_schedule) {
       const inSchedule = isWithinSchedule(agentConfig.calls_schedule, agentConfig.schedule_timezone)
       if (!inSchedule) {
-        console.log('Call outside scheduled hours for agent:', agentConfig.id, agentConfig.name || 'Unnamed')
-        const response = `<?xml version="1.0" encoding="UTF-8"?>
-        <Response>
-          <Say voice="alice">Hello! You've reached us outside of our business hours. Please try again during our regular hours. Goodbye.</Say>
-          <Hangup/>
-        </Response>`
-
-        return new Response(response, {
-          headers: { 'Content-Type': 'text/xml' },
-          status: 200,
-        })
+        const forwardingNumber = agentConfig.after_hours_call_forwarding
+        if (forwardingNumber) {
+          // Has forwarding number - route to LiveKit so agent can transfer
+          console.log('Call outside scheduled hours - routing to LiveKit for after-hours transfer to', forwardingNumber)
+        } else {
+          // No forwarding number - play off-duty message and hang up
+          console.log('Call outside scheduled hours, no forwarding number - playing off-duty message')
+          return new Response(
+            `<?xml version="1.0" encoding="UTF-8"?>
+            <Response>
+              <Say voice="alice">This Magpipe agent is currently off duty.</Say>
+              <Hangup/>
+            </Response>`,
+            {
+              headers: { 'Content-Type': 'text/xml' },
+              status: 200,
+            }
+          )
+        }
       }
     }
 

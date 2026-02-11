@@ -842,13 +842,23 @@ async function processAndReplySMS(
     }
 
     // Check if within texts schedule
+    let smsAfterHours = false
     if (agentConfig.texts_schedule) {
       const inSchedule = isWithinSchedule(agentConfig.texts_schedule, agentConfig.schedule_timezone)
       if (!inSchedule) {
         console.log('SMS outside scheduled hours for agent:', agentConfig.id, agentConfig.name || 'Unnamed')
-        // Send an auto-reply indicating outside business hours
-        const outsideHoursReply = "Thanks for your message! We're currently outside of our business hours. We'll get back to you during our next available time."
-        await sendSMS(userId, from, to, outsideHoursReply, supabase, false)
+        smsAfterHours = true
+
+        // If SMS forwarding number is configured, forward and auto-reply
+        const smsForwardingNumber = agentConfig.after_hours_sms_forwarding
+        if (smsForwardingNumber) {
+          console.log('Forwarding after-hours SMS to:', smsForwardingNumber)
+          const forwardBody = `After-hours SMS from ${from}: ${body}`
+          await sendSMS(userId, smsForwardingNumber, to, forwardBody, supabase, false)
+        }
+        // Send off-duty message and stop processing
+        console.log('Sending off-duty auto-reply')
+        await sendSMS(userId, from, to, 'This Magpipe agent is currently off duty.', supabase, false)
         return
       }
     }
