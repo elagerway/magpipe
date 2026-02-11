@@ -567,7 +567,21 @@ async function getChatSessions(supabase: ReturnType<typeof createClient>, userId
 }
 
 async function getCallRecords(supabase: ReturnType<typeof createClient>, userIds: string[], startDate: Date | null, endDate: Date | null) {
-  // First get call records WITHOUT the join (to avoid type mismatch)
+  // Fetch calls, SMS, and chat sessions in parallel
+  const [callRecords, smsRecords, chatRecords] = await Promise.all([
+    getCallRecordsOnly(supabase, userIds, startDate, endDate),
+    getSmsRecords(supabase, userIds, startDate, endDate),
+    getChatRecordsForTable(supabase, userIds, startDate, endDate)
+  ])
+
+  // Merge and sort by time descending
+  const allRecords = [...callRecords, ...smsRecords, ...chatRecords]
+  allRecords.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
+
+  return allRecords
+}
+
+async function getCallRecordsOnly(supabase: ReturnType<typeof createClient>, userIds: string[], startDate: Date | null, endDate: Date | null) {
   let query = supabase
     .from('call_records')
     .select(`
@@ -595,7 +609,6 @@ async function getCallRecords(supabase: ReturnType<typeof createClient>, userIds
     query = query.lte('started_at', endDate.toISOString())
   }
 
-  // Limit records - show up to 500 by default, 1000 with date filter
   query = query.limit(startDate || endDate ? 1000 : 500)
 
   const { data: records, error } = await query
@@ -624,9 +637,7 @@ async function getCallRecords(supabase: ReturnType<typeof createClient>, userIds
     }
   }
 
-  // Get costs from credit_transactions (reference_id links to call_records.id)
-  // Note: Don't use .in() with hundreds of IDs - it causes query size errors
-  // Instead, get all call transactions for these users and filter in memory
+  // Get costs from credit_transactions
   const { data: transactions } = await supabase
     .from('credit_transactions')
     .select('reference_id, amount')
@@ -637,14 +648,12 @@ async function getCallRecords(supabase: ReturnType<typeof createClient>, userIds
   if (transactions) {
     transactions.forEach(t => {
       if (t.reference_id) {
-        // Sum costs if there are multiple transactions for the same call (e.g., transfer segments)
         costMap[t.reference_id] = (costMap[t.reference_id] || 0) + Math.abs(parseFloat(t.amount) || 0)
       }
     })
   }
 
   return records.map(record => {
-    // Determine from/to based on direction
     const isInbound = record.direction === 'inbound'
     const fromNum = isInbound ? record.caller_number : record.service_number
     const toNum = isInbound ? record.service_number : (record.contact_phone || record.caller_number)
@@ -664,6 +673,94 @@ async function getCallRecords(supabase: ReturnType<typeof createClient>, userIds
       sentiment: record.user_sentiment || 'Neutral',
       cost: cost.toFixed(4),
       type: record.call_type || 'Phone'
+    }
+  })
+}
+
+async function getSmsRecords(supabase: ReturnType<typeof createClient>, userIds: string[], startDate: Date | null, endDate: Date | null) {
+  let query = supabase
+    .from('sms_messages')
+    .select('id, sent_at, sender_number, recipient_number, direction, status, sentiment, agent_id')
+    .in('user_id', userIds)
+    .order('sent_at', { ascending: false })
+
+  if (startDate) query = query.gte('sent_at', startDate.toISOString())
+  if (endDate) query = query.lte('sent_at', endDate.toISOString())
+  query = query.limit(startDate || endDate ? 1000 : 500)
+
+  const { data: messages, error } = await query
+  if (error || !messages || messages.length === 0) return []
+
+  const agentIds = [...new Set(messages.map(m => m.agent_id).filter(Boolean))]
+  let agentMap: Record<string, string> = {}
+  if (agentIds.length > 0) {
+    const { data: agents } = await supabase.from('agent_configs').select('id, name').in('id', agentIds)
+    if (agents) agentMap = Object.fromEntries(agents.map(a => [a.id, a.name]))
+  }
+
+  return messages.map(m => {
+    const isInbound = m.direction === 'inbound'
+    return {
+      id: m.id,
+      time: m.sent_at,
+      from: isInbound ? (m.sender_number || 'Unknown') : (m.recipient_number || 'Unknown'),
+      to: isInbound ? (m.recipient_number || 'Unknown') : (m.sender_number || 'Unknown'),
+      direction: m.direction || 'outbound',
+      assistant: agentMap[m.agent_id] || 'Unknown',
+      duration: '-',
+      sessionId: m.id,
+      end: m.status || 'sent',
+      status: m.status || 'sent',
+      sentiment: m.sentiment || 'Neutral',
+      cost: '0.0000',
+      type: 'SMS'
+    }
+  })
+}
+
+async function getChatRecordsForTable(supabase: ReturnType<typeof createClient>, userIds: string[], startDate: Date | null, endDate: Date | null) {
+  let query = supabase
+    .from('chat_sessions')
+    .select('id, created_at, visitor_name, visitor_id, status, last_message_at, agent_id')
+    .in('user_id', userIds)
+    .order('created_at', { ascending: false })
+
+  if (startDate) query = query.gte('created_at', startDate.toISOString())
+  if (endDate) query = query.lte('created_at', endDate.toISOString())
+  query = query.limit(startDate || endDate ? 1000 : 500)
+
+  const { data: sessions, error } = await query
+  if (error || !sessions || sessions.length === 0) return []
+
+  const agentIds = [...new Set(sessions.map(s => s.agent_id).filter(Boolean))]
+  let agentMap: Record<string, string> = {}
+  if (agentIds.length > 0) {
+    const { data: agents } = await supabase.from('agent_configs').select('id, name').in('id', agentIds)
+    if (agents) agentMap = Object.fromEntries(agents.map(a => [a.id, a.name]))
+  }
+
+  return sessions.map(s => {
+    // Compute duration from created_at to last_message_at
+    let duration = '-'
+    if (s.last_message_at && s.created_at) {
+      const secs = (new Date(s.last_message_at).getTime() - new Date(s.created_at).getTime()) / 1000
+      if (secs > 0) duration = (secs / 60).toFixed(2)
+    }
+
+    return {
+      id: s.id,
+      time: s.created_at,
+      from: s.visitor_name || s.visitor_id || 'Visitor',
+      to: agentMap[s.agent_id] || 'Unknown',
+      direction: 'inbound',
+      assistant: agentMap[s.agent_id] || 'Unknown',
+      duration,
+      sessionId: s.id,
+      end: s.status || 'Unknown',
+      status: s.status || 'Unknown',
+      sentiment: 'Neutral',
+      cost: '0.0000',
+      type: 'Web Chat'
     }
   })
 }

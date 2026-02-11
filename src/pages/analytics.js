@@ -890,20 +890,25 @@ export default class AnalyticsPage {
     const endIndex = startIndex + this.recordsPerPage;
     const pageRecords = records.slice(startIndex, endIndex);
 
-    return pageRecords.map(record => `
-      <tr>
-        <td><span class="type-badge ${(record.type || 'phone').toLowerCase()}">${record.type || 'Phone'}</span></td>
-        <td>${new Date(record.time).toLocaleString()}</td>
-        <td>${record.from || '-'}</td>
-        <td>${record.to || '-'}</td>
-        <td><span class="direction-badge ${record.direction?.toLowerCase()}">${record.direction || '-'}</span></td>
-        <td>${record.assistant || '-'}</td>
-        <td>${record.duration} min</td>
-        <td>${this.formatDisposition(record.end)}</td>
-        <td><span class="sentiment-badge ${record.sentiment?.toLowerCase()}">${record.sentiment || '-'}</span></td>
-        <td>$${this.formatCost(record.cost)}</td>
-      </tr>
-    `).join('');
+    return pageRecords.map(record => {
+      const typeLower = (record.type || 'phone').toLowerCase();
+      const typeClass = typeLower === 'web chat' ? 'web' : typeLower;
+      const durationDisplay = record.duration === '-' ? '-' : `${record.duration} min`;
+      return `
+        <tr>
+          <td><span class="type-badge ${typeClass}">${record.type || 'Phone'}</span></td>
+          <td>${new Date(record.time).toLocaleString()}</td>
+          <td>${record.from || '-'}</td>
+          <td>${record.to || '-'}</td>
+          <td><span class="direction-badge ${record.direction?.toLowerCase()}">${record.direction || '-'}</span></td>
+          <td>${record.assistant || '-'}</td>
+          <td>${durationDisplay}</td>
+          <td>${this.formatDisposition(record.end)}</td>
+          <td><span class="sentiment-badge ${record.sentiment?.toLowerCase()}">${record.sentiment || '-'}</span></td>
+          <td>$${this.formatCost(record.cost)}</td>
+        </tr>
+      `;
+    }).join('');
   }
 
   renderPagination(totalRecords, position = 'bottom') {
