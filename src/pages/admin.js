@@ -35,7 +35,7 @@ export default class AdminPage {
       .single();
 
     if (!profile || (profile.role !== 'admin' && profile.role !== 'support' && profile.role !== 'god')) {
-      navigateTo('/agent');
+      navigateTo('/inbox');
       return;
     }
 
@@ -52,7 +52,7 @@ export default class AdminPage {
         <!-- Header -->
         <header class="admin-header">
           <div class="admin-header-left">
-            <button class="btn btn-icon" onclick="navigateTo('/agent')" title="Back to Agent">
+            <button class="btn btn-icon" onclick="navigateTo('/inbox')" title="Back">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M19 12H5M12 19l-7-7 7-7"/>
               </svg>

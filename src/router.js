@@ -204,7 +204,7 @@ export class Router {
 
         if (!profile || !route.requiredRoles.includes(profile.role)) {
           // User doesn't have required role, redirect to agent
-          this.navigate('/agent', true);
+          this.navigate('/inbox', true);
           return;
         }
       }
