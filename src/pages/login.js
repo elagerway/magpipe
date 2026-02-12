@@ -6,6 +6,7 @@ import { User } from '../models/User.js';
 import { supabase } from '../lib/supabase.js';
 import { renderPublicFooter, getPublicFooterStyles } from '../components/PublicFooter.js';
 import { renderPublicHeader, getPublicHeaderStyles } from '../components/PublicHeader.js';
+import { showToast } from '../lib/toast.js';
 
 export default class LoginPage {
   async render() {
@@ -44,8 +45,6 @@ export default class LoginPage {
             <div class="login-card">
               <h1>Welcome Back</h1>
               <p class="login-subtitle">Sign in to your MAGPIPE account</p>
-
-              <div id="error-message" class="hidden"></div>
 
               <!-- SSO Buttons -->
               <div class="sso-buttons">
@@ -457,9 +456,6 @@ export default class LoginPage {
   }
 
   async handleOAuthLogin(provider) {
-    const errorMessage = document.getElementById('error-message');
-    errorMessage.classList.add('hidden');
-
     try {
       const { error } = await User.signInWithOAuth(provider);
 
@@ -471,15 +467,13 @@ export default class LoginPage {
       // After successful auth, user will be redirected back to /agent
     } catch (error) {
       console.error('OAuth error:', error);
-      errorMessage.className = 'alert alert-error';
-      errorMessage.textContent = error.message || `Failed to sign in with ${provider}. Please try again.`;
+      showToast(error.message || `Failed to sign in with ${provider}. Please try again.`, 'error');
     }
   }
 
   attachEventListeners() {
     const form = document.getElementById('login-form');
     const submitBtn = document.getElementById('submit-btn');
-    const errorMessage = document.getElementById('error-message');
 
     // SSO button listeners
     document.getElementById('google-btn').addEventListener('click', async () => {
@@ -503,7 +497,6 @@ export default class LoginPage {
       // Disable form
       submitBtn.disabled = true;
       submitBtn.textContent = 'Signing in...';
-      errorMessage.classList.add('hidden');
 
       try {
         const { user, session, error } = await User.signIn(email, password);
@@ -528,8 +521,7 @@ export default class LoginPage {
         }
       } catch (error) {
         console.error('Login error:', error);
-        errorMessage.className = 'alert alert-error';
-        errorMessage.textContent = error.message || 'Failed to sign in. Please check your credentials.';
+        showToast(error.message || 'Failed to sign in. Please check your credentials.', 'error');
 
         // Re-enable form
         submitBtn.disabled = false;
@@ -566,8 +558,6 @@ export default class LoginPage {
           <p style="color: var(--text-secondary); margin: 0 0 1.5rem 0;">
             You're using a temporary password. Please set a new password to continue.
           </p>
-
-          <div id="password-change-error" class="hidden" style="margin-bottom: 1rem;"></div>
 
           <form id="password-change-form">
             <div class="form-group">
@@ -608,7 +598,6 @@ export default class LoginPage {
 
     const form = document.getElementById('password-change-form');
     const changeBtn = document.getElementById('change-password-btn');
-    const errorMessage = document.getElementById('password-change-error');
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -618,23 +607,18 @@ export default class LoginPage {
 
       // Validate passwords match
       if (newPassword !== confirmPassword) {
-        errorMessage.className = 'alert alert-error';
-        errorMessage.textContent = 'Passwords do not match';
-        errorMessage.classList.remove('hidden');
+        showToast('Passwords do not match', 'error');
         return;
       }
 
       // Validate password length
       if (newPassword.length < 8) {
-        errorMessage.className = 'alert alert-error';
-        errorMessage.textContent = 'Password must be at least 8 characters';
-        errorMessage.classList.remove('hidden');
+        showToast('Password must be at least 8 characters', 'error');
         return;
       }
 
       changeBtn.disabled = true;
       changeBtn.textContent = 'Updating...';
-      errorMessage.classList.add('hidden');
 
       try {
         // Update password in Supabase Auth
@@ -664,9 +648,7 @@ export default class LoginPage {
         }
       } catch (error) {
         console.error('Password change error:', error);
-        errorMessage.className = 'alert alert-error';
-        errorMessage.textContent = error.message || 'Failed to update password. Please try again.';
-        errorMessage.classList.remove('hidden');
+        showToast(error.message || 'Failed to update password. Please try again.', 'error');
         changeBtn.disabled = false;
         changeBtn.textContent = 'Set New Password';
       }

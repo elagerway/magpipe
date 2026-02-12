@@ -4,6 +4,7 @@
  */
 
 import { requestChange, verifyChange, hasAccessCode, isLocked } from '../services/accessCodeService.js';
+import { showToast } from '../lib/toast.js';
 
 /**
  * Create access code settings component
@@ -66,7 +67,7 @@ export function createAccessCodeSettings(container) {
 
     } catch (error) {
       console.error('Load status error:', error);
-      showError('Failed to load access code status');
+      showToast('Failed to load access code status', 'error');
     }
   }
 
@@ -185,7 +186,7 @@ export function createAccessCodeSettings(container) {
       const newCode = codeInput.value.trim();
 
       if (newCode.length < 4 || newCode.length > 20) {
-        showError('Access code must be 4-20 characters');
+        showToast('Access code must be 4-20 characters', 'error');
         return;
       }
 
@@ -203,7 +204,7 @@ export function createAccessCodeSettings(container) {
 
       } catch (error) {
         console.error('Request change error:', error);
-        showError(error.message || 'Failed to send confirmation code');
+        showToast(error.message || 'Failed to send confirmation code', 'error');
         submitBtn.disabled = false;
         submitBtn.textContent = 'Send Confirmation';
       }
@@ -291,7 +292,7 @@ export function createAccessCodeSettings(container) {
       const confirmCode = codeInput.value.trim();
 
       if (!/^[0-9]{6}$/.test(confirmCode)) {
-        showError('Confirmation code must be 6 digits');
+        showToast('Confirmation code must be 6 digits', 'error');
         return;
       }
 
@@ -303,7 +304,7 @@ export function createAccessCodeSettings(container) {
         const result = await verifyChange(confirmCode);
 
         // Success!
-        showSuccess(result.message);
+        showToast(result.message, 'success');
 
         // Reset state
         isChanging = false;
@@ -326,13 +327,13 @@ export function createAccessCodeSettings(container) {
             attemptsMsg.textContent = `Invalid code. ${remaining} ${remaining === 1 ? 'attempt' : 'attempts'} remaining.`;
             attemptsMsg.style.color = '#ef4444';
           } else {
-            showError('Invalid confirmation code. Please try again.');
+            showToast('Invalid confirmation code. Please try again.', 'error');
           }
         } else if (error.message.includes('Too many')) {
-          showError('Too many failed attempts. Please request a new code.');
+          showToast('Too many failed attempts. Please request a new code.', 'error');
           cancelChange();
         } else {
-          showError(error.message || 'Verification failed');
+          showToast(error.message || 'Verification failed', 'error');
         }
 
         verifyBtn.disabled = false;
@@ -360,38 +361,6 @@ export function createAccessCodeSettings(container) {
     attemptingVerify = false;
     newCodeValue = '';
     formContainer.innerHTML = '';
-  }
-
-  /**
-   * Show error message
-   */
-  function showError(message) {
-    const toast = createToast(message, 'error');
-    document.body.appendChild(toast);
-  }
-
-  /**
-   * Show success message
-   */
-  function showSuccess(message) {
-    const toast = createToast(message, 'success');
-    document.body.appendChild(toast);
-  }
-
-  /**
-   * Create toast notification
-   */
-  function createToast(message, type = 'info') {
-    const toast = document.createElement('div');
-    toast.className = `toast toast-${type}`;
-    toast.textContent = message;
-
-    setTimeout(() => {
-      toast.classList.add('fade-out');
-      setTimeout(() => toast.remove(), 300);
-    }, 5000);
-
-    return toast;
   }
 
   // Public API

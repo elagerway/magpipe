@@ -4,6 +4,7 @@
  */
 
 import { addSource, addManualSource, listSources, deleteSource, getCrawlStatus, getCrawledUrls } from '../services/knowledgeService.js';
+import { showToast } from '../lib/toast.js';
 
 /**
  * Create knowledge source manager
@@ -66,7 +67,7 @@ export function createKnowledgeSourceManager(container) {
       }
     } catch (error) {
       console.error('Load sources error:', error);
-      showError(error.message || 'Failed to load knowledge sources');
+      showToast(error.message || 'Failed to load knowledge sources', 'error');
       sources = []; // Reset to empty on error
     } finally {
       setLoading(false);
@@ -389,7 +390,7 @@ export function createKnowledgeSourceManager(container) {
         // Crawl just completed, refresh the list
         sources = newSources;
         renderSources();
-        showSuccess('Crawl completed successfully');
+        showToast('Crawl completed successfully', 'success');
       }
     }, 5000);  // Poll every 5 seconds
   }
@@ -874,9 +875,9 @@ export function createKnowledgeSourceManager(container) {
           await loadSources();
 
           if (crawlMode === 'single') {
-            showSuccess('Knowledge source added successfully');
+            showToast('Knowledge source added successfully', 'success');
           } else {
-            showSuccess(`Crawl started! Found ${result.pagesDiscovered || 0} pages to process.`);
+            showToast(`Crawl started! Found ${result.pagesDiscovered || 0} pages to process.`, 'success');
             startCrawlPolling();
           }
 
@@ -897,7 +898,7 @@ export function createKnowledgeSourceManager(container) {
 
           modal.remove();
           await loadSources();
-          showSuccess(`Knowledge source "${title}" added with ${result.chunkCount} chunks`);
+          showToast(`Knowledge source "${title}" added with ${result.chunkCount} chunks`, 'success');
 
         } else if (sourceType === 'file') {
           // File upload
@@ -943,7 +944,7 @@ export function createKnowledgeSourceManager(container) {
 
           modal.remove();
           await loadSources();
-          showSuccess(`File "${file.name}" added with ${result.chunkCount} chunks`);
+          showToast(`File "${file.name}" added with ${result.chunkCount} chunks`, 'success');
         }
 
       } catch (error) {
@@ -952,7 +953,7 @@ export function createKnowledgeSourceManager(container) {
         errorContainer.textContent = error.message || 'Failed to add knowledge source';
         errorContainer.style.display = 'block';
         // Also show toast
-        showError(error.message || 'Failed to add knowledge source');
+        showToast(error.message || 'Failed to add knowledge source', 'error');
         submitBtn.disabled = false;
         submitBtn.textContent = 'Add Source';
       }
@@ -997,11 +998,11 @@ export function createKnowledgeSourceManager(container) {
 
         modal.remove();
         await loadSources();
-        showSuccess('Knowledge source deleted');
+        showToast('Knowledge source deleted', 'success');
 
       } catch (error) {
         console.error('Delete source error:', error);
-        showError(error.message || 'Failed to delete knowledge source');
+        showToast(error.message || 'Failed to delete knowledge source', 'error');
         deleteBtn.disabled = false;
         deleteBtn.textContent = 'Delete';
       }
@@ -1046,38 +1047,6 @@ export function createKnowledgeSourceManager(container) {
     } else {
       addButton.disabled = false;
     }
-  }
-
-  /**
-   * Show error message
-   */
-  function showError(message) {
-    const toast = createToast(message, 'error');
-    document.body.appendChild(toast);
-  }
-
-  /**
-   * Show success message
-   */
-  function showSuccess(message) {
-    const toast = createToast(message, 'success');
-    document.body.appendChild(toast);
-  }
-
-  /**
-   * Create toast notification
-   */
-  function createToast(message, type = 'info') {
-    const toast = document.createElement('div');
-    toast.className = `toast toast-${type}`;
-    toast.textContent = message;
-
-    setTimeout(() => {
-      toast.classList.add('fade-out');
-      setTimeout(() => toast.remove(), 300);
-    }, 3000);
-
-    return toast;
   }
 
   /**

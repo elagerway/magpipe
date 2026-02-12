@@ -7,6 +7,7 @@ import { OutboundTemplate } from '../models/OutboundTemplate.js';
 import { getCurrentUser, supabase } from '../lib/supabase.js';
 import { renderBottomNav } from '../components/BottomNav.js';
 import { User } from '../models/index.js';
+import { showToast } from '../lib/toast.js';
 
 // ElevenLabs Voices with metadata
 const ELEVENLABS_VOICES = [
@@ -225,9 +226,6 @@ export default class AgentConfigPage {
             </p>
           ` : ''}
 
-          <div id="error-message" class="hidden" style="position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 9999; min-width: 200px; text-align: center; font-size: 0.8rem; padding: 0.4rem 0.8rem; border-left: none;"></div>
-          <div id="success-message" class="hidden" style="position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 9999; min-width: 200px; text-align: center; font-size: 0.8rem; padding: 0.4rem 0.8rem; border-left: none;"></div>
-
           <form id="config-form" style="margin-bottom: 0;">
             <div class="form-group">
               <label class="form-label" for="voice-id">Voice</label>
@@ -294,8 +292,6 @@ export default class AgentConfigPage {
                 <p class="form-help" style="margin-bottom: 1rem; font-size: 0.875rem;">
                   Record 1-2 minutes of your voice speaking naturally. Speak clearly in a quiet environment for best results.
                 </p>
-
-                <div id="voice-clone-status" class="hidden" style="margin-bottom: 1rem;"></div>
 
                 <!-- Progress Bar -->
                 <div id="clone-progress" style="display: none; margin-bottom: 1rem;">
@@ -1097,19 +1093,7 @@ export default class AgentConfigPage {
     this.renderTransferNumbers();
 
     // Show deleted message
-    const successMessage = document.getElementById('success-message');
-    if (successMessage) {
-      successMessage.className = 'alert';
-      successMessage.classList.remove('hidden');
-      successMessage.style.backgroundColor = '#fee2e2';
-      successMessage.style.color = '#991b1b';
-      successMessage.textContent = 'Deleted';
-      setTimeout(() => {
-        successMessage.classList.add('hidden');
-        successMessage.style.backgroundColor = '';
-        successMessage.style.color = '';
-      }, 2000);
-    }
+    showToast('Deleted', 'error');
   }
 
   async saveTransferNumber(index) {
@@ -1133,25 +1117,7 @@ export default class AgentConfigPage {
 
       // Only show message if user has started filling in either field
       if (transfer.label || transfer.phone_number) {
-        const successMessage = document.getElementById('success-message');
-        if (successMessage) {
-          // Clear any pending timeout to prevent "Saved" from showing
-          clearTimeout(this.successMessageTimeout);
-
-          successMessage.className = 'alert';
-          successMessage.classList.remove('hidden');
-          successMessage.style.backgroundColor = '#fee2e2';
-          successMessage.style.color = '#991b1b';
-          successMessage.style.borderColor = '#fecaca';
-          successMessage.textContent = 'Both label and phone number are required for a transfer';
-
-          this.successMessageTimeout = setTimeout(() => {
-            successMessage.classList.add('hidden');
-            successMessage.style.backgroundColor = '';
-            successMessage.style.color = '';
-            successMessage.style.borderColor = '';
-          }, 3000);
-        }
+        showToast('Both label and phone number are required for a transfer', 'error');
       }
       return;
     }
@@ -1187,11 +1153,6 @@ export default class AgentConfigPage {
       }
     }
 
-    // Show success message
-    const successMessage = document.getElementById('success-message');
-    if (successMessage) {
-      // Success message removed - saving is implied
-    }
   }
 
   // =============================================
@@ -1379,19 +1340,7 @@ export default class AgentConfigPage {
     this.renderOutboundTemplates();
 
     // Show deleted message
-    const successMessage = document.getElementById('success-message');
-    if (successMessage) {
-      successMessage.className = 'alert';
-      successMessage.classList.remove('hidden');
-      successMessage.style.backgroundColor = '#fee2e2';
-      successMessage.style.color = '#991b1b';
-      successMessage.textContent = 'Template deleted';
-      setTimeout(() => {
-        successMessage.classList.add('hidden');
-        successMessage.style.backgroundColor = '';
-        successMessage.style.color = '';
-      }, 2000);
-    }
+    showToast('Template deleted', 'error');
   }
 
   async setDefaultTemplate(index) {
@@ -1457,9 +1406,6 @@ export default class AgentConfigPage {
   async autoSave(voiceChanged = false, transferChanged = false, promptChanged = false) {
     if (this.isInitialSetup) return; // Don't auto-save during initial setup
 
-    const successMessage = document.getElementById('success-message');
-    const errorMessage = document.getElementById('error-message');
-
     try {
       const configData = {
         system_prompt: document.getElementById('adv-system-prompt').value,
@@ -1494,14 +1440,7 @@ export default class AgentConfigPage {
         this.globalAgentConfig = data;
 
         // Show success briefly
-        successMessage.className = 'alert alert-success';
-        successMessage.classList.remove('hidden');
-        successMessage.textContent = 'Saved';
-
-        clearTimeout(this.successMessageTimeout);
-        this.successMessageTimeout = setTimeout(() => {
-          successMessage.classList.add('hidden');
-        }, 1500);
+        showToast('Saved', 'success');
 
         return; // Don't continue with personal agent logic
       }
@@ -1534,9 +1473,7 @@ export default class AgentConfigPage {
 
       // If voice changed, fetch new avatar and reload
       if (voiceChanged) {
-        successMessage.className = 'alert alert-info';
-        successMessage.classList.remove('hidden');
-        successMessage.textContent = 'Updating voice...';
+        showToast('Updating voice...', 'info');
 
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
         const { data: { session } } = await supabase.auth.getSession();
@@ -1550,12 +1487,7 @@ export default class AgentConfigPage {
         });
 
         if (avatarResponse.ok) {
-          successMessage.className = 'alert alert-success';
-          successMessage.classList.remove('hidden');
-          successMessage.style.backgroundColor = '#d1fae5';
-          successMessage.style.color = '#065f46';
-          successMessage.style.borderColor = '#6ee7b7';
-          successMessage.textContent = 'Voice updated successfully';
+          showToast('Voice updated successfully', 'success');
           // Reload page after a short delay to show new avatar
           setTimeout(() => {
             window.location.reload();
@@ -1567,12 +1499,7 @@ export default class AgentConfigPage {
       // Success message removed - saving is implied
     } catch (error) {
       console.error('Auto-save error:', error);
-      errorMessage.className = 'alert alert-error';
-      errorMessage.classList.remove('hidden');
-      errorMessage.textContent = error.message || 'Failed to save';
-      setTimeout(() => {
-        errorMessage.classList.add('hidden');
-      }, 3000);
+      showToast(error.message || 'Failed to save', 'error');
     }
   }
 
@@ -1586,8 +1513,6 @@ export default class AgentConfigPage {
   attachEventListeners() {
     const form = document.getElementById('config-form');
     const submitBtn = document.getElementById('submit-btn');
-    const errorMessage = document.getElementById('error-message');
-    const successMessage = document.getElementById('success-message');
     const fetchAvatarBtn = document.getElementById('fetch-avatar-btn');
     const advancedToggle = document.getElementById('advanced-toggle');
     const advancedPanel = document.getElementById('advanced-panel');
@@ -1624,8 +1549,6 @@ export default class AgentConfigPage {
       fetchAvatarBtn.addEventListener('click', async () => {
         fetchAvatarBtn.disabled = true;
         fetchAvatarBtn.textContent = 'Setting up...';
-        errorMessage.classList.add('hidden');
-        successMessage.classList.add('hidden');
 
         try {
           const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -1643,8 +1566,7 @@ export default class AgentConfigPage {
 
           // Only create agent if it doesn't exist at all
           if (!existingConfig) {
-            successMessage.className = 'alert alert-info';
-            successMessage.textContent = 'Creating your AI assistant...';
+            showToast('Creating your AI assistant...', 'info');
 
             const defaultPrompt = `Personal AI Agent Prompt (Casual Style)
 
@@ -1694,12 +1616,10 @@ Always sound approachable, keep things simple, and update the user with a quick 
 
             console.log('Agent created:', newConfig);
 
-            successMessage.className = 'alert alert-success';
-            successMessage.textContent = 'Assistant created! Reloading...';
+            showToast('Assistant created! Reloading...', 'success');
           } else if (!existingConfig.avatar_url && existingConfig.voice_id) {
             // Agent exists but missing avatar - fetch it
-            successMessage.className = 'alert alert-info';
-            successMessage.textContent = 'Fetching avatar...';
+            showToast('Fetching avatar...', 'info');
 
             const avatarResponse = await fetch(`${supabaseUrl}/functions/v1/fetch-agent-avatar`, {
               method: 'POST',
@@ -1714,8 +1634,7 @@ Always sound approachable, keep things simple, and update the user with a quick 
               throw new Error(errorData.error || 'Failed to fetch avatar');
             }
 
-            successMessage.className = 'alert alert-success';
-            successMessage.textContent = 'Avatar fetched! Reloading...';
+            showToast('Avatar fetched! Reloading...', 'success');
           } else {
             // Agent exists with avatar - nothing to do
             throw new Error('Avatar already exists');
@@ -1727,8 +1646,7 @@ Always sound approachable, keep things simple, and update the user with a quick 
           }, 1500);
         } catch (error) {
           console.error('Error:', error);
-          errorMessage.className = 'alert alert-error';
-          errorMessage.textContent = error.message || 'Failed to set up assistant. Please try again.';
+          showToast(error.message || 'Failed to set up assistant. Please try again.', 'error');
           fetchAvatarBtn.disabled = false;
           fetchAvatarBtn.textContent = 'Fetch Avatar';
         }
@@ -2055,15 +1973,12 @@ Always sound approachable, keep things simple, and update the user with a quick 
       const validation = AgentConfig.validate(configData);
 
       if (!validation.valid) {
-        errorMessage.className = 'alert alert-error';
-        errorMessage.textContent = validation.errors.join(', ');
+        showToast(validation.errors.join(', '), 'error');
         return;
       }
 
       submitBtn.disabled = true;
       submitBtn.textContent = this.isInitialSetup ? 'Setting up...' : 'Saving...';
-      errorMessage.classList.add('hidden');
-      successMessage.classList.add('hidden');
 
       try {
         const { user } = await getCurrentUser();
@@ -2077,8 +1992,7 @@ Always sound approachable, keep things simple, and update the user with a quick 
 
           if (error) throw error;
 
-          successMessage.className = 'alert alert-success';
-          successMessage.textContent = 'Agent configured successfully! Redirecting...';
+          showToast('Agent configured successfully! Redirecting...', 'success');
 
           setTimeout(() => {
             navigateTo('/inbox');
@@ -2100,8 +2014,7 @@ Always sound approachable, keep things simple, and update the user with a quick 
           // Update local cache
           this.globalAgentConfig = data;
 
-          successMessage.className = 'alert alert-success';
-          successMessage.textContent = 'Global agent configuration saved successfully!';
+          showToast('Global agent configuration saved successfully!', 'success');
 
           submitBtn.disabled = false;
           submitBtn.textContent = 'Save Configuration';
@@ -2111,16 +2024,14 @@ Always sound approachable, keep things simple, and update the user with a quick 
 
           if (error) throw error;
 
-          successMessage.className = 'alert alert-success';
-          successMessage.textContent = 'Configuration saved successfully!';
+          showToast('Configuration saved successfully!', 'success');
 
           submitBtn.disabled = false;
           submitBtn.textContent = 'Save Configuration';
         }
       } catch (error) {
         console.error('Config error:', error);
-        errorMessage.className = 'alert alert-error';
-        errorMessage.textContent = error.message || 'Failed to save configuration. Please try again.';
+        showToast(error.message || 'Failed to save configuration. Please try again.', 'error');
 
         submitBtn.disabled = false;
         submitBtn.textContent = this.isInitialSetup ? 'Complete Setup' : 'Save Configuration';
@@ -2342,7 +2253,6 @@ Always sound approachable, keep things simple, and update the user with a quick 
     const stopBtn = document.getElementById('stop-recording-btn');
     const recordingTimer = document.getElementById('recording-timer');
     const timerDisplay = document.getElementById('timer-display');
-    const statusDiv = document.getElementById('voice-clone-status');
 
     try {
       // Request microphone permission
@@ -2372,7 +2282,6 @@ Always sound approachable, keep things simple, and update the user with a quick 
       startBtn.style.display = 'none';
       stopBtn.style.display = 'block';
       recordingTimer.style.display = 'block';
-      statusDiv.classList.add('hidden');
 
       // Start timer
       this.recordingTimer = setInterval(() => {
@@ -2389,8 +2298,7 @@ Always sound approachable, keep things simple, and update the user with a quick 
 
     } catch (error) {
       console.error('Error starting recording:', error);
-      statusDiv.className = 'alert alert-error';
-      statusDiv.textContent = 'Failed to access microphone. Please allow microphone access and try again.';
+      showToast('Failed to access microphone. Please allow microphone access and try again.', 'error');
     }
   }
 
@@ -2440,23 +2348,18 @@ Always sound approachable, keep things simple, and update the user with a quick 
 
   async submitVoiceClone() {
     const submitBtn = document.getElementById('submit-voice-btn');
-    const statusDiv = document.getElementById('voice-clone-status');
-    const errorMessage = document.getElementById('error-message');
-    const successMessage = document.getElementById('success-message');
     const progressContainer = document.getElementById('clone-progress');
     const progressBar = document.getElementById('progress-bar');
     const progressPercent = document.getElementById('progress-percent');
 
     // Check if we have either a recording or uploaded file
     if (!this.audioBlob && !this.uploadedAudioFile) {
-      statusDiv.className = 'alert alert-error';
-      statusDiv.textContent = 'No audio found. Please record or upload your voice first.';
+      showToast('No audio found. Please record or upload your voice first.', 'error');
       return;
     }
 
     submitBtn.disabled = true;
     submitBtn.textContent = 'Cloning voice...';
-    statusDiv.classList.add('hidden');
     progressContainer.style.display = 'block';
 
     // Simulate progress
@@ -2519,8 +2422,7 @@ Always sound approachable, keep things simple, and update the user with a quick 
       progressPercent.textContent = '100%';
 
       setTimeout(() => {
-        successMessage.className = 'alert alert-success';
-        successMessage.textContent = 'Voice cloned successfully! Reloading...';
+        showToast('Voice cloned successfully! Reloading...', 'success');
         progressContainer.style.display = 'none';
 
         // Reload page to show new voice in dropdown
@@ -2534,8 +2436,7 @@ Always sound approachable, keep things simple, and update the user with a quick 
       console.error('Error cloning voice:', error);
 
       progressContainer.style.display = 'none';
-      statusDiv.className = 'alert alert-error';
-      statusDiv.textContent = error.message || 'Failed to clone voice. Please try again.';
+      showToast(error.message || 'Failed to clone voice. Please try again.', 'error');
       submitBtn.disabled = false;
       submitBtn.textContent = 'Clone Voice';
     }

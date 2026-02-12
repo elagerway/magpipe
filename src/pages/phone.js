@@ -7,6 +7,7 @@ import { renderBottomNav, setPhoneNavActive } from '../components/BottomNav.js';
 import { showOutboundTemplateModal } from '../components/OutboundTemplateModal.js';
 import { User } from '../models/index.js';
 import { createExternalTrunkSettings, addExternalTrunkSettingsStyles } from '../components/ExternalTrunkSettings.js';
+import { showToast } from '../lib/toast.js';
 
 // System agent UUID for unassigned numbers
 const SYSTEM_AGENT_ID = '00000000-0000-0000-0000-000000000002';
@@ -831,12 +832,12 @@ export default class PhonePage {
         const selectedCallerId = callerIdSelect.value;
 
         if (!phoneNumber) {
-          alert('Please enter a phone number');
+          showToast('Please enter a phone number', 'warning');
           return;
         }
 
         if (!selectedCallerId) {
-          alert('No active phone number selected');
+          showToast('No active phone number selected', 'warning');
           return;
         }
 
@@ -1195,7 +1196,7 @@ export default class PhonePage {
       await this.loadServiceNumbers();
     } catch (error) {
       console.error('Error toggling number:', error);
-      alert(`Failed to update number: ${error.message}`);
+      showToast(`Failed to update number: ${error.message}`, 'error');
       // Reload to revert UI
       await this.loadServiceNumbersList();
     }
@@ -1223,7 +1224,7 @@ export default class PhonePage {
       await this.loadServiceNumbersList();
     } catch (error) {
       console.error('Error cancelling deletion:', error);
-      alert(`Failed to cancel deletion: ${error.message}`);
+      showToast(`Failed to cancel deletion: ${error.message}`, 'error');
     }
   }
 
@@ -1518,7 +1519,7 @@ export default class PhonePage {
 
       // If blocked/denied, show instructions
       if (permissionState === 'denied') {
-        alert('⚠️ Microphone is BLOCKED\n\nTo enable calling:\n\n1. Look at your browser address bar (where it shows localhost:3000)\n2. Click the camera/lock icon on the LEFT side\n3. Find "Microphone" and change it to "Allow"\n4. Refresh this page\n5. Try again');
+        showToast('Microphone is BLOCKED. Click the lock icon in the address bar, change Microphone to "Allow", then refresh this page.', 'error');
         this.updateSIPStatus('error', 'Mic blocked');
         return;
       }
@@ -1611,9 +1612,9 @@ export default class PhonePage {
       this.updateSIPStatus('error', 'Mic denied');
 
       if (error.name === 'NotAllowedError') {
-        alert('⚠️ Microphone was denied\n\nThe browser denied microphone access.\n\nTry:\n1. Click the lock/camera icon in the address bar\n2. Reset permissions for this site\n3. Refresh and try again');
+        showToast('Microphone was denied. Click the lock icon in the address bar, reset permissions, and refresh.', 'error');
       } else {
-        alert(`⚠️ Microphone error: ${error.name}\n\n${error.message}`);
+        showToast(`Microphone error: ${error.name} - ${error.message}`, 'error');
       }
     }
   }
@@ -1944,7 +1945,7 @@ export default class PhonePage {
           fromNumber = serviceNumbers[0].phone_number;
           sipCredentials = serviceNumbers[0];
         } else {
-          alert('No active service numbers found');
+          showToast('No active service numbers found', 'error');
           return;
         }
       } else {
@@ -1970,7 +1971,7 @@ export default class PhonePage {
             .single();
 
           if (!externalNumber) {
-            alert('Selected number not found or inactive');
+            showToast('Selected number not found or inactive', 'error');
             return;
           }
 
@@ -1991,7 +1992,7 @@ export default class PhonePage {
         .single();
 
       if (!userData || !userData.sip_username || !userData.sip_password) {
-        alert('SIP credentials not configured');
+        showToast('SIP credentials not configured', 'error');
         return;
       }
 
@@ -2092,7 +2093,7 @@ export default class PhonePage {
 
     } catch (error) {
       console.error('Failed to initiate call:', error);
-      alert(`Failed to initiate call: ${error.message}`);
+      showToast(`Failed to initiate call: ${error.message}`, 'error');
       this.updateCallState('idle');
       this.transformToCallButton();
     }
@@ -2146,7 +2147,7 @@ export default class PhonePage {
 
     } catch (error) {
       console.error('Failed to initiate LiveKit call:', error);
-      alert(`Failed to initiate call: ${error.message}`);
+      showToast(`Failed to initiate call: ${error.message}`, 'error');
       this.updateCallState('idle');
       this.transformToCallButton();
     }
@@ -2214,7 +2215,7 @@ export default class PhonePage {
 
     } catch (error) {
       console.error('Failed to initiate bridged call:', error);
-      alert(`Failed to initiate call: ${error.message}`);
+      showToast(`Failed to initiate call: ${error.message}`, 'error');
       this.updateCallState('idle');
       this.transformToCallButton();
     }
@@ -2287,7 +2288,7 @@ export default class PhonePage {
 
     } catch (error) {
       console.error('Failed to initiate callback call:', error);
-      alert(`Failed to initiate call: ${error.message}`);
+      showToast(`Failed to initiate call: ${error.message}`, 'error');
       this.updateCallState('idle');
       this.transformToCallButton();
     }
@@ -2367,7 +2368,7 @@ export default class PhonePage {
 
     } catch (error) {
       console.error('Failed to initiate SIP call:', error);
-      alert(`Failed to initiate call: ${error.message}`);
+      showToast(`Failed to initiate call: ${error.message}`, 'error');
       this.updateCallState('idle');
       this.transformToCallButton();
     }
@@ -2431,7 +2432,7 @@ export default class PhonePage {
 
     } catch (error) {
       console.error('Failed to initiate Twilio call:', error);
-      alert(`Failed to initiate call: ${error.message}`);
+      showToast(`Failed to initiate call: ${error.message}`, 'error');
       this.updateCallState('idle');
       this.transformToCallButton();
     }
@@ -3000,7 +3001,7 @@ export default class PhonePage {
         sipStatusText.textContent = 'Transfer failed';
         sipStatusText.style.color = '#ef4444';
       }
-      alert(`Transfer failed: ${error.message}`);
+      showToast(`Transfer failed: ${error.message}`, 'error');
 
       // Restore previous state
       setTimeout(() => {

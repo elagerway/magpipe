@@ -6,6 +6,7 @@ import { getCurrentUser, supabase } from '../lib/supabase.js';
 import { renderBottomNav, clearUnreadBadge, setPhoneNavActive, resetInboxManagedCount, markAsRead, recalculateUnreads } from '../components/BottomNav.js';
 import { markAllAsRead as markAllReadService, recalculateUnreads as refreshUnreadBadge } from '../services/unreadService.js';
 import { showDeleteConfirmModal, showAlertModal } from '../components/ConfirmModal.js';
+import { showToast } from '../lib/toast.js';
 import { User, ChatSession } from '../models/index.js';
 
 // Lazy load heavy libraries only when needed for calls
@@ -6146,7 +6147,7 @@ Examples:
     document.getElementById('add-contact-yes').addEventListener('click', async () => {
       await this.saveContactName(name, phone);
       overlay.remove();
-      this.showSavedModal();
+      showToast('Contact saved!', 'success');
     });
 
     // Close on backdrop click
@@ -6197,27 +6198,6 @@ Examples:
     } catch (err) {
       console.error('Error saving contact:', err);
     }
-  }
-
-  showSavedModal() {
-    const toast = document.createElement('div');
-    toast.style.cssText = `
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      background: var(--bg-primary);
-      color: var(--text-primary);
-      padding: 1rem 1.5rem;
-      border-radius: 8px;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-      z-index: 10002;
-      font-size: 0.9rem;
-      font-weight: 500;
-    `;
-    toast.textContent = 'Contact saved!';
-    document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 2000);
   }
 
   attachMessageInputListeners() {

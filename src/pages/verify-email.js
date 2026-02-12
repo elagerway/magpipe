@@ -3,6 +3,7 @@
  */
 
 import { User } from '../models/User.js';
+import { showToast } from '../lib/toast.js';
 
 export default class VerifyEmailPage {
   async render() {
@@ -33,9 +34,6 @@ export default class VerifyEmailPage {
               <p class="verify-subtitle">
                 We've sent a verification code to your email address. Please enter it below.
               </p>
-
-              <div id="error-message" class="hidden"></div>
-              <div id="success-message" class="hidden"></div>
 
               <form id="verify-form">
                 <div class="form-group">
@@ -286,8 +284,6 @@ export default class VerifyEmailPage {
   attachEventListeners() {
     const form = document.getElementById('verify-form');
     const submitBtn = document.getElementById('submit-btn');
-    const errorMessage = document.getElementById('error-message');
-    const successMessage = document.getElementById('success-message');
     const resendLink = document.getElementById('resend-link');
 
     form.addEventListener('submit', async (e) => {
@@ -299,8 +295,6 @@ export default class VerifyEmailPage {
       // Disable form
       submitBtn.disabled = true;
       submitBtn.textContent = 'Verifying...';
-      errorMessage.classList.add('hidden');
-      successMessage.classList.add('hidden');
 
       try {
         const { user, session, error } = await User.verifyEmail(email, code);
@@ -310,8 +304,7 @@ export default class VerifyEmailPage {
         }
 
         // Success
-        successMessage.className = 'alert alert-success';
-        successMessage.textContent = 'Email verified successfully! Redirecting...';
+        showToast('Email verified successfully! Redirecting...', 'success');
 
         // Redirect to phone verification
         setTimeout(() => {
@@ -319,8 +312,7 @@ export default class VerifyEmailPage {
         }, 1500);
       } catch (error) {
         console.error('Verification error:', error);
-        errorMessage.className = 'alert alert-error';
-        errorMessage.textContent = error.message || 'Invalid verification code. Please try again.';
+        showToast(error.message || 'Invalid verification code. Please try again.', 'error');
 
         // Re-enable form
         submitBtn.disabled = false;
@@ -334,24 +326,20 @@ export default class VerifyEmailPage {
       const email = document.getElementById('email').value;
 
       if (!email) {
-        errorMessage.className = 'alert alert-error';
-        errorMessage.textContent = 'Please enter your email address first.';
+        showToast('Please enter your email address first.', 'error');
         return;
       }
 
       resendLink.textContent = 'Sending...';
-      errorMessage.classList.add('hidden');
 
       try {
         // Supabase doesn't have a direct resend method, so we'd need to trigger another signup
         // or use a custom edge function
-        successMessage.className = 'alert alert-info';
-        successMessage.textContent = 'Verification email resent. Please check your inbox.';
+        showToast('Verification email resent. Please check your inbox.', 'info');
         resendLink.textContent = 'Resend email';
       } catch (error) {
         console.error('Resend error:', error);
-        errorMessage.className = 'alert alert-error';
-        errorMessage.textContent = 'Failed to resend email. Please try again.';
+        showToast('Failed to resend email. Please try again.', 'error');
         resendLink.textContent = 'Resend email';
       }
     });

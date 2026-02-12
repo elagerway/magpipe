@@ -10,6 +10,7 @@ import { ChatWidget } from '../models/ChatWidget.js';
 import { CustomFunction } from '../models/CustomFunction.js';
 import { SemanticMatchAction } from '../models/SemanticMatchAction.js';
 import { getAgentMemories, getMemory, updateMemory, clearMemory, searchSimilarMemories } from '../services/memoryService.js';
+import { showToast } from '../lib/toast.js';
 
 /* global navigateTo */
 
@@ -307,7 +308,7 @@ export default class AgentDetailPage {
     const calError = urlParams.get('cal_error');
     if (calError) {
       window.history.replaceState({}, '', `/agents/${this.agentId}`);
-      alert(`Cal.com connection failed: ${calError}`);
+      showToast(`Cal.com connection failed: ${calError}`, 'error');
     }
   }
 
@@ -4029,7 +4030,7 @@ THIS IS AN OUTBOUND CALL:
 
       if (error) {
         console.error('Error setting default:', error);
-        alert('Failed to set as default. Please try again.');
+        showToast('Failed to set as default. Please try again.', 'error');
         return;
       }
 
@@ -4060,7 +4061,7 @@ THIS IS AN OUTBOUND CALL:
       this.switchTab('deployment');
     } catch (err) {
       console.error('Error assigning number:', err);
-      alert('Failed to assign number. Please try again.');
+      showToast('Failed to assign number. Please try again.', 'error');
     }
   }
 
@@ -4082,7 +4083,7 @@ THIS IS AN OUTBOUND CALL:
       this.switchTab('deployment');
     } catch (err) {
       console.error('Error detaching number:', err);
-      alert('Failed to detach number. Please try again.');
+      showToast('Failed to detach number. Please try again.', 'error');
     }
   }
 
@@ -4102,7 +4103,7 @@ THIS IS AN OUTBOUND CALL:
 
       if (error) {
         console.error('Error creating widget:', error);
-        alert('Failed to create chat widget. Please try again.');
+        showToast('Failed to create chat widget. Please try again.', 'error');
         return;
       }
 
@@ -4110,7 +4111,7 @@ THIS IS AN OUTBOUND CALL:
       this.switchTab('deployment');
     } catch (err) {
       console.error('Error creating widget:', err);
-      alert('Failed to create chat widget. Please try again.');
+      showToast('Failed to create chat widget. Please try again.', 'error');
     }
   }
 
@@ -4144,7 +4145,7 @@ THIS IS AN OUTBOUND CALL:
 
           if (error) {
             console.error('Error deleting widget:', error);
-            alert('Failed to delete chat widget. Please try again.');
+            showToast('Failed to delete chat widget. Please try again.', 'error');
             return;
           }
 
@@ -4152,7 +4153,7 @@ THIS IS AN OUTBOUND CALL:
           this.switchTab('deployment');
         } catch (err) {
           console.error('Error deleting widget:', err);
-          alert('Failed to delete chat widget. Please try again.');
+          showToast('Failed to delete chat widget. Please try again.', 'error');
         }
       },
       'Delete',
@@ -4221,7 +4222,7 @@ THIS IS AN OUTBOUND CALL:
 
         if (error) {
           console.error('Error removing from portal:', error);
-          alert('Failed to remove from portal. Please try again.');
+          showToast('Failed to remove from portal. Please try again.', 'error');
           return;
         }
 
@@ -4249,7 +4250,7 @@ THIS IS AN OUTBOUND CALL:
 
         if (error) {
           console.error('Error adding to portal:', error);
-          alert('Failed to add to portal. Please try again.');
+          showToast('Failed to add to portal. Please try again.', 'error');
           return;
         }
 
@@ -4259,7 +4260,7 @@ THIS IS AN OUTBOUND CALL:
       this.switchTab('deployment');
     } catch (err) {
       console.error('Error toggling portal widget:', err);
-      alert('Failed to update portal widget. Please try again.');
+      showToast('Failed to update portal widget. Please try again.', 'error');
     }
   }
 
@@ -4523,7 +4524,7 @@ THIS IS AN OUTBOUND CALL:
       this.switchTab('deployment');
     } catch (err) {
       console.error('Error assigning numbers:', err);
-      alert('Failed to assign some numbers. Please try again.');
+      showToast('Failed to assign some numbers. Please try again.', 'error');
     }
   }
 
@@ -4655,7 +4656,7 @@ THIS IS AN OUTBOUND CALL:
 
           // If enabling mode and no event types selected, don't enable
           if (this._bookingEnablingMode && selectedIds.length === 0) {
-            alert('Please select at least one event type to enable booking.');
+            showToast('Please select at least one event type to enable booking.', 'warning');
             return;
           }
 
@@ -4714,13 +4715,13 @@ THIS IS AN OUTBOUND CALL:
               }
             } else {
               const error = await response.json();
-              alert(error.error || 'Failed to start Cal.com connection');
+              showToast(error.error || 'Failed to start Cal.com connection', 'error');
               connectBtn.disabled = false;
               connectBtn.textContent = 'Connect Cal.com';
             }
           } catch (err) {
             console.error('Error starting Cal.com OAuth:', err);
-            alert('Failed to connect to Cal.com');
+            showToast('Failed to connect to Cal.com', 'error');
             connectBtn.disabled = false;
             connectBtn.textContent = 'Connect Cal.com';
           }
@@ -5034,7 +5035,7 @@ THIS IS AN OUTBOUND CALL:
 
       // If enabling mode and no valid variables, don't enable
       if (this._extractEnablingMode && validVars.length === 0) {
-        alert('Please add at least one variable to extract to enable this function.');
+        showToast('Please add at least one variable to extract to enable this function.', 'warning');
         if (saveBtn) {
           saveBtn.disabled = false;
           saveBtn.textContent = 'Save Changes';
@@ -5093,7 +5094,7 @@ THIS IS AN OUTBOUND CALL:
       this._extractEnablingMode = false;
     } catch (err) {
       console.error('Error saving dynamic variables:', err);
-      alert('Failed to save variables. Please try again.');
+      showToast('Failed to save variables. Please try again.', 'error');
     }
   }
 
@@ -5295,7 +5296,7 @@ THIS IS AN OUTBOUND CALL:
 
       // If enabling mode and no valid templates, don't enable
       if (this._smsEnablingMode && validTemplates.length === 0) {
-        alert('Please add at least one SMS template to enable this function.');
+        showToast('Please add at least one SMS template to enable this function.', 'warning');
         if (saveBtn) {
           saveBtn.disabled = false;
           saveBtn.textContent = 'Save Changes';
@@ -5349,7 +5350,7 @@ THIS IS AN OUTBOUND CALL:
       this._smsEnablingMode = false;
     } catch (err) {
       console.error('Error saving SMS templates:', err);
-      alert('Failed to save templates. Please try again.');
+      showToast('Failed to save templates. Please try again.', 'error');
     }
   }
 
@@ -6262,25 +6263,25 @@ THIS IS AN OUTBOUND CALL:
 
     // Validation
     if (!name) {
-      alert('Function name is required');
+      showToast('Function name is required', 'error');
       return;
     }
     if (!CustomFunction.isValidName(name)) {
-      alert('Function name must be snake_case (lowercase letters, numbers, underscores only)');
+      showToast('Function name must be snake_case (lowercase letters, numbers, underscores only)', 'error');
       return;
     }
     if (!description) {
-      alert('Description is required');
+      showToast('Description is required', 'error');
       return;
     }
     if (!endpoint_url) {
-      alert('Endpoint URL is required');
+      showToast('Endpoint URL is required', 'error');
       return;
     }
     try {
       new URL(endpoint_url);
     } catch {
-      alert('Please enter a valid URL');
+      showToast('Please enter a valid URL', 'error');
       return;
     }
 
@@ -6307,9 +6308,9 @@ THIS IS AN OUTBOUND CALL:
       if (result.error) {
         console.error('Error saving custom function:', result.error);
         if (result.error.message?.includes('unique_function_name_per_agent')) {
-          alert('A function with this name already exists for this agent');
+          showToast('A function with this name already exists for this agent', 'error');
         } else {
-          alert('Failed to save function. Please try again.');
+          showToast('Failed to save function. Please try again.', 'error');
         }
         return;
       }
@@ -6331,7 +6332,7 @@ THIS IS AN OUTBOUND CALL:
       document.getElementById('custom-function-modal')?.remove();
     } catch (err) {
       console.error('Error saving custom function:', err);
-      alert('Failed to save function. Please try again.');
+      showToast('Failed to save function. Please try again.', 'error');
     }
   }
 
@@ -6345,7 +6346,7 @@ THIS IS AN OUTBOUND CALL:
           const { error } = await CustomFunction.delete(func.id);
           if (error) {
             console.error('Error deleting custom function:', error);
-            alert('Failed to delete function');
+            showToast('Failed to delete function', 'error');
             return;
           }
 
@@ -6362,7 +6363,7 @@ THIS IS AN OUTBOUND CALL:
           }
         } catch (err) {
           console.error('Error deleting custom function:', err);
-          alert('Failed to delete function');
+          showToast('Failed to delete function', 'error');
         }
       }
     });
@@ -6649,7 +6650,7 @@ THIS IS AN OUTBOUND CALL:
 
       // If enabling mode and no valid numbers, don't enable
       if (this._transferEnablingMode && validNumbers.length === 0) {
-        alert('Please add at least one transfer number to enable this function.');
+        showToast('Please add at least one transfer number to enable this function.', 'warning');
         if (saveBtn) {
           saveBtn.disabled = false;
           saveBtn.textContent = 'Save Changes';
@@ -6681,7 +6682,7 @@ THIS IS AN OUTBOUND CALL:
       this._transferEnablingMode = false;
     } catch (err) {
       console.error('Error saving transfer numbers:', err);
-      alert('Failed to save transfer numbers. Please try again.');
+      showToast('Failed to save transfer numbers. Please try again.', 'error');
     }
   }
 

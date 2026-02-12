@@ -4,6 +4,7 @@
 
 import { User } from '../models/User.js';
 import { supabase } from '../lib/supabase.js';
+import { showToast } from '../lib/toast.js';
 
 export default class ForgotPasswordPage {
   async render() {
@@ -32,9 +33,6 @@ export default class ForgotPasswordPage {
             <div class="forgot-card">
               <h1>Reset Password</h1>
               <p class="forgot-subtitle">Enter your email and we'll send you a reset link</p>
-
-              <div id="error-message" class="hidden"></div>
-              <div id="success-message" class="hidden"></div>
 
               <form id="forgot-password-form">
                 <div class="form-group">
@@ -266,8 +264,6 @@ export default class ForgotPasswordPage {
   attachEventListeners() {
     const form = document.getElementById('forgot-password-form');
     const submitBtn = document.getElementById('submit-btn');
-    const errorMessage = document.getElementById('error-message');
-    const successMessage = document.getElementById('success-message');
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -277,8 +273,6 @@ export default class ForgotPasswordPage {
       // Disable form
       submitBtn.disabled = true;
       submitBtn.textContent = 'Sending...';
-      errorMessage.classList.add('hidden');
-      successMessage.classList.add('hidden');
 
       try {
         console.log('Sending password reset email to:', email);
@@ -308,8 +302,7 @@ export default class ForgotPasswordPage {
 
         // Show success message
         console.log('Password reset email sent successfully');
-        successMessage.className = 'alert alert-success';
-        successMessage.textContent = 'Password reset link sent! Check your email.';
+        showToast('Password reset link sent! Check your email.', 'success');
 
         // Clear form
         form.reset();
@@ -319,8 +312,7 @@ export default class ForgotPasswordPage {
         submitBtn.textContent = 'Send Reset Link';
       } catch (error) {
         console.error('Password reset error:', error);
-        errorMessage.className = 'alert alert-error';
-        errorMessage.textContent = error.message || 'Failed to send reset link. Please try again.';
+        showToast(error.message || 'Failed to send reset link. Please try again.', 'error');
 
         // Re-enable form
         submitBtn.disabled = false;

@@ -6,6 +6,7 @@ import { User } from '../models/User.js';
 import { getCurrentUser, supabase } from '../lib/supabase.js';
 import { canAddPhoneNumber } from '../services/planService.js';
 import { renderBottomNav } from '../components/BottomNav.js';
+import { showToast } from '../lib/toast.js';
 
 export default class SelectNumberPage {
   constructor() {
@@ -122,8 +123,6 @@ export default class SelectNumberPage {
               Search Available Numbers
             </button>
 
-            <div id="error-message" class="hidden" style="margin-top: 1rem;"></div>
-            <div id="success-message" class="hidden" style="margin-top: 1rem;"></div>
           </div>
 
           <div id="results-section" class="hidden" style="margin-top: 2rem;">
@@ -140,23 +139,18 @@ export default class SelectNumberPage {
 
   attachEventListeners() {
     const searchBtn = document.getElementById('search-btn');
-    const errorMessage = document.getElementById('error-message');
-    const successMessage = document.getElementById('success-message');
     const resultsSection = document.getElementById('results-section');
 
     searchBtn.addEventListener('click', async () => {
       const searchQuery = document.getElementById('search-query').value;
 
       if (!searchQuery.trim()) {
-        errorMessage.className = 'alert alert-error';
-        errorMessage.textContent = 'Please enter an area code or location';
+        showToast('Please enter an area code or location', 'error');
         return;
       }
 
       searchBtn.disabled = true;
       searchBtn.textContent = 'Searching...';
-      errorMessage.classList.add('hidden');
-      successMessage.classList.add('hidden');
 
       try {
         // In production, call Supabase Edge Function to search SignalWire
@@ -164,14 +158,12 @@ export default class SelectNumberPage {
         this.availableNumbers = result.numbers || [];
 
         if (this.availableNumbers.length === 0) {
-          errorMessage.className = 'alert alert-warning';
-          errorMessage.textContent = 'No numbers found for this search. Try a different area code or location.';
+          showToast('No numbers found for this search. Try a different area code or location.', 'warning');
           resultsSection.classList.add('hidden');
         } else {
           // Show info message if fallback area codes were used
           if (result.usedFallback) {
-            successMessage.className = 'alert alert-info';
-            successMessage.textContent = `No numbers found for ${searchQuery}. Showing available numbers from nearby area codes in the same region.`;
+            showToast(`No numbers found for ${searchQuery}. Showing available numbers from nearby area codes in the same region.`, 'info');
           }
 
           this.renderNumbersList();
@@ -182,8 +174,7 @@ export default class SelectNumberPage {
         searchBtn.textContent = 'Search Available Numbers';
       } catch (error) {
         console.error('Search error:', error);
-        errorMessage.className = 'alert alert-error';
-        errorMessage.textContent = 'Failed to search for numbers. Please try again.';
+        showToast('Failed to search for numbers. Please try again.', 'error');
 
         searchBtn.disabled = false;
         searchBtn.textContent = 'Search Available Numbers';
@@ -193,8 +184,6 @@ export default class SelectNumberPage {
 
   renderNumbersList() {
     const numbersList = document.getElementById('numbers-list');
-    const errorMessage = document.getElementById('error-message');
-    const successMessage = document.getElementById('success-message');
 
     numbersList.innerHTML = this.availableNumbers
       .map(
@@ -273,8 +262,6 @@ export default class SelectNumberPage {
 
         purchaseBtn.disabled = true;
         purchaseBtn.textContent = 'Purchasing...';
-        errorMessage.classList.add('hidden');
-        successMessage.classList.add('hidden');
 
         try {
           // Provision number via SignalWire
@@ -284,8 +271,7 @@ export default class SelectNumberPage {
           const { user } = await getCurrentUser();
           await User.setServiceNumber(user.id, this.selectedNumber);
 
-          successMessage.className = 'alert alert-success';
-          successMessage.textContent = 'Number added successfully! Redirecting...';
+          showToast('Number added successfully! Redirecting...', 'success');
 
           setTimeout(() => {
             const destination = window.innerWidth > 768 ? '/phone' : '/manage-numbers';
@@ -293,8 +279,7 @@ export default class SelectNumberPage {
           }, 1500);
         } catch (error) {
           console.error('Provision error:', error);
-          errorMessage.className = 'alert alert-error';
-          errorMessage.textContent = error.message || 'Failed to provision number. Please try again.';
+          showToast(error.message || 'Failed to provision number. Please try again.', 'error');
 
           purchaseBtn.disabled = false;
           purchaseBtn.textContent = 'Purchase';

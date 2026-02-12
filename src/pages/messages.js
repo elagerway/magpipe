@@ -5,6 +5,7 @@
 import { SmsMessage } from '../models/SmsMessage.js';
 import { getCurrentUser } from '../lib/supabase.js';
 import { renderBottomNav } from '../components/BottomNav.js';
+import { showToast } from '../lib/toast.js';
 
 export default class MessagesPage {
   constructor() {
@@ -281,7 +282,7 @@ export default class MessagesPage {
       // and update message status when webhook confirms delivery
     } catch (error) {
       console.error('Send message error:', error);
-      alert('Failed to send message. Please try again.');
+      showToast('Failed to send message. Please try again.', 'error');
       replyInput.disabled = false;
     }
   }

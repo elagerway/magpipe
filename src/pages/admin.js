@@ -4,6 +4,7 @@
  */
 
 import { getCurrentUser, getCurrentSession, supabase } from '../lib/supabase.js';
+import { showToast } from '../lib/toast.js';
 
 export default class AdminPage {
   constructor() {
@@ -4590,10 +4591,10 @@ export default class AdminPage {
       await this.selectUser(userId);
       await this.loadUsers();
 
-      alert(data.message || 'User updated successfully');
+      showToast(data.message || 'User updated successfully', 'success');
     } catch (error) {
       console.error('Error updating user:', error);
-      alert('Error: ' + error.message);
+      showToast('Error: ' + error.message, 'error');
     }
   }
 
@@ -4621,7 +4622,7 @@ export default class AdminPage {
       window.open(data.url, '_blank');
     } catch (error) {
       console.error('Error impersonating user:', error);
-      alert('Error: ' + error.message);
+      showToast('Error: ' + error.message, 'error');
     }
   }
 }

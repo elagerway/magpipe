@@ -5,6 +5,7 @@
 
 import { supabase, getCurrentUser } from '../lib/supabase.js';
 import { AgentConfig } from '../models/AgentConfig.js';
+import { showToast } from '../lib/toast.js';
 import {
   initUnreadTracking as initUnreadService,
   recalculateUnreads,
@@ -1212,46 +1213,16 @@ window.submitContactForm = async function(event) {
 
     // Success - close modal and show notification
     closeContactModal();
-    showContactNotification('Message sent! We\'ll get back to you soon.', 'success');
+    showToast('Message sent! We\'ll get back to you soon.', 'success');
 
   } catch (error) {
     console.error('Error sending contact message:', error);
-    showContactNotification('Failed to send message. Please try again.', 'error');
+    showToast('Failed to send message. Please try again.', 'error');
   } finally {
     submitBtn.disabled = false;
     submitBtn.textContent = 'Send Message';
   }
 };
-
-function showContactNotification(message, type) {
-  // Create notification element
-  const notification = document.createElement('div');
-  notification.className = `contact-notification ${type}`;
-  notification.textContent = message;
-  notification.style.cssText = `
-    position: fixed;
-    bottom: 100px;
-    left: 50%;
-    transform: translateX(-50%);
-    padding: 0.75rem 1.5rem;
-    border-radius: 8px;
-    font-size: 0.875rem;
-    font-weight: 500;
-    z-index: 10001;
-    animation: slideUp 0.3s ease;
-    ${type === 'success'
-      ? 'background: #10b981; color: white;'
-      : 'background: #ef4444; color: white;'}
-  `;
-
-  document.body.appendChild(notification);
-
-  // Remove after 3 seconds
-  setTimeout(() => {
-    notification.style.animation = 'slideDown 0.3s ease';
-    setTimeout(() => notification.remove(), 300);
-  }, 3000);
-}
 
 // Upgrade modal functions
 window.openUpgradeModal = async function() {
@@ -1374,7 +1345,7 @@ ${message ? `\nAdditional Notes:\n${message}` : ''}`;
 
   } catch (error) {
     console.error('Error sending upgrade request:', error);
-    showContactNotification('Failed to send request. Please try again.', 'error');
+    showToast('Failed to send request. Please try again.', 'error');
   } finally {
     submitBtn.disabled = false;
     submitBtn.textContent = 'Send Request';

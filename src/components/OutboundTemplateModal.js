@@ -5,6 +5,7 @@
 
 import { OutboundTemplate } from '../models/OutboundTemplate.js';
 import { getCurrentUser } from '../lib/supabase.js';
+import { showToast } from '../lib/toast.js';
 
 /**
  * Create and show the outbound template modal
@@ -173,7 +174,7 @@ export function createOutboundTemplateModal(phoneNumber, onConfirm, onCancel) {
       goal = adhocGoal.value.trim();
 
       if (!purpose || !goal) {
-        alert('Please enter both purpose and goal, or select a template.');
+        showToast('Please enter both purpose and goal, or select a template.', 'warning');
         return;
       }
 
@@ -181,7 +182,7 @@ export function createOutboundTemplateModal(phoneNumber, onConfirm, onCancel) {
       if (saveCheckbox.checked) {
         const templateName = modal.querySelector('#template-name').value.trim();
         if (!templateName) {
-          alert('Please enter a name for the template.');
+          showToast('Please enter a name for the template.', 'warning');
           return;
         }
 

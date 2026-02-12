@@ -8,6 +8,7 @@ import { renderBottomNav, attachBottomNav } from '../components/BottomNav.js';
 import { createAgentCard, addAgentCardStyles } from '../components/AgentCard.js';
 import { AgentConfig } from '../models/AgentConfig.js';
 import { User } from '../models/index.js';
+import { showToast } from '../lib/toast.js';
 
 /**
  * Add styles for agents page
@@ -234,7 +235,7 @@ export default class AgentsPage {
 
       if (error) {
         console.error('Error creating agent:', error);
-        alert('Failed to create agent. Please try again.');
+        showToast('Failed to create agent. Please try again.', 'error');
         return;
       }
 
@@ -242,7 +243,7 @@ export default class AgentsPage {
       navigateTo(`/agents/${newAgent.id}`);
     } catch (err) {
       console.error('Error creating agent:', err);
-      alert('Failed to create agent. Please try again.');
+      showToast('Failed to create agent. Please try again.', 'error');
     }
   }
 
@@ -252,7 +253,7 @@ export default class AgentsPage {
 
       if (error) {
         console.error('Error deleting agent:', error);
-        alert('Failed to delete agent. Please try again.');
+        showToast('Failed to delete agent. Please try again.', 'error');
         return;
       }
 
@@ -268,7 +269,7 @@ export default class AgentsPage {
       }
     } catch (err) {
       console.error('Error deleting agent:', err);
-      alert('Failed to delete agent. Please try again.');
+      showToast('Failed to delete agent. Please try again.', 'error');
     }
   }
 
