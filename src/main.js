@@ -151,8 +151,8 @@ class App {
         // Phone not verified, redirect to phone verification
         this.router.navigate('/verify-phone');
       } else {
-        // Everything set up, go to agent
-        this.router.navigate('/agent');
+        // Everything set up, go to inbox
+        this.router.navigate('/inbox');
       }
 
       // Load portal widget if configured
