@@ -910,8 +910,21 @@ async function processAndReplySMS(
     // For SMS, use OpenAI to generate intelligent responses
     // Use SMS-specific prompt or fall back to system_prompt adapted for SMS
 
-    // SMS context suffix - explicitly tells AI this is TEXT, not voice
-    const SMS_CONTEXT_SUFFIX = `
+    // Language instructions for SMS (mirrors voice agent but adapted for text)
+    const SMS_LANGUAGE_INSTRUCTIONS: Record<string, string> = {
+      'en-US': '',
+      'multi': 'LANGUAGE: Detect the language of the incoming message and respond in the SAME language. If unclear, default to English.\n\n',
+      'fr': 'LANGUE: Tu DOIS répondre UNIQUEMENT en français.\nLANGUAGE: You MUST respond ONLY in French.\n\n',
+      'es': 'IDIOMA: Debes responder ÚNICAMENTE en español.\nLANGUAGE: You MUST respond ONLY in Spanish.\n\n',
+      'de': 'SPRACHE: Du musst AUSSCHLIESSLICH auf Deutsch antworten.\nLANGUAGE: You MUST respond ONLY in German.\n\n',
+    }
+
+    const agentLanguage = agentConfig.language || 'en-US'
+    const langPrefix = SMS_LANGUAGE_INSTRUCTIONS[agentLanguage] || ''
+
+    // Localized SMS context suffixes
+    const SMS_CONTEXT_SUFFIXES: Record<string, string> = {
+      'en-US': `
 
 IMPORTANT CONTEXT:
 - You are responding via SMS TEXT MESSAGE (not a voice call)
@@ -922,7 +935,50 @@ IMPORTANT CONTEXT:
 - ALWAYS use text-appropriate language: "text", "message", "reply", "send"
 - If they ask to talk/call, say: "I can help via text, or you can call ${to} to speak with someone"
 - This is asynchronous messaging - they may not respond immediately
-${hasExistingConversation ? '- This is an ONGOING conversation - respond naturally to continue it, do NOT give a welcome/intro message' : ''}`
+${hasExistingConversation ? '- This is an ONGOING conversation - respond naturally to continue it, do NOT give a welcome/intro message' : ''}`,
+
+      'fr': `
+
+CONTEXTE IMPORTANT:
+- Tu réponds par SMS (pas par appel vocal)
+- Le client t'envoie un MESSAGE TEXTE, pas un appel
+- Garde tes réponses BRÈVES: 1-2 phrases maximum
+- Utilise un langage décontracté et amical
+- Ne JAMAIS mentionner: "appeler", "rappeler", "parler", "appel téléphonique", "voix"
+- TOUJOURS utiliser un langage adapté au texte: "texto", "message", "répondre", "envoyer"
+- S'ils veulent parler/appeler, dis: "Je peux vous aider par texto, ou appelez le ${to} pour parler à quelqu'un"
+- C'est une messagerie asynchrone - ils ne répondront pas forcément immédiatement
+${hasExistingConversation ? '- C\'est une conversation EN COURS - réponds naturellement pour la continuer, ne donne PAS de message de bienvenue/intro' : ''}`,
+
+      'es': `
+
+CONTEXTO IMPORTANTE:
+- Estás respondiendo por SMS (no por llamada de voz)
+- El cliente te está enviando un MENSAJE DE TEXTO, no llamando
+- Mantén las respuestas BREVES: 1-2 oraciones máximo
+- Usa un lenguaje casual y amigable
+- NUNCA menciones: "llamar", "devolver la llamada", "hablar", "llamada telefónica", "voz"
+- SIEMPRE usa lenguaje apropiado para texto: "texto", "mensaje", "responder", "enviar"
+- Si quieren hablar/llamar, di: "Puedo ayudarte por texto, o llama al ${to} para hablar con alguien"
+- Es mensajería asíncrona - puede que no respondan inmediatamente
+${hasExistingConversation ? '- Esta es una conversación EN CURSO - responde naturalmente para continuarla, NO des un mensaje de bienvenida/intro' : ''}`,
+
+      'de': `
+
+WICHTIGER KONTEXT:
+- Du antwortest per SMS (nicht per Sprachanruf)
+- Der Kunde schreibt dir eine TEXTNACHRICHT, ruft nicht an
+- Halte Antworten KURZ: maximal 1-2 Sätze
+- Verwende lockere, freundliche Sprache
+- NIEMALS erwähnen: "anrufen", "zurückrufen", "sprechen", "Telefonat", "Stimme"
+- IMMER textgerechte Sprache verwenden: "SMS", "Nachricht", "antworten", "senden"
+- Wenn sie anrufen möchten, sage: "Ich kann dir per SMS helfen, oder ruf ${to} an, um mit jemandem zu sprechen"
+- Dies ist asynchrone Kommunikation - sie antworten möglicherweise nicht sofort
+${hasExistingConversation ? '- Dies ist ein LAUFENDES Gespräch - antworte natürlich, um es fortzusetzen, gib KEINE Willkommens-/Intro-Nachricht' : ''}`,
+    }
+
+    // Use localized suffix, falling back to English for 'multi' and unknown languages
+    const SMS_CONTEXT_SUFFIX = SMS_CONTEXT_SUFFIXES[agentLanguage] || SMS_CONTEXT_SUFFIXES['en-US']
 
     // Build KB context section if available
     const KB_CONTEXT_SECTION = kbContext ? `
@@ -940,8 +996,8 @@ IMPORTANT: Base your answers on the knowledge base information above. If the que
     const SEMANTIC_CONTEXT_SECTION = semanticContext ? `\n\n${semanticContext}` : ''
 
     const smsPrompt = agentConfig.system_prompt
-      ? `${agentConfig.system_prompt}${KB_CONTEXT_SECTION}${MEMORY_CONTEXT_SECTION}${SEMANTIC_CONTEXT_SECTION}${SMS_CONTEXT_SUFFIX}`
-      : `You are Maggie, a helpful AI assistant. You are responding to an SMS text message. Reply in a friendly and concise way. Keep responses brief (1-2 sentences max). Do not reference phone calls - this is a text message conversation.${KB_CONTEXT_SECTION}${MEMORY_CONTEXT_SECTION}${SEMANTIC_CONTEXT_SECTION}${SMS_CONTEXT_SUFFIX}`
+      ? `${langPrefix}${agentConfig.system_prompt}${KB_CONTEXT_SECTION}${MEMORY_CONTEXT_SECTION}${SEMANTIC_CONTEXT_SECTION}${SMS_CONTEXT_SUFFIX}`
+      : `${langPrefix}You are Maggie, a helpful AI assistant. You are responding to an SMS text message. Reply in a friendly and concise way. Keep responses brief (1-2 sentences max). Do not reference phone calls - this is a text message conversation.${KB_CONTEXT_SECTION}${MEMORY_CONTEXT_SECTION}${SEMANTIC_CONTEXT_SECTION}${SMS_CONTEXT_SUFFIX}`
 
     const systemPrompt = smsPrompt
 
