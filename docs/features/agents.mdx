@@ -12,6 +12,7 @@ AI Agents are the core of Magpipe. Each agent is a fully customizable AI assista
 ### Inbound Calls
 - Answer calls with a natural greeting
 - Engage in human-like conversation
+- Multilingual support — detect and match the caller's language
 - Answer questions using knowledge base
 - Book appointments via calendar integration
 - Transfer calls to humans when needed
@@ -29,6 +30,7 @@ AI Agents are the core of Magpipe. Each agent is a fully customizable AI assista
 ### SMS Messaging
 - Respond to inbound SMS intelligently
 - Send AI-generated replies with context
+- Multilingual support — respond in the sender's language
 - Handle opt-out requests automatically
 - Support MMS with images
 - Schedule messages for later
@@ -52,6 +54,21 @@ AI Agents are the core of Magpipe. Each agent is a fully customizable AI assista
 | **Organization** | Business name the agent represents |
 | **Owner Name** | Person's name the agent acts on behalf of |
 | **Role** | Agent's job title (e.g., "Receptionist", "Sales Rep") |
+| **Language** | Language for voice calls and SMS responses (English, Multilingual, French, Spanish, German) |
+
+### Language
+
+Set the language your agent uses for voice calls and SMS responses.
+
+| Option | Behavior |
+|--------|----------|
+| **English** | Agent responds in English (default) |
+| **Multilingual** | Agent detects the caller's or sender's language and responds in kind |
+| **French** | Agent always responds in French |
+| **Spanish** | Agent always responds in Spanish |
+| **German** | Agent always responds in German |
+
+**Multilingual** mode is ideal for businesses serving diverse communities. The agent will start in English on voice calls and switch if the caller speaks another language. For SMS, it detects the language of each incoming message automatically.
 
 ### Voice Settings
 
