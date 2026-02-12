@@ -84,6 +84,45 @@ When a text comes in outside your agent's SMS schedule:
 
 During scheduled hours, texts are handled normally by the AI agent.
 
+## Multilingual SMS
+
+Your agent's language setting applies to SMS as well as voice calls. The agent will respond to text messages in the configured language.
+
+### Supported Languages
+
+| Setting | Behavior |
+|---------|----------|
+| **English** | Responds in English (default) |
+| **Multilingual** | Detects the language of each incoming message and responds in the same language |
+| **French** | Always responds in French |
+| **Spanish** | Always responds in Spanish |
+| **German** | Always responds in German |
+
+### Multilingual Mode
+
+When set to **Multilingual**, the agent automatically detects what language each incoming text is written in and replies in that same language. This works seamlessly even when the sender switches languages mid-conversation:
+
+```
+Visitor: What are your hours?
+Agent: We're open Monday-Friday, 9am to 5pm!
+
+Visitor: ¿Tienen servicio los sábados?
+Agent: Estamos cerrados los fines de semana, pero puedes dejarnos un mensaje y te responderemos el lunes.
+
+Visitor: Merci, bonne journée!
+Agent: Merci à vous aussi, bonne journée !
+```
+
+### Configuring Language
+
+1. Open your agent's settings
+2. Under **Basic Settings**, select a **Language**
+3. The setting applies to both voice calls and SMS — no separate configuration needed
+
+<Note>
+The language setting controls the agent's response language. Your system prompt can be written in any language — the agent will follow the language instruction regardless.
+</Note>
+
 ## Best Practices
 
 <AccordionGroup>
