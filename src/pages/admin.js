@@ -5,6 +5,8 @@
 
 import { getCurrentUser, getCurrentSession, supabase } from '../lib/supabase.js';
 import { showToast } from '../lib/toast.js';
+import { showConfirmModal } from '../components/ConfirmModal.js';
+import AdminHeader from '../components/AdminHeader.js';
 
 export default class AdminPage {
   constructor() {
@@ -47,93 +49,31 @@ export default class AdminPage {
     // Expose for retry buttons
     window.adminPage = this;
 
+    this.adminHeader = new AdminHeader({
+      title: 'Admin Portal',
+      backPath: '/inbox',
+      role: profile.role,
+      tabs: [
+        { id: 'analytics', label: 'Analytics', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>' },
+        { id: 'users', label: 'Users', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>' },
+        { id: 'global-agent', label: 'Global Agent', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>' },
+        { id: 'kpi', label: 'KPI', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>' },
+        { id: 'chat', label: 'Chat', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' },
+        { id: 'support', label: 'Support', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 7L2 7"/></svg>' },
+        { id: 'notifications', label: 'Notifications', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>' },
+      ],
+      activeTab: 'analytics',
+      onTabChange: (tabId) => this.switchTab(tabId),
+      session: this.session,
+    });
+
     const appElement = document.getElementById('app');
     appElement.innerHTML = `
       <div class="admin-container">
-        <!-- Header -->
-        <header class="admin-header">
-          <div class="admin-header-left">
-            <button class="btn btn-icon" onclick="navigateTo('/inbox')" title="Back">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M19 12H5M12 19l-7-7 7-7"/>
-              </svg>
-            </button>
-            <h1>Admin Portal</h1>
-          </div>
-          <div class="admin-header-right">
-            <!-- Status Indicator -->
-            <div class="status-indicator" id="status-indicator">
-              <button class="status-btn" id="status-btn" title="System Status">
-                <span class="status-dot status-loading"></span>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
-                </svg>
-              </button>
-              <div class="status-dropdown" id="status-dropdown">
-                <div class="status-dropdown-header">
-                  <span>System Status</span>
-                  <button class="status-refresh" id="status-refresh" title="Refresh">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M23 4v6h-6M1 20v-6h6"/>
-                      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-                    </svg>
-                  </button>
-                </div>
-                <div class="status-dropdown-content" id="status-content">
-                  <div class="status-loading-msg">Checking services...</div>
-                </div>
-                <div class="status-dropdown-footer" id="status-footer"></div>
-              </div>
-            </div>
-            <span class="badge badge-${profile.role}">${profile.role}</span>
-          </div>
-        </header>
+        ${this.adminHeader.render()}
 
         <!-- Admin Reminders -->
         <div id="admin-reminders"></div>
-
-        <!-- Tabs -->
-        <div class="admin-tabs">
-          <button class="admin-tab active" data-tab="analytics">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M3 3v18h18"/>
-              <path d="M18 17V9"/>
-              <path d="M13 17V5"/>
-              <path d="M8 17v-3"/>
-            </svg>
-            Analytics
-          </button>
-          <button class="admin-tab" data-tab="users">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-              <circle cx="9" cy="7" r="4"/>
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-            </svg>
-            Users
-          </button>
-          <button class="admin-tab" data-tab="global-agent">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"/>
-              <path d="M12 16v-4M12 8h.01"/>
-            </svg>
-            Global Agent
-          </button>
-          <button class="admin-tab" data-tab="kpi">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 20V10"/>
-              <path d="M18 20V4"/>
-              <path d="M6 20v-4"/>
-            </svg>
-            KPI
-          </button>
-          <button class="admin-tab" data-tab="chat">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-            </svg>
-            Chat
-          </button>
-        </div>
 
         <!-- Tab Content -->
         <div id="admin-tab-content" class="admin-tab-content">
@@ -144,10 +84,24 @@ export default class AdminPage {
 
     this.addStyles();
     this.renderAdminReminders();
-    this.attachTabListeners();
-    this.attachStatusListeners();
-    this.loadStatus();
-    await this.switchTab('analytics');
+    this.adminHeader.attachListeners();
+
+    // Check URL params for tab auto-switch (e.g. post-OAuth redirect)
+    const urlParams = new URLSearchParams(window.location.search);
+    const tabParam = urlParams.get('tab');
+    const validTabs = ['analytics', 'users', 'global-agent', 'kpi', 'chat', 'support', 'notifications'];
+    const initialTab = validTabs.includes(tabParam) ? tabParam : 'analytics';
+
+    if (urlParams.get('integration_connected') === 'google_email') {
+      showToast('Gmail connected successfully!', 'success');
+      // Clean URL
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+
+    if (initialTab !== 'analytics') {
+      this.adminHeader.setActiveTab(initialTab);
+    }
+    await this.switchTab(initialTab);
   }
 
   renderAdminReminders() {
@@ -198,148 +152,6 @@ export default class AdminPage {
     });
   }
 
-  attachTabListeners() {
-    document.querySelectorAll('.admin-tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        const tabName = tab.dataset.tab;
-        this.switchTab(tabName);
-      });
-    });
-  }
-
-  attachStatusListeners() {
-    const statusBtn = document.getElementById('status-btn');
-    const statusDropdown = document.getElementById('status-dropdown');
-    const statusRefresh = document.getElementById('status-refresh');
-
-    // Toggle dropdown on click
-    statusBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      statusDropdown.classList.toggle('open');
-    });
-
-    // Refresh status
-    statusRefresh.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.loadStatus();
-    });
-
-    // Close dropdown when clicking outside
-    document.addEventListener('click', (e) => {
-      if (!e.target.closest('.status-indicator')) {
-        statusDropdown.classList.remove('open');
-      }
-    });
-  }
-
-  async loadStatus() {
-    const statusDot = document.querySelector('.status-dot');
-    const statusContent = document.getElementById('status-content');
-    const statusFooter = document.getElementById('status-footer');
-
-    // Show loading state
-    statusDot.className = 'status-dot status-loading';
-    statusContent.innerHTML = '<div class="status-loading-msg">Checking services...</div>';
-
-    try {
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-status`,
-        {
-          headers: {
-            'Authorization': `Bearer ${this.session.access_token}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error('Failed to check status');
-      }
-
-      const data = await response.json();
-      this.renderStatus(data);
-    } catch (error) {
-      console.error('Error loading status:', error);
-      statusDot.className = 'status-dot status-down';
-      statusContent.innerHTML = `
-        <div class="status-error">
-          <p>Failed to check status</p>
-        </div>
-      `;
-      statusFooter.innerHTML = '';
-    }
-  }
-
-  renderStatus(data) {
-    const statusDot = document.querySelector('.status-dot');
-    const statusContent = document.getElementById('status-content');
-    const statusFooter = document.getElementById('status-footer');
-
-    // Update main indicator
-    statusDot.className = `status-dot status-${data.overall}`;
-
-    // Render service list
-    statusContent.innerHTML = data.services.map(service => `
-      <a href="${service.statusUrl || '#'}" target="_blank" rel="noopener noreferrer" class="status-service" title="View ${service.name} status page">
-        <div class="status-service-info">
-          <span class="status-service-dot status-${service.status}"></span>
-          <span class="status-service-name">${service.name}</span>
-        </div>
-        <div class="status-service-meta">
-          ${service.latency ? `<span class="status-latency">${service.latency}ms</span>` : ''}
-          ${service.message ? `<span class="status-message">${service.message}</span>` : ''}
-          <svg class="status-external-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-            <polyline points="15 3 21 3 21 9"/>
-            <line x1="10" y1="14" x2="21" y2="3"/>
-          </svg>
-        </div>
-      </a>
-    `).join('');
-
-    // Update footer with timestamp
-    const checkedAt = new Date(data.checkedAt);
-    statusFooter.innerHTML = `Last checked: ${checkedAt.toLocaleTimeString()}`;
-
-    // Check for Firecrawl credit issues and show warning banner
-    const firecrawl = data.services.find(s => s.name === 'Firecrawl');
-    this.updateFirecrawlWarning(firecrawl);
-  }
-
-  updateFirecrawlWarning(firecrawl) {
-    // Remove existing warning if any
-    const existingWarning = document.querySelector('.firecrawl-warning-banner');
-    if (existingWarning) {
-      existingWarning.remove();
-    }
-
-    // Show warning if Firecrawl is down or degraded
-    if (firecrawl && (firecrawl.status === 'down' || firecrawl.status === 'degraded')) {
-      const warningBanner = document.createElement('div');
-      warningBanner.className = `firecrawl-warning-banner ${firecrawl.status === 'down' ? 'error' : 'warning'}`;
-      warningBanner.innerHTML = `
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-          <line x1="12" y1="9" x2="12" y2="13"/>
-          <line x1="12" y1="17" x2="12.01" y2="17"/>
-        </svg>
-        <span>
-          ${firecrawl.status === 'down'
-            ? `<strong>KB Scraping Disabled:</strong> ${firecrawl.message || 'Firecrawl is unavailable'}. JS-rendered sites cannot be crawled.`
-            : `<strong>KB Scraping Limited:</strong> ${firecrawl.message || 'Low credits'}. Consider upgrading at firecrawl.dev.`
-          }
-        </span>
-        <button class="warning-dismiss" onclick="this.parentElement.remove()">×</button>
-      `;
-
-      // Insert after header
-      const header = document.querySelector('.admin-header');
-      if (header) {
-        header.insertAdjacentElement('afterend', warningBanner);
-      }
-    }
-  }
-
   async switchTab(tabName) {
     this.activeTab = tabName;
 
@@ -365,6 +177,10 @@ export default class AdminPage {
       await this.renderKpiTab();
     } else if (tabName === 'chat') {
       await this.renderChatTab();
+    } else if (tabName === 'support') {
+      await this.renderSupportTab();
+    } else if (tabName === 'notifications') {
+      await this.renderNotificationsTab();
     }
   }
 
@@ -2429,6 +2245,1131 @@ export default class AdminPage {
     }
   }
 
+  // ── Support Tab ────────────────────────────────────────────────
+
+  async renderSupportTab() {
+    const content = document.getElementById('admin-tab-content');
+    content.innerHTML = `
+      <div class="support-tab">
+        <div class="support-loading">
+          <div class="loading-spinner">Loading support config...</div>
+        </div>
+      </div>
+    `;
+
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/support-tickets-api`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ action: 'get_config' }),
+        }
+      );
+
+      if (!response.ok) throw new Error('Failed to load support config');
+      const data = await response.json();
+      this.supportConfig = data.config || {};
+      this.supportGmailConnected = data.gmailConnected;
+      this.supportFilter = this.supportFilter || 'open';
+      this.supportThreadView = null;
+
+      this.renderSupportContent();
+    } catch (error) {
+      console.error('Error loading support config:', error);
+      const container = document.querySelector('.support-tab');
+      if (container) {
+        container.innerHTML = `
+          <div class="detail-placeholder">
+            <p style="color: var(--error-color);">Failed to load support config: ${error.message}</p>
+            <button class="btn btn-primary" onclick="window.adminPage.renderSupportTab()">Retry</button>
+          </div>
+        `;
+      }
+    }
+  }
+
+  renderSupportContent() {
+    const container = document.querySelector('.support-tab');
+    if (!container) return;
+    if (!this.supportSubTab) this.supportSubTab = 'tickets';
+
+    container.innerHTML = `
+      <!-- Sub-tab navigation -->
+      <div class="support-subtabs">
+        <button class="support-subtab ${this.supportSubTab === 'tickets' ? 'active' : ''}" data-support-subtab="tickets">Tickets</button>
+        <button class="support-subtab ${this.supportSubTab === 'settings' ? 'active' : ''}" data-support-subtab="settings">Settings</button>
+      </div>
+
+      <!-- Tickets sub-tab -->
+      <div id="support-subtab-tickets" class="support-subtab-content" style="display: ${this.supportSubTab === 'tickets' ? 'block' : 'none'};">
+        <div class="support-section">
+          <div class="support-filter-bar">
+            <button class="kpi-filter-btn ${this.supportFilter === 'open' ? 'active' : ''}" data-support-filter="open">Open</button>
+            <button class="kpi-filter-btn ${this.supportFilter === 'closed' ? 'active' : ''}" data-support-filter="closed">Closed</button>
+            <button class="kpi-filter-btn ${this.supportFilter === 'all' ? 'active' : ''}" data-support-filter="all">All</button>
+            <select id="support-priority-filter" class="form-input form-select" style="max-width: 140px; font-size: 0.8rem; padding: 0.35rem 0.5rem; margin-left: 0.5rem;">
+              <option value="">All Priorities</option>
+              <option value="low" ${this.supportPriorityFilter === 'low' ? 'selected' : ''}>Low</option>
+              <option value="medium" ${this.supportPriorityFilter === 'medium' ? 'selected' : ''}>Medium</option>
+              <option value="high" ${this.supportPriorityFilter === 'high' ? 'selected' : ''}>High</option>
+              <option value="urgent" ${this.supportPriorityFilter === 'urgent' ? 'selected' : ''}>Urgent</option>
+            </select>
+            <select id="support-assignee-filter" class="form-input form-select" style="max-width: 160px; font-size: 0.8rem; padding: 0.35rem 0.5rem;">
+              <option value="">All Assignees</option>
+            </select>
+            <button class="btn btn-primary" id="new-ticket-btn" style="margin-left: auto; font-size: 0.8rem; padding: 0.35rem 0.75rem;">+ New Ticket</button>
+          </div>
+          <div id="new-ticket-form-container" style="display: none;"></div>
+          <div id="support-tickets-list">
+            <div class="loading-spinner">Loading tickets...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Settings sub-tab -->
+      <div id="support-subtab-settings" class="support-subtab-content" style="display: ${this.supportSubTab === 'settings' ? 'block' : 'none'};">
+        <!-- Email Connection -->
+        <div class="support-section">
+          <h3>Email Connection</h3>
+          <div class="support-card">
+            ${this.supportGmailConnected ? `
+              <div style="display: flex; align-items: center; gap: 0.75rem; justify-content: space-between; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                  <span style="width: 10px; height: 10px; background: #10b981; border-radius: 50%; display: inline-block;"></span>
+                  <div>
+                    <strong>${this.supportConfig.gmail_address || 'Connected'}</strong>
+                    ${this.supportConfig.last_polled_at ? `<div style="color: var(--text-muted); font-size: 0.8rem;">Last polled: ${new Date(this.supportConfig.last_polled_at).toLocaleString()}</div>` : ''}
+                  </div>
+                </div>
+                <div style="display: flex; gap: 0.5rem;">
+                  <button class="btn btn-primary" id="connect-gmail-btn" style="font-size: 0.8rem; padding: 0.35rem 0.75rem;">Change Email</button>
+                  <button class="btn btn-secondary" id="disconnect-gmail-btn" style="font-size: 0.8rem; padding: 0.35rem 0.75rem; color: var(--error-color);">Disconnect</button>
+                </div>
+              </div>
+            ` : `
+              <p style="color: var(--text-muted); margin-bottom: 0.75rem;">Connect a Gmail account to sync support emails.</p>
+              <button class="btn btn-primary" id="connect-gmail-btn">Connect Gmail</button>
+            `}
+          </div>
+        </div>
+
+        <!-- AI Agent Settings -->
+        <div class="support-section">
+          <h3>AI Agent Settings</h3>
+          <div class="support-card">
+            <div class="form-group" style="margin-bottom: 1rem;">
+              <label class="form-label">Mode</label>
+              <select id="support-agent-mode" class="form-input form-select" style="max-width: 300px;">
+                <option value="off" ${this.supportConfig.agent_mode === 'off' ? 'selected' : ''}>Off</option>
+                <option value="draft" ${this.supportConfig.agent_mode === 'draft' ? 'selected' : ''}>Draft (AI drafts, you approve)</option>
+                <option value="auto" ${this.supportConfig.agent_mode === 'auto' ? 'selected' : ''}>Auto (AI sends immediately)</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom: 1rem;">
+              <label class="form-label">System Prompt</label>
+              <textarea id="support-agent-prompt" class="form-input" rows="3" placeholder="You are a support agent for Magpipe. Be helpful and concise.">${this.supportConfig.agent_system_prompt || ''}</textarea>
+            </div>
+            <button class="btn btn-primary" id="save-agent-settings-btn">Save Agent Settings</button>
+            <span id="agent-settings-status" class="form-status" style="display: none;"></span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Thread View (hidden initially) -->
+      <div id="support-thread-view" class="thread-view" style="display: none;"></div>
+    `;
+
+    // Sub-tab switching
+    container.querySelectorAll('.support-subtab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this.supportSubTab = btn.dataset.supportSubtab;
+        container.querySelectorAll('.support-subtab').forEach(b =>
+          b.classList.toggle('active', b.dataset.supportSubtab === this.supportSubTab)
+        );
+        document.getElementById('support-subtab-tickets').style.display = this.supportSubTab === 'tickets' ? 'block' : 'none';
+        document.getElementById('support-subtab-settings').style.display = this.supportSubTab === 'settings' ? 'block' : 'none';
+      });
+    });
+
+    this.attachSupportListeners();
+    this.loadSupportTickets();
+  }
+
+  attachSupportListeners() {
+    // Connect Gmail
+    const connectBtn = document.getElementById('connect-gmail-btn');
+    if (connectBtn) {
+      connectBtn.addEventListener('click', async () => {
+        connectBtn.disabled = true;
+        connectBtn.textContent = 'Connecting...';
+        try {
+          const response = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/integration-oauth-start`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${this.session.access_token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ provider: 'google_email' }),
+            }
+          );
+          const data = await response.json();
+          if (data.url) {
+            window.location.href = data.url;
+          } else {
+            throw new Error(data.error || 'Failed to start OAuth');
+          }
+        } catch (error) {
+          showToast('Error: ' + error.message, 'error');
+          connectBtn.disabled = false;
+          connectBtn.textContent = 'Connect Gmail';
+        }
+      });
+    }
+
+    // Disconnect Gmail
+    const disconnectBtn = document.getElementById('disconnect-gmail-btn');
+    if (disconnectBtn) {
+      disconnectBtn.addEventListener('click', async () => {
+        const confirmed = await showConfirmModal({
+          title: 'Disconnect Gmail',
+          message: 'Disconnect this Gmail account? Polling will stop and you won\'t be able to send replies until you reconnect.',
+          confirmText: 'Disconnect',
+          confirmStyle: 'danger',
+        });
+        if (!confirmed) return;
+        disconnectBtn.disabled = true;
+        disconnectBtn.textContent = 'Disconnecting...';
+        try {
+          const response = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/support-tickets-api`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${this.session.access_token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ action: 'disconnect_gmail' }),
+            }
+          );
+          if (!response.ok) throw new Error('Failed to disconnect');
+          showToast('Gmail disconnected', 'success');
+          this.renderSupportTab();
+        } catch (error) {
+          showToast('Error: ' + error.message, 'error');
+          disconnectBtn.disabled = false;
+          disconnectBtn.textContent = 'Disconnect';
+        }
+      });
+    }
+
+    // Save agent settings
+    document.getElementById('save-agent-settings-btn')?.addEventListener('click', async () => {
+      const mode = document.getElementById('support-agent-mode').value;
+      const prompt = document.getElementById('support-agent-prompt').value;
+      const status = document.getElementById('agent-settings-status');
+
+      try {
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/support-tickets-api`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${this.session.access_token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              action: 'update_config',
+              agent_mode: mode,
+              agent_system_prompt: prompt,
+            }),
+          }
+        );
+
+        if (!response.ok) throw new Error('Failed to save');
+        status.style.display = 'inline';
+        status.className = 'form-status success';
+        status.textContent = 'Saved';
+        setTimeout(() => { status.style.display = 'none'; }, 2000);
+      } catch (error) {
+        status.style.display = 'inline';
+        status.className = 'form-status error';
+        status.textContent = 'Error: ' + error.message;
+      }
+    });
+
+    // Ticket filters
+    document.querySelectorAll('[data-support-filter]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this.supportFilter = btn.dataset.supportFilter;
+        document.querySelectorAll('[data-support-filter]').forEach(b =>
+          b.classList.toggle('active', b.dataset.supportFilter === this.supportFilter)
+        );
+        this.loadSupportTickets();
+      });
+    });
+
+    // Priority filter
+    document.getElementById('support-priority-filter')?.addEventListener('change', (e) => {
+      this.supportPriorityFilter = e.target.value;
+      this.loadSupportTickets();
+    });
+
+    // Assignee filter
+    document.getElementById('support-assignee-filter')?.addEventListener('change', (e) => {
+      this.supportAssigneeFilter = e.target.value;
+      this.loadSupportTickets();
+    });
+
+    // Load assignees for the filter dropdown
+    this.loadAssignees();
+
+    // New Ticket button
+    document.getElementById('new-ticket-btn')?.addEventListener('click', () => {
+      this.toggleNewTicketForm();
+    });
+  }
+
+  async loadSupportTickets() {
+    const listContainer = document.getElementById('support-tickets-list');
+    if (!listContainer) return;
+    listContainer.innerHTML = '<div class="loading-spinner">Loading tickets...</div>';
+
+    try {
+      const payload = { action: 'list', status: this.supportFilter };
+      if (this.supportPriorityFilter) payload.priority = this.supportPriorityFilter;
+      if (this.supportAssigneeFilter) payload.assigned_to = this.supportAssigneeFilter;
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/support-tickets-api`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      if (!response.ok) throw new Error('Failed to load tickets');
+      const data = await response.json();
+      const tickets = data.tickets || [];
+
+      if (tickets.length === 0) {
+        listContainer.innerHTML = '<p style="color: var(--text-muted); padding: 1rem;">No tickets found.</p>';
+        return;
+      }
+
+      const priorityBadge = (p) => {
+        const colors = { low: 'priority-low', medium: 'priority-medium', high: 'priority-high', urgent: 'priority-urgent' };
+        return `<span class="priority-badge ${colors[p] || 'priority-medium'}">${p || 'medium'}</span>`;
+      };
+      const formatDue = (d) => d ? new Date(d).toLocaleDateString() : '';
+
+      listContainer.innerHTML = `
+        <table class="support-table">
+          <thead>
+            <tr>
+              <th>Priority</th>
+              <th>From</th>
+              <th>Subject</th>
+              <th>Assigned</th>
+              <th>Due</th>
+              <th>Date</th>
+              <th>Status</th>
+              <th>AI</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${tickets.map(t => `
+              <tr class="ticket-row" data-thread-id="${t.thread_id || t.id}" data-ticket-status="${t.status}">
+                <td>${priorityBadge(t.priority)}</td>
+                <td>${this.escapeHtml(t.from_name || t.from_email || '')}</td>
+                <td>${this.escapeHtml(t.subject || '(no subject)')}</td>
+                <td>${this.escapeHtml(t.assigned_name || '')}</td>
+                <td style="font-size: 0.8rem; color: var(--text-muted);">${formatDue(t.due_date)}</td>
+                <td>${new Date(t.received_at).toLocaleDateString()}</td>
+                <td><span class="ticket-status-badge ticket-status-${t.status}">${t.status}</span></td>
+                <td>${t.has_pending_draft ? '<span class="ai-draft-indicator" title="Pending AI draft">AI</span>' : ''}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+
+      // Attach row click handlers
+      listContainer.querySelectorAll('.ticket-row').forEach(row => {
+        row.addEventListener('click', () => {
+          this.openSupportThread(row.dataset.threadId, row.dataset.ticketStatus);
+        });
+      });
+
+    } catch (error) {
+      console.error('Error loading tickets:', error);
+      listContainer.innerHTML = `<p style="color: var(--error-color); padding: 1rem;">Error: ${error.message}</p>`;
+    }
+  }
+
+  async openSupportThread(threadId, currentStatus) {
+    const threadView = document.getElementById('support-thread-view');
+    if (!threadView) return;
+
+    // Hide main content, show thread
+    document.querySelectorAll('.support-subtabs, .support-subtab-content').forEach(s => s.style.display = 'none');
+    threadView.style.display = 'block';
+    threadView.innerHTML = '<div class="loading-spinner">Loading thread...</div>';
+
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/support-tickets-api`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ action: 'thread', threadId }),
+        }
+      );
+
+      if (!response.ok) throw new Error('Failed to load thread');
+      const data = await response.json();
+      const messages = data.messages || [];
+      const notes = data.notes || [];
+
+      const subject = messages[0]?.subject || '(no subject)';
+      const firstMsg = messages[0] || {};
+      const pendingDraft = messages.find(m => m.ai_draft_status === 'pending');
+
+      // Load assignees if not cached
+      if (!this.supportAssignees) await this.loadAssignees();
+      const assignees = this.supportAssignees || [];
+
+      const assigneeOptions = assignees.map(a =>
+        `<option value="${a.id}" ${firstMsg.assigned_to === a.id ? 'selected' : ''}>${this.escapeHtml(a.name)}</option>`
+      ).join('');
+
+      const currentTags = (firstMsg.tags || []).join(', ');
+      const currentDue = firstMsg.due_date ? new Date(firstMsg.due_date).toISOString().split('T')[0] : '';
+
+      // Determine "Submitted By" source
+      let submittedBy = '';
+      if (firstMsg.from_name || firstMsg.from_email) {
+        submittedBy = firstMsg.from_name
+          ? `${this.escapeHtml(firstMsg.from_name)} (${this.escapeHtml(firstMsg.from_email || '')})`
+          : this.escapeHtml(firstMsg.from_email);
+      } else if (threadId && threadId.startsWith('manual-')) {
+        submittedBy = 'Manual Entry';
+      } else if (threadId && threadId.startsWith('chat-')) {
+        submittedBy = `Chat Widget${firstMsg.from_email ? ' (' + this.escapeHtml(firstMsg.from_email) + ')' : ''}`;
+      }
+
+      const ticketRef = firstMsg.ticket_ref || '';
+
+      threadView.innerHTML = `
+        <div class="thread-header">
+          <button class="btn btn-secondary thread-back-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 12H5M12 19l-7-7 7-7"/>
+            </svg>
+            Back
+          </button>
+          <h3 style="margin: 0; flex: 1;">${this.escapeHtml(subject)}</h3>
+          <button class="btn ${currentStatus === 'open' ? 'btn-secondary' : 'btn-primary'}" id="toggle-status-btn">
+            ${currentStatus === 'open' ? 'Close Ticket' : 'Reopen Ticket'}
+          </button>
+        </div>
+
+        ${submittedBy || ticketRef ? `
+          <div class="ticket-meta-bar">
+            ${submittedBy ? `<span class="ticket-meta-item">Submitted by: <strong>${submittedBy}</strong></span>` : ''}
+            ${ticketRef ? `<span class="ticket-meta-item">Ref: <strong>${this.escapeHtml(ticketRef)}</strong></span>` : ''}
+          </div>
+        ` : ''}
+
+        <div class="ticket-detail-fields">
+          <div class="ticket-detail-row">
+            <div class="ticket-detail-field">
+              <label>Priority</label>
+              <select id="thread-priority" class="form-input form-select">
+                <option value="low" ${firstMsg.priority === 'low' ? 'selected' : ''}>Low</option>
+                <option value="medium" ${firstMsg.priority === 'medium' ? 'selected' : ''}>Medium</option>
+                <option value="high" ${firstMsg.priority === 'high' ? 'selected' : ''}>High</option>
+                <option value="urgent" ${firstMsg.priority === 'urgent' ? 'selected' : ''}>Urgent</option>
+              </select>
+            </div>
+            <div class="ticket-detail-field">
+              <label>Assignee</label>
+              <select id="thread-assignee" class="form-input form-select">
+                <option value="">Unassigned</option>
+                ${assigneeOptions}
+              </select>
+            </div>
+            <div class="ticket-detail-field">
+              <label>Due Date</label>
+              <input type="date" id="thread-due-date" class="form-input" value="${currentDue}">
+            </div>
+          </div>
+          <div class="ticket-detail-row" style="margin-top: 0.5rem;">
+            <div class="ticket-detail-field" style="flex: 1;">
+              <label>Tags</label>
+              <div style="display: flex; gap: 0.5rem; align-items: center;">
+                <input type="text" id="thread-tags" class="form-input" value="${this.escapeHtml(currentTags)}" placeholder="tag1, tag2, ...">
+              </div>
+            </div>
+            <div style="display: flex; align-items: flex-end;">
+              <button class="btn btn-primary" id="save-ticket-details-btn" style="font-size: 0.8rem; padding: 0.4rem 0.75rem;">Save</button>
+              <span id="ticket-detail-status" class="form-status" style="display: none; margin-left: 0.5rem;"></span>
+            </div>
+          </div>
+          ${(firstMsg.tags || []).length > 0 ? `
+            <div style="margin-top: 0.5rem; display: flex; gap: 0.25rem; flex-wrap: wrap;">
+              ${(firstMsg.tags || []).map(tag => `<span class="tag-pill">${this.escapeHtml(tag)}</span>`).join('')}
+            </div>
+          ` : ''}
+        </div>
+
+        <div class="thread-messages">
+          ${messages.map(m => `
+            <div class="thread-message thread-message-${m.direction}">
+              <div class="thread-message-header">
+                <strong>${this.escapeHtml(m.from_name || m.from_email || '')}</strong>
+                <span style="color: var(--text-muted); font-size: 0.8rem;">${new Date(m.received_at).toLocaleString()}</span>
+              </div>
+              <div class="thread-message-body">${this.escapeHtml(m.body_text || '').replace(/\n/g, '<br>')}</div>
+            </div>
+          `).join('')}
+        </div>
+
+        ${pendingDraft ? `
+          <div class="ai-draft-card">
+            <div class="ai-draft-header">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2a4 4 0 0 1 4 4c0 1.95-1.4 3.58-3.25 3.93L12 22"/>
+                <path d="M8 6a4 4 0 0 1 .64-2.18"/>
+              </svg>
+              AI Draft Reply
+            </div>
+            <div class="ai-draft-body">${this.escapeHtml(pendingDraft.ai_draft || '').replace(/\n/g, '<br>')}</div>
+            <div class="ai-draft-actions">
+              <button class="btn btn-primary" id="approve-draft-btn" data-ticket-id="${pendingDraft.id}">Approve & Send</button>
+              <button class="btn btn-secondary" id="edit-draft-btn" data-draft-text="${this.escapeHtml(pendingDraft.ai_draft || '')}">Edit</button>
+              <button class="btn btn-secondary" id="reject-draft-btn" data-ticket-id="${pendingDraft.id}" style="color: var(--error-color);">Reject</button>
+            </div>
+          </div>
+        ` : ''}
+
+        <div class="reply-area">
+          <textarea id="support-reply-text" class="form-input" rows="4" placeholder="Type your reply..."></textarea>
+          <button class="btn btn-primary" id="send-reply-btn">Send Reply</button>
+        </div>
+
+        <div class="ticket-notes-section">
+          <h4 style="margin: 0 0 0.75rem 0; font-size: 0.95rem;">Internal Notes</h4>
+          <div id="ticket-notes-list">
+            ${notes.length > 0 ? notes.map(n => `
+              <div class="ticket-note">
+                <div class="ticket-note-header">
+                  <strong>${this.escapeHtml(n.author_name || 'Unknown')}</strong>
+                  <span>${new Date(n.created_at).toLocaleString()}</span>
+                </div>
+                <div class="ticket-note-body">${this.escapeHtml(n.content).replace(/\n/g, '<br>')}</div>
+              </div>
+            `).join('') : '<p style="color: var(--text-muted); font-size: 0.85rem;">No notes yet.</p>'}
+          </div>
+          <div class="ticket-note-input">
+            <textarea id="new-note-text" class="form-input" rows="2" placeholder="Add an internal note..."></textarea>
+            <button class="btn btn-secondary" id="add-note-btn" style="align-self: flex-end; font-size: 0.8rem;">Add Note</button>
+          </div>
+        </div>
+      `;
+
+      // Back button
+      threadView.querySelector('.thread-back-btn').addEventListener('click', () => {
+        threadView.style.display = 'none';
+        document.querySelector('.support-subtabs').style.display = '';
+        document.getElementById('support-subtab-tickets').style.display = 'block';
+        this.supportSubTab = 'tickets';
+        this.loadSupportTickets();
+      });
+
+      // Save ticket detail fields
+      document.getElementById('save-ticket-details-btn')?.addEventListener('click', async () => {
+        const priority = document.getElementById('thread-priority').value;
+        const assigned_to = document.getElementById('thread-assignee').value;
+        const due_date = document.getElementById('thread-due-date').value || null;
+        const tagsStr = document.getElementById('thread-tags').value;
+        const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(Boolean) : [];
+        const statusEl = document.getElementById('ticket-detail-status');
+
+        try {
+          const res = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/support-tickets-api`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${this.session.access_token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ action: 'update_ticket', threadId, priority, assigned_to, tags, due_date }),
+            }
+          );
+          if (!res.ok) throw new Error('Failed to save');
+          statusEl.style.display = 'inline';
+          statusEl.className = 'form-status success';
+          statusEl.textContent = 'Saved';
+          setTimeout(() => { statusEl.style.display = 'none'; }, 2000);
+        } catch (e) {
+          statusEl.style.display = 'inline';
+          statusEl.className = 'form-status error';
+          statusEl.textContent = 'Error';
+        }
+      });
+
+      // Add note
+      document.getElementById('add-note-btn')?.addEventListener('click', async () => {
+        const noteText = document.getElementById('new-note-text');
+        const content = noteText.value.trim();
+        if (!content) return;
+
+        const btn = document.getElementById('add-note-btn');
+        btn.disabled = true;
+        btn.textContent = 'Adding...';
+
+        try {
+          const res = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/support-tickets-api`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${this.session.access_token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ action: 'add_note', threadId, content }),
+            }
+          );
+          if (!res.ok) throw new Error('Failed to add note');
+          this.openSupportThread(threadId, currentStatus);
+        } catch (e) {
+          showToast('Error: ' + e.message, 'error');
+          btn.disabled = false;
+          btn.textContent = 'Add Note';
+        }
+      });
+
+      // Toggle status
+      document.getElementById('toggle-status-btn')?.addEventListener('click', async () => {
+        const newStatus = currentStatus === 'open' ? 'closed' : 'open';
+        try {
+          await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/support-tickets-api`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${this.session.access_token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ action: 'update_status', threadId, status: newStatus }),
+            }
+          );
+          this.openSupportThread(threadId, newStatus);
+        } catch (e) {
+          showToast('Error: ' + e.message, 'error');
+        }
+      });
+
+      // Send reply
+      document.getElementById('send-reply-btn')?.addEventListener('click', async () => {
+        const replyText = document.getElementById('support-reply-text');
+        const body = replyText.value.trim();
+        if (!body) return;
+
+        const btn = document.getElementById('send-reply-btn');
+        btn.disabled = true;
+        btn.textContent = 'Sending...';
+
+        try {
+          const res = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/support-tickets-api`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${this.session.access_token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ action: 'send_reply', threadId, replyBody: body }),
+            }
+          );
+
+          if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Failed to send');
+          }
+
+          replyText.value = '';
+          this.openSupportThread(threadId, currentStatus);
+        } catch (e) {
+          showToast('Error: ' + e.message, 'error');
+          btn.disabled = false;
+          btn.textContent = 'Send Reply';
+        }
+      });
+
+      // Approve draft
+      document.getElementById('approve-draft-btn')?.addEventListener('click', async (e) => {
+        const ticketId = e.target.dataset.ticketId;
+        e.target.disabled = true;
+        e.target.textContent = 'Sending...';
+        try {
+          const res = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/support-tickets-api`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${this.session.access_token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ action: 'approve_draft', ticketId }),
+            }
+          );
+          if (!res.ok) throw new Error('Failed to approve');
+          showToast('Draft approved and sent!', 'success');
+          this.openSupportThread(threadId, currentStatus);
+        } catch (e) {
+          showToast('Error: ' + e.message, 'error');
+        }
+      });
+
+      // Edit draft - copy text into reply textarea
+      document.getElementById('edit-draft-btn')?.addEventListener('click', (e) => {
+        const draftText = e.target.dataset.draftText;
+        document.getElementById('support-reply-text').value = draftText;
+        document.getElementById('support-reply-text').focus();
+        // Reject the original draft
+        const ticketId = document.getElementById('approve-draft-btn')?.dataset?.ticketId;
+        if (ticketId) {
+          fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/support-tickets-api`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${this.session.access_token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ action: 'reject_draft', ticketId }),
+            }
+          ).catch(() => {});
+          // Hide draft card
+          document.querySelector('.ai-draft-card')?.remove();
+        }
+      });
+
+      // Reject draft
+      document.getElementById('reject-draft-btn')?.addEventListener('click', async (e) => {
+        const ticketId = e.target.dataset.ticketId;
+        try {
+          await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/support-tickets-api`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${this.session.access_token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ action: 'reject_draft', ticketId }),
+            }
+          );
+          document.querySelector('.ai-draft-card')?.remove();
+        } catch (e) {
+          showToast('Error: ' + e.message, 'error');
+        }
+      });
+
+    } catch (error) {
+      threadView.innerHTML = `<p style="color: var(--error-color); padding: 1rem;">Error: ${error.message}</p>`;
+    }
+  }
+
+  async loadAssignees() {
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/support-tickets-api`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ action: 'list_assignees' }),
+        }
+      );
+      if (!response.ok) return;
+      const data = await response.json();
+      this.supportAssignees = data.assignees || [];
+
+      // Populate the filter dropdown if it exists
+      const filterSelect = document.getElementById('support-assignee-filter');
+      if (filterSelect) {
+        const currentVal = this.supportAssigneeFilter || '';
+        filterSelect.innerHTML = '<option value="">All Assignees</option>' +
+          this.supportAssignees.map(a =>
+            `<option value="${a.id}" ${currentVal === a.id ? 'selected' : ''}>${this.escapeHtml(a.name)}</option>`
+          ).join('');
+      }
+    } catch (e) {
+      console.error('Failed to load assignees:', e);
+    }
+  }
+
+  toggleNewTicketForm() {
+    const container = document.getElementById('new-ticket-form-container');
+    if (!container) return;
+
+    if (container.style.display === 'block') {
+      container.style.display = 'none';
+      return;
+    }
+
+    const assignees = this.supportAssignees || [];
+    const assigneeOptions = assignees.map(a =>
+      `<option value="${a.id}">${this.escapeHtml(a.name)}</option>`
+    ).join('');
+
+    container.style.display = 'block';
+    container.innerHTML = `
+      <div class="new-ticket-form">
+        <h4 style="margin: 0 0 0.75rem 0;">New Ticket</h4>
+        <div class="form-group" style="margin-bottom: 0.75rem;">
+          <input type="text" id="new-ticket-subject" class="form-input" placeholder="Subject *">
+        </div>
+        <div class="form-group" style="margin-bottom: 0.75rem;">
+          <textarea id="new-ticket-description" class="form-input" rows="3" placeholder="Description"></textarea>
+        </div>
+        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.75rem;">
+          <div class="form-group" style="flex: 1; min-width: 120px;">
+            <label class="form-label" style="font-size: 0.8rem;">Priority</label>
+            <select id="new-ticket-priority" class="form-input form-select">
+              <option value="low">Low</option>
+              <option value="medium" selected>Medium</option>
+              <option value="high">High</option>
+              <option value="urgent">Urgent</option>
+            </select>
+          </div>
+          <div class="form-group" style="flex: 1; min-width: 120px;">
+            <label class="form-label" style="font-size: 0.8rem;">Assignee</label>
+            <select id="new-ticket-assignee" class="form-input form-select">
+              <option value="">Unassigned</option>
+              ${assigneeOptions}
+            </select>
+          </div>
+          <div class="form-group" style="flex: 1; min-width: 120px;">
+            <label class="form-label" style="font-size: 0.8rem;">Due Date</label>
+            <input type="date" id="new-ticket-due" class="form-input">
+          </div>
+        </div>
+        <div class="form-group" style="margin-bottom: 0.75rem;">
+          <input type="text" id="new-ticket-tags" class="form-input" placeholder="Tags (comma separated)">
+        </div>
+        <div style="display: flex; gap: 0.5rem;">
+          <button class="btn btn-primary" id="submit-new-ticket-btn">Create Ticket</button>
+          <button class="btn btn-secondary" id="cancel-new-ticket-btn">Cancel</button>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('cancel-new-ticket-btn')?.addEventListener('click', () => {
+      container.style.display = 'none';
+    });
+
+    document.getElementById('submit-new-ticket-btn')?.addEventListener('click', async () => {
+      const subject = document.getElementById('new-ticket-subject').value.trim();
+      if (!subject) {
+        showToast('Subject is required', 'error');
+        return;
+      }
+
+      const description = document.getElementById('new-ticket-description').value.trim();
+      const priority = document.getElementById('new-ticket-priority').value;
+      const assigned_to = document.getElementById('new-ticket-assignee').value;
+      const due_date = document.getElementById('new-ticket-due').value || null;
+      const tagsStr = document.getElementById('new-ticket-tags').value;
+      const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(Boolean) : [];
+
+      const btn = document.getElementById('submit-new-ticket-btn');
+      btn.disabled = true;
+      btn.textContent = 'Creating...';
+
+      try {
+        const res = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/support-tickets-api`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${this.session.access_token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ action: 'create_ticket', subject, description, priority, tags, assigned_to, due_date }),
+          }
+        );
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Failed to create ticket');
+        }
+
+        showToast('Ticket created', 'success');
+        container.style.display = 'none';
+        this.loadSupportTickets();
+      } catch (e) {
+        showToast('Error: ' + e.message, 'error');
+        btn.disabled = false;
+        btn.textContent = 'Create Ticket';
+      }
+    });
+  }
+
+  escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  // ── End Support Tab ───────────────────────────────────────────
+
+  // ── Notifications Tab ──────────────────────────────────────────
+
+  async renderNotificationsTab() {
+    const content = document.getElementById('admin-tab-content');
+    content.innerHTML = `
+      <div class="support-tab" style="padding: 1rem;">
+        <div class="loading-spinner">Loading notification settings...</div>
+      </div>
+    `;
+
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-notifications-api`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ action: 'get_config' }),
+        }
+      );
+
+      if (!response.ok) throw new Error('Failed to load notification config');
+      const data = await response.json();
+      this.notifConfig = data.config || {};
+      this.slackConnected = data.slackConnected;
+      this.slackWorkspace = data.slackWorkspace;
+
+      this.renderNotificationsContent();
+    } catch (error) {
+      console.error('Error loading notification config:', error);
+      const container = document.querySelector('.support-tab');
+      if (container) {
+        container.innerHTML = `
+          <div class="detail-placeholder">
+            <p style="color: var(--error-color);">Failed to load notification settings: ${error.message}</p>
+            <button class="btn btn-primary" onclick="window.adminPage.renderNotificationsTab()">Retry</button>
+          </div>
+        `;
+      }
+    }
+  }
+
+  renderNotificationsContent() {
+    const container = document.querySelector('.support-tab');
+    if (!container) return;
+    const cfg = this.notifConfig;
+
+    container.innerHTML = `
+      <!-- Delivery Channels -->
+      <div class="support-section">
+        <h3>Delivery Channels</h3>
+        <div class="support-card">
+          <div class="form-group" style="margin-bottom: 1rem;">
+            <label class="form-label">SMS Phone</label>
+            <input type="tel" id="notif-sms-phone" class="form-input" style="max-width: 300px;" placeholder="+16045551234" value="${cfg.sms_phone || ''}">
+          </div>
+          <div class="form-group" style="margin-bottom: 1rem;">
+            <label class="form-label">Email Address</label>
+            <input type="email" id="notif-email-address" class="form-input" style="max-width: 300px;" placeholder="admin@magpipe.ai" value="${cfg.email_address || ''}">
+          </div>
+          <div class="form-group" style="margin-bottom: 0.5rem;">
+            <label class="form-label">Slack Channel</label>
+            <input type="text" id="notif-slack-channel" class="form-input" style="max-width: 300px;" placeholder="#admin-alerts" value="${cfg.slack_channel || ''}">
+          </div>
+          ${this.slackConnected
+            ? `<div style="display: flex; align-items: center; gap: 0.5rem; color: var(--success-color); font-size: 0.85rem;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
+                Connected${this.slackWorkspace ? ` (${this.slackWorkspace})` : ''}
+              </div>`
+            : `<div style="color: var(--text-muted); font-size: 0.85rem;">Slack not connected</div>`
+          }
+        </div>
+      </div>
+
+      <!-- Ticket Alerts -->
+      <div class="support-section">
+        <h3>Ticket Alerts</h3>
+        <div class="support-card">
+          <p style="color: var(--text-muted); margin-bottom: 0.75rem;">New inbound support emails</p>
+          <div style="display: flex; gap: 1.5rem; flex-wrap: wrap;">
+            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+              <input type="checkbox" id="notif-tickets-sms" ${cfg.tickets_sms ? 'checked' : ''}> SMS
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+              <input type="checkbox" id="notif-tickets-email" ${cfg.tickets_email ? 'checked' : ''}> Email
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+              <input type="checkbox" id="notif-tickets-slack" ${cfg.tickets_slack ? 'checked' : ''}> Slack
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- New User Signups -->
+      <div class="support-section">
+        <h3>New User Signups</h3>
+        <div class="support-card">
+          <p style="color: var(--text-muted); margin-bottom: 0.75rem;">When a new user creates an account</p>
+          <div style="display: flex; gap: 1.5rem; flex-wrap: wrap;">
+            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+              <input type="checkbox" id="notif-signups-sms" ${cfg.signups_sms ? 'checked' : ''}> SMS
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+              <input type="checkbox" id="notif-signups-email" ${cfg.signups_email ? 'checked' : ''}> Email
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+              <input type="checkbox" id="notif-signups-slack" ${cfg.signups_slack ? 'checked' : ''}> Slack
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Vendor Status Alerts -->
+      <div class="support-section">
+        <h3>Vendor Status Alerts</h3>
+        <div class="support-card">
+          <p style="color: var(--text-muted); margin-bottom: 0.75rem;">When a service changes status (operational / degraded / down)</p>
+          <div style="display: flex; gap: 1.5rem; flex-wrap: wrap;">
+            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+              <input type="checkbox" id="notif-vendor-status-sms" ${cfg.vendor_status_sms ? 'checked' : ''}> SMS
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+              <input type="checkbox" id="notif-vendor-status-email" ${cfg.vendor_status_email ? 'checked' : ''}> Email
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+              <input type="checkbox" id="notif-vendor-status-slack" ${cfg.vendor_status_slack ? 'checked' : ''}> Slack
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="support-section">
+        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center;">
+          <button class="btn btn-primary" id="notif-save-btn">Save</button>
+          <button class="btn btn-secondary" id="notif-test-sms-btn" style="font-size: 0.85rem;">Test SMS</button>
+          <button class="btn btn-secondary" id="notif-test-email-btn" style="font-size: 0.85rem;">Test Email</button>
+          <button class="btn btn-secondary" id="notif-test-slack-btn" style="font-size: 0.85rem;">Test Slack</button>
+        </div>
+      </div>
+    `;
+
+    this.attachNotificationsListeners();
+  }
+
+  attachNotificationsListeners() {
+    // Save button
+    document.getElementById('notif-save-btn')?.addEventListener('click', async () => {
+      const btn = document.getElementById('notif-save-btn');
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+
+      try {
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-notifications-api`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${this.session.access_token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              action: 'update_config',
+              sms_phone: document.getElementById('notif-sms-phone').value,
+              email_address: document.getElementById('notif-email-address').value,
+              slack_channel: document.getElementById('notif-slack-channel').value,
+              tickets_sms: document.getElementById('notif-tickets-sms').checked,
+              tickets_email: document.getElementById('notif-tickets-email').checked,
+              tickets_slack: document.getElementById('notif-tickets-slack').checked,
+              signups_sms: document.getElementById('notif-signups-sms').checked,
+              signups_email: document.getElementById('notif-signups-email').checked,
+              signups_slack: document.getElementById('notif-signups-slack').checked,
+              vendor_status_sms: document.getElementById('notif-vendor-status-sms').checked,
+              vendor_status_email: document.getElementById('notif-vendor-status-email').checked,
+              vendor_status_slack: document.getElementById('notif-vendor-status-slack').checked,
+            }),
+          }
+        );
+
+        if (!response.ok) throw new Error('Failed to save');
+        showToast('Notification settings saved', 'success');
+      } catch (error) {
+        showToast('Error: ' + error.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Save';
+      }
+    });
+
+    // Test buttons
+    ['sms', 'email', 'slack'].forEach(channel => {
+      document.getElementById(`notif-test-${channel}-btn`)?.addEventListener('click', async () => {
+        const btn = document.getElementById(`notif-test-${channel}-btn`);
+        const originalText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Sending...';
+
+        try {
+          const response = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-notifications-api`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${this.session.access_token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ action: 'test_channel', channel }),
+            }
+          );
+
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || 'Test failed');
+          showToast(`Test ${channel.toUpperCase()} sent`, 'success');
+        } catch (error) {
+          showToast('Error: ' + error.message, 'error');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = originalText;
+        }
+      });
+    });
+  }
+
+  // ── End Notifications Tab ──────────────────────────────────────
+
   async renderChatTab() {
     const content = document.getElementById('admin-tab-content');
     content.innerHTML = `
@@ -2463,6 +3404,8 @@ export default class AdminPage {
     const style = document.createElement('style');
     style.id = 'admin-styles';
     style.textContent = `
+      ${AdminHeader.getStyles()}
+
       .admin-container {
         display: flex;
         flex-direction: column;
@@ -2504,330 +3447,6 @@ export default class AdminPage {
         flex-shrink: 0;
       }
       .admin-reminder-dismiss:hover { opacity: 1; }
-
-      .admin-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 1rem 1.5rem;
-        background: var(--bg-primary);
-        border-bottom: 1px solid var(--border-color);
-      }
-
-      .admin-header-left {
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-      }
-
-      .admin-header h1 {
-        margin: 0;
-        font-size: 1.5rem;
-      }
-
-      .admin-header-right {
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-      }
-
-      /* Status Indicator */
-      .status-indicator {
-        position: relative;
-      }
-
-      .status-btn {
-        display: flex;
-        align-items: center;
-        gap: 0.375rem;
-        padding: 0.375rem 0.625rem;
-        background: var(--bg-secondary);
-        border: 1px solid var(--border-color);
-        border-radius: 6px;
-        cursor: pointer;
-        transition: all 0.2s;
-      }
-
-      .status-btn:hover {
-        background: var(--bg-primary);
-        border-color: var(--text-muted);
-      }
-
-      .status-btn svg {
-        color: var(--text-muted);
-      }
-
-      .status-dot {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        flex-shrink: 0;
-      }
-
-      .status-dot.status-operational {
-        background: #10b981;
-        box-shadow: 0 0 6px rgba(16, 185, 129, 0.5);
-      }
-
-      .status-dot.status-degraded {
-        background: #f59e0b;
-        box-shadow: 0 0 6px rgba(245, 158, 11, 0.5);
-      }
-
-      .status-dot.status-down {
-        background: #ef4444;
-        box-shadow: 0 0 6px rgba(239, 68, 68, 0.5);
-      }
-
-      .status-dot.status-loading {
-        background: var(--text-muted);
-        animation: pulse 1.5s ease-in-out infinite;
-      }
-
-      @keyframes pulse {
-        0%, 100% { opacity: 0.4; }
-        50% { opacity: 1; }
-      }
-
-      .status-dropdown {
-        position: absolute;
-        top: calc(100% + 8px);
-        right: 0;
-        width: 280px;
-        background: var(--bg-primary);
-        border: 1px solid var(--border-color);
-        border-radius: 8px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-        opacity: 0;
-        visibility: hidden;
-        transform: translateY(-8px);
-        transition: all 0.2s;
-        z-index: 1000;
-      }
-
-      .status-dropdown.open {
-        opacity: 1;
-        visibility: visible;
-        transform: translateY(0);
-      }
-
-      .status-dropdown-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 0.75rem 1rem;
-        border-bottom: 1px solid var(--border-color);
-        font-weight: 600;
-        font-size: 0.875rem;
-      }
-
-      .status-refresh {
-        background: none;
-        border: none;
-        padding: 0.25rem;
-        cursor: pointer;
-        color: var(--text-muted);
-        border-radius: 4px;
-        transition: all 0.2s;
-      }
-
-      .status-refresh:hover {
-        background: var(--bg-secondary);
-        color: var(--text-primary);
-      }
-
-      .status-dropdown-content {
-        padding: 0.5rem 0;
-      }
-
-      .status-loading-msg {
-        padding: 1rem;
-        text-align: center;
-        color: var(--text-muted);
-        font-size: 0.875rem;
-      }
-
-      .status-error {
-        padding: 1rem;
-        text-align: center;
-        color: var(--error-color);
-        font-size: 0.875rem;
-      }
-
-      .status-service {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 0.625rem 1rem;
-        text-decoration: none;
-        color: inherit;
-      }
-
-      .status-service:hover {
-        background: var(--bg-secondary);
-      }
-
-      .status-service-info {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-      }
-
-      .status-service-dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-      }
-
-      .status-service-dot.status-operational {
-        background: #10b981;
-      }
-
-      .status-service-dot.status-degraded {
-        background: #f59e0b;
-      }
-
-      .status-service-dot.status-down {
-        background: #ef4444;
-      }
-
-      .status-service-name {
-        font-size: 0.875rem;
-        font-weight: 500;
-      }
-
-      .status-service-meta {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-      }
-
-      .status-latency {
-        font-size: 0.75rem;
-        color: var(--text-muted);
-      }
-
-      .status-message {
-        font-size: 0.75rem;
-        color: var(--text-muted);
-        font-style: italic;
-      }
-
-      .status-external-icon {
-        opacity: 0.5;
-        flex-shrink: 0;
-        transition: opacity 0.2s;
-      }
-
-      .status-service:hover .status-external-icon {
-        opacity: 1;
-      }
-
-      .status-dropdown-footer {
-        padding: 0.5rem 1rem;
-        border-top: 1px solid var(--border-color);
-        font-size: 0.75rem;
-        color: var(--text-muted);
-        text-align: center;
-      }
-
-      /* Firecrawl Warning Banner */
-      .firecrawl-warning-banner {
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-        padding: 0.75rem 1rem;
-        background: #fef3c7;
-        border-bottom: 1px solid #f59e0b;
-        color: #92400e;
-        font-size: 0.875rem;
-        position: relative;
-        z-index: 10;
-      }
-
-      .firecrawl-warning-banner.error {
-        background: #fee2e2;
-        border-bottom-color: #ef4444;
-        color: #991b1b;
-      }
-
-      .firecrawl-warning-banner svg {
-        flex-shrink: 0;
-      }
-
-      .firecrawl-warning-banner span {
-        flex: 1;
-      }
-
-      .firecrawl-warning-banner strong {
-        font-weight: 600;
-      }
-
-      .warning-dismiss {
-        background: none;
-        border: none;
-        font-size: 1.25rem;
-        cursor: pointer;
-        opacity: 0.6;
-        padding: 0 0.25rem;
-        color: inherit;
-      }
-
-      .warning-dismiss:hover {
-        opacity: 1;
-      }
-
-      @media (max-width: 480px) {
-        .firecrawl-warning-banner {
-          font-size: 0.8125rem;
-          padding: 0.625rem 0.75rem;
-        }
-      }
-
-      /* Tab Navigation */
-      .admin-tabs {
-        display: flex;
-        gap: 0;
-        padding: 0 1rem;
-        background: var(--bg-primary);
-        border-bottom: 1px solid var(--border-color);
-      }
-
-      .admin-tab {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 0.875rem 1.25rem;
-        background: none;
-        border: none;
-        border-bottom: 2px solid transparent;
-        color: var(--text-muted);
-        font-size: 0.875rem;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.2s;
-      }
-
-      .admin-tab:hover {
-        color: var(--text-primary);
-        background: var(--bg-secondary);
-      }
-
-      .admin-tab.active {
-        color: var(--primary-color);
-        border-bottom-color: var(--primary-color);
-      }
-
-      .admin-tab svg {
-        flex-shrink: 0;
-      }
-
-      .admin-tab-content {
-        flex: 1;
-        overflow: hidden;
-        display: flex;
-        flex-direction: column;
-      }
 
       /* Global Agent Tab */
       .admin-global-agent {
@@ -4224,6 +4843,392 @@ export default class AdminPage {
         .kpi-table th,
         .kpi-table td {
           padding: 0.5rem 0.375rem;
+        }
+      }
+
+      /* ── Support Tab ── */
+      .support-tab {
+        flex: 1;
+        overflow-y: auto;
+        padding: 1.5rem 2rem;
+        max-width: 900px;
+      }
+
+      .support-subtabs {
+        display: flex;
+        gap: 0;
+        border-bottom: 1px solid var(--border-color);
+        margin-bottom: 1.5rem;
+      }
+
+      .support-subtab {
+        padding: 0.625rem 1.25rem;
+        background: none;
+        border: none;
+        border-bottom: 2px solid transparent;
+        color: var(--text-muted);
+        font-size: 0.875rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      .support-subtab:hover {
+        color: var(--text-primary);
+      }
+
+      .support-subtab.active {
+        color: var(--primary-color);
+        border-bottom-color: var(--primary-color);
+      }
+
+      .support-section {
+        margin-bottom: 1.5rem;
+      }
+
+      .support-section h3 {
+        margin: 0 0 0.75rem 0;
+        font-size: 1.1rem;
+      }
+
+      .support-card {
+        background: var(--bg-primary);
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        padding: 1.25rem;
+      }
+
+      .support-filter-bar {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 0.75rem;
+      }
+
+      .support-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.875rem;
+      }
+
+      .support-table th {
+        text-align: left;
+        padding: 0.625rem 0.75rem;
+        border-bottom: 2px solid var(--border-color);
+        color: var(--text-muted);
+        font-weight: 600;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+      }
+
+      .support-table td {
+        padding: 0.625rem 0.75rem;
+        border-bottom: 1px solid var(--border-color);
+      }
+
+      .ticket-row {
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+
+      .ticket-row:hover {
+        background: var(--bg-secondary);
+      }
+
+      .ticket-status-badge {
+        display: inline-block;
+        padding: 0.15rem 0.5rem;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 500;
+      }
+
+      .ticket-status-open {
+        background: #dbeafe;
+        color: #1e40af;
+      }
+
+      .ticket-status-closed {
+        background: #f3f4f6;
+        color: #6b7280;
+      }
+
+      .ticket-status-archived {
+        background: #fef3c7;
+        color: #92400e;
+      }
+
+      .ai-draft-indicator {
+        display: inline-block;
+        padding: 0.1rem 0.4rem;
+        border-radius: 4px;
+        font-size: 0.7rem;
+        font-weight: 600;
+        background: #ede9fe;
+        color: #7c3aed;
+      }
+
+      /* Priority Badges */
+      .priority-badge {
+        display: inline-block;
+        padding: 0.15rem 0.5rem;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 500;
+        text-transform: capitalize;
+      }
+      .priority-low { background: #f3f4f6; color: #6b7280; }
+      .priority-medium { background: #dbeafe; color: #1e40af; }
+      .priority-high { background: #ffedd5; color: #c2410c; }
+      .priority-urgent { background: #fee2e2; color: #dc2626; }
+
+      /* Tag Pills */
+      .tag-pill {
+        display: inline-block;
+        padding: 0.1rem 0.5rem;
+        border-radius: 999px;
+        font-size: 0.7rem;
+        font-weight: 500;
+        background: #e0e7ff;
+        color: #4338ca;
+      }
+
+      /* Ticket Meta Bar (Submitted By / Ref) */
+      .ticket-meta-bar {
+        display: flex;
+        gap: 1.5rem;
+        flex-wrap: wrap;
+        padding: 0.5rem 0;
+        margin-bottom: 0.75rem;
+        font-size: 0.85rem;
+        color: var(--text-muted);
+      }
+
+      .ticket-meta-item strong {
+        color: var(--text-primary);
+        font-weight: 500;
+      }
+
+      /* Ticket Detail Fields */
+      .ticket-detail-fields {
+        background: var(--bg-primary);
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        padding: 1rem;
+        margin-bottom: 1.5rem;
+      }
+      .ticket-detail-row {
+        display: flex;
+        gap: 0.75rem;
+        align-items: flex-end;
+        flex-wrap: wrap;
+      }
+      .ticket-detail-field {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        min-width: 120px;
+        flex: 1;
+      }
+      .ticket-detail-field label {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+      }
+      .ticket-detail-field .form-input {
+        font-size: 0.85rem;
+        padding: 0.35rem 0.5rem;
+      }
+
+      /* Internal Notes */
+      .ticket-notes-section {
+        margin-bottom: 1.5rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--border-color);
+      }
+      .ticket-note {
+        background: #fefce8;
+        border: 1px solid #fde68a;
+        border-radius: 8px;
+        padding: 0.75rem;
+        margin-bottom: 0.5rem;
+      }
+      .ticket-note-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        margin-bottom: 0.25rem;
+        font-size: 0.8rem;
+      }
+      .ticket-note-header span {
+        color: var(--text-muted);
+        font-size: 0.75rem;
+      }
+      .ticket-note-body {
+        font-size: 0.85rem;
+        line-height: 1.4;
+      }
+      .ticket-note-input {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        margin-top: 0.75rem;
+      }
+      .ticket-note-input textarea {
+        resize: vertical;
+        min-height: 50px;
+        font-size: 0.85rem;
+      }
+
+      /* New Ticket Form */
+      .new-ticket-form {
+        background: var(--bg-primary);
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        padding: 1.25rem;
+        margin-bottom: 1rem;
+      }
+
+      /* Thread View */
+      .thread-view {
+        flex: 1;
+        overflow-y: auto;
+        padding: 1.5rem 2rem;
+        max-width: 900px;
+      }
+
+      .thread-header {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid var(--border-color);
+      }
+
+      .thread-back-btn {
+        display: flex;
+        align-items: center;
+        gap: 0.375rem;
+        flex-shrink: 0;
+      }
+
+      .thread-messages {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+      }
+
+      .thread-message {
+        padding: 1rem;
+        border-radius: 10px;
+        border: 1px solid var(--border-color);
+      }
+
+      .thread-message-inbound {
+        background: var(--bg-secondary);
+      }
+
+      .thread-message-outbound {
+        background: #f5f3ff;
+        border-color: #c4b5fd;
+      }
+
+      .thread-message-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        margin-bottom: 0.5rem;
+      }
+
+      .thread-message-body {
+        font-size: 0.9rem;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      /* AI Draft Card */
+      .ai-draft-card {
+        background: #faf5ff;
+        border: 2px solid #c4b5fd;
+        border-radius: 10px;
+        padding: 1.25rem;
+        margin-bottom: 1.5rem;
+      }
+
+      .ai-draft-header {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-weight: 600;
+        color: #7c3aed;
+        margin-bottom: 0.75rem;
+      }
+
+      .ai-draft-body {
+        font-size: 0.9rem;
+        line-height: 1.5;
+        margin-bottom: 1rem;
+        padding: 0.75rem;
+        background: white;
+        border-radius: 6px;
+        border: 1px solid #e9d5ff;
+      }
+
+      .ai-draft-actions {
+        display: flex;
+        gap: 0.5rem;
+      }
+
+      /* Reply Area */
+      .reply-area {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+
+      .reply-area textarea {
+        resize: vertical;
+        min-height: 80px;
+      }
+
+      .reply-area .btn {
+        align-self: flex-end;
+      }
+
+      @media (max-width: 768px) {
+        .support-tab,
+        .thread-view {
+          padding: 1rem;
+        }
+
+        .support-table {
+          font-size: 0.8rem;
+        }
+
+        .support-table th,
+        .support-table td {
+          padding: 0.5rem;
+        }
+
+        .thread-header {
+          flex-wrap: wrap;
+        }
+
+        .support-filter-bar {
+          flex-wrap: wrap;
+        }
+
+        .ticket-detail-row {
+          flex-direction: column;
+        }
+
+        .ticket-detail-field {
+          min-width: 100%;
         }
       }
     `;

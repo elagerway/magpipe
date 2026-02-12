@@ -26,6 +26,7 @@ const PROVIDER_CREDENTIALS: Record<string, { clientIdEnv: string; clientSecretEn
   cal_com: { clientIdEnv: 'CAL_COM_CLIENT_ID', clientSecretEnv: 'CAL_COM_CLIENT_SECRET' },
   slack: { clientIdEnv: 'SLACK_CLIENT_ID', clientSecretEnv: 'SLACK_CLIENT_SECRET' },
   hubspot: { clientIdEnv: 'HUBSPOT_CLIENT_ID', clientSecretEnv: 'HUBSPOT_CLIENT_SECRET' },
+  google_email: { clientIdEnv: 'GOOGLE_CLIENT_ID', clientSecretEnv: 'GOOGLE_CLIENT_SECRET' },
 };
 
 interface OAuthConfig {
@@ -163,7 +164,7 @@ Deno.serve(async (req) => {
     });
 
     // Build OAuth URL
-    const redirectUri = `${supabaseUrl}/functions/v1/integration-oauth-callback`;
+    const redirectUri = `https://api.magpipe.ai/functions/v1/integration-oauth-callback`;
     const scopes = oauthConfig.scopes?.join(' ') || '';
 
     const oauthUrl = new URL(oauthConfig.auth_url);
@@ -180,6 +181,12 @@ Deno.serve(async (req) => {
     if (codeChallenge) {
       oauthUrl.searchParams.set('code_challenge', codeChallenge);
       oauthUrl.searchParams.set('code_challenge_method', 'S256');
+    }
+
+    // Google-specific: request offline access for refresh token
+    if (provider === 'google_email') {
+      oauthUrl.searchParams.set('access_type', 'offline');
+      oauthUrl.searchParams.set('prompt', 'consent');
     }
 
     return new Response(

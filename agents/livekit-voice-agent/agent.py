@@ -691,7 +691,7 @@ async def _check_semantic_actions(agent_id: str, user_id: str, matched_topics: l
         logger.warning(f"Failed to check semantic actions: {e}")
 
 
-async def deduct_call_credits(user_id: str, agent_id: str, duration_seconds: int, call_record_id: str, tts_characters: int = 0, addons: list = None) -> bool:
+async def deduct_call_credits(user_id: str, agent_id: str, duration_seconds: int, call_record_id: str, tts_characters: int = 0, addons: list = None, branded_call: bool = False) -> bool:
     """Deduct credits for a completed call by calling the deduct-credits edge function."""
     if not user_id or duration_seconds <= 0:
         logger.info(f"💰 Skipping billing - missing user_id or zero duration (user={bool(user_id)}, duration={duration_seconds})")
@@ -735,6 +735,8 @@ async def deduct_call_credits(user_id: str, agent_id: str, duration_seconds: int
         }
         if addons:
             payload["addons"] = addons
+        if branded_call:
+            payload["brandedCall"] = True
 
         async with aiohttp.ClientSession() as session:
             async with session.post(
@@ -2086,7 +2088,7 @@ async def entrypoint(ctx: JobContext):
         if service_number:
             # Look up user and agent from service_numbers table (SignalWire numbers)
             response = supabase.table("service_numbers") \
-                .select("user_id, agent_id") \
+                .select("user_id, agent_id, cnam_name") \
                 .eq("phone_number", service_number) \
                 .eq("is_active", True) \
                 .limit(1) \
@@ -2095,7 +2097,10 @@ async def entrypoint(ctx: JobContext):
             if response.data and len(response.data) > 0:
                 user_id = response.data[0]["user_id"]
                 agent_id = response.data[0].get("agent_id")
+                cnam_name = response.data[0].get("cnam_name")
                 room_metadata["user_id"] = user_id
+                if cnam_name:
+                    room_metadata["cnam_name"] = cnam_name
                 if agent_id:
                     room_metadata["agent_id"] = agent_id
                     logger.info(f"Looked up user_id: {user_id}, agent_id: {agent_id} from service_numbers")
@@ -3131,13 +3136,19 @@ AFTER-HOURS CONTEXT:
                 if billing_addons:
                     logger.info(f"💰 Billing addons: {billing_addons}")
 
+                # Check if this number has branded caller ID (CNAM)
+                has_branded_call = bool(room_metadata.get("cnam_name"))
+                if has_branded_call:
+                    logger.info(f"💰 Branded caller ID active: {room_metadata.get('cnam_name')}")
+
                 asyncio.create_task(deduct_call_credits(
                     user_id=user_id,
                     agent_id=billing_agent_id,
                     duration_seconds=call_duration,
                     call_record_id=call_record_id,
                     tts_characters=tts_characters,
-                    addons=billing_addons if billing_addons else None
+                    addons=billing_addons if billing_addons else None,
+                    branded_call=has_branded_call
                 ))
 
                 # Update caller memory if enabled (skip entirely in disabled mode)

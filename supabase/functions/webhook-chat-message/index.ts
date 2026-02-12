@@ -649,6 +649,25 @@ TROUBLESHOOTING:
       })
     }
 
+    // Add support ticket tool if enabled
+    const hasSupportTickets = !!agentConfig.functions?.support_tickets?.enabled
+    if (hasSupportTickets) {
+      allTools.push({
+        name: 'create_support_ticket',
+        description: 'Create a support ticket on behalf of the visitor when they have an issue, request, or need that should be tracked and followed up on',
+        parameters: {
+          type: 'object',
+          properties: {
+            subject: { type: 'string', description: 'Brief subject line for the ticket' },
+            description: { type: 'string', description: 'Detailed description of the issue or request' },
+            user_email: { type: 'string', description: 'Visitor email address for follow-up notifications' },
+            priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'], description: 'Ticket priority level' },
+          },
+          required: ['subject', 'description', 'user_email'],
+        },
+      })
+    }
+
     // Build OpenAI tools array
     const openaiTools = allTools.length > 0 ? allTools.map(tool => ({
       type: 'function',
@@ -686,6 +705,19 @@ You have access to HubSpot CRM. When the visitor provides their contact informat
 - The visitor's email is: ${session.visitor_email || 'Not provided yet'}
 - Use HubSpot proactively when you have enough information to create a lead (at minimum, an email address)`
       }
+    }
+
+    // Add support tickets context if enabled
+    if (hasSupportTickets) {
+      const knownEmail = session.visitor_email || ''
+      toolsContext += `
+
+SUPPORT TICKETS:
+You can create support tickets for visitors when they describe issues, problems, feature requests, or anything that needs follow-up.
+- Use the create_support_ticket tool when a visitor has a clear issue or request
+- Ask for their email if you don't already have it${knownEmail ? ` (visitor's email is: ${knownEmail})` : ''}
+- Set appropriate priority: low (general questions), medium (issues affecting work), high (blocking issues), urgent (critical/outage)
+- After creating a ticket, confirm to the visitor that their ticket has been created and they'll receive email updates`
     }
 
     // Generate AI response with function calling support
@@ -761,10 +793,42 @@ You have access to HubSpot CRM. When the visitor provides their contact informat
 
           console.log(`Executing tool: ${toolName}`, toolArgs)
 
-          // Check if this is a native integration tool or MCP tool
+          // Check if this is a native integration tool, support ticket, or MCP tool
           let toolResult
           if (toolName.startsWith('hubspot_')) {
             toolResult = await executeNativeTool(supabase, widget.user_id, toolName, toolArgs)
+          } else if (toolName === 'create_support_ticket') {
+            // Handle support ticket creation directly
+            try {
+              const threadId = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+              // Generate ticket reference number
+              const { data: seqVal } = await supabase.rpc('nextval_ticket_ref')
+              const ticketRef = seqVal ? `TKT-${String(seqVal).padStart(6, '0')}` : null
+              const { error: ticketError } = await supabase.from('support_tickets').insert({
+                thread_id: threadId,
+                ticket_ref: ticketRef,
+                subject: toolArgs.subject,
+                body_text: toolArgs.description || '',
+                from_email: toolArgs.user_email,
+                from_name: session.visitor_name || '',
+                chat_session_id: session.id,
+                direction: 'inbound',
+                status: 'open',
+                priority: toolArgs.priority || 'medium',
+                received_at: new Date().toISOString(),
+              })
+
+              if (ticketError) {
+                console.error('Failed to create support ticket:', ticketError)
+                toolResult = { success: false, error: 'Failed to create support ticket: ' + ticketError.message }
+              } else {
+                console.log('Support ticket created:', threadId)
+                toolResult = { success: true, result: `Support ticket created successfully (Reference: ${ticketRef || threadId}). The visitor will receive email updates when the team replies.` }
+              }
+            } catch (ticketErr) {
+              console.error('Support ticket creation error:', ticketErr)
+              toolResult = { success: false, error: ticketErr instanceof Error ? ticketErr.message : 'Unknown error' }
+            }
           } else {
             toolResult = await executeMcpTool(supabase, widget.user_id, toolName, toolArgs)
           }

@@ -65,6 +65,9 @@ Deno.serve(async (req) => {
     const allOperational = services.every(s => s.status === 'operational')
     const anyDown = services.some(s => s.status === 'down')
 
+    // Check for vendor status transitions and send notifications
+    await checkVendorStatusTransitions(supabase, services)
+
     return successResponse({
       overall: anyDown ? 'down' : (allOperational ? 'operational' : 'degraded'),
       services,
@@ -648,5 +651,63 @@ async function checkCalCom(supabase: ReturnType<typeof createClient>): Promise<S
     }
   } catch (error) {
     return { name: 'Cal.com', status: 'down', latency: Date.now() - start, message: error.message, statusUrl }
+  }
+}
+
+
+const NOTIF_CONFIG_ID = '00000000-0000-0000-0000-000000000100'
+
+async function checkVendorStatusTransitions(supabase: ReturnType<typeof createClient>, services: ServiceStatus[]) {
+  try {
+    // Read cached vendor statuses
+    const { data: config } = await supabase
+      .from('admin_notification_config')
+      .select('vendor_status_cache, vendor_status_sms, vendor_status_email, vendor_status_slack')
+      .eq('id', NOTIF_CONFIG_ID)
+      .single()
+
+    if (!config) return
+
+    const cache: Record<string, string> = config.vendor_status_cache || {}
+    const anyEnabled = config.vendor_status_sms || config.vendor_status_email || config.vendor_status_slack
+
+    // Build new status map and detect transitions
+    const newCache: Record<string, string> = {}
+    const transitions: string[] = []
+
+    for (const svc of services) {
+      newCache[svc.name] = svc.status
+      const prev = cache[svc.name]
+      if (prev && prev !== svc.status) {
+        transitions.push(`${svc.name}: ${prev} → ${svc.status}`)
+      }
+    }
+
+    // Update cache
+    await supabase
+      .from('admin_notification_config')
+      .update({ vendor_status_cache: newCache, updated_at: new Date().toISOString() })
+      .eq('id', NOTIF_CONFIG_ID)
+
+    // Send notification if there are transitions and any channel is enabled
+    if (transitions.length > 0 && anyEnabled) {
+      const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+      const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+
+      await fetch(`${supabaseUrl}/functions/v1/admin-send-notification`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${serviceKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          category: 'vendor_status',
+          title: 'Vendor Status Change',
+          body: transitions.join('\n'),
+        }),
+      })
+    }
+  } catch (e) {
+    console.error('Error checking vendor status transitions:', e)
   }
 }
