@@ -38,27 +38,87 @@ Deno.serve(async (req) => {
     const postmarkApiKey = Deno.env.get('POSTMARK_API_KEY')
 
     if (postmarkApiKey) {
+      const firstName = (name || 'there').split(' ')[0]
       const htmlBody = `
-        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <h1 style="color: #333; font-size: 24px;">You're invited!</h1>
-          <p style="color: #666; font-size: 16px; line-height: 1.6;">
-            Hi ${name || 'there'},
-          </p>
-          <p style="color: #666; font-size: 16px; line-height: 1.6;">
-            ${inviterName} has invited you to join <strong>${organizationName}</strong> on MAGPIPE.
-          </p>
-          <p style="color: #666; font-size: 16px; line-height: 1.6;">
-            MAGPIPE is an AI-powered communication assistant that helps manage calls and messages for your business.
-          </p>
-          <div style="margin: 30px 0;">
-            <a href="${inviteLink}" style="background: #6366f1; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500; display: inline-block;">
-              Accept Invitation
-            </a>
-          </div>
-          <p style="color: #999; font-size: 14px;">
-            If you didn't expect this invitation, you can safely ignore this email.
-          </p>
-        </div>
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin: 0; padding: 0; background-color: #f4f1ee; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #f4f1ee; padding: 40px 20px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width: 480px; background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+          <!-- Logo -->
+          <tr>
+            <td align="center" style="padding: 32px 32px 0 32px;">
+              <img src="https://magpipe.ai/magpipe-logo.png" alt="MAGPIPE" width="48" height="48" style="width: 48px; height: 48px; border-radius: 12px;" />
+            </td>
+          </tr>
+          <!-- Content -->
+          <tr>
+            <td style="padding: 24px 32px 0 32px;">
+              <h1 style="margin: 0 0 8px 0; font-size: 22px; font-weight: 700; color: #1a1a1a; text-align: center;">
+                You've been invited!
+              </h1>
+              <p style="margin: 0 0 24px 0; font-size: 15px; color: #6b7280; text-align: center; line-height: 1.5;">
+                ${firstName}, <strong style="color: #374151;">${inviterName}</strong> wants you on the team.
+              </p>
+            </td>
+          </tr>
+          <!-- Invite card -->
+          <tr>
+            <td style="padding: 0 32px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background: #f9fafb; border-radius: 12px; border: 1px solid #e5e7eb;">
+                <tr>
+                  <td style="padding: 20px 24px;">
+                    <p style="margin: 0 0 4px 0; font-size: 13px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">
+                      Team
+                    </p>
+                    <p style="margin: 0; font-size: 18px; font-weight: 600; color: #1a1a1a;">
+                      ${organizationName}
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <!-- CTA Button -->
+          <tr>
+            <td align="center" style="padding: 28px 32px 12px 32px;">
+              <a href="${inviteLink}" style="display: inline-block; background: #6366f1; color: #ffffff; padding: 14px 40px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 15px; letter-spacing: 0.01em;">
+                Join the team
+              </a>
+            </td>
+          </tr>
+          <!-- Subtext -->
+          <tr>
+            <td align="center" style="padding: 8px 32px 32px 32px;">
+              <p style="margin: 0; font-size: 13px; color: #9ca3af; line-height: 1.5;">
+                MAGPIPE helps your team manage calls and messages with AI — you'll be set up in minutes.
+              </p>
+            </td>
+          </tr>
+          <!-- Divider -->
+          <tr>
+            <td style="padding: 0 32px;">
+              <div style="height: 1px; background: #e5e7eb;"></div>
+            </td>
+          </tr>
+          <!-- Footer -->
+          <tr>
+            <td align="center" style="padding: 20px 32px 24px 32px;">
+              <p style="margin: 0; font-size: 12px; color: #9ca3af; line-height: 1.6;">
+                Didn't expect this? You can safely ignore this email.<br>
+                <a href="https://magpipe.ai" style="color: #6366f1; text-decoration: none;">magpipe.ai</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
       `
 
       const emailResponse = await fetch('https://api.postmarkapp.com/email', {
