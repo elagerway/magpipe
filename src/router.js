@@ -166,13 +166,22 @@ export class Router {
     }
 
     if (!route) {
-      // Route not found, redirect to home
-      this.navigate('/', true);
+      // Route not found, redirect to inbox
+      this.navigate('/inbox', true);
       return;
     }
 
     // Store current params for page access
     this.currentParams = params;
+
+    // Redirect authenticated users from public home to inbox
+    if (path === '/' && !route.requiresAuth) {
+      const { user } = await getCurrentUser();
+      if (user) {
+        this.navigate('/inbox', true);
+        return;
+      }
+    }
 
     // Check authentication (getCurrentUser uses caching)
     if (route.requiresAuth) {

@@ -60,8 +60,8 @@ export class User {
     if (redirectTo) {
       options.redirectTo = redirectTo;
     } else {
-      // Default redirect to agent
-      options.redirectTo = `${window.location.origin}/agent`;
+      // Default redirect to inbox
+      options.redirectTo = `${window.location.origin}/inbox`;
     }
 
     // Add query parameters for session management
