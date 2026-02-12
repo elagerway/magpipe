@@ -4,6 +4,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const PROVIDER_CREDENTIALS: Record<string, { clientIdEnv: string; clientSecretEnv: string }> = {
   slack: { clientIdEnv: 'SLACK_CLIENT_ID', clientSecretEnv: 'SLACK_CLIENT_SECRET' },
   hubspot: { clientIdEnv: 'HUBSPOT_CLIENT_ID', clientSecretEnv: 'HUBSPOT_CLIENT_SECRET' },
+  google_email: { clientIdEnv: 'GOOGLE_CLIENT_ID', clientSecretEnv: 'GOOGLE_CLIENT_SECRET' },
 };
 
 interface OAuthConfig {
@@ -107,7 +108,7 @@ Deno.serve(async (req) => {
     }
 
     // Build token request
-    const redirectUri = `${supabaseUrl}/functions/v1/integration-oauth-callback`;
+    const redirectUri = `https://api.magpipe.ai/functions/v1/integration-oauth-callback`;
 
     const tokenParams: Record<string, string> = {
       grant_type: 'authorization_code',
@@ -168,6 +169,32 @@ Deno.serve(async (req) => {
           console.error('Failed to fetch HubSpot user info:', e);
         }
       }
+    } else if (provider === 'google_email') {
+      // Fetch Gmail profile to get email address
+      if (tokens.access_token) {
+        try {
+          const profileResponse = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile', {
+            headers: { 'Authorization': `Bearer ${tokens.access_token}` }
+          });
+          if (profileResponse.ok) {
+            const profile = await profileResponse.json();
+            externalUserId = profile.emailAddress || null;
+
+            // Store Gmail address in support_email_config singleton
+            await supabase
+              .from('support_email_config')
+              .update({
+                gmail_address: profile.emailAddress,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', '00000000-0000-0000-0000-000000000001');
+
+            console.log('Gmail connected:', profile.emailAddress);
+          }
+        } catch (e) {
+          console.error('Failed to fetch Gmail profile:', e);
+        }
+      }
     }
 
     // Store tokens in user_integrations table
@@ -194,7 +221,10 @@ Deno.serve(async (req) => {
       return Response.redirect(`${frontendUrl}/settings?integration_error=storage_failed`);
     }
 
-    // Success - redirect back to settings with success message
+    // Success - redirect based on provider
+    if (provider === 'google_email') {
+      return Response.redirect(`${frontendUrl}/admin?tab=support&integration_connected=google_email`);
+    }
     return Response.redirect(`${frontendUrl}/settings?integration_connected=${provider}`);
 
   } catch (error) {
