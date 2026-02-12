@@ -10,6 +10,7 @@ import {
 } from '../_shared/sms-compliance.ts'
 import { analyzeSentiment } from '../_shared/sentiment-analysis.ts'
 import { shouldNotify, getAppPrefs } from '../_shared/app-function-prefs.ts'
+import { redactPii } from '../_shared/pii-redaction.ts'
 
 /**
  * Generate embedding for text using OpenAI
@@ -212,6 +213,17 @@ Deno.serve(async (req) => {
       console.error('Sentiment analysis failed:', err)
     }
 
+    // Check PII storage mode
+    const piiStorage = agentConfig?.pii_storage || 'enabled'
+
+    // Determine what content to store based on PII mode
+    let storeContent: string | null = body
+    if (piiStorage === 'disabled') {
+      storeContent = null
+    } else if (piiStorage === 'redacted') {
+      storeContent = await redactPii(body)
+    }
+
     // Log the message to database with agent_id and sentiment
     const { error: insertError } = await supabase
       .from('sms_messages')
@@ -221,7 +233,7 @@ Deno.serve(async (req) => {
         sender_number: from,
         recipient_number: to,
         direction: 'inbound',
-        content: body,
+        content: storeContent,
         status: 'sent',
         sent_at: new Date().toISOString(),
         sentiment: messageSentiment,
@@ -1045,8 +1057,9 @@ IMPORTANT: Base your answers on the knowledge base information above. If the que
 
     console.log('OpenAI generated reply:', reply)
 
-    // Send the reply
-    await sendSMS(userId, from, to, reply, supabase)
+    // Send the reply (pass PII mode for outbound content storage)
+    const smsPiiStorage = agentConfig?.pii_storage || 'enabled'
+    await sendSMS(userId, from, to, reply, supabase, true, smsPiiStorage)
 
     // Send agent reply to Slack thread if we have thread info
     if (slackThread) {
@@ -1062,8 +1075,11 @@ IMPORTANT: Base your answers on the knowledge base information above. If the que
     }
 
     // Update contact memory with SMS exchange (fire and forget)
-    if (agentConfig.memory_enabled) {
-      updateContactMemory(supabase, from, to, userId, agentConfig, body, reply)
+    // Skip memory update in disabled mode; use redacted text in redacted mode
+    if (agentConfig.memory_enabled && smsPiiStorage !== 'disabled') {
+      const memoryInbound = smsPiiStorage === 'redacted' ? await redactPii(body) : body
+      const memoryOutbound = smsPiiStorage === 'redacted' ? await redactPii(reply) : reply
+      updateContactMemory(supabase, from, to, userId, agentConfig, memoryInbound, memoryOutbound)
         .catch(err => console.error('Failed to update SMS memory:', err))
     }
   } catch (error) {
@@ -1077,7 +1093,8 @@ async function sendSMS(
   from: string,
   body: string,
   supabase: any,
-  addOptOutText: boolean = true
+  addOptOutText: boolean = true,
+  piiStorage: string = 'enabled'
 ) {
   try {
     const signalwireProjectId = Deno.env.get('SIGNALWIRE_PROJECT_ID')!
@@ -1120,7 +1137,14 @@ async function sendSMS(
       const smsResult = await smsResponse.json()
       console.log('SMS sent:', smsResult.sid)
 
-      // Log the outbound SMS
+      // Log the outbound SMS (respect PII storage mode)
+      let outboundContent: string | null = body
+      if (piiStorage === 'disabled') {
+        outboundContent = null
+      } else if (piiStorage === 'redacted') {
+        outboundContent = await redactPii(body)
+      }
+
       await supabase
         .from('sms_messages')
         .insert({
@@ -1128,7 +1152,7 @@ async function sendSMS(
           sender_number: fromNumber,
           recipient_number: to,
           direction: 'outbound',
-          content: body,
+          content: outboundContent,
           status: 'sent',
           sent_at: new Date().toISOString(),
           is_ai_generated: true,

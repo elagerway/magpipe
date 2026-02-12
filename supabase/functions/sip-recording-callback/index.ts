@@ -88,6 +88,47 @@ Deno.serve(async (req) => {
 
     console.log(`Using call record: ${callRecord.id}`);
 
+    // Check PII storage mode from agent config
+    let piiStorage = 'enabled';
+    if (callRecord.agent_id) {
+      const { data: agentPii } = await supabase
+        .from('agent_configs')
+        .select('pii_storage')
+        .eq('id', callRecord.agent_id)
+        .single();
+      if (agentPii?.pii_storage) {
+        piiStorage = agentPii.pii_storage;
+      }
+    }
+
+    // In disabled mode, store entry with no URL so sync-recording has nothing to download
+    if (piiStorage === 'disabled') {
+      const recordingEntry = {
+        signalwire_url: null,
+        url: null,
+        label: label,
+        duration: parseInt(RecordingDuration as string) || 0,
+        timestamp: new Date().toISOString(),
+        recording_sid: RecordingSid,
+        status: 'pii_disabled',
+      };
+
+      const existingRecordings = callRecord.recordings || [];
+      const updatedRecordings = [...existingRecordings, recordingEntry];
+
+      await supabase
+        .from('call_records')
+        .update({
+          recordings: updatedRecordings,
+          duration_seconds: parseInt(RecordingDuration as string) || callRecord.duration_seconds,
+          status: 'completed',
+        })
+        .eq('id', callRecord.id);
+
+      console.log(`🔒 PII disabled - stored recording metadata without URL for ${callRecord.id}`);
+      return new Response('OK', { status: 200 });
+    }
+
     // Build the SignalWire recording URL for later on-demand fetch
     const signalwireSpaceUrl = Deno.env.get('SIGNALWIRE_SPACE_URL') || 'erik.signalwire.com';
     const signalwireProjectId = Deno.env.get('SIGNALWIRE_PROJECT_ID');
@@ -187,7 +228,7 @@ async function deductCallCredits(
     if (agentId) {
       const { data: agentConfig } = await supabase
         .from('agent_configs')
-        .select('voice_id, llm_model, memory_enabled, semantic_memory_enabled, knowledge_source_ids')
+        .select('voice_id, llm_model, memory_enabled, semantic_memory_enabled, knowledge_source_ids, pii_storage')
         .eq('id', agentId)
         .single();
 
@@ -198,6 +239,7 @@ async function deductCallCredits(
         if (kbIds.length > 0) addons.push('knowledge_base');
         if (agentConfig.memory_enabled) addons.push('memory');
         if (agentConfig.semantic_memory_enabled) addons.push('semantic_memory');
+        if (agentConfig.pii_storage === 'redacted') addons.push('pii_removal');
       }
     }
 

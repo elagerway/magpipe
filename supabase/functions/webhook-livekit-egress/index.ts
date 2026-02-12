@@ -150,27 +150,53 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Check PII storage mode from agent config
+    let piiStorage = 'enabled';
+    const svcPhone = existingRecord.phone_number || existingRecord.caller_number
+    if (svcPhone) {
+      const { data: svcNum } = await supabase
+        .from('service_numbers')
+        .select('agent_id')
+        .eq('phone_number', svcPhone)
+        .maybeSingle()
+      if (svcNum?.agent_id) {
+        const { data: piiConfig } = await supabase
+          .from('agent_configs')
+          .select('pii_storage')
+          .eq('id', svcNum.agent_id)
+          .single()
+        if (piiConfig?.pii_storage) {
+          piiStorage = piiConfig.pii_storage
+        }
+      }
+    }
+
     // Add LiveKit recording to the recordings array
     // Label it "conversation" since it's the initial agent conversation
     const existingRecordings = existingRecord.recordings || []
+
+    // In disabled/redacted mode, don't store the recording URL (audio contains PII)
+    const storeRecordingUrl = piiStorage === 'enabled' ? recordingUrl : null
+
     const livekitRecording = {
       recording_sid: egressId,
       label: 'conversation',
-      url: recordingUrl,
+      url: storeRecordingUrl,
       duration_seconds: durationSeconds,
       source: 'livekit',
       created_at: new Date().toISOString(),
+      ...(piiStorage !== 'enabled' ? { status: piiStorage === 'disabled' ? 'pii_disabled' : 'pii_redacted' } : {}),
     }
 
     // Check if this egress is already in recordings (avoid duplicates)
     const alreadyExists = existingRecordings.some((r: any) => r.recording_sid === egressId)
     const updatedRecordings = alreadyExists
-      ? existingRecordings.map((r: any) => r.recording_sid === egressId ? { ...r, url: recordingUrl } : r)
+      ? existingRecordings.map((r: any) => r.recording_sid === egressId ? { ...r, url: storeRecordingUrl } : r)
       : [livekitRecording, ...existingRecordings]  // LiveKit recording first (earliest)
 
     // Update call_record with recording in recordings array
     const updateData: Record<string, any> = {
-      recording_url: recordingUrl,  // Keep for backwards compatibility
+      recording_url: storeRecordingUrl,  // Keep for backwards compatibility
       recordings: updatedRecordings,
     }
     if (sentiment) {
@@ -220,6 +246,8 @@ Deno.serve(async (req) => {
         }
       }
 
+      // In disabled mode: minimal Slack notification (no transcript, extracted data, or recording)
+      // In redacted mode: data already redacted by agent, pass through (no recording URL though)
       updateSlackMessageWithRecording(
         supabase,
         existingRecord.user_id,
@@ -228,10 +256,10 @@ Deno.serve(async (req) => {
         existingRecord.contact_phone || existingRecord.caller_number,
         existingRecord.direction,
         existingRecord.duration_seconds,
-        recordingUrl,
-        existingRecord.transcript,
-        existingRecord.extracted_data,
-        existingRecord.call_summary,
+        piiStorage === 'enabled' ? recordingUrl : null,
+        piiStorage === 'disabled' ? null : existingRecord.transcript,
+        piiStorage === 'disabled' ? null : existingRecord.extracted_data,
+        piiStorage === 'disabled' ? null : existingRecord.call_summary,
         existingRecord.user_sentiment || sentiment,
         agentFunctions,
         dynamicVars

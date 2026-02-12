@@ -176,7 +176,7 @@ async function deductCallCredits(
 
     const { data: agentConfig } = await supabase
       .from("agent_configs")
-      .select("voice_id, ai_model, memory_enabled, semantic_memory_enabled, knowledge_source_ids")
+      .select("voice_id, ai_model, memory_enabled, semantic_memory_enabled, knowledge_source_ids, pii_storage")
       .eq("user_id", userId)
       .single();
 
@@ -186,6 +186,7 @@ async function deductCallCredits(
     if (kbIds.length > 0) addons.push("knowledge_base");
     if (agentConfig?.memory_enabled) addons.push("memory");
     if (agentConfig?.semantic_memory_enabled) addons.push("semantic_memory");
+    if (agentConfig?.pii_storage === "redacted") addons.push("pii_removal");
 
     // Call deduct-credits function
     const response = await fetch(`${supabaseUrl}/functions/v1/deduct-credits`, {
