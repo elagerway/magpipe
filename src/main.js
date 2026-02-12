@@ -18,6 +18,15 @@ class App {
   }
 
   async init() {
+    // Check if Supabase is reachable before doing anything
+    const supabaseHealthy = await this.checkSupabaseHealth();
+    if (!supabaseHealthy) {
+      const { default: MaintenancePage } = await import('./pages/maintenance.js');
+      const page = new MaintenancePage();
+      await page.render();
+      return; // Don't initialize anything else
+    }
+
     // Check authentication state
     await this.checkAuth();
 
@@ -51,6 +60,20 @@ class App {
     // Register service worker for PWA
     if ('serviceWorker' in navigator) {
       this.registerServiceWorker();
+    }
+  }
+
+  async checkSupabaseHealth() {
+    try {
+      const url = import.meta.env.VITE_SUPABASE_URL;
+      const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const res = await fetch(`${url}/rest/v1/`, {
+        headers: { apikey: key },
+        signal: AbortSignal.timeout(3000),
+      });
+      return res.ok;
+    } catch {
+      return false;
     }
   }
 

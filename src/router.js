@@ -14,6 +14,7 @@ export class Router {
     this.currentPage = null; // Current page instance for cleanup
     this.currentParams = {}; // Route parameters (e.g., { id: '123' })
     this.pageCache = new Map(); // Cache page instances
+    this._healthCache = { healthy: true, checkedAt: 0 }; // Cache health check results
     this.setupRoutes();
   }
 
@@ -183,6 +184,15 @@ export class Router {
       }
     }
 
+    // Check Supabase health before auth on protected routes
+    if (route.requiresAuth) {
+      const healthy = await this.checkSupabaseHealth();
+      if (!healthy) {
+        this.showMaintenancePage();
+        return;
+      }
+    }
+
     // Check authentication (getCurrentUser uses caching)
     if (route.requiresAuth) {
       // If URL contains OAuth callback tokens, wait for Supabase to process them
@@ -292,6 +302,45 @@ export class Router {
     } else {
       setTimeout(preload, 100);
     }
+  }
+
+  /**
+   * Check if Supabase is reachable. Caches result for 30s.
+   */
+  async checkSupabaseHealth() {
+    const now = Date.now();
+    if (now - this._healthCache.checkedAt < 30000) {
+      return this._healthCache.healthy;
+    }
+
+    try {
+      const url = import.meta.env.VITE_SUPABASE_URL;
+      const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const res = await fetch(`${url}/rest/v1/`, {
+        headers: { apikey: key },
+        signal: AbortSignal.timeout(3000),
+      });
+      this._healthCache = { healthy: res.ok, checkedAt: now };
+      return res.ok;
+    } catch {
+      this._healthCache = { healthy: false, checkedAt: now };
+      return false;
+    }
+  }
+
+  /**
+   * Show the maintenance page without pushing to browser history.
+   */
+  async showMaintenancePage() {
+    // Cleanup current page
+    if (this.currentPage && typeof this.currentPage.cleanup === 'function') {
+      try { this.currentPage.cleanup(); } catch {}
+    }
+
+    const { default: MaintenancePage } = await import('./pages/maintenance.js');
+    const page = new MaintenancePage();
+    this.currentPage = page;
+    await page.render();
   }
 
   renderError(error) {
