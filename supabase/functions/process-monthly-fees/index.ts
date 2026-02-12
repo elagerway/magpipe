@@ -19,7 +19,7 @@ const corsHeaders = {
 const PHONE_NUMBER_FEE = 2.00  // per number per month
 const EXTRA_KB_FEE = 5.00      // per KB beyond 20 included
 const CONCURRENCY_SLOT_FEE = 5.00  // per extra slot per month
-const INCLUDED_KB_COUNT = 7    // free KBs included in plan
+const INCLUDED_KB_COUNT = 20   // free KBs included in plan
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {

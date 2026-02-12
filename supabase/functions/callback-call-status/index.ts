@@ -171,14 +171,21 @@ async function deductCallCredits(
   callRecordId: string
 ) {
   try {
-    // Get user's agent config to determine voice and LLM rates
+    // Get user's agent config to determine voice, LLM, and add-on rates
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const { data: agentConfig } = await supabase
       .from("agent_configs")
-      .select("voice_id, ai_model")
+      .select("voice_id, ai_model, memory_enabled, semantic_memory_enabled, knowledge_source_ids")
       .eq("user_id", userId)
       .single();
+
+    // Determine active add-ons
+    const addons: string[] = [];
+    const kbIds = agentConfig?.knowledge_source_ids || [];
+    if (kbIds.length > 0) addons.push("knowledge_base");
+    if (agentConfig?.memory_enabled) addons.push("memory");
+    if (agentConfig?.semantic_memory_enabled) addons.push("semantic_memory");
 
     // Call deduct-credits function
     const response = await fetch(`${supabaseUrl}/functions/v1/deduct-credits`, {
@@ -193,6 +200,7 @@ async function deductCallCredits(
         durationSeconds,
         voiceId: agentConfig?.voice_id,
         aiModel: agentConfig?.ai_model,
+        addons: addons.length > 0 ? addons : undefined,
         referenceType: "call",
         referenceId: callRecordId,
       }),
@@ -201,7 +209,7 @@ async function deductCallCredits(
     const result = await response.json();
     if (result.success) {
       console.log(
-        `Deducted $${result.cost} for ${durationSeconds}s call, balance: $${result.balanceAfter}`
+        `Deducted $${result.cost} for ${durationSeconds}s call (addons: ${addons.join(",") || "none"}), balance: $${result.balanceAfter}`
       );
     } else {
       console.error("Failed to deduct credits:", result.error);

@@ -30,6 +30,20 @@ const LLM_RATES: Record<string, number> = {
 
 const TELEPHONY_RATE = 0.015  // Per minute
 const SMS_RATE = 0.01         // Per message
+const SMS_AI_RATE = 0.005     // Per AI-generated SMS reply
+
+// Per-minute add-on surcharges (when feature is enabled on the agent)
+const ADDON_RATES: Record<string, number> = {
+  knowledge_base: 0.005,       // Agent has knowledge sources
+  memory: 0.005,               // memory_enabled
+  semantic_memory: 0.005,      // semantic_memory_enabled
+  advanced_denoising: 0.005,   // Future
+  pii_removal: 0.01,           // Future
+}
+
+// Flat per-call fees
+const BRANDED_CALL_FEE = 0.10  // Per outbound call with branded caller ID
+const BATCH_CALL_FEE = 0.005   // Per batch/campaign dial
 
 interface DeductRequest {
   userId: string
@@ -38,8 +52,12 @@ interface DeductRequest {
   durationSeconds?: number
   voiceId?: string
   aiModel?: string
+  addons?: string[]          // e.g. ['knowledge_base', 'memory', 'semantic_memory']
+  brandedCall?: boolean      // Outbound call with branded caller ID (CNAM)
+  batchCall?: boolean        // Batch/campaign dial
   // For SMS
   messageCount?: number
+  aiGenerated?: boolean      // AI-generated SMS reply surcharge
   // Reference info
   referenceType?: string  // 'call' or 'sms'
   referenceId?: string    // call_record.id or sms_message.id
@@ -48,13 +66,23 @@ interface DeductRequest {
 /**
  * Calculate the cost for a voice call
  */
-function calculateVoiceCost(durationSeconds: number, voiceId?: string, aiModel?: string): {
+function calculateVoiceCost(
+  durationSeconds: number,
+  voiceId?: string,
+  aiModel?: string,
+  addons?: string[],
+  brandedCall?: boolean,
+  batchCall?: boolean
+): {
   totalCost: number
   breakdown: {
     voiceCost: number
     llmCost: number
     telephonyCost: number
+    addonCost: number
+    flatFees: number
     minutes: number
+    addons?: string[]
   }
 } {
   const minutes = durationSeconds / 60
@@ -73,18 +101,37 @@ function calculateVoiceCost(durationSeconds: number, voiceId?: string, aiModel?:
     llmRate = LLM_RATES[aiModel]
   }
 
+  // Calculate add-on surcharges (per minute)
+  let totalAddonRate = 0
+  if (addons && addons.length > 0) {
+    for (const addon of addons) {
+      if (ADDON_RATES[addon]) {
+        totalAddonRate += ADDON_RATES[addon]
+      }
+    }
+  }
+
+  // Calculate flat per-call fees
+  let flatFees = 0
+  if (brandedCall) flatFees += BRANDED_CALL_FEE
+  if (batchCall) flatFees += BATCH_CALL_FEE
+
   const voiceCost = minutes * voiceRate
   const llmCost = minutes * llmRate
   const telephonyCost = minutes * TELEPHONY_RATE
-  const totalCost = voiceCost + llmCost + telephonyCost
+  const addonCost = minutes * totalAddonRate
+  const totalCost = voiceCost + llmCost + telephonyCost + addonCost + flatFees
 
   return {
-    totalCost: Math.round(totalCost * 10000) / 10000, // Round to 4 decimal places
+    totalCost: Math.round(totalCost * 10000) / 10000,
     breakdown: {
       voiceCost: Math.round(voiceCost * 10000) / 10000,
       llmCost: Math.round(llmCost * 10000) / 10000,
       telephonyCost: Math.round(telephonyCost * 10000) / 10000,
-      minutes: Math.round(minutes * 100) / 100
+      addonCost: Math.round(addonCost * 10000) / 10000,
+      flatFees: Math.round(flatFees * 10000) / 10000,
+      minutes: Math.round(minutes * 100) / 100,
+      ...(addons && addons.length > 0 ? { addons } : {})
     }
   }
 }
@@ -249,7 +296,7 @@ serve(async (req) => {
 
     // Parse request body
     const body: DeductRequest = await req.json()
-    const { userId, type, durationSeconds, voiceId, aiModel, messageCount, referenceType, referenceId } = body
+    const { userId, type, durationSeconds, voiceId, aiModel, addons, brandedCall, batchCall, messageCount, aiGenerated, referenceType, referenceId } = body
 
     if (!userId) {
       return new Response(JSON.stringify({ error: 'userId is required' }), {
@@ -270,7 +317,7 @@ serve(async (req) => {
         })
       }
 
-      const { totalCost, breakdown } = calculateVoiceCost(durationSeconds, voiceId, aiModel)
+      const { totalCost, breakdown } = calculateVoiceCost(durationSeconds, voiceId, aiModel, addons, brandedCall, batchCall)
       cost = totalCost
       description = `Voice call - ${breakdown.minutes.toFixed(2)} minutes`
       metadata = {
@@ -283,12 +330,23 @@ serve(async (req) => {
     } else if (type === 'sms') {
       const count = messageCount || 1
       const { totalCost, breakdown } = calculateSmsCost(count)
-      cost = totalCost
-      description = `SMS - ${count} message${count > 1 ? 's' : ''}`
-      metadata = {
+      let smsCost = totalCost
+      const smsMetadata: Record<string, any> = {
         type: 'sms',
         ...breakdown
       }
+
+      // Add AI surcharge for AI-generated SMS replies
+      if (aiGenerated) {
+        const aiSurcharge = Math.round(count * SMS_AI_RATE * 10000) / 10000
+        smsCost = Math.round((smsCost + aiSurcharge) * 10000) / 10000
+        smsMetadata.aiGenerated = true
+        smsMetadata.aiSurcharge = aiSurcharge
+      }
+
+      cost = smsCost
+      description = `SMS - ${count} message${count > 1 ? 's' : ''}${aiGenerated ? ' (AI reply)' : ''}`
+      metadata = smsMetadata
     } else {
       return new Response(JSON.stringify({ error: 'Invalid type. Must be "voice" or "sms"' }), {
         status: 400,
