@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { shouldNotify, filterExtractedDataForApp } from '../_shared/app-function-prefs.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -135,17 +136,42 @@ serve(async (req) => {
       } else {
         console.log(`✅ Updated call record ${callRecord.id} to status: ${newStatus}`)
 
-        // Send Slack notification for completed/ended calls
+        // Send Slack notification for completed/ended calls (if enabled)
         if (call_state === 'completed' || call_state === 'ended') {
-          sendSlackCallNotification(
-            supabase,
-            callRecord.user_id,
-            callRecord.id,
-            callRecord.contact_phone || callRecord.caller_number,
-            callRecord.direction,
-            newStatus,
-            duration ? parseInt(duration) : 0
-          ).catch(err => console.error('Failed to send Slack call notification:', err))
+          // Look up agent config to check notification prefs
+          const serviceNum = callRecord.direction === 'inbound' ? to : from;
+          let agentFunctions = null;
+          let agentId: string | null = null;
+          if (serviceNum) {
+            const { data: svcNum } = await supabase
+              .from('service_numbers')
+              .select('agent_id')
+              .eq('phone_number', serviceNum)
+              .maybeSingle();
+            if (svcNum?.agent_id) {
+              agentId = svcNum.agent_id;
+              const { data: ac } = await supabase
+                .from('agent_configs')
+                .select('functions')
+                .eq('id', svcNum.agent_id)
+                .single();
+              agentFunctions = ac?.functions;
+            }
+          }
+
+          if (shouldNotify(agentFunctions, 'slack', 'calls')) {
+            sendSlackCallNotification(
+              supabase,
+              callRecord.user_id,
+              callRecord.id,
+              callRecord.contact_phone || callRecord.caller_number,
+              callRecord.direction,
+              newStatus,
+              duration ? parseInt(duration) : 0,
+              agentFunctions,
+              agentId
+            ).catch(err => console.error('Failed to send Slack call notification:', err))
+          }
         }
       }
     } else {
@@ -199,7 +225,9 @@ async function sendSlackCallNotification(
   phoneNumber: string,
   direction: string,
   status: string,
-  durationSeconds: number
+  durationSeconds: number,
+  agentFunctions: Record<string, any> | null = null,
+  agentId: string | null = null
 ) {
   try {
     // Get Slack provider ID
@@ -392,12 +420,29 @@ async function sendSlackCallNotification(
       })
     }
 
-    // Add extracted data if present (excluding caller_name since it's in header)
-    const filteredExtractedData = Object.entries(extractedData)
-      .filter(([key]) => key !== 'caller_name')
+    // Filter extracted data per-variable send_to prefs
+    let dynamicVars: Array<{ name: string; send_to?: Record<string, boolean> | null }> = []
+    if (agentId) {
+      const { data: vars } = await supabase
+        .from('dynamic_variables')
+        .select('name, send_to')
+        .eq('agent_id', agentId)
+      dynamicVars = vars || []
+    }
 
-    if (filteredExtractedData.length > 0) {
-      const extractedFields = filteredExtractedData
+    // Remove caller_name before filtering (it's used for contact, not display)
+    const dataWithoutCallerName = { ...extractedData }
+    delete dataWithoutCallerName.caller_name
+
+    const filteredForSlack = filterExtractedDataForApp(
+      dataWithoutCallerName,
+      dynamicVars,
+      agentFunctions,
+      'slack'
+    )
+
+    if (filteredForSlack && Object.keys(filteredForSlack).length > 0) {
+      const extractedFields = Object.entries(filteredForSlack)
         .map(([key, value]) => {
           const displayKey = key.replace(/_/g, ' ')
           let displayValue: string

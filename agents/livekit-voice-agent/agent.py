@@ -2754,10 +2754,11 @@ AFTER-HOURS CONTEXT:
         else:
             logger.warning(f"⚠️ Booking enabled but Cal.com not connected for user {user_id}")
 
-    # Extract Data function
+    # Extract Data function (only if calls channel is enabled)
     extract_config = functions_config.get("extract_data", {})
     extract_enabled = extract_config.get("enabled", False)
-    if extract_enabled:
+    extract_calls_enabled = extract_config.get("channels", {}).get("calls", True)
+    if extract_enabled and extract_calls_enabled:
         collect_data_tool = create_collect_data_tool(user_id)
         custom_tools.append(collect_data_tool)
         logger.info(f"📝 Registered extract_data/collect tool")
@@ -2951,8 +2952,9 @@ AFTER-HOURS CONTEXT:
                     logger.info(f"📝 Generating call summary and extracting data...")
 
                     # Run summary and extraction in parallel
+                    # Only extract if calls channel is enabled for extract_data
                     summary_task = generate_call_summary(transcript_text)
-                    extraction_task = extract_data_from_transcript(transcript_text, dynamic_variables) if dynamic_variables else None
+                    extraction_task = extract_data_from_transcript(transcript_text, dynamic_variables) if (dynamic_variables and extract_calls_enabled) else None
 
                     if extraction_task:
                         call_summary, extracted_data = await asyncio.gather(summary_task, extraction_task)

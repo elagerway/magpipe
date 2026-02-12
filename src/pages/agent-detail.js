@@ -60,6 +60,7 @@ export default class AgentDetailPage {
     this.memoryCount = 0; // Count of memory entries
     this.customFunctions = []; // Custom webhook functions for this agent
     this.semanticActions = []; // Semantic match alert actions
+    this.connectedApps = []; // Connected integration apps (slack, hubspot, etc.)
     // Voice cloning state
     this.mediaRecorder = null;
     this.audioChunks = [];
@@ -177,6 +178,20 @@ export default class AgentDetailPage {
     // Load semantic match actions for this agent
     const { actions: semanticActions } = await SemanticMatchAction.listByAgent(this.agent.id);
     this.semanticActions = semanticActions || [];
+
+    // Load connected integration apps for App Functions section
+    const { data: connectedApps } = await supabase
+      .from('user_integrations')
+      .select('provider_id, status, integration_providers(slug, name, icon_url)')
+      .eq('user_id', user.id)
+      .eq('status', 'connected');
+    this.connectedApps = (connectedApps || [])
+      .filter(a => a.integration_providers?.slug)
+      .map(a => ({
+        slug: a.integration_providers.slug,
+        name: a.integration_providers.name,
+        icon_url: a.integration_providers.icon_url,
+      }));
 
     // Add styles
     this.addStyles();
@@ -519,6 +534,18 @@ export default class AgentDetailPage {
           <p id="language-voice-warning" class="form-help" style="color: #d97706; display: ${this.agent.language && this.agent.language !== 'en-US' ? 'block' : 'none'};">
             Voices cloned from English speech may have an accent in other languages.
           </p>
+        </div>
+
+        <div class="form-group" id="translate-group">
+          <label class="form-label">Agent Translation</label>
+          <select id="owner-language" class="form-select">
+            <option value="" ${!this.agent.translate_to ? 'selected' : ''}>Off</option>
+            <option value="en" ${this.agent.translate_to === 'en' ? 'selected' : ''}>English</option>
+            <option value="fr" ${this.agent.translate_to === 'fr' ? 'selected' : ''}>French</option>
+            <option value="es" ${this.agent.translate_to === 'es' ? 'selected' : ''}>Spanish</option>
+            <option value="de" ${this.agent.translate_to === 'de' ? 'selected' : ''}>German</option>
+          </select>
+          <p class="form-help" id="translate-help"></p>
         </div>
 
         <div class="form-group">
@@ -1931,6 +1958,8 @@ THIS IS AN OUTBOUND CALL:
         </div>
       </div>
 
+      ${this.renderAppFunctionsSection()}
+
       <div class="config-section">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
           <h3 style="margin: 0;">Custom Functions</h3>
@@ -1959,6 +1988,91 @@ THIS IS AN OUTBOUND CALL:
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/>
           </svg>
           <span>Configure MCP servers in the <a href="#" onclick="navigateTo('/apps'); return false;">Apps</a> page</span>
+        </div>
+      </div>
+    `;
+  }
+
+  renderAppFunctionsSection() {
+    // App icons by slug
+    const appIcons = {
+      slack: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M14.5 2a2.5 2.5 0 0 0 0 5H17V4.5A2.5 2.5 0 0 0 14.5 2z" fill="#E01E5A"/><path d="M2 14.5a2.5 2.5 0 0 0 5 0V12H4.5A2.5 2.5 0 0 0 2 14.5z" fill="#36C5F0"/><path d="M9.5 22a2.5 2.5 0 0 0 0-5H7v2.5A2.5 2.5 0 0 0 9.5 22z" fill="#2EB67D"/><path d="M22 9.5a2.5 2.5 0 0 0-5 0V12h2.5A2.5 2.5 0 0 0 22 9.5z" fill="#ECB22E"/><path d="M9.5 2A2.5 2.5 0 0 0 7 4.5V7h2.5a2.5 2.5 0 0 0 0-5z" fill="#36C5F0"/><path d="M2 9.5A2.5 2.5 0 0 0 4.5 12H7V9.5a2.5 2.5 0 0 0-5 0z" fill="#E01E5A"/><path d="M14.5 22a2.5 2.5 0 0 0 2.5-2.5V17h-2.5a2.5 2.5 0 0 0 0 5z" fill="#ECB22E"/><path d="M22 14.5a2.5 2.5 0 0 0-2.5-2.5H17v2.5a2.5 2.5 0 0 0 5 0z" fill="#2EB67D"/></svg>`,
+      hubspot: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M17.5 8.2V5.8c.8-.4 1.3-1.2 1.3-2.1C18.8 2.2 17.6 1 16.1 1S13.4 2.2 13.4 3.7c0 .9.5 1.7 1.3 2.1v2.4c-1.1.2-2.1.7-2.9 1.4L5.6 5.1c.1-.2.1-.5.1-.7 0-1.2-1-2.2-2.2-2.2S1.3 3.2 1.3 4.4s1 2.2 2.2 2.2c.4 0 .8-.1 1.2-.3l6.1 4.5c-.7 1-1.1 2.2-1.1 3.5 0 1.2.4 2.4 1 3.3l-1.8 1.8c-.2-.1-.5-.1-.7-.1-1.2 0-2.2 1-2.2 2.2s1 2.2 2.2 2.2 2.2-1 2.2-2.2c0-.3 0-.5-.1-.7l1.8-1.8c1 .7 2.3 1.2 3.6 1.2 3.5 0 6.3-2.8 6.3-6.3 0-3.1-2.2-5.7-5.1-6.3h-.4zM16 18.5c-2.5 0-4.5-2-4.5-4.5s2-4.5 4.5-4.5 4.5 2 4.5 4.5-2 4.5-4.5 4.5z" fill="#FF7A59"/></svg>`,
+    };
+
+    // Only show apps that support push notifications
+    const notifiableApps = this.connectedApps.filter(a => ['slack', 'hubspot'].includes(a.slug));
+
+    if (notifiableApps.length === 0) {
+      return `
+        <div class="config-section">
+          <h3>App Notifications</h3>
+          <p class="section-desc">Control which notifications are sent to your connected apps.</p>
+          <div class="placeholder-message">
+            <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+            </svg>
+            <span>Connect apps in the <a href="#" onclick="navigateTo('/apps'); return false;">Apps</a> page to configure notifications</span>
+          </div>
+        </div>
+      `;
+    }
+
+    const hasTranslateTo = !!this.agent.translate_to;
+
+    const appCards = notifiableApps.map(app => {
+      const prefs = this.agent.functions?.app_functions?.[app.slug] || {};
+      const enabled = prefs.enabled !== false; // default ON
+      const sms = prefs.sms !== false;
+      const calls = prefs.calls !== false;
+      const webChat = prefs.web_chat !== false;
+      const translations = prefs.translations !== false;
+
+      const icon = appIcons[app.slug] || '';
+      const disabledClass = !enabled ? 'app-func-disabled' : '';
+
+      return `
+        <div class="app-func-card ${disabledClass}" data-app="${app.slug}">
+          <div class="app-func-header">
+            <div class="app-func-title">
+              <span class="app-func-icon">${icon}</span>
+              <span class="app-func-name">${app.name}</span>
+            </div>
+            <label class="toggle-switch-sm">
+              <input type="checkbox" class="app-func-master-toggle" data-app="${app.slug}" ${enabled ? 'checked' : ''} />
+              <span class="toggle-slider-sm"></span>
+            </label>
+          </div>
+          <div class="app-func-channels">
+            <label class="app-func-channel">
+              <input type="checkbox" class="app-func-channel-toggle" data-app="${app.slug}" data-channel="sms" ${sms ? 'checked' : ''} ${!enabled ? 'disabled' : ''} />
+              <span>SMS messages</span>
+            </label>
+            <label class="app-func-channel">
+              <input type="checkbox" class="app-func-channel-toggle" data-app="${app.slug}" data-channel="calls" ${calls ? 'checked' : ''} ${!enabled ? 'disabled' : ''} />
+              <span>Call summaries</span>
+            </label>
+            <label class="app-func-channel">
+              <input type="checkbox" class="app-func-channel-toggle" data-app="${app.slug}" data-channel="web_chat" ${webChat ? 'checked' : ''} ${!enabled ? 'disabled' : ''} />
+              <span>Web chat messages</span>
+            </label>
+            ${hasTranslateTo ? `
+              <label class="app-func-channel">
+                <input type="checkbox" class="app-func-channel-toggle" data-app="${app.slug}" data-channel="translations" ${translations ? 'checked' : ''} ${!enabled ? 'disabled' : ''} />
+                <span>Include translations</span>
+              </label>
+            ` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div class="config-section">
+        <h3>App Notifications</h3>
+        <p class="section-desc">Control which notifications are sent to your connected apps.</p>
+        <div class="app-func-cards">
+          ${appCards}
         </div>
       </div>
     `;
@@ -2512,12 +2626,25 @@ THIS IS AN OUTBOUND CALL:
     const agentLanguage = document.getElementById('agent-language');
     if (agentLanguage) {
       agentLanguage.addEventListener('change', () => {
-        this.scheduleAutoSave({ language: agentLanguage.value });
+        this.scheduleAutoSave({ language: agentLanguage.value, translate_to: this.computeTranslateTo() });
         const warning = document.getElementById('language-voice-warning');
         if (warning) {
           warning.style.display = agentLanguage.value !== 'en-US' ? 'block' : 'none';
         }
+        this.updateTranslateHelp();
       });
+    }
+
+    // Agent Translation (owner language)
+    const ownerLanguage = document.getElementById('owner-language');
+    if (ownerLanguage) {
+      ownerLanguage.addEventListener('change', () => {
+        const translateTo = this.computeTranslateTo();
+        this.scheduleAutoSave({ translate_to: translateTo });
+        this.updateTranslateHelp();
+      });
+      // Initialize help text
+      this.updateTranslateHelp();
     }
 
     // Vetting strategy
@@ -3253,6 +3380,62 @@ THIS IS AN OUTBOUND CALL:
         this.showSemanticMatchConfigModal();
       });
     }
+
+    // App Functions — master toggles and channel toggles
+    this.attachAppFunctionListeners();
+  }
+
+  attachAppFunctionListeners() {
+    const saveAppFunctions = () => {
+      // Collect current state from all app function toggles
+      const appFunctions = { ...(this.agent.functions?.app_functions || {}) };
+
+      document.querySelectorAll('.app-func-master-toggle').forEach(toggle => {
+        const app = toggle.dataset.app;
+        if (!appFunctions[app]) appFunctions[app] = {};
+        appFunctions[app].enabled = toggle.checked;
+      });
+
+      document.querySelectorAll('.app-func-channel-toggle').forEach(toggle => {
+        const app = toggle.dataset.app;
+        const channel = toggle.dataset.channel;
+        if (!appFunctions[app]) appFunctions[app] = {};
+        appFunctions[app][channel] = toggle.checked;
+      });
+
+      const functions = {
+        ...this.agent.functions,
+        app_functions: appFunctions,
+      };
+      this.agent.functions = functions;
+      this.scheduleAutoSave({ functions });
+    };
+
+    // Master toggles — enable/disable sub-toggles
+    document.querySelectorAll('.app-func-master-toggle').forEach(toggle => {
+      toggle.addEventListener('change', () => {
+        const app = toggle.dataset.app;
+        const card = document.querySelector(`.app-func-card[data-app="${app}"]`);
+        const channelToggles = card?.querySelectorAll('.app-func-channel-toggle') || [];
+
+        channelToggles.forEach(ct => {
+          ct.disabled = !toggle.checked;
+        });
+
+        if (toggle.checked) {
+          card?.classList.remove('app-func-disabled');
+        } else {
+          card?.classList.add('app-func-disabled');
+        }
+
+        saveAppFunctions();
+      });
+    });
+
+    // Channel toggles
+    document.querySelectorAll('.app-func-channel-toggle').forEach(toggle => {
+      toggle.addEventListener('change', saveAppFunctions);
+    });
   }
 
   attachCustomFunctionListeners() {
@@ -3982,6 +4165,33 @@ THIS IS AN OUTBOUND CALL:
         if (callId) navigateTo(`/inbox?call=${callId}`);
       });
     });
+  }
+
+  computeTranslateTo() {
+    const ownerLang = document.getElementById('owner-language')?.value;
+    if (!ownerLang) return null; // "Off" selected
+    return ownerLang;
+  }
+
+  updateTranslateHelp() {
+    const help = document.getElementById('translate-help');
+    if (!help) return;
+    const ownerLang = document.getElementById('owner-language')?.value;
+    if (!ownerLang) {
+      help.textContent = 'No translation applied to inbox messages';
+      return;
+    }
+    const agentLang = document.getElementById('agent-language')?.value || 'en-US';
+    const langNames = { en: 'English', fr: 'French', es: 'Spanish', de: 'German' };
+    const ownerName = langNames[ownerLang] || ownerLang;
+    const baseLang = agentLang.split('-')[0].toLowerCase();
+    if (agentLang !== 'multi' && baseLang === ownerLang) {
+      help.textContent = `Translation off — agent already speaks ${ownerName}`;
+    } else if (agentLang === 'multi') {
+      help.textContent = `Non-${ownerName} messages translated in inbox`;
+    } else {
+      help.textContent = `Inbox messages translated to ${ownerName}`;
+    }
   }
 
   scheduleAutoSave(updates) {
@@ -4751,6 +4961,15 @@ THIS IS AN OUTBOUND CALL:
 
       const variables = dynamicVars || [];
 
+      const extractChannels = this.agent.functions?.extract_data?.channels || {};
+      const chCalls = extractChannels.calls !== false;
+      const chSms = extractChannels.sms !== false;
+      const chWebChat = extractChannels.web_chat !== false;
+
+      const sendTo = this.agent.functions?.extract_data?.send_to || {};
+      // Build "Send to" checkboxes from connected apps
+      const sendToApps = this.connectedApps.filter(a => ['slack', 'hubspot'].includes(a.slug));
+
       const modal = document.createElement('div');
       modal.className = 'voice-modal-overlay';
       modal.id = 'extract-modal';
@@ -4764,6 +4983,42 @@ THIS IS AN OUTBOUND CALL:
             <p style="margin: 0 0 1rem; color: var(--text-secondary); font-size: 0.875rem;">
               Define variables to extract from conversations. This data can be sent to CRMs, databases, or other integrations.
             </p>
+
+            <div style="margin-bottom: 1rem; padding: 0.75rem; border: 1px solid var(--border-color, #e5e7eb); border-radius: 8px; background: var(--bg-secondary, #f9fafb);">
+              <label style="display: block; font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.03em;">Extract from</label>
+              <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-size: 0.875rem; color: var(--text-primary);">
+                  <input type="checkbox" id="extract-ch-calls" ${chCalls ? 'checked' : ''} style="accent-color: var(--primary-color);" />
+                  Calls
+                </label>
+                <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-size: 0.875rem; color: var(--text-primary);">
+                  <input type="checkbox" id="extract-ch-sms" ${chSms ? 'checked' : ''} style="accent-color: var(--primary-color);" />
+                  SMS
+                </label>
+                <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-size: 0.875rem; color: var(--text-primary);">
+                  <input type="checkbox" id="extract-ch-web-chat" ${chWebChat ? 'checked' : ''} style="accent-color: var(--primary-color);" />
+                  Web Chat
+                </label>
+              </div>
+            </div>
+
+            ${sendToApps.length > 0 ? `
+            <div style="margin-bottom: 1rem; padding: 0.75rem; border: 1px solid var(--border-color, #e5e7eb); border-radius: 8px; background: var(--bg-secondary, #f9fafb);">
+              <label style="display: block; font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.03em;">Send to</label>
+              <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                ${sendToApps.map(app => {
+                  const checked = sendTo[app.slug] !== false; // default ON
+                  return `
+                    <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-size: 0.875rem; color: var(--text-primary);">
+                      <input type="checkbox" class="extract-send-to" data-app="${app.slug}" ${checked ? 'checked' : ''} style="accent-color: var(--primary-color);" />
+                      ${app.name}
+                    </label>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+            ` : ''}
+
             <div id="dynamic-vars-list" style="display: flex; flex-direction: column; gap: 0.75rem;">
               ${variables.length === 0 ? '<p style="color: var(--text-secondary); text-align: center; padding: 1rem;">No variables configured</p>' : ''}
               ${variables.map((v, index) => this.renderDynamicVarRow(v, index)).join('')}
@@ -4898,6 +5153,28 @@ THIS IS AN OUTBOUND CALL:
       { value: 'enum', label: 'Enum (list)' },
     ];
 
+    // Per-variable send_to pills (only when connected apps exist)
+    const sendToApps = this.connectedApps.filter(a => ['slack', 'hubspot'].includes(a.slug));
+    const varSendTo = v.send_to || {}; // null/undefined = use global default
+    const hasOverride = v.send_to != null;
+
+    const sendToPills = sendToApps.length > 0 ? `
+      <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.4rem; flex-wrap: wrap;">
+        <span style="font-size: 0.75rem; color: var(--text-tertiary, #9ca3af);">Send to:</span>
+        ${sendToApps.map(app => {
+          // If no per-variable override, show as checked (inherits global)
+          const checked = hasOverride ? varSendTo[app.slug] !== false : true;
+          const isDefault = !hasOverride;
+          return `
+            <label style="display: flex; align-items: center; gap: 0.25rem; cursor: pointer; font-size: 0.75rem; color: ${isDefault ? 'var(--text-tertiary, #9ca3af)' : 'var(--text-secondary)'};" title="${isDefault ? 'Using global default' : 'Per-variable override'}">
+              <input type="checkbox" class="dynamic-var-send-to" data-index="${index}" data-app="${app.slug}" ${checked ? 'checked' : ''} style="width: 13px; height: 13px; accent-color: var(--primary-color);" />
+              ${app.name}
+            </label>
+          `;
+        }).join('')}
+      </div>
+    ` : '';
+
     return `
       <div class="dynamic-var-row" data-index="${index}" style="
         background: var(--bg-secondary, #f9fafb);
@@ -4935,7 +5212,7 @@ THIS IS AN OUTBOUND CALL:
           placeholder="Description (e.g., The caller's full name)"
           value="${v.description || ''}"
           data-index="${index}"
-          style="width: 100%; font-size: 0.875rem; margin-bottom: 0.5rem;"
+          style="width: 100%; font-size: 0.875rem; ${sendToApps.length > 0 ? '' : 'margin-bottom: 0.5rem;'}"
         />
         <div class="enum-options-container" data-index="${index}" style="display: ${v.var_type === 'enum' ? 'block' : 'none'};">
           <input
@@ -4947,6 +5224,7 @@ THIS IS AN OUTBOUND CALL:
             style="width: 100%; font-size: 0.875rem;"
           />
         </div>
+        ${sendToPills}
       </div>
     `;
   }
@@ -5020,6 +5298,51 @@ THIS IS AN OUTBOUND CALL:
         this.refreshDynamicVarsList();
       });
     });
+
+    // Global send_to checkboxes — toggling ON checks all per-variable, OFF unchecks all
+    modal.querySelectorAll('.extract-send-to').forEach(cb => {
+      cb.addEventListener('change', (e) => {
+        const app = e.target.dataset.app;
+        const checked = e.target.checked;
+        modal.querySelectorAll(`.dynamic-var-send-to[data-app="${app}"]`).forEach(varCb => {
+          varCb.checked = checked;
+          const index = parseInt(varCb.dataset.index);
+          const v = this.modalDynamicVars[index];
+          if (!v.send_to) v.send_to = {};
+          v.send_to[app] = checked;
+          const label = varCb.closest('label');
+          if (label) label.style.color = 'var(--text-secondary)';
+        });
+      });
+    });
+
+    // Per-variable send_to checkboxes — unchecking any deselects global
+    modal.querySelectorAll('.dynamic-var-send-to').forEach(cb => {
+      cb.addEventListener('change', (e) => {
+        const index = parseInt(e.target.dataset.index);
+        const app = e.target.dataset.app;
+        const v = this.modalDynamicVars[index];
+        if (!v.send_to) v.send_to = {};
+        v.send_to[app] = e.target.checked;
+        // Update label style to show it's now an override
+        const label = e.target.closest('label');
+        if (label) label.style.color = 'var(--text-secondary)';
+
+        // If unchecked, deselect the global toggle for this app
+        if (!e.target.checked) {
+          const globalCb = modal.querySelector(`.extract-send-to[data-app="${app}"]`);
+          if (globalCb) globalCb.checked = false;
+        } else {
+          // If all per-variable are checked, re-select the global
+          const allForApp = modal.querySelectorAll(`.dynamic-var-send-to[data-app="${app}"]`);
+          const allChecked = [...allForApp].every(c => c.checked);
+          if (allChecked) {
+            const globalCb = modal.querySelector(`.extract-send-to[data-app="${app}"]`);
+            if (globalCb) globalCb.checked = true;
+          }
+        }
+      });
+    });
   }
 
   async saveDynamicVars() {
@@ -5056,6 +5379,7 @@ THIS IS AN OUTBOUND CALL:
               description: v.description,
               var_type: v.var_type,
               enum_options: v.var_type === 'enum' ? v.enum_options : null,
+              send_to: v.send_to || null,
               updated_at: new Date().toISOString(),
             })
             .eq('id', v.id);
@@ -5070,22 +5394,39 @@ THIS IS AN OUTBOUND CALL:
               description: v.description,
               var_type: v.var_type,
               enum_options: v.var_type === 'enum' ? v.enum_options : null,
+              send_to: v.send_to || null,
             });
         }
       }
 
-      // If enabling mode and has valid variables, enable the function
-      if (this._extractEnablingMode && validVars.length > 0) {
-        const functions = {
-          ...this.agent.functions,
-          extract_data: {
-            ...this.agent.functions?.extract_data,
-            enabled: true,
-          },
-        };
-        this.agent.functions = functions;
-        await this.scheduleAutoSave({ functions });
+      // Save channel selections from the modal
+      const channels = {
+        calls: document.getElementById('extract-ch-calls')?.checked ?? true,
+        sms: document.getElementById('extract-ch-sms')?.checked ?? true,
+        web_chat: document.getElementById('extract-ch-web-chat')?.checked ?? true,
+      };
 
+      // Save send_to app selections
+      const sendTo = { ...(this.agent.functions?.extract_data?.send_to || {}) };
+      document.querySelectorAll('.extract-send-to').forEach(toggle => {
+        sendTo[toggle.dataset.app] = toggle.checked;
+      });
+
+      // If enabling mode and has valid variables, enable the function
+      const shouldEnable = this._extractEnablingMode && validVars.length > 0;
+      const functions = {
+        ...this.agent.functions,
+        extract_data: {
+          ...this.agent.functions?.extract_data,
+          channels,
+          send_to: sendTo,
+          ...(shouldEnable ? { enabled: true } : {}),
+        },
+      };
+      this.agent.functions = functions;
+      await this.scheduleAutoSave({ functions });
+
+      if (shouldEnable) {
         // Update checkbox
         const checkbox = document.getElementById('func-extract');
         if (checkbox) checkbox.checked = true;
@@ -8958,6 +9299,72 @@ THIS IS AN OUTBOUND CALL:
 
       .schedule-status-active strong {
         color: var(--primary-color);
+      }
+
+      /* App Function Cards */
+      .app-func-cards {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+
+      .app-func-card {
+        border: 1px solid var(--border-color);
+        border-radius: 0.75rem;
+        padding: 1rem;
+        background: var(--card-bg, var(--bg-secondary));
+        transition: opacity 0.2s;
+      }
+
+      .app-func-card.app-func-disabled {
+        opacity: 0.5;
+      }
+
+      .app-func-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 0.75rem;
+      }
+
+      .app-func-title {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-weight: 600;
+        font-size: 0.95rem;
+      }
+
+      .app-func-icon {
+        display: flex;
+        align-items: center;
+      }
+
+      .app-func-channels {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        padding-left: 0.25rem;
+      }
+
+      .app-func-channel {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        cursor: pointer;
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+      }
+
+      .app-func-channel input[type="checkbox"] {
+        width: 16px;
+        height: 16px;
+        accent-color: var(--primary-color);
+        cursor: pointer;
+      }
+
+      .app-func-channel input[type="checkbox"]:disabled {
+        cursor: not-allowed;
       }
     `;
 

@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { analyzeSentiment, extractCallerMessages } from '../_shared/sentiment-analysis.ts'
+import { filterExtractedDataForApp } from '../_shared/app-function-prefs.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -124,7 +125,7 @@ Deno.serve(async (req) => {
     // Get the call record to access transcript and existing recordings
     const { data: existingRecord } = await supabase
       .from('call_records')
-      .select('id, transcript, recordings, user_id, slack_message_ts, slack_channel_id, contact_phone, caller_number, direction, duration_seconds, extracted_data, call_summary, user_sentiment')
+      .select('id, transcript, recordings, user_id, slack_message_ts, slack_channel_id, contact_phone, caller_number, phone_number, direction, duration_seconds, extracted_data, call_summary, user_sentiment')
       .eq('egress_id', egressId)
       .single()
 
@@ -193,6 +194,32 @@ Deno.serve(async (req) => {
 
     // Update Slack message with recording URL if we have a Slack message
     if (existingRecord.slack_message_ts && existingRecord.slack_channel_id) {
+      // Look up agent config and dynamic variables for per-variable send_to filtering
+      let agentFunctions: Record<string, any> | null = null
+      let dynamicVars: Array<{ name: string; send_to?: Record<string, boolean> | null }> = []
+      const svcPhone = existingRecord.phone_number || existingRecord.caller_number
+      if (svcPhone) {
+        const { data: svcNum } = await supabase
+          .from('service_numbers')
+          .select('agent_id')
+          .eq('phone_number', svcPhone)
+          .maybeSingle()
+        if (svcNum?.agent_id) {
+          const { data: ac } = await supabase
+            .from('agent_configs')
+            .select('functions')
+            .eq('id', svcNum.agent_id)
+            .single()
+          agentFunctions = ac?.functions || null
+
+          const { data: vars } = await supabase
+            .from('dynamic_variables')
+            .select('name, send_to')
+            .eq('agent_id', svcNum.agent_id)
+          dynamicVars = vars || []
+        }
+      }
+
       updateSlackMessageWithRecording(
         supabase,
         existingRecord.user_id,
@@ -205,7 +232,9 @@ Deno.serve(async (req) => {
         existingRecord.transcript,
         existingRecord.extracted_data,
         existingRecord.call_summary,
-        existingRecord.user_sentiment || sentiment
+        existingRecord.user_sentiment || sentiment,
+        agentFunctions,
+        dynamicVars
       ).catch(err => console.error('Failed to update Slack message:', err))
     }
 
@@ -237,7 +266,9 @@ async function updateSlackMessageWithRecording(
   transcript: string | null,
   extractedData: Record<string, any> | null,
   callSummary: string | null,
-  sentiment: string | null
+  sentiment: string | null,
+  agentFunctions: Record<string, any> | null = null,
+  dynamicVars: Array<{ name: string; send_to?: Record<string, boolean> | null }> = []
 ) {
   try {
     // Get Slack provider ID
@@ -368,34 +399,45 @@ async function updateSlackMessageWithRecording(
       })
     }
 
-    // Add extracted data if present (excluding caller_name since it's in header)
+    // Filter extracted data per-variable send_to prefs, excluding caller_name
     if (extractedData && Object.keys(extractedData).length > 0) {
-      const extractedFields = Object.entries(extractedData)
-        .filter(([key]) => key !== 'caller_name') // Don't show caller_name again
-        .map(([key, value]) => {
-          const displayKey = key.replace(/_/g, ' ')
-          let displayValue: string
-          if (value === true) {
-            displayValue = '✅ Yes'
-          } else if (value === false) {
-            displayValue = '❌ No'
-          } else if (typeof value === 'string' && value.length > 100) {
-            displayValue = value.substring(0, 100) + '...'
-          } else {
-            displayValue = String(value)
-          }
-          return `• *${displayKey}:* ${displayValue}`
-        })
-        .join('\n')
+      const dataWithoutCallerName = { ...extractedData }
+      delete dataWithoutCallerName.caller_name
 
-      if (extractedFields) {
-        blocks.push({
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: `📊 *Extracted Data*\n${extractedFields}`
-          }
-        })
+      const filteredForSlack = filterExtractedDataForApp(
+        dataWithoutCallerName,
+        dynamicVars,
+        agentFunctions,
+        'slack'
+      )
+
+      if (filteredForSlack && Object.keys(filteredForSlack).length > 0) {
+        const extractedFields = Object.entries(filteredForSlack)
+          .map(([key, value]) => {
+            const displayKey = key.replace(/_/g, ' ')
+            let displayValue: string
+            if (value === true) {
+              displayValue = '✅ Yes'
+            } else if (value === false) {
+              displayValue = '❌ No'
+            } else if (typeof value === 'string' && value.length > 100) {
+              displayValue = value.substring(0, 100) + '...'
+            } else {
+              displayValue = String(value)
+            }
+            return `• *${displayKey}:* ${displayValue}`
+          })
+          .join('\n')
+
+        if (extractedFields) {
+          blocks.push({
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `📊 *Extracted Data*\n${extractedFields}`
+            }
+          })
+        }
       }
     }
 
