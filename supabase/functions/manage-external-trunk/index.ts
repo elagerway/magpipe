@@ -26,6 +26,8 @@ interface CreateTrunkRequest {
   auth_password?: string
   outbound_address?: string
   outbound_transport?: 'udp' | 'tcp' | 'tls'
+  api_account_sid?: string
+  api_auth_token?: string
 }
 
 interface UpdateTrunkRequest {
@@ -40,6 +42,8 @@ interface UpdateTrunkRequest {
   outbound_address?: string | null
   outbound_transport?: 'udp' | 'tcp' | 'tls'
   is_active?: boolean
+  api_account_sid?: string | null
+  api_auth_token?: string | null
 }
 
 interface DeleteTrunkRequest {
@@ -125,7 +129,7 @@ async function handleCreate(
   userId: string,
   request: CreateTrunkRequest
 ) {
-  const { name, provider, auth_type, allowed_source_ips, auth_username, auth_password, outbound_address, outbound_transport } = request
+  const { name, provider, auth_type, allowed_source_ips, auth_username, auth_password, outbound_address, outbound_transport, api_account_sid, api_auth_token } = request
 
   // Validate auth type specific fields
   if (auth_type === 'ip' && (!allowed_source_ips || allowed_source_ips.length === 0)) {
@@ -153,6 +157,8 @@ async function handleCreate(
     auth_password_encrypted: auth_type === 'registration' ? auth_password : null, // TODO: Encrypt
     outbound_address: outbound_address || null,
     outbound_transport: outbound_transport || 'udp',
+    api_account_sid: api_account_sid || null,
+    api_auth_token_encrypted: api_auth_token || null, // TODO: Encrypt
     livekit_inbound_trunk_id: null, // Created when first number is added
     livekit_dispatch_rule_id: null, // Created when first number is added
     status: 'pending', // Will become 'active' when LiveKit trunk is created
@@ -190,7 +196,7 @@ async function handleUpdate(
   userId: string,
   request: UpdateTrunkRequest
 ) {
-  const { trunk_id, name, provider, auth_type, allowed_source_ips, auth_username, auth_password, outbound_address, outbound_transport, is_active } = request
+  const { trunk_id, name, provider, auth_type, allowed_source_ips, auth_username, auth_password, outbound_address, outbound_transport, is_active, api_account_sid, api_auth_token } = request
 
   // Verify ownership
   const { data: trunk, error: fetchError } = await supabase
@@ -215,6 +221,8 @@ async function handleUpdate(
   if (outbound_address !== undefined) updates.outbound_address = outbound_address
   if (outbound_transport !== undefined) updates.outbound_transport = outbound_transport
   if (is_active !== undefined) updates.is_active = is_active
+  if (api_account_sid !== undefined) updates.api_account_sid = api_account_sid
+  if (api_auth_token !== undefined) updates.api_auth_token_encrypted = api_auth_token
 
   // Update LiveKit trunk if IP addresses changed
   if (allowed_source_ips && trunk.livekit_inbound_trunk_id) {

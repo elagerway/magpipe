@@ -63,23 +63,31 @@ serve(async (req) => {
 
       if (swNumber) {
         const capabilities = swNumber.capabilities || {}
-        const normalizedCapabilities = {
-          voice: capabilities.voice === true || capabilities.Voice === true,
-          sms: capabilities.sms === true || capabilities.SMS === true,
-          mms: capabilities.mms === true || capabilities.MMS === true,
+        const existing = number.capabilities || {}
+
+        // Merge: only upgrade capabilities (true wins), never downgrade
+        const mergedCapabilities = {
+          voice: existing.voice === true || capabilities.voice === true || capabilities.Voice === true,
+          sms: existing.sms === true || capabilities.sms === true || capabilities.SMS === true,
+          mms: existing.mms === true || capabilities.mms === true || capabilities.MMS === true,
         }
 
-        const { error: updateError } = await supabase
-          .from('service_numbers')
-          .update({ capabilities: normalizedCapabilities })
-          .eq('id', number.id)
+        // Only update if something actually changed
+        if (mergedCapabilities.voice !== existing.voice ||
+            mergedCapabilities.sms !== existing.sms ||
+            mergedCapabilities.mms !== existing.mms) {
+          const { error: updateError } = await supabase
+            .from('service_numbers')
+            .update({ capabilities: mergedCapabilities })
+            .eq('id', number.id)
 
-        if (updateError) {
-          console.error('Error updating number:', number.phone_number, updateError)
-          errors++
-        } else {
-          console.log('Updated capabilities for:', number.phone_number)
-          updated++
+          if (updateError) {
+            console.error('Error updating number:', number.phone_number, updateError)
+            errors++
+          } else {
+            console.log('Updated capabilities for:', number.phone_number)
+            updated++
+          }
         }
       }
     }
