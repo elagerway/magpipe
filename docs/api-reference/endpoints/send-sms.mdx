@@ -100,7 +100,7 @@ Sends an SMS text message to a phone number using one of your Magpipe numbers as
 
 ```bash cURL
 curl -X POST "https://api.magpipe.ai/functions/v1/send-sms" \
-  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "to": "+14155551234",
@@ -115,7 +115,7 @@ const response = await fetch(
   {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${accessToken}`,
+      'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -136,7 +136,7 @@ import requests
 response = requests.post(
     'https://api.magpipe.ai/functions/v1/send-sms',
     headers={
-        'Authorization': f'Bearer {access_token}',
+        'Authorization': f'Bearer {api_key}',
         'Content-Type': 'application/json',
     },
     json={

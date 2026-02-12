@@ -21,15 +21,17 @@ https://api.magpipe.ai/functions/v1
 
 ## Authentication
 
-All API requests require authentication via Bearer token.
+All API requests require a Bearer token in the `Authorization` header. You can use either an **API key** (recommended) or a **session token**.
 
 ```bash
 curl -X GET "https://api.magpipe.ai/functions/v1/your-endpoint" \
-  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json"
 ```
 
-See [Authentication](/api-reference/authentication) for details on obtaining tokens.
+Generate API keys from **Settings → API** in the dashboard. Keys use the `mgp_` prefix and never expire until revoked.
+
+See [Authentication](/api-reference/authentication) for full details.
 
 ## Response Format
 

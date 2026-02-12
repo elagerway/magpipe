@@ -5,24 +5,88 @@ description: "How to authenticate with the Magpipe API"
 
 ## Overview
 
-Magpipe uses Bearer token authentication. You'll need to include your access token in the `Authorization` header of all API requests.
+Magpipe supports two authentication methods. Both use Bearer token authentication via the `Authorization` header.
 
-## Getting Your Access Token
+| Method | Format | Expiration | Best For |
+|--------|--------|------------|----------|
+| **API Key** | `mgp_...` | Never (until revoked) | Server-side integrations, scripts, CI/CD |
+| **Session Token** | `eyJ...` (JWT) | 1 hour | Browser apps, short-lived sessions |
 
-### From the Dashboard
+<Note>
+We recommend **API keys** for most integrations. They don't expire and are easier to manage.
+</Note>
+
+## API Keys (Recommended)
+
+API keys are long-lived tokens that persist until you revoke them. They start with the `mgp_` prefix.
+
+### Generating an API Key
 
 1. Log in to [magpipe.ai](https://magpipe.ai)
 2. Go to **Settings** → **API**
-3. Click **Generate Token**
-4. Copy and securely store your token
+3. Click **Generate New Key**
+4. Give the key a descriptive name (e.g., "Production Server", "CI Pipeline")
+5. Copy the key immediately — it won't be shown again
 
 <Warning>
-Treat your API token like a password. Never share it or commit it to source control.
+The full API key is only displayed once at creation time. Store it securely. If you lose it, you'll need to generate a new one.
 </Warning>
 
-### Programmatically
+### Using an API Key
 
-You can also authenticate using email/password to get a session token:
+```bash
+curl -X POST "https://api.magpipe.ai/functions/v1/list-agents" \
+  -H "Authorization: Bearer mgp_your_api_key_here" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+```javascript Node.js
+const response = await fetch('https://api.magpipe.ai/functions/v1/list-agents', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${process.env.MAGPIPE_API_KEY}`,
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({}),
+});
+```
+
+```python Python
+import requests
+import os
+
+response = requests.post(
+    'https://api.magpipe.ai/functions/v1/list-agents',
+    headers={
+        'Authorization': f'Bearer {os.environ["MAGPIPE_API_KEY"]}',
+        'Content-Type': 'application/json',
+    },
+    json={}
+)
+```
+
+### Key Properties
+
+- **Prefix**: All keys start with `mgp_` followed by 40 hex characters
+- **Display**: In the dashboard, keys show as `mgp_abc12345...` (first 8 characters only)
+- **Tracking**: Each key tracks its `last_used_at` timestamp
+- **Limit**: Maximum 10 active keys per account
+
+### Revoking a Key
+
+1. Go to **Settings** → **API**
+2. Find the key you want to revoke
+3. Click **Revoke**
+4. Confirm the action
+
+The key will immediately stop working. This cannot be undone.
+
+## Session Tokens
+
+Session tokens are short-lived JWTs obtained by authenticating with email and password. They expire after 1 hour and can be refreshed.
+
+### Obtaining a Session Token
 
 ```bash
 curl -X POST "https://api.magpipe.ai/auth/v1/token?grant_type=password" \
@@ -44,23 +108,18 @@ Response:
 }
 ```
 
-## Using the Token
-
-Include the token in the `Authorization` header:
+### Using a Session Token
 
 ```bash
-curl -X GET "https://api.magpipe.ai/functions/v1/endpoint" \
-  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
-  -H "Content-Type: application/json"
+curl -X POST "https://api.magpipe.ai/functions/v1/list-agents" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIs..." \
+  -H "Content-Type: application/json" \
+  -d '{}'
 ```
 
-## Token Expiration
+### Refreshing Session Tokens
 
-- Access tokens expire after 1 hour
-- Use the refresh token to get a new access token
-- API tokens from the dashboard don't expire (until revoked)
-
-### Refreshing Tokens
+Session tokens expire after 1 hour. Use the refresh token to get a new one:
 
 ```bash
 curl -X POST "https://api.magpipe.ai/auth/v1/token?grant_type=refresh_token" \
@@ -71,32 +130,43 @@ curl -X POST "https://api.magpipe.ai/auth/v1/token?grant_type=refresh_token" \
   }'
 ```
 
-## Revoking Tokens
+## Error Responses
 
-To revoke an API token:
+If authentication fails, you'll receive a `401` response:
 
-1. Go to **Settings** → **API** in the dashboard
-2. Find the token you want to revoke
-3. Click **Revoke**
+```json
+{
+  "error": {
+    "code": "unauthorized",
+    "message": "Unauthorized"
+  }
+}
+```
 
-The token will immediately stop working.
+Common causes:
+- Missing `Authorization` header
+- Invalid or expired token
+- Revoked API key
 
 ## Security Best Practices
 
 <AccordionGroup>
   <Accordion title="Use environment variables">
-    Store tokens in environment variables, not in code.
+    Never hardcode tokens in source code. Use environment variables instead.
     ```bash
-    export MAGPIPE_API_TOKEN="your-token"
+    export MAGPIPE_API_KEY="mgp_your_key_here"
     ```
   </Accordion>
-  <Accordion title="Rotate tokens regularly">
-    Generate new tokens periodically and revoke old ones.
+  <Accordion title="Use API keys for server-side code">
+    API keys are ideal for backend services and scripts. Use session tokens only for browser-based apps where you authenticate with user credentials.
   </Accordion>
-  <Accordion title="Use minimal permissions">
-    Request only the permissions your application needs.
+  <Accordion title="Name your keys descriptively">
+    Use names like "Production Server" or "Staging CI" so you know which key is used where.
   </Accordion>
-  <Accordion title="Monitor for abuse">
-    Check your API usage in the dashboard for unexpected activity.
+  <Accordion title="Rotate keys periodically">
+    Generate new keys and revoke old ones regularly to limit exposure.
+  </Accordion>
+  <Accordion title="Monitor usage">
+    Check your API key `last_used_at` timestamps in the dashboard to detect unauthorized usage.
   </Accordion>
 </AccordionGroup>

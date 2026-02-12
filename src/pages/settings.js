@@ -115,7 +115,7 @@ export default class SettingsPage {
 
     // Check URL for tab param
     const tabParam = urlParams.get('tab');
-    if (tabParam && ['profile', 'billing', 'branding', 'notifications', 'account'].includes(tabParam)) {
+    if (tabParam && ['profile', 'billing', 'branding', 'notifications', 'account', 'api'].includes(tabParam)) {
       this.activeTab = tabParam;
     }
     // Auto-switch to billing tab if coming from billing/credits/payment callback
@@ -183,6 +183,7 @@ export default class SettingsPage {
             <button class="settings-tab ${this.activeTab === 'branding' ? 'active' : ''}" data-tab="branding">Branding</button>
             <button class="settings-tab ${this.activeTab === 'notifications' ? 'active' : ''}" data-tab="notifications">Notifications</button>
             <button class="settings-tab ${this.activeTab === 'account' ? 'active' : ''}" data-tab="account">Account</button>
+            <button class="settings-tab ${this.activeTab === 'api' ? 'active' : ''}" data-tab="api">API</button>
           </div>
         </div>
 
@@ -313,6 +314,8 @@ export default class SettingsPage {
         return this.renderNotificationsTab();
       case 'account':
         return this.renderAccountTab();
+      case 'api':
+        return this.renderApiTab();
       default:
         return this.renderProfileTab();
     }
@@ -363,6 +366,9 @@ export default class SettingsPage {
         break;
       case 'account':
         this.attachAccountTabListeners();
+        break;
+      case 'api':
+        this.attachApiTabListeners();
         break;
     }
   }
@@ -1610,6 +1616,304 @@ export default class SettingsPage {
     const knowledgeContainer = document.getElementById('knowledge-source-container');
     if (knowledgeContainer && window.innerWidth <= 768) {
       this.knowledgeManager = createKnowledgeSourceManager(knowledgeContainer);
+    }
+  }
+
+  renderApiTab() {
+    return `
+      <div class="card" style="margin-bottom: 1rem;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
+          <div>
+            <h2 style="margin: 0 0 0.25rem 0;">API Keys</h2>
+            <p class="text-muted" style="margin: 0; font-size: 0.85rem;">
+              Generate keys to authenticate with the Magpipe REST API. Keys are shown once at creation.
+            </p>
+          </div>
+          <button class="btn btn-primary" id="generate-api-key-btn" style="white-space: nowrap;">
+            Generate New Key
+          </button>
+        </div>
+
+        <!-- Generate key form (hidden by default) -->
+        <div id="api-key-generate-form" class="hidden" style="margin-bottom: 1rem; padding: 1rem; background: var(--bg-secondary); border-radius: var(--radius-sm);">
+          <label style="font-weight: 600; display: block; margin-bottom: 0.5rem;">Key Name</label>
+          <div style="display: flex; gap: 0.5rem;">
+            <input type="text" id="api-key-name-input" placeholder="e.g. Production, CI/CD, Testing" style="flex: 1;" maxlength="64" />
+            <button class="btn btn-primary" id="api-key-create-btn">Create</button>
+            <button class="btn btn-secondary" id="api-key-cancel-btn">Cancel</button>
+          </div>
+        </div>
+
+        <!-- Newly created key display (hidden by default) -->
+        <div id="api-key-created-display" class="hidden" style="margin-bottom: 1rem; padding: 1rem; background: var(--bg-secondary); border: 1px solid var(--primary-color); border-radius: var(--radius-sm);">
+          <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+            <svg width="16" height="16" fill="none" stroke="var(--primary-color)" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <strong style="color: var(--primary-color);">Copy your API key now — it won't be shown again.</strong>
+          </div>
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <code id="api-key-full-value" style="
+              flex: 1;
+              background: var(--bg-primary);
+              padding: 0.5rem;
+              border-radius: var(--radius-sm);
+              font-size: 0.8rem;
+              word-break: break-all;
+              user-select: all;
+            "></code>
+            <button class="btn btn-secondary" id="api-key-copy-btn" style="white-space: nowrap;">Copy</button>
+          </div>
+          <button class="btn btn-secondary" id="api-key-dismiss-btn" style="margin-top: 0.75rem; width: 100%;">Done</button>
+        </div>
+
+        <!-- Keys list -->
+        <div id="api-keys-list">
+          <div style="text-align: center; padding: 1rem; color: var(--text-secondary);">Loading...</div>
+        </div>
+      </div>
+    `;
+  }
+
+  async loadApiKeys() {
+    const listContainer = document.getElementById('api-keys-list');
+    if (!listContainer) return;
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-api-keys`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ action: 'list' })
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to load keys');
+
+      const keys = data.keys || [];
+
+      if (keys.length === 0) {
+        listContainer.innerHTML = `
+          <div style="text-align: center; padding: 2rem 1rem; color: var(--text-secondary);">
+            <p style="margin: 0;">No API keys yet. Generate one to get started.</p>
+          </div>
+        `;
+        return;
+      }
+
+      listContainer.innerHTML = `
+        <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+          <thead>
+            <tr style="text-align: left; border-bottom: 1px solid var(--border-color);">
+              <th style="padding: 0.5rem 0.5rem 0.5rem 0;">Name</th>
+              <th style="padding: 0.5rem;">Key</th>
+              <th style="padding: 0.5rem;" class="desktop-only">Created</th>
+              <th style="padding: 0.5rem;" class="desktop-only">Last Used</th>
+              <th style="padding: 0.5rem; text-align: right;"></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${keys.map(key => `
+              <tr style="border-bottom: 1px solid var(--border-color);">
+                <td style="padding: 0.5rem 0.5rem 0.5rem 0; font-weight: 500;">${this.escapeHtml(key.name)}</td>
+                <td style="padding: 0.5rem;">
+                  <code style="font-size: 0.8rem; background: var(--bg-secondary); padding: 0.15rem 0.35rem; border-radius: 3px;">${key.key_prefix}...</code>
+                </td>
+                <td style="padding: 0.5rem; color: var(--text-secondary);" class="desktop-only">
+                  ${new Date(key.created_at).toLocaleDateString()}
+                </td>
+                <td style="padding: 0.5rem; color: var(--text-secondary);" class="desktop-only">
+                  ${key.last_used_at ? new Date(key.last_used_at).toLocaleDateString() : 'Never'}
+                </td>
+                <td style="padding: 0.5rem; text-align: right;">
+                  ${key.is_active
+                    ? `<button class="btn btn-secondary api-key-revoke-btn" data-key-id="${key.id}" data-key-name="${this.escapeHtml(key.name)}" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">Revoke</button>`
+                    : `<span style="color: var(--text-secondary); font-size: 0.75rem;">Revoked</span>`
+                  }
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+
+      // Attach revoke listeners
+      listContainer.querySelectorAll('.api-key-revoke-btn').forEach(btn => {
+        btn.addEventListener('click', () => this.revokeApiKey(btn.dataset.keyId, btn.dataset.keyName));
+      });
+    } catch (error) {
+      console.error('Error loading API keys:', error);
+      listContainer.innerHTML = `
+        <div style="text-align: center; padding: 1rem; color: var(--error-color);">
+          Failed to load API keys. Please try again.
+        </div>
+      `;
+    }
+  }
+
+  async revokeApiKey(keyId, keyName) {
+    const { showConfirmModal } = await import('../components/ConfirmModal.js');
+    const confirmed = await showConfirmModal({
+      title: 'Revoke API Key',
+      message: `Are you sure you want to revoke "${keyName}"? Any applications using this key will lose access immediately.`,
+      confirmText: 'Revoke',
+      confirmStyle: 'danger',
+    });
+    if (!confirmed) return;
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-api-keys`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ action: 'revoke', key_id: keyId })
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to revoke key');
+
+      // Reload the list
+      this.loadApiKeys();
+    } catch (error) {
+      console.error('Error revoking API key:', error);
+      const errorMessage = document.getElementById('error-message');
+      if (errorMessage) {
+        errorMessage.className = 'alert alert-error';
+        errorMessage.textContent = 'Failed to revoke API key. Please try again.';
+        errorMessage.classList.remove('hidden');
+      }
+    }
+  }
+
+  escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  attachApiTabListeners() {
+    const generateBtn = document.getElementById('generate-api-key-btn');
+    const generateForm = document.getElementById('api-key-generate-form');
+    const nameInput = document.getElementById('api-key-name-input');
+    const createBtn = document.getElementById('api-key-create-btn');
+    const cancelBtn = document.getElementById('api-key-cancel-btn');
+    const createdDisplay = document.getElementById('api-key-created-display');
+    const fullValueEl = document.getElementById('api-key-full-value');
+    const copyBtn = document.getElementById('api-key-copy-btn');
+    const dismissBtn = document.getElementById('api-key-dismiss-btn');
+
+    // Load existing keys
+    this.loadApiKeys();
+
+    // Show generate form
+    if (generateBtn) {
+      generateBtn.addEventListener('click', () => {
+        generateForm.classList.remove('hidden');
+        createdDisplay.classList.add('hidden');
+        nameInput.value = '';
+        nameInput.focus();
+      });
+    }
+
+    // Cancel generate
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', () => {
+        generateForm.classList.add('hidden');
+      });
+    }
+
+    // Create key
+    if (createBtn) {
+      createBtn.addEventListener('click', async () => {
+        const name = nameInput.value.trim();
+        if (!name) {
+          nameInput.focus();
+          return;
+        }
+
+        createBtn.disabled = true;
+        createBtn.textContent = 'Creating...';
+
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session) throw new Error('Not authenticated');
+
+          const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-api-keys`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ action: 'generate', name })
+          });
+
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || 'Failed to generate key');
+
+          // Show the created key
+          generateForm.classList.add('hidden');
+          createdDisplay.classList.remove('hidden');
+          fullValueEl.textContent = data.key;
+
+          // Reload the list
+          this.loadApiKeys();
+        } catch (error) {
+          console.error('Error generating API key:', error);
+          const errorMessage = document.getElementById('error-message');
+          if (errorMessage) {
+            errorMessage.className = 'alert alert-error';
+            errorMessage.textContent = error.message || 'Failed to generate API key.';
+            errorMessage.classList.remove('hidden');
+          }
+        } finally {
+          createBtn.disabled = false;
+          createBtn.textContent = 'Create';
+        }
+      });
+    }
+
+    // Allow Enter key in name input
+    if (nameInput) {
+      nameInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          createBtn.click();
+        }
+      });
+    }
+
+    // Copy key
+    if (copyBtn) {
+      copyBtn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(fullValueEl.textContent);
+          copyBtn.textContent = 'Copied!';
+          setTimeout(() => { copyBtn.textContent = 'Copy'; }, 2000);
+        } catch {
+          // Fallback: select the text
+          const range = document.createRange();
+          range.selectNodeContents(fullValueEl);
+          window.getSelection().removeAllRanges();
+          window.getSelection().addRange(range);
+        }
+      });
+    }
+
+    // Dismiss created key display
+    if (dismissBtn) {
+      dismissBtn.addEventListener('click', () => {
+        createdDisplay.classList.add('hidden');
+      });
     }
   }
 

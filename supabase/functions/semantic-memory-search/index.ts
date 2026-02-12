@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { resolveUser } from "../_shared/api-auth.ts"
 
 Deno.serve(async (req) => {
   // CORS
@@ -13,31 +14,26 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Authenticate the request
-    const authHeader = req.headers.get('Authorization')
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: 'Missing authorization header' }), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-      })
-    }
-
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
 
     // Create client with user's auth token
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
+    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: req.headers.get('Authorization')! } },
     })
 
-    // Verify user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-      })
+    const user = await resolveUser(req, supabaseClient)
+    if (!user) {
+      return new Response(
+        JSON.stringify({ error: { code: 'unauthorized', message: 'Unauthorized' } }),
+        { status: 401, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+      )
     }
+
+    // For API key auth, use service role client for DB queries (RLS won't work)
+    const queryClient = user.authMethod === 'api_key'
+      ? createClient(supabaseUrl, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '')
+      : supabaseClient
 
     const body = await req.json()
     const { query, agentId, excludeContactId, memoryId } = body
@@ -50,7 +46,7 @@ Deno.serve(async (req) => {
     }
 
     // Verify the agent belongs to this user
-    const { data: agent, error: agentError } = await supabase
+    const { data: agent, error: agentError } = await queryClient
       .from('agent_configs')
       .select('id, semantic_memory_config')
       .eq('id', agentId)

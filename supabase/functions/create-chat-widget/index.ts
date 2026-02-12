@@ -1,5 +1,5 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2";
+import { resolveUser } from "../_shared/api-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -16,7 +16,7 @@ function generateWidgetKey(): string {
   return result;
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -32,14 +32,8 @@ serve(async (req) => {
       }
     );
 
-    const authHeader = req.headers.get("Authorization")!;
-    const token = authHeader.replace("Bearer ", "");
-    const {
-      data: { user },
-      error: userError,
-    } = await supabaseClient.auth.getUser(token);
-
-    if (userError || !user) {
+    const user = await resolveUser(req, supabaseClient);
+    if (!user) {
       return new Response(
         JSON.stringify({ error: { code: "unauthorized", message: "Unauthorized" } }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -58,6 +52,13 @@ serve(async (req) => {
       allowed_domains = [],
     } = await req.json();
 
+    const queryClient = user.authMethod === "api_key"
+      ? createClient(
+          Deno.env.get("SUPABASE_URL") ?? "",
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+        )
+      : supabaseClient;
+
     if (!agent_id) {
       return new Response(
         JSON.stringify({ error: { code: "missing_param", message: "agent_id is required" } }),
@@ -66,7 +67,7 @@ serve(async (req) => {
     }
 
     // Verify agent exists and belongs to user
-    const { data: agent, error: agentError } = await supabaseClient
+    const { data: agent, error: agentError } = await queryClient
       .from("agent_configs")
       .select("id, name")
       .eq("id", agent_id)
@@ -82,7 +83,7 @@ serve(async (req) => {
 
     const widget_key = generateWidgetKey();
 
-    const { data: widget, error } = await supabaseClient
+    const { data: widget, error } = await queryClient
       .from("chat_widgets")
       .insert({
         user_id: user.id,

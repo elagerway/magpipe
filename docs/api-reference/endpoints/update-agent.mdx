@@ -85,7 +85,7 @@ Returns the updated agent object.
 <RequestExample>
 ```bash cURL
 curl -X POST https://api.magpipe.ai/functions/v1/update-agent \
-  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "agent_id": "550e8400-e29b-41d4-a716-446655440000",
@@ -100,7 +100,7 @@ const response = await fetch(
   {
     method: 'POST',
     headers: {
-      'Authorization': 'Bearer YOUR_API_TOKEN',
+      'Authorization': 'Bearer YOUR_API_KEY',
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -121,7 +121,7 @@ import requests
 response = requests.post(
     'https://api.magpipe.ai/functions/v1/update-agent',
     headers={
-        'Authorization': 'Bearer YOUR_API_TOKEN',
+        'Authorization': 'Bearer YOUR_API_KEY',
         'Content-Type': 'application/json',
     },
     json={

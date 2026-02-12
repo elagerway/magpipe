@@ -24,8 +24,7 @@
       "bearerAuth": {
         "type": "http",
         "scheme": "bearer",
-        "bearerFormat": "JWT",
-        "description": "Your Magpipe access token from the dashboard"
+        "description": "API key (mgp_...) or session token. Generate API keys from Settings → API."
       }
     },
     "schemas": {

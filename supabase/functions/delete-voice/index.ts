@@ -1,5 +1,5 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2";
+import { resolveUser } from "../_shared/api-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,7 +9,7 @@ const corsHeaders = {
 
 const BUILTIN_VOICES = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"];
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -25,14 +25,8 @@ serve(async (req) => {
       }
     );
 
-    const authHeader = req.headers.get("Authorization")!;
-    const token = authHeader.replace("Bearer ", "");
-    const {
-      data: { user },
-      error: userError,
-    } = await supabaseClient.auth.getUser(token);
-
-    if (userError || !user) {
+    const user = await resolveUser(req, supabaseClient);
+    if (!user) {
       return new Response(
         JSON.stringify({ error: { code: "unauthorized", message: "Unauthorized" } }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -40,6 +34,13 @@ serve(async (req) => {
     }
 
     const { voice_id } = await req.json();
+
+    const queryClient = user.authMethod === "api_key"
+      ? createClient(
+          Deno.env.get("SUPABASE_URL") ?? "",
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+        )
+      : supabaseClient;
 
     if (!voice_id) {
       return new Response(
@@ -80,7 +81,7 @@ serve(async (req) => {
     }
 
     // Update any agents using this voice to use default
-    await supabaseClient
+    await queryClient
       .from("agent_configs")
       .update({ voice_id: "alloy", voice_provider: "openai" })
       .eq("user_id", user.id)

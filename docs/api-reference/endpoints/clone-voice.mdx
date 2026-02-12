@@ -58,7 +58,7 @@ Send as `multipart/form-data`:
 <RequestExample>
 ```bash cURL
 curl -X POST https://api.magpipe.ai/functions/v1/clone-voice \
-  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -F "name=Dr. Smith" \
   -F "description=Warm, professional male voice" \
   -F "files=@sample1.wav" \
@@ -77,7 +77,7 @@ const response = await fetch(
   {
     method: 'POST',
     headers: {
-      'Authorization': 'Bearer YOUR_API_TOKEN',
+      'Authorization': 'Bearer YOUR_API_KEY',
     },
     body: formData,
   }
@@ -98,7 +98,7 @@ files = [
 response = requests.post(
     'https://api.magpipe.ai/functions/v1/clone-voice',
     headers={
-        'Authorization': 'Bearer YOUR_API_TOKEN',
+        'Authorization': 'Bearer YOUR_API_KEY',
     },
     data={
         'name': 'Dr. Smith',

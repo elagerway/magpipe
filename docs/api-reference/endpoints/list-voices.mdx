@@ -47,7 +47,7 @@ Retrieve all voices available for your AI agents, including built-in voices and 
 <RequestExample>
 ```bash cURL
 curl -X POST https://api.magpipe.ai/functions/v1/list-voices \
-  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{}'
 ```
@@ -58,7 +58,7 @@ const response = await fetch(
   {
     method: 'POST',
     headers: {
-      'Authorization': 'Bearer YOUR_API_TOKEN',
+      'Authorization': 'Bearer YOUR_API_KEY',
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({}),
@@ -75,7 +75,7 @@ import requests
 response = requests.post(
     'https://api.magpipe.ai/functions/v1/list-voices',
     headers={
-        'Authorization': 'Bearer YOUR_API_TOKEN',
+        'Authorization': 'Bearer YOUR_API_KEY',
         'Content-Type': 'application/json',
     },
     json={}

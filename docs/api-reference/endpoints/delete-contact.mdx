@@ -25,7 +25,7 @@ This action is irreversible. Contact notes and tags will be deleted. Call and me
 <RequestExample>
 ```bash cURL
 curl -X POST https://api.magpipe.ai/functions/v1/delete-contact \
-  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"contact_id": "c1d2e3f4-5678-9abc-def0-123456789abc"}'
 ```
@@ -36,7 +36,7 @@ const response = await fetch(
   {
     method: 'POST',
     headers: {
-      'Authorization': 'Bearer YOUR_API_TOKEN',
+      'Authorization': 'Bearer YOUR_API_KEY',
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -55,7 +55,7 @@ import requests
 response = requests.post(
     'https://api.magpipe.ai/functions/v1/delete-contact',
     headers={
-        'Authorization': 'Bearer YOUR_API_TOKEN',
+        'Authorization': 'Bearer YOUR_API_KEY',
         'Content-Type': 'application/json',
     },
     json={'contact_id': 'c1d2e3f4-5678-9abc-def0-123456789abc'}

@@ -53,7 +53,7 @@ Retrieve a paginated list of messages for your account. Supports filtering by th
 <RequestExample>
 ```bash cURL
 curl -X POST https://api.magpipe.ai/functions/v1/list-messages \
-  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "limit": 20,
@@ -67,7 +67,7 @@ const response = await fetch(
   {
     method: 'POST',
     headers: {
-      'Authorization': 'Bearer YOUR_API_TOKEN',
+      'Authorization': 'Bearer YOUR_API_KEY',
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -87,7 +87,7 @@ import requests
 response = requests.post(
     'https://api.magpipe.ai/functions/v1/list-messages',
     headers={
-        'Authorization': 'Bearer YOUR_API_TOKEN',
+        'Authorization': 'Bearer YOUR_API_KEY',
         'Content-Type': 'application/json',
     },
     json={

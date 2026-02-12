@@ -47,7 +47,7 @@ Add a webpage URL as a knowledge source. The content is scraped, processed into 
   **Example (Bearer):**
   ```json
   {
-    "Authorization": "Bearer YOUR_TOKEN"
+    "Authorization": "Bearer YOUR_API_KEY"
   }
   ```
 
@@ -92,7 +92,7 @@ Add a webpage URL as a knowledge source. The content is scraped, processed into 
 <RequestExample>
 ```bash cURL
 curl -X POST https://api.magpipe.ai/functions/v1/knowledge-source-add \
-  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "url": "https://example.com/help/faq",
@@ -106,7 +106,7 @@ const response = await fetch(
   {
     method: 'POST',
     headers: {
-      'Authorization': 'Bearer YOUR_API_TOKEN',
+      'Authorization': 'Bearer YOUR_API_KEY',
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -126,7 +126,7 @@ import requests
 response = requests.post(
     'https://api.magpipe.ai/functions/v1/knowledge-source-add',
     headers={
-        'Authorization': 'Bearer YOUR_API_TOKEN',
+        'Authorization': 'Bearer YOUR_API_KEY',
         'Content-Type': 'application/json',
     },
     json={

@@ -94,7 +94,7 @@ Get detailed information about a call, including its status, transcript, summary
 <RequestExample>
 ```bash cURL
 curl -X POST https://api.magpipe.ai/functions/v1/get-call \
-  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"call_id": "7f3d8e00-a1b2-4c3d-9e4f-567890abcdef"}'
 ```
@@ -105,7 +105,7 @@ const response = await fetch(
   {
     method: 'POST',
     headers: {
-      'Authorization': 'Bearer YOUR_API_TOKEN',
+      'Authorization': 'Bearer YOUR_API_KEY',
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -124,7 +124,7 @@ import requests
 response = requests.post(
     'https://api.magpipe.ai/functions/v1/get-call',
     headers={
-        'Authorization': 'Bearer YOUR_API_TOKEN',
+        'Authorization': 'Bearer YOUR_API_KEY',
         'Content-Type': 'application/json',
     },
     json={'call_id': '7f3d8e00-a1b2-4c3d-9e4f-567890abcdef'}

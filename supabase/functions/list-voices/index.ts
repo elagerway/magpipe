@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { resolveUser } from "../_shared/api-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -46,14 +47,9 @@ Deno.serve(async (req) => {
       }
     );
 
-    const authHeader = req.headers.get("Authorization")!;
-    const token = authHeader.replace("Bearer ", "");
-    const {
-      data: { user },
-      error: userError,
-    } = await supabaseClient.auth.getUser(token);
+    const user = await resolveUser(req, supabaseClient);
 
-    if (userError || !user) {
+    if (!user) {
       return new Response(
         JSON.stringify({ error: { code: "unauthorized", message: "Unauthorized" } }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
