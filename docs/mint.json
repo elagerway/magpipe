@@ -33,7 +33,7 @@
   ],
   "topbarCtaButton": {
     "name": "Dashboard",
-    "url": "https://magpipe.ai"
+    "url": "https://magpipe.ai/inbox"
   },
   "tabs": [
     {
@@ -45,7 +45,7 @@
     {
       "name": "Dashboard",
       "icon": "browser",
-      "url": "https://magpipe.ai"
+      "url": "https://magpipe.ai/inbox"
     },
     {
       "name": "Contact Us",
