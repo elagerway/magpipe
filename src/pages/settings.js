@@ -8,6 +8,7 @@ import { renderBottomNav, clearNavUserCache } from '../components/BottomNav.js';
 import { createAccessCodeSettings, addAccessCodeSettingsStyles } from '../components/AccessCodeSettings.js';
 import { createKnowledgeSourceManager, addKnowledgeSourceManagerStyles } from '../components/KnowledgeSourceManager.js';
 import { createExternalTrunkSettings, addExternalTrunkSettingsStyles } from '../components/ExternalTrunkSettings.js';
+import { showToast } from '../lib/toast.js';
 import {
   isPushSupported,
   getPermissionStatus,
@@ -128,9 +129,6 @@ export default class SettingsPage {
     appElement.innerHTML = `
       <div class="container with-bottom-nav" style="max-width: 900px; padding: 2rem 1rem;">
         <h1 style="margin-bottom: 1rem;">Settings</h1>
-
-        <div id="error-message" class="hidden"></div>
-        <div id="success-message" class="hidden"></div>
 
         ${billingStatus === 'success' ? `
           <div class="alert alert-success" style="margin-bottom: 1rem;">
@@ -554,9 +552,6 @@ export default class SettingsPage {
   }
 
   attachProfileTabListeners() {
-    const errorMessage = document.getElementById('error-message');
-    const successMessage = document.getElementById('success-message');
-
     // Avatar upload/remove
     const uploadAvatarBtn = document.getElementById('upload-avatar-btn');
     const removeAvatarBtn = document.getElementById('remove-avatar-btn');
@@ -568,15 +563,12 @@ export default class SettingsPage {
         const file = e.target.files[0];
         if (!file) return;
         if (file.size > 2 * 1024 * 1024) {
-          errorMessage.className = 'alert alert-error';
-          errorMessage.textContent = 'Image must be less than 2MB';
-          errorMessage.classList.remove('hidden');
+          showToast('Image must be less than 2MB', 'error');
           avatarInput.value = '';
           return;
         }
         uploadAvatarBtn.disabled = true;
         uploadAvatarBtn.textContent = 'Uploading...';
-        errorMessage.classList.add('hidden');
         try {
           const { user } = await getCurrentUser();
           const fileExt = file.name.split('.').pop();
@@ -592,15 +584,10 @@ export default class SettingsPage {
           removeAvatarBtn.style.display = 'block';
           this.cachedData = null;
           clearNavUserCache();
-          successMessage.className = 'alert alert-success';
-          successMessage.textContent = 'Photo updated successfully';
-          successMessage.classList.remove('hidden');
-          setTimeout(() => successMessage.classList.add('hidden'), 3000);
+          showToast('Photo updated successfully', 'success');
         } catch (error) {
           console.error('Avatar upload error:', error);
-          errorMessage.className = 'alert alert-error';
-          errorMessage.textContent = 'Failed to upload photo. Please try again.';
-          errorMessage.classList.remove('hidden');
+          showToast('Failed to upload photo. Please try again.', 'error');
         } finally {
           uploadAvatarBtn.disabled = false;
           if (uploadAvatarBtn.textContent === 'Uploading...') uploadAvatarBtn.textContent = 'Upload Photo';
@@ -613,7 +600,6 @@ export default class SettingsPage {
       removeAvatarBtn.addEventListener('click', async () => {
         removeAvatarBtn.disabled = true;
         removeAvatarBtn.textContent = 'Removing...';
-        errorMessage.classList.add('hidden');
         try {
           const { user } = await getCurrentUser();
           const { profile } = await User.getProfile(user.id);
@@ -625,15 +611,10 @@ export default class SettingsPage {
           removeAvatarBtn.style.display = 'none';
           this.cachedData = null;
           clearNavUserCache();
-          successMessage.className = 'alert alert-success';
-          successMessage.textContent = 'Photo removed successfully';
-          successMessage.classList.remove('hidden');
-          setTimeout(() => successMessage.classList.add('hidden'), 3000);
+          showToast('Photo removed successfully', 'success');
         } catch (error) {
           console.error('Avatar remove error:', error);
-          errorMessage.className = 'alert alert-error';
-          errorMessage.textContent = 'Failed to remove photo. Please try again.';
-          errorMessage.classList.remove('hidden');
+          showToast('Failed to remove photo. Please try again.', 'error');
         } finally {
           removeAvatarBtn.disabled = false;
           removeAvatarBtn.textContent = 'Remove';
@@ -655,19 +636,15 @@ export default class SettingsPage {
       const saveBtn = document.getElementById('save-name-btn');
       saveBtn.disabled = true;
       saveBtn.textContent = 'Saving...';
-      errorMessage.classList.add('hidden');
-      successMessage.classList.add('hidden');
       try {
         const { user } = await getCurrentUser();
         const { error } = await supabase.from('users').update({ name: document.getElementById('name-input').value, updated_at: new Date().toISOString() }).eq('id', user.id);
         if (error) throw error;
-        successMessage.className = 'alert alert-success';
-        successMessage.textContent = 'Name updated successfully. Reloading...';
+        showToast('Name updated successfully. Reloading...', 'success');
         setTimeout(() => window.location.reload(), 1000);
       } catch (error) {
         console.error('Save name error:', error);
-        errorMessage.className = 'alert alert-error';
-        errorMessage.textContent = 'Failed to save name. Please try again.';
+        showToast('Failed to save name. Please try again.', 'error');
         saveBtn.disabled = false;
         saveBtn.textContent = 'Save';
       }
@@ -687,8 +664,6 @@ export default class SettingsPage {
       const saveBtn = document.getElementById('save-email-btn');
       saveBtn.disabled = true;
       saveBtn.textContent = 'Saving...';
-      errorMessage.classList.add('hidden');
-      successMessage.classList.add('hidden');
       try {
         const { user } = await getCurrentUser();
         const newEmail = document.getElementById('email-input').value;
@@ -696,13 +671,11 @@ export default class SettingsPage {
         if (authError) throw authError;
         const { error } = await supabase.from('users').update({ email: newEmail, updated_at: new Date().toISOString() }).eq('id', user.id);
         if (error) throw error;
-        successMessage.className = 'alert alert-success';
-        successMessage.textContent = 'Email updated. Please check your new email for verification link...';
+        showToast('Email updated. Please check your new email for verification link...', 'success');
         setTimeout(() => navigateTo('/verify-email'), 2000);
       } catch (error) {
         console.error('Save email error:', error);
-        errorMessage.className = 'alert alert-error';
-        errorMessage.textContent = 'Failed to save email. Please try again.';
+        showToast('Failed to save email. Please try again.', 'error');
         saveBtn.disabled = false;
         saveBtn.textContent = 'Save';
       }
@@ -722,8 +695,6 @@ export default class SettingsPage {
       const saveBtn = document.getElementById('save-phone-btn');
       saveBtn.disabled = true;
       saveBtn.textContent = 'Saving...';
-      errorMessage.classList.add('hidden');
-      successMessage.classList.add('hidden');
       try {
         const { user } = await getCurrentUser();
         const { profile } = await User.getProfile(user.id);
@@ -734,29 +705,24 @@ export default class SettingsPage {
         const phoneChanged = oldPhoneNormalized !== newPhoneNormalized;
         if (!phoneChanged) {
           if (!profile?.phone_verified) {
-            successMessage.className = 'alert alert-success';
-            successMessage.textContent = 'Redirecting to verification...';
+            showToast('Redirecting to verification...', 'success');
             setTimeout(() => navigateTo('/verify-phone'), 1000);
           } else {
-            successMessage.className = 'alert alert-success';
-            successMessage.textContent = 'No changes made.';
+            showToast('No changes made.', 'info');
             document.getElementById('phone-display').style.display = 'block';
             document.getElementById('phone-edit').style.display = 'none';
             saveBtn.disabled = false;
             saveBtn.textContent = 'Save';
-            setTimeout(() => successMessage.classList.add('hidden'), 2000);
           }
           return;
         }
         const { error } = await supabase.from('users').update({ phone_number: newPhone, phone_verified: false, updated_at: new Date().toISOString() }).eq('id', user.id);
         if (error) throw error;
-        successMessage.className = 'alert alert-success';
-        successMessage.textContent = 'Phone number updated. Redirecting to verification...';
+        showToast('Phone number updated. Redirecting to verification...', 'success');
         setTimeout(() => navigateTo('/verify-phone'), 1500);
       } catch (error) {
         console.error('Save phone error:', error);
-        errorMessage.className = 'alert alert-error';
-        errorMessage.textContent = 'Failed to save phone number. Please try again.';
+        showToast('Failed to save phone number. Please try again.', 'error');
         saveBtn.disabled = false;
         saveBtn.textContent = 'Save';
       }
@@ -776,8 +742,6 @@ export default class SettingsPage {
       const saveBtn = document.getElementById('save-org-btn');
       saveBtn.disabled = true;
       saveBtn.textContent = 'Saving...';
-      errorMessage.classList.add('hidden');
-      successMessage.classList.add('hidden');
       try {
         if (!this.organization?.id) throw new Error('No organization found');
         const newName = document.getElementById('org-input').value.trim();
@@ -789,15 +753,10 @@ export default class SettingsPage {
         document.getElementById('org-edit').style.display = 'none';
         this.organization.name = newName;
         if (this.cachedData) this.cachedData.organization = this.organization;
-        successMessage.className = 'alert alert-success';
-        successMessage.textContent = 'Organization name updated successfully';
-        successMessage.classList.remove('hidden');
-        setTimeout(() => successMessage.classList.add('hidden'), 3000);
+        showToast('Organization name updated successfully', 'success');
       } catch (error) {
         console.error('Save org error:', error);
-        errorMessage.className = 'alert alert-error';
-        errorMessage.textContent = error.message || 'Failed to save organization name. Please try again.';
-        errorMessage.classList.remove('hidden');
+        showToast(error.message || 'Failed to save organization name. Please try again.', 'error');
       } finally {
         saveBtn.disabled = false;
         saveBtn.textContent = 'Save';
@@ -944,8 +903,6 @@ export default class SettingsPage {
   }
 
   attachBillingTabListeners() {
-    const errorMessage = document.getElementById('error-message');
-    const successMessage = document.getElementById('success-message');
     const addCreditsBtn = document.getElementById('add-credits-btn');
     const creditsOptions = document.getElementById('credits-options');
     const cancelCreditsBtn = document.getElementById('cancel-credits-btn');
@@ -987,9 +944,7 @@ export default class SettingsPage {
         if (amount >= 10 && amount <= 1000) {
           await this.purchaseCredits(amount);
         } else {
-          errorMessage.className = 'alert alert-error';
-          errorMessage.textContent = 'Please enter an amount between $10 and $1000';
-          errorMessage.classList.remove('hidden');
+          showToast('Please enter an amount between $10 and $1000', 'error');
         }
       });
     }
@@ -1011,9 +966,7 @@ export default class SettingsPage {
           window.location.href = data.url;
         } catch (error) {
           console.error('Setup payment error:', error);
-          errorMessage.className = 'alert alert-error';
-          errorMessage.textContent = 'Failed to setup payment method. Please try again.';
-          errorMessage.classList.remove('hidden');
+          showToast('Failed to setup payment method. Please try again.', 'error');
           setupPaymentBtn.disabled = false;
           setupPaymentBtn.textContent = 'Add Payment Method';
         }
@@ -1037,9 +990,7 @@ export default class SettingsPage {
           window.location.href = data.url;
         } catch (error) {
           console.error('Claim bonus error:', error);
-          errorMessage.className = 'alert alert-error';
-          errorMessage.textContent = 'Failed to setup payment method. Please try again.';
-          errorMessage.classList.remove('hidden');
+          showToast('Failed to setup payment method. Please try again.', 'error');
           claimBonusBtn.disabled = false;
           claimBonusBtn.textContent = 'Claim $20 Free';
         }
@@ -1063,9 +1014,7 @@ export default class SettingsPage {
           window.location.href = data.url;
         } catch (error) {
           console.error('Billing portal error:', error);
-          errorMessage.className = 'alert alert-error';
-          errorMessage.textContent = 'Failed to open billing portal. Please try again.';
-          errorMessage.classList.remove('hidden');
+          showToast('Failed to open billing portal. Please try again.', 'error');
           manageBillingBtn.disabled = false;
           manageBillingBtn.textContent = 'Manage Payment Methods';
         }
@@ -1080,10 +1029,7 @@ export default class SettingsPage {
         try {
           const { user } = await getCurrentUser();
           await supabase.from('users').update({ auto_recharge_enabled: isEnabled }).eq('id', user.id);
-          successMessage.className = 'alert alert-success';
-          successMessage.textContent = isEnabled ? 'Auto-recharge enabled' : 'Auto-recharge disabled';
-          successMessage.classList.remove('hidden');
-          setTimeout(() => successMessage.classList.add('hidden'), 3000);
+          showToast(isEnabled ? 'Auto-recharge enabled' : 'Auto-recharge disabled', 'success');
         } catch (error) {
           console.error('Auto-recharge toggle error:', error);
           autoRechargeEnabled.checked = !isEnabled;
@@ -1196,9 +1142,6 @@ export default class SettingsPage {
   }
 
   attachBrandingTabListeners() {
-    const errorMessage = document.getElementById('error-message');
-    const successMessage = document.getElementById('success-message');
-
     // Logo upload/remove
     const uploadLogoBtn = document.getElementById('upload-logo-btn');
     const removeLogoBtn = document.getElementById('remove-logo-btn');
@@ -1210,15 +1153,12 @@ export default class SettingsPage {
         const file = e.target.files[0];
         if (!file) return;
         if (file.size > 2 * 1024 * 1024) {
-          errorMessage.className = 'alert alert-error';
-          errorMessage.textContent = 'Logo must be less than 2MB';
-          errorMessage.classList.remove('hidden');
+          showToast('Logo must be less than 2MB', 'error');
           logoInput.value = '';
           return;
         }
         uploadLogoBtn.disabled = true;
         uploadLogoBtn.textContent = 'Uploading...';
-        errorMessage.classList.add('hidden');
         try {
           const resizedBlob = await new Promise((resolve, reject) => {
             const img = new Image();
@@ -1257,15 +1197,10 @@ export default class SettingsPage {
           removeLogoBtn.style.display = 'block';
           this.cachedData = null;
           clearNavUserCache();
-          successMessage.className = 'alert alert-success';
-          successMessage.textContent = 'Logo updated successfully';
-          successMessage.classList.remove('hidden');
-          setTimeout(() => successMessage.classList.add('hidden'), 3000);
+          showToast('Logo updated successfully', 'success');
         } catch (error) {
           console.error('Logo upload error:', error);
-          errorMessage.className = 'alert alert-error';
-          errorMessage.textContent = 'Failed to upload logo. Please try again.';
-          errorMessage.classList.remove('hidden');
+          showToast('Failed to upload logo. Please try again.', 'error');
         } finally {
           uploadLogoBtn.disabled = false;
           if (uploadLogoBtn.textContent === 'Uploading...') uploadLogoBtn.textContent = 'Upload Logo';
@@ -1278,7 +1213,6 @@ export default class SettingsPage {
       removeLogoBtn.addEventListener('click', async () => {
         removeLogoBtn.disabled = true;
         removeLogoBtn.textContent = 'Removing...';
-        errorMessage.classList.add('hidden');
         try {
           const { user } = await getCurrentUser();
           const { error: updateError } = await supabase.from('users').update({ logo_url: null, updated_at: new Date().toISOString() }).eq('id', user.id);
@@ -1289,15 +1223,10 @@ export default class SettingsPage {
           removeLogoBtn.style.display = 'none';
           this.cachedData = null;
           clearNavUserCache();
-          successMessage.className = 'alert alert-success';
-          successMessage.textContent = 'Logo reset to default';
-          successMessage.classList.remove('hidden');
-          setTimeout(() => successMessage.classList.add('hidden'), 3000);
+          showToast('Logo reset to default', 'success');
         } catch (error) {
           console.error('Logo remove error:', error);
-          errorMessage.className = 'alert alert-error';
-          errorMessage.textContent = 'Failed to remove logo. Please try again.';
-          errorMessage.classList.remove('hidden');
+          showToast('Failed to remove logo. Please try again.', 'error');
         } finally {
           removeLogoBtn.disabled = false;
           removeLogoBtn.textContent = 'Reset to Default';
@@ -1316,15 +1245,12 @@ export default class SettingsPage {
         const file = e.target.files[0];
         if (!file) return;
         if (file.size > 500 * 1024) {
-          errorMessage.className = 'alert alert-error';
-          errorMessage.textContent = 'Favicon must be less than 500KB';
-          errorMessage.classList.remove('hidden');
+          showToast('Favicon must be less than 500KB', 'error');
           faviconInput.value = '';
           return;
         }
         uploadFaviconBtn.disabled = true;
         uploadFaviconBtn.textContent = 'Uploading...';
-        errorMessage.classList.add('hidden');
         try {
           const { user } = await getCurrentUser();
           const fileExt = file.name.split('.').pop();
@@ -1340,15 +1266,10 @@ export default class SettingsPage {
           removeFaviconBtn.style.display = 'block';
           this.updateFavicon(publicUrl);
           this.cachedData = null;
-          successMessage.className = 'alert alert-success';
-          successMessage.textContent = 'Favicon updated successfully';
-          successMessage.classList.remove('hidden');
-          setTimeout(() => successMessage.classList.add('hidden'), 3000);
+          showToast('Favicon updated successfully', 'success');
         } catch (error) {
           console.error('Favicon upload error:', error);
-          errorMessage.className = 'alert alert-error';
-          errorMessage.textContent = 'Failed to upload favicon. Please try again.';
-          errorMessage.classList.remove('hidden');
+          showToast('Failed to upload favicon. Please try again.', 'error');
         } finally {
           uploadFaviconBtn.disabled = false;
           if (uploadFaviconBtn.textContent === 'Uploading...') uploadFaviconBtn.textContent = 'Upload Favicon';
@@ -1361,7 +1282,6 @@ export default class SettingsPage {
       removeFaviconBtn.addEventListener('click', async () => {
         removeFaviconBtn.disabled = true;
         removeFaviconBtn.textContent = 'Removing...';
-        errorMessage.classList.add('hidden');
         try {
           const { user } = await getCurrentUser();
           const { error: updateError } = await supabase.from('users').update({ favicon_url: null, updated_at: new Date().toISOString() }).eq('id', user.id);
@@ -1372,15 +1292,10 @@ export default class SettingsPage {
           removeFaviconBtn.style.display = 'none';
           this.updateFavicon(null);
           this.cachedData = null;
-          successMessage.className = 'alert alert-success';
-          successMessage.textContent = 'Favicon removed successfully';
-          successMessage.classList.remove('hidden');
-          setTimeout(() => successMessage.classList.add('hidden'), 3000);
+          showToast('Favicon removed successfully', 'success');
         } catch (error) {
           console.error('Favicon remove error:', error);
-          errorMessage.className = 'alert alert-error';
-          errorMessage.textContent = 'Failed to remove favicon. Please try again.';
-          errorMessage.classList.remove('hidden');
+          showToast('Failed to remove favicon. Please try again.', 'error');
         } finally {
           removeFaviconBtn.disabled = false;
           removeFaviconBtn.textContent = 'Remove';
@@ -1412,10 +1327,7 @@ export default class SettingsPage {
 
           this.cachedData = null;
           clearNavUserCache();
-          successMessage.className = 'alert alert-success';
-          successMessage.textContent = isEnabled ? 'White background enabled' : 'White background disabled';
-          successMessage.classList.remove('hidden');
-          setTimeout(() => successMessage.classList.add('hidden'), 3000);
+          showToast(isEnabled ? 'White background enabled' : 'White background disabled', 'success');
         } catch (error) {
           console.error('Favicon white bg toggle error:', error);
           faviconWhiteBg.checked = !isEnabled;
@@ -1557,8 +1469,6 @@ export default class SettingsPage {
   }
 
   attachNotificationsTabListeners() {
-    const errorMessage = document.getElementById('error-message');
-    const successMessage = document.getElementById('success-message');
     const saveNotificationsBtn = document.getElementById('save-notifications-btn');
 
     // Push notifications setup
@@ -1569,8 +1479,6 @@ export default class SettingsPage {
       saveNotificationsBtn.addEventListener('click', async () => {
         saveNotificationsBtn.disabled = true;
         saveNotificationsBtn.textContent = 'Saving...';
-        errorMessage.classList.add('hidden');
-        successMessage.classList.add('hidden');
         try {
           const { user } = await getCurrentUser();
           const preferences = {
@@ -1596,15 +1504,10 @@ export default class SettingsPage {
           };
           const { error } = await supabase.from('notification_preferences').upsert(preferences, { onConflict: 'user_id' });
           if (error) throw error;
-          successMessage.className = 'alert alert-success';
-          successMessage.textContent = 'Notification settings saved successfully';
-          successMessage.classList.remove('hidden');
-          setTimeout(() => successMessage.classList.add('hidden'), 3000);
+          showToast('Notification settings saved successfully', 'success');
         } catch (error) {
           console.error('Save notifications error:', error);
-          errorMessage.className = 'alert alert-error';
-          errorMessage.textContent = 'Failed to save notification settings. Please try again.';
-          errorMessage.classList.remove('hidden');
+          showToast('Failed to save notification settings. Please try again.', 'error');
         } finally {
           saveNotificationsBtn.disabled = false;
           saveNotificationsBtn.textContent = 'Save Notification Settings';
@@ -1786,12 +1689,7 @@ export default class SettingsPage {
       this.loadApiKeys();
     } catch (error) {
       console.error('Error revoking API key:', error);
-      const errorMessage = document.getElementById('error-message');
-      if (errorMessage) {
-        errorMessage.className = 'alert alert-error';
-        errorMessage.textContent = 'Failed to revoke API key. Please try again.';
-        errorMessage.classList.remove('hidden');
-      }
+      showToast('Failed to revoke API key. Please try again.', 'error');
     }
   }
 
@@ -1869,12 +1767,7 @@ export default class SettingsPage {
           this.loadApiKeys();
         } catch (error) {
           console.error('Error generating API key:', error);
-          const errorMessage = document.getElementById('error-message');
-          if (errorMessage) {
-            errorMessage.className = 'alert alert-error';
-            errorMessage.textContent = error.message || 'Failed to generate API key.';
-            errorMessage.classList.remove('hidden');
-          }
+          showToast(error.message || 'Failed to generate API key.', 'error');
         } finally {
           createBtn.disabled = false;
           createBtn.textContent = 'Create';
@@ -1945,7 +1838,6 @@ export default class SettingsPage {
   }
 
   attachAccountTabListeners() {
-    const errorMessage = document.getElementById('error-message');
     const signoutBtn = document.getElementById('signout-btn');
     const deleteAccountBtn = document.getElementById('delete-account-btn');
 
@@ -1977,18 +1869,13 @@ export default class SettingsPage {
         if (confirmation !== 'DELETE') return;
         deleteAccountBtn.disabled = true;
         deleteAccountBtn.textContent = 'Deleting...';
-        errorMessage.classList.add('hidden');
         try {
-          errorMessage.className = 'alert alert-warning';
-          errorMessage.textContent = 'Account deletion is not yet implemented. Please contact support.';
-          errorMessage.classList.remove('hidden');
+          showToast('Account deletion is not yet implemented. Please contact support.', 'warning');
           deleteAccountBtn.disabled = false;
           deleteAccountBtn.textContent = 'Delete Account';
         } catch (error) {
           console.error('Delete account error:', error);
-          errorMessage.className = 'alert alert-error';
-          errorMessage.textContent = 'Failed to delete account. Please try again.';
-          errorMessage.classList.remove('hidden');
+          showToast('Failed to delete account. Please try again.', 'error');
           deleteAccountBtn.disabled = false;
           deleteAccountBtn.textContent = 'Delete Account';
         }
@@ -2066,7 +1953,6 @@ export default class SettingsPage {
   }
 
   async purchaseCredits(amount) {
-    const errorMessage = document.getElementById('error-message');
     const addCreditsBtn = document.getElementById('add-credits-btn');
     const creditsOptions = document.getElementById('credits-options');
 
@@ -2099,9 +1985,7 @@ export default class SettingsPage {
       window.location.href = data.url;
     } catch (error) {
       console.error('Purchase credits error:', error);
-      errorMessage.className = 'alert alert-error';
-      errorMessage.textContent = 'Failed to start checkout. Please try again.';
-      errorMessage.classList.remove('hidden');
+      showToast('Failed to start checkout. Please try again.', 'error');
 
       // Re-enable buttons
       document.querySelectorAll('.credit-amount-btn, #add-custom-credits-btn').forEach(btn => {
@@ -2128,8 +2012,6 @@ export default class SettingsPage {
     const pushEnabled = document.getElementById('push-enabled');
     const pushOptions = document.getElementById('push-options');
     const testPushBtn = document.getElementById('test-push-btn');
-    const errorMessage = document.getElementById('error-message');
-    const successMessage = document.getElementById('success-message');
 
     // Check if push is supported
     if (!isPushSupported()) {
@@ -2165,10 +2047,7 @@ export default class SettingsPage {
 
         if (result.success) {
           pushStatus.textContent = 'Push notifications are now active on this device.';
-          successMessage.className = 'alert alert-success';
-          successMessage.textContent = 'Push notifications enabled successfully!';
-          successMessage.classList.remove('hidden');
-          setTimeout(() => successMessage.classList.add('hidden'), 3000);
+          showToast('Push notifications enabled successfully!', 'success');
         } else {
           pushStatus.textContent = result.error || 'Failed to enable push notifications.';
           pushEnabled.checked = false;
@@ -2177,9 +2056,7 @@ export default class SettingsPage {
           if (result.error?.includes('permission') || result.error?.includes('blocked')) {
             this.showPushHelpModal();
           } else {
-            errorMessage.className = 'alert alert-error';
-            errorMessage.textContent = result.error || 'Failed to enable push notifications.';
-            errorMessage.classList.remove('hidden');
+            showToast(result.error || 'Failed to enable push notifications.', 'error');
           }
         }
       } else {
@@ -2202,19 +2079,14 @@ export default class SettingsPage {
 
       try {
         await showTestNotification();
-        successMessage.className = 'alert alert-success';
-        successMessage.textContent = 'Test notification sent!';
-        successMessage.classList.remove('hidden');
-        setTimeout(() => successMessage.classList.add('hidden'), 3000);
+        showToast('Test notification sent!', 'success');
       } catch (error) {
         console.error('Test notification error:', error);
         // Show help modal for permission errors
         if (error.message?.includes('permission') || error.message?.includes('blocked')) {
           this.showPushHelpModal();
         } else {
-          errorMessage.className = 'alert alert-error';
-          errorMessage.textContent = error.message || 'Failed to send test notification.';
-          errorMessage.classList.remove('hidden');
+          showToast(error.message || 'Failed to send test notification.', 'error');
         }
       } finally {
         testPushBtn.disabled = false;

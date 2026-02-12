@@ -7,6 +7,7 @@ import { sendMessage, confirmAction, listConversations, getConversationHistory }
 import { RealtimeAdminService } from '../services/realtimeAdminService.js';
 import { supabase } from '../lib/supabase.js';
 import { createVoiceToggle, addVoiceToggleStyles } from './VoiceToggle.js';
+import { showToast } from '../lib/toast.js';
 
 /**
  * Create admin chat interface
@@ -1829,36 +1830,6 @@ export function createAdminChatInterface(container) {
 
     renderConversations();
     addMessage('assistant', 'Hi! I can help you configure your AI assistant. What would you like to change?');
-  }
-
-  /**
-   * Show toast notification
-   */
-  function showToast(message, type = 'info') {
-    // Check if toast container exists
-    let toastContainer = document.querySelector('.toast-container');
-
-    if (!toastContainer) {
-      toastContainer = document.createElement('div');
-      toastContainer.className = 'toast-container';
-      document.body.appendChild(toastContainer);
-    }
-
-    // Create toast
-    const toast = document.createElement('div');
-    toast.className = `toast toast-${type}`;
-    toast.textContent = message;
-
-    // Add to container
-    toastContainer.appendChild(toast);
-
-    // Auto-remove after 3 seconds
-    setTimeout(() => {
-      toast.classList.add('fade-out');
-      setTimeout(() => {
-        toast.remove();
-      }, 300);
-    }, 3000);
   }
 
   /**

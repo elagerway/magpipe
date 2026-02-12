@@ -7,6 +7,7 @@
 import { supabase } from '../lib/supabase.js';
 import { createMcpServerCard, addMcpServerCardStyles } from './McpServerCard.js';
 import { showAddCustomMcpServerModal } from './AddCustomMcpServer.js';
+import { showToast } from '../lib/toast.js';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -280,7 +281,7 @@ function renderCatalog(container, catalog, customServers, connections, connected
 
         const result = await response.json();
         if (result.error) {
-          alert(result.error);
+          showToast(result.error, 'error');
         }
       } else {
         // No auth required, just connect
@@ -299,14 +300,14 @@ function renderCatalog(container, catalog, customServers, connections, connected
 
         const result = await response.json();
         if (result.error) {
-          alert(result.error);
+          showToast(result.error, 'error');
         }
       }
 
       createMcpServerCatalog(containerId);
     } catch (error) {
       console.error('Connect error:', error);
-      alert('Failed to connect. Please try again.');
+      showToast('Failed to connect. Please try again.', 'error');
       createMcpServerCatalog(containerId);
     }
   };
@@ -332,13 +333,13 @@ function renderCatalog(container, catalog, customServers, connections, connected
 
       const result = await response.json();
       if (result.error) {
-        alert(result.error);
+        showToast(result.error, 'error');
       }
 
       createMcpServerCatalog(containerId);
     } catch (error) {
       console.error('Disconnect error:', error);
-      alert('Failed to disconnect. Please try again.');
+      showToast('Failed to disconnect. Please try again.', 'error');
       createMcpServerCatalog(containerId);
     }
   };
@@ -364,16 +365,15 @@ function renderCatalog(container, catalog, customServers, connections, connected
 
       const result = await response.json();
       if (result.error) {
-        alert(result.error);
+        showToast(result.error, 'error');
       } else {
-        // Show toast or update card
-        alert(`Refreshed! Found ${result.tools_count} tools.`);
+        showToast(`Refreshed! Found ${result.tools_count} tools.`, 'success');
       }
 
       createMcpServerCatalog(containerId);
     } catch (error) {
       console.error('Refresh error:', error);
-      alert('Failed to refresh. Please try again.');
+      showToast('Failed to refresh. Please try again.', 'error');
       createMcpServerCatalog(containerId);
     }
   };

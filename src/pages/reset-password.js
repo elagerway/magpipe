@@ -5,6 +5,7 @@
 
 import { User } from '../models/User.js';
 import { supabase } from '../lib/supabase.js';
+import { showToast } from '../lib/toast.js';
 
 export default class ResetPasswordPage {
   async render() {
@@ -282,9 +283,6 @@ export default class ResetPasswordPage {
               <h1>Set New Password</h1>
               <p class="reset-subtitle">Choose a strong password for your account</p>
 
-              <div id="error-message" class="hidden"></div>
-              <div id="success-message" class="hidden"></div>
-
               <form id="reset-password-form">
                 <div class="form-group">
                   <label class="form-label" for="password">New Password</label>
@@ -336,8 +334,6 @@ export default class ResetPasswordPage {
   attachEventListeners() {
     const form = document.getElementById('reset-password-form');
     const submitBtn = document.getElementById('submit-btn');
-    const errorMessage = document.getElementById('error-message');
-    const successMessage = document.getElementById('success-message');
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -347,16 +343,13 @@ export default class ResetPasswordPage {
 
       // Validate passwords match
       if (password !== confirmPassword) {
-        errorMessage.className = 'alert alert-error';
-        errorMessage.textContent = 'Passwords do not match.';
+        showToast('Passwords do not match.', 'error');
         return;
       }
 
       // Disable form
       submitBtn.disabled = true;
       submitBtn.textContent = 'Updating password...';
-      errorMessage.classList.add('hidden');
-      successMessage.classList.add('hidden');
 
       try {
         const { error } = await User.updatePassword(password);
@@ -366,8 +359,7 @@ export default class ResetPasswordPage {
         }
 
         // Show success message
-        successMessage.className = 'alert alert-success';
-        successMessage.textContent = 'Password updated successfully! Redirecting...';
+        showToast('Password updated successfully! Redirecting...', 'success');
 
         // Redirect to agent after 2 seconds
         setTimeout(() => {
@@ -375,8 +367,7 @@ export default class ResetPasswordPage {
         }, 2000);
       } catch (error) {
         console.error('Password update error:', error);
-        errorMessage.className = 'alert alert-error';
-        errorMessage.textContent = error.message || 'Failed to update password. Please try again.';
+        showToast(error.message || 'Failed to update password. Please try again.', 'error');
 
         // Re-enable form
         submitBtn.disabled = false;

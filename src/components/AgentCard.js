@@ -3,6 +3,8 @@
  * Displays a single agent card with avatar, name, type, and actions
  */
 
+import { showToast } from '../lib/toast.js';
+
 // Agent type badge colors
 const TYPE_COLORS = {
   inbound: { bg: '#e0f2fe', text: '#0369a1' },
@@ -108,7 +110,7 @@ export function createAgentCard(agent, { onOpen, onDelete, onToggleActive }) {
     deleteBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       if (agent.is_default) {
-        alert('Cannot delete the default agent. Set another agent as default first.');
+        showToast('Cannot delete the default agent. Set another agent as default first.', 'error');
         return;
       }
       if (confirm(`Are you sure you want to delete "${agent.name}"? This cannot be undone.`)) {

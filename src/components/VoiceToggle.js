@@ -4,6 +4,7 @@
  */
 
 import { isSupported, VoiceRecognition } from '../lib/voiceRecognition.js';
+import { showToast } from '../lib/toast.js';
 
 /**
  * Create voice toggle button component
@@ -211,36 +212,6 @@ export function createVoiceToggle({ onTranscript, onError, onStart, onEnd, onSpe
     updateButtonState('inactive');
   }
 
-  /**
-   * Show toast notification
-   */
-  function showToast(message, type = 'info') {
-    // Check if toast container exists
-    let toastContainer = document.querySelector('.toast-container');
-
-    if (!toastContainer) {
-      toastContainer = document.createElement('div');
-      toastContainer.className = 'toast-container';
-      document.body.appendChild(toastContainer);
-    }
-
-    // Create toast
-    const toast = document.createElement('div');
-    toast.className = `toast toast-${type}`;
-    toast.textContent = message;
-
-    // Add to container
-    toastContainer.appendChild(toast);
-
-    // Auto-remove after 3 seconds
-    setTimeout(() => {
-      toast.classList.add('fade-out');
-      setTimeout(() => {
-        toast.remove();
-      }, 300);
-    }, 3000);
-  }
-
   // Cleanup function
   button.destroy = () => {
     stopListening();
@@ -356,64 +327,6 @@ export function addVoiceToggleStyles() {
       }
     }
 
-    /* Toast notifications */
-    .toast-container {
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      z-index: 10000;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-
-    .toast {
-      background: white;
-      padding: 12px 20px;
-      border-radius: 8px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-      font-size: 14px;
-      max-width: 300px;
-      animation: slide-in 0.3s ease;
-    }
-
-    .toast.toast-error {
-      background: #fee;
-      color: #c00;
-      border-left: 4px solid #c00;
-    }
-
-    .toast.toast-success {
-      background: #efe;
-      color: #0a0;
-      border-left: 4px solid #0a0;
-    }
-
-    .toast.fade-out {
-      animation: fade-out 0.3s ease;
-      opacity: 0;
-    }
-
-    @keyframes slide-in {
-      from {
-        transform: translateX(100%);
-        opacity: 0;
-      }
-      to {
-        transform: translateX(0);
-        opacity: 1;
-      }
-    }
-
-    @keyframes fade-out {
-      from {
-        opacity: 1;
-      }
-      to {
-        opacity: 0;
-      }
-    }
-
     /* Mobile responsive */
     @media (max-width: 768px) {
       .voice-toggle {
@@ -430,14 +343,6 @@ export function addVoiceToggleStyles() {
         padding: 0 !important;
       }
 
-      .toast-container {
-        left: 20px;
-        right: 20px;
-      }
-
-      .toast {
-        max-width: none;
-      }
     }
   `;
 

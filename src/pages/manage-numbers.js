@@ -5,6 +5,7 @@
 import { getCurrentUser, supabase } from '../lib/supabase.js';
 import { renderBottomNav } from '../components/BottomNav.js';
 import { User } from '../models/index.js';
+import { showToast } from '../lib/toast.js';
 
 // System agent UUID for unassigned numbers
 const SYSTEM_AGENT_ID = '00000000-0000-0000-0000-000000000002';
@@ -69,9 +70,6 @@ export default class ManageNumbersPage {
         </div>
 
         <div class="card" style="padding: 1rem;">
-
-          <div id="error-message" class="hidden"></div>
-          <div id="success-message" class="hidden"></div>
 
           <div id="loading" style="text-align: center; padding: 3rem;">
             <p class="text-muted">Loading your numbers...</p>
@@ -139,7 +137,6 @@ export default class ManageNumbersPage {
     const loading = document.getElementById('loading');
     const numbersContainer = document.getElementById('numbers-container');
     const emptyState = document.getElementById('empty-state');
-    const errorMessage = document.getElementById('error-message');
 
     try {
       // Load active/inactive service numbers with assigned agent info
@@ -182,8 +179,7 @@ export default class ManageNumbersPage {
     } catch (error) {
       console.error('Error loading numbers:', error);
       loading.classList.add('hidden');
-      errorMessage.className = 'alert alert-error';
-      errorMessage.textContent = 'Failed to load service numbers';
+      showToast('Failed to load service numbers', 'error');
     }
   }
 
@@ -317,12 +313,7 @@ export default class ManageNumbersPage {
   }
 
   async deleteNumber(number) {
-    const errorMessage = document.getElementById('error-message');
-    const successMessage = document.getElementById('success-message');
     const confirmBtn = document.getElementById('confirm-delete-btn');
-
-    errorMessage.classList.add('hidden');
-    successMessage.classList.add('hidden');
 
     try {
       confirmBtn.disabled = true;
@@ -355,16 +346,14 @@ export default class ManageNumbersPage {
       // Get days until deletion from the result
       const daysUntilDeletion = result.results?.[0]?.days_until_deletion || 30;
 
-      successMessage.className = 'alert alert-success';
-      successMessage.textContent = `Number queued for deletion. It will be permanently deleted in ${daysUntilDeletion} day${daysUntilDeletion !== 1 ? 's' : ''}.`;
+      showToast(`Number queued for deletion. It will be permanently deleted in ${daysUntilDeletion} day${daysUntilDeletion !== 1 ? 's' : ''}.`, 'success');
 
       // Reload numbers to reflect changes
       await this.loadNumbers();
 
     } catch (error) {
       console.error('Error deleting number:', error);
-      errorMessage.className = 'alert alert-error';
-      errorMessage.textContent = error.message || 'Failed to delete number';
+      showToast(error.message || 'Failed to delete number', 'error');
     } finally {
       confirmBtn.disabled = false;
       confirmBtn.textContent = 'Yes, Delete';
@@ -372,11 +361,6 @@ export default class ManageNumbersPage {
   }
 
   async cancelDeletion(number) {
-    const errorMessage = document.getElementById('error-message');
-    const successMessage = document.getElementById('success-message');
-
-    errorMessage.classList.add('hidden');
-    successMessage.classList.add('hidden');
 
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -401,16 +385,14 @@ export default class ManageNumbersPage {
 
       const result = await response.json();
 
-      successMessage.className = 'alert alert-success';
-      successMessage.textContent = `Deletion cancelled. Number restored to inactive status.`;
+      showToast('Deletion cancelled. Number restored to inactive status.', 'success');
 
       // Reload numbers to reflect changes
       await this.loadNumbers();
 
     } catch (error) {
       console.error('Error cancelling deletion:', error);
-      errorMessage.className = 'alert alert-error';
-      errorMessage.textContent = error.message || 'Failed to cancel deletion';
+      showToast(error.message || 'Failed to cancel deletion', 'error');
     }
   }
 
@@ -686,19 +668,12 @@ export default class ManageNumbersPage {
   }
 
   async toggleNumber(numberId, newStatus) {
-    const errorMessage = document.getElementById('error-message');
-    const successMessage = document.getElementById('success-message');
-
-    errorMessage.classList.add('hidden');
-    successMessage.classList.add('hidden');
-
     try {
       const number = this.serviceNumbers.find(n => n.id === numberId);
 
       // If activating, ensure agent exists and configure webhooks
       if (newStatus) {
-        successMessage.className = 'alert alert-info';
-        successMessage.textContent = 'Setting up AI assistant for this number...';
+        showToast('Setting up AI assistant for this number...', 'info');
 
         // Check if user has an agent, create if not
         await this.ensureAgentExists();
@@ -707,8 +682,7 @@ export default class ManageNumbersPage {
         await this.configureSignalWireNumber(number.phone_number);
       } else {
         // Deactivating
-        successMessage.className = 'alert alert-info';
-        successMessage.textContent = 'Deactivating AI assistant for this number...';
+        showToast('Deactivating AI assistant for this number...', 'info');
       }
 
       // Update the number status
@@ -722,21 +696,19 @@ export default class ManageNumbersPage {
       // Check if this is a Canadian number and toggle paired US number
       await this.togglePairedUSNumber(number, newStatus);
 
-      successMessage.className = 'alert alert-success';
-      successMessage.textContent = `Number ${newStatus ? 'activated' : 'deactivated'} successfully`;
+      showToast(`Number ${newStatus ? 'activated' : 'deactivated'} successfully`, 'success');
 
       // Reload numbers
       await this.loadNumbers();
     } catch (error) {
       console.error('Error toggling number:', error);
-      errorMessage.className = 'alert alert-error';
 
       // Show detailed error if available
       let errorText = error.message || 'Failed to update number status';
       if (error.details) {
         errorText += ` (${error.details})`;
       }
-      errorMessage.textContent = errorText;
+      showToast(errorText, 'error');
 
       // Revert the toggle
       await this.loadNumbers();
@@ -744,12 +716,6 @@ export default class ManageNumbersPage {
   }
 
   async removeAgentFromNumber(number) {
-    const errorMessage = document.getElementById('error-message');
-    const successMessage = document.getElementById('success-message');
-
-    errorMessage.classList.add('hidden');
-    successMessage.classList.add('hidden');
-
     if (!number.agent || number.agent_id === SYSTEM_AGENT_ID) {
       return;
     }
@@ -763,15 +729,13 @@ export default class ManageNumbersPage {
 
       if (error) throw error;
 
-      successMessage.className = 'alert alert-success';
-      successMessage.textContent = `Agent "${number.agent.name}" removed from ${this.formatPhoneNumber(number.phone_number)}`;
+      showToast(`Agent "${number.agent.name}" removed from ${this.formatPhoneNumber(number.phone_number)}`, 'success');
 
       // Reload numbers to reflect changes
       await this.loadNumbers();
     } catch (error) {
       console.error('Error removing agent from number:', error);
-      errorMessage.className = 'alert alert-error';
-      errorMessage.textContent = error.message || 'Failed to remove agent from number';
+      showToast(error.message || 'Failed to remove agent from number', 'error');
     }
   }
 

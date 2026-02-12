@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabase.js';
 import { OrganizationMember } from '../models/OrganizationMember.js';
 import { renderPublicFooter, getPublicFooterStyles } from '../components/PublicFooter.js';
 import { renderPublicHeader, getPublicHeaderStyles } from '../components/PublicHeader.js';
+import { showToast } from '../lib/toast.js';
 
 export default class SignupPage {
   async render() {
@@ -71,8 +72,6 @@ export default class SignupPage {
               ` : `
                 <p class="signup-subtitle">Get started with your AI assistant</p>
               `}
-
-              <div id="error-message" class="hidden"></div>
 
               <!-- SSO Buttons -->
               <div class="sso-buttons">
@@ -515,9 +514,6 @@ export default class SignupPage {
   }
 
   async handleOAuthSignup(provider) {
-    const errorMessage = document.getElementById('error-message');
-    errorMessage.classList.add('hidden');
-
     // Store invite ID for processing after OAuth redirect
     const urlParams = new URLSearchParams(window.location.search);
     const inviteId = urlParams.get('invite');
@@ -536,15 +532,13 @@ export default class SignupPage {
       // After successful auth, user will be redirected back to /agent
     } catch (error) {
       console.error('OAuth error:', error);
-      errorMessage.className = 'alert alert-error';
-      errorMessage.textContent = error.message || `Failed to sign up with ${provider}. Please try again.`;
+      showToast(error.message || `Failed to sign up with ${provider}. Please try again.`, 'error');
     }
   }
 
   attachEventListeners() {
     const form = document.getElementById('signup-form');
     const submitBtn = document.getElementById('submit-btn');
-    const errorMessage = document.getElementById('error-message');
 
     // SSO button listeners
     document.getElementById('google-btn').addEventListener('click', async () => {
@@ -569,15 +563,13 @@ export default class SignupPage {
 
       // Validate passwords match
       if (password !== confirmPassword) {
-        errorMessage.className = 'alert alert-error';
-        errorMessage.textContent = 'Passwords do not match.';
+        showToast('Passwords do not match.', 'error');
         return;
       }
 
       // Disable form
       submitBtn.disabled = true;
       submitBtn.textContent = 'Creating account...';
-      errorMessage.classList.add('hidden');
 
       try {
         const { user, error } = await User.signUp(email, password, name);
@@ -614,8 +606,7 @@ export default class SignupPage {
         navigateTo('/verify-phone');
       } catch (error) {
         console.error('Signup error:', error);
-        errorMessage.className = 'alert alert-error';
-        errorMessage.textContent = error.message || 'Failed to create account. Please try again.';
+        showToast(error.message || 'Failed to create account. Please try again.', 'error');
 
         // Re-enable form
         submitBtn.disabled = false;

@@ -5,6 +5,7 @@
 import { User } from '../models/User.js';
 import { getCurrentUser, supabase } from '../lib/supabase.js';
 import { isPushSupported, subscribeToPush } from '../services/pushNotifications.js';
+import { showToast } from '../lib/toast.js';
 
 export default class VerifyPhonePage {
   constructor() {
@@ -47,9 +48,6 @@ export default class VerifyPhonePage {
           <p class="text-center text-muted">
             We'll send a verification code to your phone number
           </p>
-
-          <div id="error-message" class="hidden"></div>
-          <div id="success-message" class="hidden"></div>
 
           <div id="phone-entry-form">
             <div class="form-group">
@@ -142,22 +140,18 @@ export default class VerifyPhonePage {
     const changeNumberLink = document.getElementById('change-number-link');
     const phoneEntryForm = document.getElementById('phone-entry-form');
     const codeVerificationForm = document.getElementById('code-verification-form');
-    const errorMessage = document.getElementById('error-message');
-    const successMessage = document.getElementById('success-message');
 
     sendCodeBtn.addEventListener('click', async () => {
       const phoneInput = document.getElementById('phone');
       const phoneNumber = this.sanitizePhoneNumber(phoneInput.value);
 
       if (!this.isValidNorthAmericanNumber(phoneNumber)) {
-        errorMessage.className = 'alert alert-error';
-        errorMessage.textContent = 'Please enter a valid 10-digit phone number';
+        showToast('Please enter a valid 10-digit phone number', 'error');
         return;
       }
 
       sendCodeBtn.disabled = true;
       sendCodeBtn.textContent = 'Sending code...';
-      errorMessage.classList.add('hidden');
 
       try {
         // In production, this would call a Supabase Edge Function to send SMS via SignalWire
@@ -168,15 +162,13 @@ export default class VerifyPhonePage {
         phoneEntryForm.classList.add('hidden');
         codeVerificationForm.classList.remove('hidden');
 
-        successMessage.className = 'alert alert-success';
-        successMessage.textContent = `Verification code sent to ${phoneNumber}`;
+        showToast(`Verification code sent to ${phoneNumber}`, 'success');
 
         this.codeSent = true;
         this.phoneNumber = phoneNumber;
       } catch (error) {
         console.error('Send code error:', error);
-        errorMessage.className = 'alert alert-error';
-        errorMessage.textContent = error.message || 'Failed to send verification code. Please try again.';
+        showToast(error.message || 'Failed to send verification code. Please try again.', 'error');
 
         sendCodeBtn.disabled = false;
         sendCodeBtn.textContent = 'Send Verification Code';
@@ -188,15 +180,12 @@ export default class VerifyPhonePage {
       const code = codeInput.value;
 
       if (!code || code.length !== 6) {
-        errorMessage.className = 'alert alert-error';
-        errorMessage.textContent = 'Please enter a valid 6-digit code';
+        showToast('Please enter a valid 6-digit code', 'error');
         return;
       }
 
       verifyCodeBtn.disabled = true;
       verifyCodeBtn.textContent = 'Verifying...';
-      errorMessage.classList.add('hidden');
-      successMessage.classList.add('hidden');
 
       try {
         // Verify code with backend (backend also updates phone_verified = true)
@@ -216,8 +205,7 @@ export default class VerifyPhonePage {
           .eq('is_active', true)
           .limit(1);
 
-        successMessage.className = 'alert alert-success';
-        successMessage.textContent = 'Phone verified successfully!';
+        showToast('Phone verified successfully!', 'success');
 
         // Request push notification permission (native prompt)
         let pushEnabled = false;
@@ -256,18 +244,18 @@ export default class VerifyPhonePage {
 
         if (serviceNumbers && serviceNumbers.length > 0) {
           // User already has service number(s), go to settings
-          successMessage.textContent = 'Phone verified! Redirecting to settings...';
+          showToast('Phone verified! Redirecting to settings...', 'success');
 
           setTimeout(() => {
             window.location.href = '/settings'; // Use href to force page reload
           }, 1000);
         } else {
           // New user, set up agent and select number
-          successMessage.textContent = 'Setting up your AI assistant...';
+          showToast('Setting up your AI assistant...', 'info');
 
           try {
             await this.createDefaultAgent();
-            successMessage.textContent = 'All set! Redirecting...';
+            showToast('All set! Redirecting...', 'success');
           } catch (error) {
             console.error('Agent creation error:', error);
             // Continue anyway - agent can be created later
@@ -279,8 +267,7 @@ export default class VerifyPhonePage {
         }
       } catch (error) {
         console.error('Verify code error:', error);
-        errorMessage.className = 'alert alert-error';
-        errorMessage.textContent = error.message || 'Invalid verification code. Please try again.';
+        showToast(error.message || 'Invalid verification code. Please try again.', 'error');
 
         verifyCodeBtn.disabled = false;
         verifyCodeBtn.textContent = 'Verify Phone Number';
@@ -293,19 +280,15 @@ export default class VerifyPhonePage {
       if (!this.phoneNumber) return;
 
       resendCodeLink.textContent = 'Sending...';
-      errorMessage.classList.add('hidden');
-      successMessage.classList.add('hidden');
 
       try {
         await this.sendVerificationCode(this.phoneNumber);
 
-        successMessage.className = 'alert alert-success';
-        successMessage.textContent = 'Verification code resent';
+        showToast('Verification code resent', 'success');
         resendCodeLink.textContent = 'Resend code';
       } catch (error) {
         console.error('Resend error:', error);
-        errorMessage.className = 'alert alert-error';
-        errorMessage.textContent = 'Failed to resend code. Please try again.';
+        showToast('Failed to resend code. Please try again.', 'error');
         resendCodeLink.textContent = 'Resend code';
       }
     });
@@ -319,8 +302,6 @@ export default class VerifyPhonePage {
   resetToPhoneEntry() {
     const phoneEntryForm = document.getElementById('phone-entry-form');
     const codeVerificationForm = document.getElementById('code-verification-form');
-    const errorMessage = document.getElementById('error-message');
-    const successMessage = document.getElementById('success-message');
     const phoneInput = document.getElementById('phone');
     const verificationCode = document.getElementById('verification-code');
     const sendCodeBtn = document.getElementById('send-code-btn');
@@ -332,10 +313,6 @@ export default class VerifyPhonePage {
     // Clear all input fields
     if (phoneInput) phoneInput.value = '';
     if (verificationCode) verificationCode.value = '';
-
-    // Hide messages
-    errorMessage.classList.add('hidden');
-    successMessage.classList.add('hidden');
 
     // Show phone entry form, hide verification form
     phoneEntryForm.classList.remove('hidden');

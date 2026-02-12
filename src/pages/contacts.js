@@ -6,6 +6,7 @@ import { Contact } from '../models/Contact.js';
 import { getCurrentUser, supabase } from '../lib/supabase.js';
 import { renderBottomNav } from '../components/BottomNav.js';
 import { User } from '../models/index.js';
+import { showToast } from '../lib/toast.js';
 
 export default class ContactsPage {
   constructor() {
@@ -73,9 +74,6 @@ export default class ContactsPage {
             style="width: 100%;"
           />
         </div>
-
-        <div id="error-message" class="hidden" style="display: none;"></div>
-        <div id="success-message" class="hidden" style="display: none;"></div>
 
         <div id="contacts-list" class="contacts-list">
           ${this.renderContactsList()}
@@ -439,8 +437,6 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
     const contactForm = document.getElementById('contact-form');
     const closeModalBtn = document.getElementById('close-modal-btn');
     const searchInput = document.getElementById('search-input');
-    const errorMessage = document.getElementById('error-message');
-    const successMessage = document.getElementById('success-message');
     const uploadAvatarBtn = document.getElementById('upload-avatar-btn');
     const removeAvatarBtn = document.getElementById('remove-avatar-btn');
     const avatarInput = document.getElementById('contact-avatar');
@@ -478,13 +474,13 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
 
     // Import contacts
     importContactsBtn.addEventListener('click', async () => {
-      await this.importContacts(errorMessage, successMessage);
+      await this.importContacts();
     });
 
     // Lookup contact
     const lookupBtn = document.getElementById('lookup-contact-btn');
     lookupBtn.addEventListener('click', async () => {
-      await this.lookupContact(errorMessage, successMessage);
+      await this.lookupContact();
     });
 
     // Avatar upload
@@ -497,8 +493,7 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
       if (file) {
         // Check file size (max 2MB)
         if (file.size > 2 * 1024 * 1024) {
-          errorMessage.className = 'alert alert-error';
-          errorMessage.textContent = 'Image must be less than 2MB';
+          showToast('Image must be less than 2MB', 'error');
           return;
         }
 
@@ -544,7 +539,7 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
     // Save contact
     contactForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      await this.saveContact(errorMessage, successMessage, contactModal);
+      await this.saveContact(contactModal);
       this.attachContactListeners();
     });
 
@@ -565,8 +560,6 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
 
   attachContactListeners() {
     const contactModal = document.getElementById('contact-modal');
-    const errorMessage = document.getElementById('error-message');
-    const successMessage = document.getElementById('success-message');
 
     // Edit buttons
     document.querySelectorAll('.edit-contact-btn').forEach((btn) => {
@@ -628,11 +621,9 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
           const { error } = await Contact.delete(contactId);
 
           if (error) {
-            errorMessage.className = 'alert alert-error';
-            errorMessage.textContent = 'Failed to delete contact';
+            showToast('Failed to delete contact', 'error');
           } else {
-            successMessage.className = 'alert alert-success';
-            successMessage.textContent = 'Contact deleted successfully';
+            showToast('Contact deleted successfully', 'success');
 
             // Refresh list
             const { user } = await getCurrentUser();
@@ -667,10 +658,7 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
     });
   }
 
-  async saveContact(errorMessage, successMessage, contactModal) {
-    errorMessage.classList.add('hidden');
-    successMessage.classList.add('hidden');
-
+  async saveContact(contactModal) {
     try {
       const { user } = await getCurrentUser();
 
@@ -725,15 +713,13 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
         const { error } = await Contact.update(this.editingContactId, contactData);
         if (error) throw error;
 
-        successMessage.className = 'alert alert-success';
-        successMessage.textContent = 'Contact updated successfully';
+        showToast('Contact updated successfully', 'success');
       } else {
         // Create new contact
         const { error } = await Contact.create(user.id, contactData);
         if (error) throw error;
 
-        successMessage.className = 'alert alert-success';
-        successMessage.textContent = 'Contact added successfully';
+        showToast('Contact added successfully', 'success');
       }
 
       // Refresh list
@@ -746,21 +732,16 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
       contactModal.classList.add('hidden');
     } catch (error) {
       console.error('Save contact error:', error);
-      errorMessage.className = 'alert alert-error';
-      errorMessage.textContent = error.message || 'Failed to save contact';
+      showToast(error.message || 'Failed to save contact', 'error');
     }
   }
 
-  async lookupContact(errorMessage, successMessage) {
-    errorMessage.classList.add('hidden');
-    successMessage.classList.add('hidden');
-
+  async lookupContact() {
     const phoneInput = document.getElementById('contact-phone');
     const phone = phoneInput.value.trim();
 
     if (!phone) {
-      errorMessage.className = 'alert alert-error';
-      errorMessage.textContent = 'Please enter a phone number first';
+      showToast('Please enter a phone number first', 'error');
       return;
     }
 
@@ -800,8 +781,7 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
       }
 
       if (data.notFound) {
-        errorMessage.className = 'alert alert-warning';
-        errorMessage.textContent = 'No data found for this phone number';
+        showToast('No data found for this phone number', 'warning');
         return;
       }
 
@@ -853,13 +833,11 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
           this.enrichedAvatarUrl = contact.avatar_url;
         }
 
-        successMessage.className = 'alert alert-success';
-        successMessage.textContent = 'Contact info found and populated';
+        showToast('Contact info found and populated', 'success');
       }
     } catch (error) {
       console.error('Lookup error:', error);
-      errorMessage.className = 'alert alert-error';
-      errorMessage.textContent = error.message || 'Failed to look up contact';
+      showToast(error.message || 'Failed to look up contact', 'error');
     } finally {
       // Restore button state
       lookupBtn.innerHTML = originalContent;
@@ -867,18 +845,14 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
     }
   }
 
-  async importContacts(errorMessage, successMessage) {
-    errorMessage.classList.add('hidden');
-    successMessage.classList.add('hidden');
-
+  async importContacts() {
     // Check if we're on mobile (Contact Picker API) or desktop (CSV upload)
     const isMobile = window.innerWidth <= 768;
 
     if (isMobile) {
       // Mobile: Use Contact Picker API
       if (!('contacts' in navigator)) {
-        errorMessage.className = 'alert alert-error';
-        errorMessage.textContent = 'Contact import is not supported on this device/browser';
+        showToast('Contact import is not supported on this device/browser', 'error');
         return;
       }
 
@@ -940,20 +914,18 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
         document.getElementById('contacts-list').innerHTML = this.renderContactsList();
         this.attachContactListeners();
 
-        successMessage.className = 'alert alert-success';
-        successMessage.textContent = `Imported ${imported} contact(s)${failed > 0 ? `. ${failed} failed.` : ''}`;
+        showToast(`Imported ${imported} contact(s)${failed > 0 ? `. ${failed} failed.` : ''}`, 'success');
       } catch (error) {
         console.error('Import contacts error:', error);
-        errorMessage.className = 'alert alert-error';
-        errorMessage.textContent = 'Failed to import contacts: ' + error.message;
+        showToast('Failed to import contacts: ' + error.message, 'error');
       }
     } else {
       // Desktop: Use CSV file upload
-      this.showCSVImportDialog(errorMessage, successMessage);
+      this.showCSVImportDialog();
     }
   }
 
-  showCSVImportDialog(errorMessage, successMessage) {
+  showCSVImportDialog() {
     // Show the import modal
     const importModal = document.getElementById('import-modal');
     importModal.classList.remove('hidden');
@@ -977,11 +949,10 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
 
       try {
         const text = await file.text();
-        await this.parseAndImportCSV(text, errorMessage, successMessage);
+        await this.parseAndImportCSV(text);
       } catch (error) {
         console.error('CSV import error:', error);
-        errorMessage.className = 'alert alert-error';
-        errorMessage.textContent = 'Failed to read CSV file: ' + error.message;
+        showToast('Failed to read CSV file: ' + error.message, 'error');
       }
 
       // Clean up
@@ -1049,7 +1020,7 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
     return values;
   }
 
-  async parseAndImportCSV(csvText, errorMessage, successMessage) {
+  async parseAndImportCSV(csvText) {
     const { user } = await getCurrentUser();
     let imported = 0;
     let failed = 0;
@@ -1059,8 +1030,7 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
       const lines = csvText.split('\n').filter(line => line.trim());
 
       if (lines.length === 0) {
-        errorMessage.className = 'alert alert-error';
-        errorMessage.textContent = 'CSV file is empty';
+        showToast('CSV file is empty', 'error');
         return;
       }
 
@@ -1075,8 +1045,7 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
       const addressIdx = headers.findIndex(h => h.includes('address'));
 
       if (phoneIdx === -1) {
-        errorMessage.className = 'alert alert-error';
-        errorMessage.textContent = 'CSV must contain a phone number column';
+        showToast('CSV must contain a phone number column', 'error');
         return;
       }
 
@@ -1121,12 +1090,10 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
       document.getElementById('contacts-list').innerHTML = this.renderContactsList();
       this.attachContactListeners();
 
-      successMessage.className = 'alert alert-success';
-      successMessage.textContent = `Imported ${imported} contact(s) from CSV${failed > 0 ? `. ${failed} failed.` : ''}`;
+      showToast(`Imported ${imported} contact(s) from CSV${failed > 0 ? `. ${failed} failed.` : ''}`, 'success');
     } catch (error) {
       console.error('CSV parsing error:', error);
-      errorMessage.className = 'alert alert-error';
-      errorMessage.textContent = 'Failed to parse CSV: ' + error.message;
+      showToast('Failed to parse CSV: ' + error.message, 'error');
     }
   }
 }

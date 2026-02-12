@@ -6,6 +6,7 @@
 
 import { supabase } from '../lib/supabase.js';
 import { createIntegrationCard, addIntegrationCardStyles } from './IntegrationCard.js';
+import { showToast } from '../lib/toast.js';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -156,7 +157,7 @@ function renderIntegrations(container, connected, available, accessToken) {
       const result = await response.json();
 
       if (result.error) {
-        alert(result.error);
+        showToast(result.error, 'error');
         // Re-render to reset button state
         createIntegrationSettings(container.parentElement?.id || container.id);
         return;
@@ -165,12 +166,12 @@ function renderIntegrations(container, connected, available, accessToken) {
       if (result.url) {
         window.location.href = result.url;
       } else {
-        alert('Unable to start connection. Please try again.');
+        showToast('Unable to start connection. Please try again.', 'error');
         createIntegrationSettings(container.parentElement?.id || container.id);
       }
     } catch (error) {
       console.error('Connect error:', error);
-      alert('Failed to connect. Please try again.');
+      showToast('Failed to connect. Please try again.', 'error');
       createIntegrationSettings(container.parentElement?.id || container.id);
     }
   };
@@ -213,7 +214,7 @@ function renderIntegrations(container, connected, available, accessToken) {
       createIntegrationSettings(container.parentElement?.id || container.id);
     } catch (error) {
       console.error('Disconnect error:', error);
-      alert('Failed to disconnect. Please try again.');
+      showToast('Failed to disconnect. Please try again.', 'error');
       createIntegrationSettings(container.parentElement?.id || container.id);
     }
   };

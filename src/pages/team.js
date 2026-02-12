@@ -6,6 +6,7 @@
 import { Organization, OrganizationMember } from '../models/index.js';
 import { getCurrentUser, supabase } from '../lib/supabase.js';
 import { renderBottomNav } from '../components/BottomNav.js';
+import { showToast } from '../lib/toast.js';
 
 export default class TeamPage {
   constructor() {
@@ -97,9 +98,6 @@ export default class TeamPage {
           </button>
         </div>
 
-        <div id="error-message" class="hidden"></div>
-        <div id="success-message" class="hidden"></div>
-
         <!-- Tabs -->
         <div class="team-tabs" style="display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap;">
           <button class="team-tab ${this.currentTab === 'all' ? 'active' : ''}" data-tab="all">
@@ -109,7 +107,7 @@ export default class TeamPage {
             Pending (${this.counts.pending})
           </button>
           <button class="team-tab ${this.currentTab === 'approved' ? 'active' : ''}" data-tab="approved">
-            Approved (${this.counts.approved})
+            Accepted (${this.counts.approved})
           </button>
           <button class="team-tab ${this.currentTab === 'suspended' ? 'active' : ''}" data-tab="suspended">
             Suspended (${this.counts.suspended})
@@ -180,6 +178,21 @@ export default class TeamPage {
         </div>
       </div>
 
+      <!-- Member Edit Modal -->
+      <div id="edit-member-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2 style="margin: 0;" id="edit-modal-title">Edit Member</h2>
+            <button class="modal-close-btn" id="close-edit-modal-btn">
+              <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+          <div id="edit-modal-body"></div>
+        </div>
+      </div>
+
       <style>
         .team-tab {
           padding: 0.5rem 1rem;
@@ -200,7 +213,7 @@ export default class TeamPage {
         }
         .members-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+          grid-template-columns: repeat(auto-fill, minmax(280px, 360px));
           gap: 1.25rem;
         }
         .member-card {
@@ -237,7 +250,6 @@ export default class TeamPage {
         }
         .member-card-body {
           flex: 1;
-          margin-bottom: 1rem;
         }
         .member-name {
           font-size: 1.125rem;
@@ -275,16 +287,6 @@ export default class TeamPage {
           font-size: 0.8rem;
           margin-top: 0.5rem;
         }
-        .member-actions {
-          display: flex;
-          gap: 0.5rem;
-          flex-wrap: wrap;
-        }
-        .member-actions .btn {
-          flex: 1;
-          font-size: 0.875rem;
-          padding: 0.5rem 0.75rem;
-        }
         .member-card.member-removed {
           opacity: 0.6;
           background: var(--bg-secondary);
@@ -318,6 +320,65 @@ export default class TeamPage {
         .member-status.removed {
           background: #6b7280;
           color: white;
+        }
+        .edit-modal-profile {
+          display: flex;
+          align-items: center;
+          gap: 1rem;
+          margin-bottom: 1.5rem;
+        }
+        .edit-modal-profile .member-avatar {
+          width: 48px;
+          height: 48px;
+          font-size: 1rem;
+          flex-shrink: 0;
+        }
+        .edit-modal-profile-info {
+          min-width: 0;
+        }
+        .edit-modal-profile-info .member-name {
+          font-size: 1rem;
+          margin: 0;
+        }
+        .edit-modal-profile-info .member-email {
+          font-size: 0.8rem;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .edit-modal-section {
+          margin-bottom: 1.25rem;
+        }
+        .edit-modal-section label {
+          display: block;
+          font-size: 0.8rem;
+          font-weight: 600;
+          color: var(--text-secondary);
+          margin-bottom: 0.5rem;
+          text-transform: uppercase;
+          letter-spacing: 0.03em;
+        }
+        .edit-modal-actions {
+          display: flex;
+          gap: 0.5rem;
+          flex-wrap: wrap;
+        }
+        .edit-modal-actions .btn {
+          flex: 1;
+          min-width: 120px;
+        }
+        .edit-modal-meta {
+          font-size: 0.8rem;
+          color: var(--text-tertiary);
+          line-height: 1.6;
+        }
+        .edit-modal-view-only {
+          font-size: 0.85rem;
+          color: var(--text-secondary);
+          padding: 0.75rem;
+          background: var(--bg-secondary);
+          border-radius: var(--radius-md);
+          text-align: center;
         }
         @media (max-width: 600px) {
           .members-grid {
@@ -413,44 +474,21 @@ export default class TeamPage {
     const suspendedDate = member.suspended_at ? new Date(member.suspended_at).toLocaleDateString() : '';
     const removedDate = member.removed_at ? new Date(member.removed_at).toLocaleDateString() : '';
 
-    let actions = '';
     let meta = '';
-
     const isExpired = member.status === 'pending' && OrganizationMember.isExpired(member);
 
     switch (member.status) {
       case 'pending':
         meta = `Invited ${invitedDate}${isExpired ? ' — Expired' : ''}`;
-        actions = `
-          <button class="btn btn-sm btn-secondary" onclick="window.teamPage.resendInvite('${member.id}')">Resend</button>
-          <button class="btn btn-sm btn-secondary" onclick="window.teamPage.cancelInvite('${member.id}')">Cancel</button>
-        `;
         break;
       case 'approved':
-        meta = `Approved ${approvedDate}`;
-        if (member.role !== 'owner') {
-          actions = `
-            <select class="form-input" style="width: auto; padding: 0.375rem 0.5rem; font-size: 0.875rem;" onchange="window.teamPage.changeRole('${member.id}', this.value)">
-              <option value="editor" ${member.role === 'editor' ? 'selected' : ''}>Editor</option>
-              <option value="support" ${member.role === 'support' ? 'selected' : ''}>Support</option>
-            </select>
-            <button class="btn btn-sm btn-secondary" onclick="window.teamPage.suspendMember('${member.id}')">Suspend</button>
-            <button class="btn btn-sm btn-danger" onclick="window.teamPage.removeMember('${member.id}')">Remove</button>
-          `;
-        }
+        meta = `Accepted ${approvedDate}`;
         break;
       case 'suspended':
         meta = `Suspended ${suspendedDate}`;
-        actions = `
-          <button class="btn btn-sm btn-primary" onclick="window.teamPage.approveMember('${member.id}')">Reactivate</button>
-          <button class="btn btn-sm btn-danger" onclick="window.teamPage.removeMember('${member.id}')">Remove</button>
-        `;
         break;
       case 'removed':
         meta = member.approved_at ? `Removed ${removedDate}` : `Cancelled ${removedDate}`;
-        actions = `
-          <button class="btn btn-sm btn-secondary" onclick="window.teamPage.reinvite('${member.id}', '${member.email}', '${member.full_name || ''}')">Re-invite</button>
-        `;
         break;
     }
 
@@ -481,7 +519,7 @@ export default class TeamPage {
             : '<span class="member-status active">Active</span>';
 
     return `
-      <div class="member-card ${isRemoved ? 'member-removed' : ''}">
+      <div class="member-card ${isRemoved ? 'member-removed' : ''}" onclick="window.teamPage.openEditModal('${member.id}')" style="cursor: pointer;">
         <div class="member-card-header">
           <div class="member-avatar" style="background: ${colors.bg};">
             <span>${initials}</span>
@@ -495,9 +533,6 @@ export default class TeamPage {
           <h3 class="member-name">${name}</h3>
           <div class="member-email">${member.email}</div>
           <div class="member-meta">${meta}</div>
-        </div>
-        <div class="member-actions">
-          ${actions}
         </div>
       </div>
     `;
@@ -520,7 +555,7 @@ export default class TeamPage {
     this.filterMembers();
 
     // Update tabs
-    const tabLabels = { all: 'All', pending: 'Pending', approved: 'Approved', suspended: 'Suspended', cancelled: 'Cancelled', removed: 'Removed' };
+    const tabLabels = { all: 'All', pending: 'Pending', approved: 'Accepted', suspended: 'Suspended', cancelled: 'Cancelled', removed: 'Removed' };
     document.querySelectorAll('.team-tab').forEach(tab => {
       const tabName = tab.dataset.tab;
       tab.textContent = `${tabLabels[tabName] || tabName} (${this.counts[tabName] || 0})`;
@@ -529,14 +564,6 @@ export default class TeamPage {
 
     // Update list
     document.getElementById('members-list').innerHTML = this.renderMembersList();
-  }
-
-  showMessage(type, message) {
-    const el = document.getElementById(type === 'error' ? 'error-message' : 'success-message');
-    el.className = `alert alert-${type === 'error' ? 'error' : 'success'}`;
-    el.textContent = message;
-    el.classList.remove('hidden');
-    setTimeout(() => el.classList.add('hidden'), 5000);
   }
 
   openInviteModal() {
@@ -549,6 +576,156 @@ export default class TeamPage {
     document.getElementById('invite-email').value = '';
     document.getElementById('invite-name').value = '';
     document.getElementById('invite-role').value = 'editor';
+  }
+
+  openEditModal(memberId) {
+    const member = this.allMembers.find(m => m.id === memberId);
+    if (!member) return;
+
+    this.editingMember = member;
+
+    const name = member.full_name || 'Unnamed';
+    const initials = name.trim().split(' ').length > 1
+      ? (name.trim().split(' ')[0][0] + name.trim().split(' ').slice(-1)[0][0]).toUpperCase()
+      : name.substring(0, 2).toUpperCase();
+
+    const roleColors = {
+      owner: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+      editor: 'linear-gradient(135deg, #3b82f6, #60a5fa)',
+      support: 'linear-gradient(135deg, #8b5cf6, #a78bfa)',
+    };
+    const bg = roleColors[member.role] || roleColors.editor;
+
+    const isOwner = member.role === 'owner';
+    const isRemoved = member.status === 'removed';
+    const isCancelled = isRemoved && !member.approved_at;
+    const wasRemoved = isRemoved && member.approved_at;
+    const isExpired = member.status === 'pending' && OrganizationMember.isExpired(member);
+
+    // Build role section
+    let roleSection = '';
+    if (isOwner) {
+      roleSection = `
+        <div class="edit-modal-section">
+          <label>Role</label>
+          <div class="edit-modal-view-only">Owner — cannot be changed</div>
+        </div>`;
+    } else {
+      roleSection = `
+        <div class="edit-modal-section">
+          <label>Role</label>
+          <select class="form-input" id="edit-role-select">
+            <option value="editor" ${member.role === 'editor' ? 'selected' : ''}>Editor</option>
+            <option value="support" ${member.role === 'support' ? 'selected' : ''}>Support</option>
+          </select>
+          <p class="text-muted" style="margin-top: 0.5rem; font-size: 0.75rem;">
+            <strong>Editor:</strong> Full access except billing and team management<br>
+            <strong>Support:</strong> View and edit access, cannot delete items
+          </p>
+        </div>`;
+    }
+
+    // Build status actions
+    let actionsSection = '';
+    if (!isOwner) {
+      let buttons = '';
+      switch (member.status) {
+        case 'approved':
+          buttons = `
+            <button class="btn btn-secondary" onclick="window.teamPage.suspendMemberFromModal('${member.id}')">Suspend</button>
+            <button class="btn btn-danger" onclick="window.teamPage.removeMemberFromModal('${member.id}')">Remove</button>`;
+          break;
+        case 'pending':
+          buttons = `
+            <button class="btn btn-secondary" onclick="window.teamPage.resendInvite('${member.id}')">Resend Invite</button>
+            <button class="btn btn-danger" onclick="window.teamPage.cancelInviteFromModal('${member.id}')">Cancel Invite</button>`;
+          break;
+        case 'suspended':
+          buttons = `
+            <button class="btn btn-primary" onclick="window.teamPage.reactivateMemberFromModal('${member.id}')">Reactivate</button>
+            <button class="btn btn-danger" onclick="window.teamPage.removeMemberFromModal('${member.id}')">Remove</button>`;
+          break;
+        case 'removed':
+          buttons = `
+            <button class="btn btn-secondary" onclick="window.teamPage.reinviteFromModal('${member.id}', '${member.email}', '${(member.full_name || '').replace(/'/g, "\\'")}')">Re-invite</button>`;
+          break;
+      }
+      actionsSection = `
+        <div class="edit-modal-section">
+          <label>Actions</label>
+          <div class="edit-modal-actions">${buttons}</div>
+        </div>`;
+    }
+
+    // Build meta info
+    const metaLines = [];
+    if (member.invited_at) metaLines.push(`Invited: ${new Date(member.invited_at).toLocaleDateString()}`);
+    if (member.approved_at) metaLines.push(`Accepted: ${new Date(member.approved_at).toLocaleDateString()}`);
+    if (member.suspended_at && member.status === 'suspended') metaLines.push(`Suspended: ${new Date(member.suspended_at).toLocaleDateString()}`);
+    if (member.removed_at && member.status === 'removed') metaLines.push(`${isCancelled ? 'Cancelled' : 'Removed'}: ${new Date(member.removed_at).toLocaleDateString()}`);
+    if (isExpired) metaLines.push('Status: Invite expired');
+
+    const metaSection = metaLines.length > 0 ? `
+      <div class="edit-modal-section">
+        <label>Info</label>
+        <div class="edit-modal-meta">${metaLines.join('<br>')}</div>
+      </div>` : '';
+
+    document.getElementById('edit-modal-title').textContent = isOwner ? 'Owner' : 'Edit Member';
+    document.getElementById('edit-modal-body').innerHTML = `
+      <div class="edit-modal-profile">
+        <div class="member-avatar" style="background: ${bg};">
+          <span>${initials}</span>
+        </div>
+        <div class="edit-modal-profile-info">
+          <h3 class="member-name">${name}</h3>
+          <div class="member-email">${member.email}</div>
+        </div>
+      </div>
+      ${roleSection}
+      ${actionsSection}
+      ${metaSection}
+    `;
+
+    document.getElementById('edit-member-modal').classList.remove('hidden');
+
+    // Attach role change listener
+    const roleSelect = document.getElementById('edit-role-select');
+    if (roleSelect) {
+      roleSelect.addEventListener('change', () => {
+        this.changeRole(member.id, roleSelect.value);
+      });
+    }
+  }
+
+  closeEditModal() {
+    document.getElementById('edit-member-modal').classList.add('hidden');
+    this.editingMember = null;
+  }
+
+  async suspendMemberFromModal(memberId) {
+    this.closeEditModal();
+    await this.suspendMember(memberId);
+  }
+
+  async removeMemberFromModal(memberId) {
+    this.closeEditModal();
+    await this.removeMember(memberId);
+  }
+
+  async cancelInviteFromModal(memberId) {
+    this.closeEditModal();
+    await this.cancelInvite(memberId);
+  }
+
+  async reactivateMemberFromModal(memberId) {
+    this.closeEditModal();
+    await this.approveMember(memberId);
+  }
+
+  async reinviteFromModal(memberId, email, name) {
+    this.closeEditModal();
+    await this.reinvite(memberId, email, name);
   }
 
   attachEventListeners() {
@@ -568,9 +745,15 @@ export default class TeamPage {
     document.getElementById('close-invite-modal-btn')?.addEventListener('click', () => this.closeInviteModal());
     document.getElementById('cancel-invite-btn')?.addEventListener('click', () => this.closeInviteModal());
 
+    // Edit modal open/close
+    document.getElementById('close-edit-modal-btn')?.addEventListener('click', () => this.closeEditModal());
+
     // Click outside modal to close
     document.getElementById('invite-modal')?.addEventListener('click', (e) => {
       if (e.target.id === 'invite-modal') this.closeInviteModal();
+    });
+    document.getElementById('edit-member-modal')?.addEventListener('click', (e) => {
+      if (e.target.id === 'edit-member-modal') this.closeEditModal();
     });
 
     // Invite form
@@ -613,11 +796,11 @@ export default class TeamPage {
       });
 
       this.closeInviteModal();
-      this.showMessage('success', 'Invitation sent successfully');
+      showToast('Invitation sent successfully', 'success');
       await this.refreshList();
     } catch (error) {
       console.error('Failed to invite:', error);
-      this.showMessage('error', error.message || 'Failed to send invitation');
+      showToast(error.message || 'Failed to send invitation', 'error');
     } finally {
       btn.disabled = false;
       btn.textContent = 'Send Invitation';
@@ -639,9 +822,9 @@ export default class TeamPage {
         },
       });
 
-      this.showMessage('success', 'Invitation resent successfully');
+      showToast('Invitation resent successfully', 'success');
     } catch (error) {
-      this.showMessage('error', 'Failed to resend invitation');
+      showToast('Failed to resend invitation', 'error');
     }
   }
 
@@ -654,10 +837,10 @@ export default class TeamPage {
       onConfirm: async () => {
         const { error } = await OrganizationMember.remove(memberId);
         if (error) {
-          this.showMessage('error', 'Failed to cancel invitation');
+          showToast('Failed to cancel invitation', 'error');
           return;
         }
-        this.showMessage('success', 'Invitation cancelled');
+        showToast('Invitation cancelled', 'success');
         await this.refreshList();
       }
     });
@@ -666,12 +849,12 @@ export default class TeamPage {
   async changeRole(memberId, newRole) {
     const { error } = await OrganizationMember.updateRole(memberId, newRole);
     if (error) {
-      this.showMessage('error', 'Failed to update role');
+      showToast('Failed to update role', 'error');
       await this.refreshList();
       return;
     }
 
-    this.showMessage('success', 'Role updated successfully');
+    showToast('Role updated successfully', 'success');
   }
 
   async suspendMember(memberId) {
@@ -683,10 +866,10 @@ export default class TeamPage {
       onConfirm: async () => {
         const { error } = await OrganizationMember.suspend(memberId);
         if (error) {
-          this.showMessage('error', 'Failed to suspend member');
+          showToast('Failed to suspend member', 'error');
           return;
         }
-        this.showMessage('success', 'Member suspended');
+        showToast('Member suspended', 'success');
         await this.refreshList();
       }
     });
@@ -695,11 +878,11 @@ export default class TeamPage {
   async approveMember(memberId) {
     const { error } = await OrganizationMember.approve(memberId);
     if (error) {
-      this.showMessage('error', 'Failed to reactivate member');
+      showToast('Failed to reactivate member', 'error');
       return;
     }
 
-    this.showMessage('success', 'Member reactivated');
+    showToast('Member reactivated', 'success');
     await this.refreshList();
   }
 
@@ -712,10 +895,10 @@ export default class TeamPage {
       onConfirm: async () => {
         const { error } = await OrganizationMember.remove(memberId);
         if (error) {
-          this.showMessage('error', 'Failed to remove member');
+          showToast('Failed to remove member', 'error');
           return;
         }
-        this.showMessage('success', 'Member removed');
+        showToast('Member removed', 'success');
         await this.refreshList();
       }
     });
@@ -726,7 +909,7 @@ export default class TeamPage {
     const { member, error } = await OrganizationMember.reinvite(memberId, this.currentUser.id);
 
     if (error) {
-      this.showMessage('error', error.message || 'Failed to re-invite member');
+      showToast(error.message || 'Failed to re-invite member', 'error');
       return;
     }
 
@@ -740,7 +923,7 @@ export default class TeamPage {
       },
     });
 
-    this.showMessage('success', 'Invitation sent');
+    showToast('Invitation sent', 'success');
     await this.refreshList();
   }
 

@@ -4,6 +4,7 @@
 
 import { getCurrentUser, supabase } from '../lib/supabase.js';
 import { renderBottomNav } from '../components/BottomNav.js';
+import { showToast } from '../lib/toast.js';
 
 export default class BulkCallingPage {
   constructor() {
@@ -408,18 +409,18 @@ export default class BulkCallingPage {
     const callerId = callerIdSelect?.value;
 
     if (!callerId) {
-      alert('Please select a caller ID');
+      showToast('Please select a caller ID', 'warning');
       return;
     }
 
     if (this.selectedContacts.size === 0) {
-      alert('Please select at least one contact');
+      showToast('Please select at least one contact', 'warning');
       return;
     }
 
     const selectedContactsList = this.contacts.filter(c => this.selectedContacts.has(c.id));
 
     // For now, show a message that this feature is coming soon
-    alert(`Bulk calling feature coming soon!\n\nWill call ${selectedContactsList.length} contacts from ${callerId}`);
+    showToast(`Bulk calling feature coming soon! Will call ${selectedContactsList.length} contacts from ${callerId}`, 'info');
   }
 }

@@ -5,6 +5,7 @@
  */
 
 import { supabase } from '../lib/supabase.js';
+import { showToast } from '../lib/toast.js';
 
 const LIVEKIT_SIP_DOMAIN = '378ads1njtd.sip.livekit.cloud';
 
@@ -495,7 +496,7 @@ function attachTrunkEventListeners(trunk) {
       const friendlyName = document.getElementById(`new-number-name-${trunk.id}`).value.trim();
 
       if (!phoneNumber) {
-        alert('Please enter a phone number');
+        showToast('Please enter a phone number', 'warning');
         return;
       }
 
@@ -527,7 +528,7 @@ function attachTrunkEventListeners(trunk) {
         loadTrunks();
       } catch (error) {
         console.error('Error adding number:', error);
-        alert(`Failed to add number: ${error.message}`);
+        showToast(`Failed to add number: ${error.message}`, 'error');
         saveNumberBtn.disabled = false;
         saveNumberBtn.textContent = 'Add';
       }
@@ -564,7 +565,7 @@ function attachTrunkEventListeners(trunk) {
         loadTrunks();
       } catch (error) {
         console.error('Error toggling trunk:', error);
-        alert(`Failed to update trunk: ${error.message}`);
+        showToast(`Failed to update trunk: ${error.message}`, 'error');
         toggleTrunkBtn.disabled = false;
         toggleTrunkBtn.textContent = trunk.is_active ? 'Disable' : 'Enable';
       }
@@ -612,7 +613,7 @@ function attachTrunkEventListeners(trunk) {
         loadTrunks();
       } catch (error) {
         console.error('Error deleting trunk:', error);
-        alert(`Failed to delete trunk: ${error.message}`);
+        showToast(`Failed to delete trunk: ${error.message}`, 'error');
         deleteTrunkBtn.disabled = false;
         deleteTrunkBtn.textContent = 'Delete';
       }
@@ -648,7 +649,7 @@ window.removeNumber = async function(numberId, trunkId) {
     loadTrunks();
   } catch (error) {
     console.error('Error removing number:', error);
-    alert(`Failed to remove number: ${error.message}`);
+    showToast(`Failed to remove number: ${error.message}`, 'error');
   }
 };
 
@@ -764,7 +765,7 @@ function showAddTrunkModal() {
 
     // Validate
     if (!name) {
-      alert('Please enter a trunk name');
+      showToast('Please enter a trunk name', 'warning');
       return;
     }
 
@@ -779,7 +780,7 @@ function showAddTrunkModal() {
     if (authType === 'ip') {
       const ipsText = document.getElementById('allowed-ips').value.trim();
       if (!ipsText) {
-        alert('Please enter at least one allowed IP address');
+        showToast('Please enter at least one allowed IP address', 'warning');
         return;
       }
       const ips = ipsText.split('\n').map(ip => ip.trim()).filter(ip => ip);
@@ -788,7 +789,7 @@ function showAddTrunkModal() {
       const username = document.getElementById('auth-username').value.trim();
       const password = document.getElementById('auth-password').value;
       if (!username || !password) {
-        alert('Please enter both username and password');
+        showToast('Please enter both username and password', 'warning');
         return;
       }
       requestBody.auth_username = username;
@@ -818,10 +819,10 @@ function showAddTrunkModal() {
       loadTrunks();
 
       // Show success message with SIP info
-      alert(`Trunk "${name}" created successfully!\n\nConfigure your SIP provider to send calls to:\n${LIVEKIT_SIP_DOMAIN}:5060 (UDP/TCP)\n${LIVEKIT_SIP_DOMAIN}:5061 (TLS)`);
+      showToast(`Trunk "${name}" created successfully! Configure your SIP provider to send calls to: ${LIVEKIT_SIP_DOMAIN}:5060 (UDP/TCP) or ${LIVEKIT_SIP_DOMAIN}:5061 (TLS)`, 'success');
     } catch (error) {
       console.error('Error creating trunk:', error);
-      alert(`Failed to create trunk: ${error.message}`);
+      showToast(`Failed to create trunk: ${error.message}`, 'error');
       saveBtn.disabled = false;
       saveBtn.textContent = 'Create Trunk';
     }
@@ -943,7 +944,7 @@ function showEditTrunkModal(trunk) {
 
     // Validate
     if (!name) {
-      alert('Please enter a trunk name');
+      showToast('Please enter a trunk name', 'warning');
       return;
     }
 
@@ -959,7 +960,7 @@ function showEditTrunkModal(trunk) {
     if (authType === 'ip') {
       const ipsText = document.getElementById('edit-allowed-ips').value.trim();
       if (!ipsText) {
-        alert('Please enter at least one allowed IP address');
+        showToast('Please enter at least one allowed IP address', 'warning');
         return;
       }
       const ips = ipsText.split('\n').map(ip => ip.trim()).filter(ip => ip);
@@ -971,7 +972,7 @@ function showEditTrunkModal(trunk) {
       const username = document.getElementById('edit-auth-username').value.trim();
       const password = document.getElementById('edit-auth-password').value;
       if (!username) {
-        alert('Please enter a username');
+        showToast('Please enter a username', 'warning');
         return;
       }
       requestBody.auth_username = username;
@@ -1006,7 +1007,7 @@ function showEditTrunkModal(trunk) {
       loadTrunks();
     } catch (error) {
       console.error('Error updating trunk:', error);
-      alert(`Failed to update trunk: ${error.message}`);
+      showToast(`Failed to update trunk: ${error.message}`, 'error');
       saveBtn.disabled = false;
       saveBtn.textContent = 'Save Changes';
     }
