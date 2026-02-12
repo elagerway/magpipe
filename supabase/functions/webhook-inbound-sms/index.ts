@@ -1135,11 +1135,13 @@ async function sendSMS(
         })
 
       // Deduct credits for the AI-generated SMS (fire and forget)
+      // Includes AI surcharge ($0.005) on top of base SMS rate ($0.01)
       deductSmsCredits(
         Deno.env.get('SUPABASE_URL')!,
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
         userId,
-        1
+        1,
+        true  // AI-generated reply
       ).catch(err => console.error('Failed to deduct SMS credits:', err))
     }
   } catch (error) {
@@ -1286,7 +1288,8 @@ async function deductSmsCredits(
   supabaseUrl: string,
   supabaseKey: string,
   userId: string,
-  messageCount: number
+  messageCount: number,
+  aiGenerated: boolean = false
 ) {
   try {
     const response = await fetch(`${supabaseUrl}/functions/v1/deduct-credits`, {
@@ -1299,13 +1302,14 @@ async function deductSmsCredits(
         userId,
         type: 'sms',
         messageCount,
+        aiGenerated,
         referenceType: 'sms'
       })
     })
 
     const result = await response.json()
     if (result.success) {
-      console.log(`Deducted $${result.cost} for ${messageCount} SMS, balance: $${result.balanceAfter}`)
+      console.log(`Deducted $${result.cost} for ${messageCount} SMS${aiGenerated ? ' (AI reply)' : ''}, balance: $${result.balanceAfter}`)
     } else {
       console.error('Failed to deduct SMS credits:', result.error)
     }
