@@ -53,6 +53,7 @@ from livekit.agents import (
     function_tool,
 )
 from livekit.plugins import deepgram, openai as lkopenai, elevenlabs, silero
+from openai import NOT_GIVEN
 
 from dotenv import load_dotenv
 from supabase import create_client, Client
@@ -690,7 +691,7 @@ async def _check_semantic_actions(agent_id: str, user_id: str, matched_topics: l
         logger.warning(f"Failed to check semantic actions: {e}")
 
 
-async def deduct_call_credits(user_id: str, agent_id: str, duration_seconds: int, call_record_id: str, tts_characters: int = 0) -> bool:
+async def deduct_call_credits(user_id: str, agent_id: str, duration_seconds: int, call_record_id: str, tts_characters: int = 0, addons: list = None) -> bool:
     """Deduct credits for a completed call by calling the deduct-credits edge function."""
     if not user_id or duration_seconds <= 0:
         logger.info(f"💰 Skipping billing - missing user_id or zero duration (user={bool(user_id)}, duration={duration_seconds})")
@@ -722,6 +723,19 @@ async def deduct_call_credits(user_id: str, agent_id: str, duration_seconds: int
                 logger.warning(f"💰 Could not fetch agent config for billing: {e}")
 
         # Call deduct-credits edge function
+        payload = {
+            "userId": user_id,
+            "type": "voice",
+            "durationSeconds": duration_seconds,
+            "voiceId": voice_id,
+            "aiModel": ai_model,
+            "ttsCharacters": tts_characters,
+            "referenceType": "call",
+            "referenceId": call_record_id
+        }
+        if addons:
+            payload["addons"] = addons
+
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 f"{supabase_url}/functions/v1/deduct-credits",
@@ -729,16 +743,7 @@ async def deduct_call_credits(user_id: str, agent_id: str, duration_seconds: int
                     "Content-Type": "application/json",
                     "Authorization": f"Bearer {supabase_key}"
                 },
-                json={
-                    "userId": user_id,
-                    "type": "voice",
-                    "durationSeconds": duration_seconds,
-                    "voiceId": voice_id,
-                    "aiModel": ai_model,
-                    "ttsCharacters": tts_characters,
-                    "referenceType": "call",
-                    "referenceId": call_record_id
-                }
+                json=payload
             ) as resp:
                 result = await resp.json()
                 if result.get("success"):
@@ -2869,7 +2874,8 @@ AFTER-HOURS CONTEXT:
     else:
         stt_model, stt_language = "nova-2-phonecall", "en-US"
 
-    logger.info(f"🎙️ Using LLM: {llm_model}, Voice: {tts_voice_id}, STT: {stt_model}/{stt_language}")
+    priority_sequencing = bool(user_config and user_config.get("priority_sequencing"))
+    logger.info(f"🎙️ Using LLM: {llm_model}, Voice: {tts_voice_id}, STT: {stt_model}/{stt_language}, Priority: {priority_sequencing}")
 
     log_call_state(ctx.room.name, "debug_9_creating_session", "agent", {"llm": llm_model, "voice": tts_voice_id})
 
@@ -2890,6 +2896,7 @@ AFTER-HOURS CONTEXT:
             llm=lkopenai.LLM(
                 model=llm_model,
                 temperature=0.7,
+                service_tier="priority" if (user_config and user_config.get("priority_sequencing")) else NOT_GIVEN,
             ),
             tts=elevenlabs.TTS(
                 model="eleven_flash_v2_5",  # Fastest ElevenLabs model
@@ -3111,12 +3118,26 @@ AFTER-HOURS CONTEXT:
                 # Count TTS characters (agent speech only) for accurate vendor cost tracking
                 tts_characters = sum(len(msg['text']) for msg in transcript_messages if msg['speaker'] == 'agent')
                 logger.info(f"💰 TTS characters for billing: {tts_characters} chars from {sum(1 for m in transcript_messages if m['speaker'] == 'agent')} agent messages")
+
+                # Build addons list from agent config for surcharge billing
+                billing_addons = []
+                if user_config:
+                    if user_config.get("priority_sequencing"):
+                        billing_addons.append("priority_sequencing")
+                    if user_config.get("memory_enabled"):
+                        billing_addons.append("memory")
+                    if user_config.get("semantic_memory_enabled"):
+                        billing_addons.append("semantic_memory")
+                if billing_addons:
+                    logger.info(f"💰 Billing addons: {billing_addons}")
+
                 asyncio.create_task(deduct_call_credits(
                     user_id=user_id,
                     agent_id=billing_agent_id,
                     duration_seconds=call_duration,
                     call_record_id=call_record_id,
-                    tts_characters=tts_characters
+                    tts_characters=tts_characters,
+                    addons=billing_addons if billing_addons else None
                 ))
 
                 # Update caller memory if enabled (skip entirely in disabled mode)

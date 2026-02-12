@@ -37,6 +37,7 @@ const ADDON_RATES: Record<string, number> = {
   knowledge_base: 0.005,       // Agent has knowledge sources
   memory: 0.005,               // memory_enabled
   semantic_memory: 0.005,      // semantic_memory_enabled
+  priority_sequencing: 0.10,   // OpenAI priority processing tier
   advanced_denoising: 0.005,   // Future
   pii_removal: 0.01,           // Future
 }
