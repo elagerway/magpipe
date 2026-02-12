@@ -7,6 +7,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { analyzeSentiment, extractCallerMessages } from '../_shared/sentiment-analysis.ts';
+import { redactPii } from '../_shared/pii-redaction.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -107,17 +108,28 @@ Deno.serve(async (req) => {
 
     console.log(`📥 Syncing ${toSync.length} recording(s), transcribing ${needsTranscription.length} for call ${call_record_id}`);
 
-    // Get agent name for transcription
+    // Get agent name and PII storage mode
     let agentName = 'Maggie';
+    let piiStorage = 'enabled';
     if (callRecord.agent_id) {
       const { data: agentConfig } = await supabase
         .from('agent_configs')
-        .select('name, agent_name')
+        .select('name, agent_name, pii_storage')
         .eq('id', callRecord.agent_id)
         .single();
       if (agentConfig) {
         agentName = agentConfig.agent_name || agentConfig.name || 'Maggie';
+        piiStorage = agentConfig.pii_storage || 'enabled';
       }
+    }
+
+    // In disabled mode, skip all recording sync (no audio or transcript storage)
+    if (piiStorage === 'disabled') {
+      console.log(`🔒 PII disabled - skipping recording sync for call ${call_record_id}`);
+      return new Response(
+        JSON.stringify({ success: true, message: 'PII storage disabled - recordings not synced' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     const results: any[] = [];
@@ -171,24 +183,30 @@ Deno.serve(async (req) => {
         const audioBlob = await audioResponse.blob();
         console.log(`   Downloaded ${audioBlob.size} bytes`);
 
-        // Upload to Supabase Storage
-        const fileLabel = label === 'main' ? '' : `_${label}`;
-        const fileName = `recordings/${call_record_id}${fileLabel}.mp3`;
-
-        const { error: uploadError } = await supabase.storage
-          .from('public')
-          .upload(fileName, audioBlob, {
-            contentType: 'audio/mpeg',
-            upsert: true,
-          });
-
+        // In redacted mode: skip audio upload (audio contains PII), but still transcribe and redact
         let publicRecordingUrl = signalwireUrl;
-        if (!uploadError) {
-          const { data: urlData } = supabase.storage.from('public').getPublicUrl(fileName);
-          publicRecordingUrl = urlData.publicUrl;
-          console.log(`✅ Uploaded: ${fileName}`);
+        if (piiStorage !== 'redacted') {
+          // Upload to Supabase Storage (enabled mode only)
+          const fileLabel = label === 'main' ? '' : `_${label}`;
+          const fileName = `recordings/${call_record_id}${fileLabel}.mp3`;
+
+          const { error: uploadError } = await supabase.storage
+            .from('public')
+            .upload(fileName, audioBlob, {
+              contentType: 'audio/mpeg',
+              upsert: true,
+            });
+
+          if (!uploadError) {
+            const { data: urlData } = supabase.storage.from('public').getPublicUrl(fileName);
+            publicRecordingUrl = urlData.publicUrl;
+            console.log(`✅ Uploaded: ${fileName}`);
+          } else {
+            console.error('Upload error:', uploadError);
+          }
         } else {
-          console.error('Upload error:', uploadError);
+          publicRecordingUrl = null;
+          console.log(`🔒 PII redacted mode - skipping audio upload for ${label}`);
         }
 
         // Transcribe with Deepgram (skip if recording too short for meaningful speech)
@@ -205,6 +223,11 @@ Deno.serve(async (req) => {
             );
             if (transcript) {
               console.log(`✅ Transcribed: ${transcript.substring(0, 80)}...`);
+              // Redact PII from Deepgram transcript if in redacted mode
+              if (piiStorage === 'redacted') {
+                transcript = await redactPii(transcript);
+                console.log(`🔒 Redacted Deepgram transcript`);
+              }
             } else {
               console.log(`⏭️ No speech detected in ${label} recording`);
             }
@@ -219,7 +242,7 @@ Deno.serve(async (req) => {
           ...updatedRecordings[idx],
           url: publicRecordingUrl,
           transcript: transcript !== undefined ? transcript : undefined,
-          status: 'synced',
+          status: piiStorage === 'redacted' ? 'redacted' : 'synced',
         };
 
         results.push({

@@ -390,6 +390,56 @@ Provide only the 3-sentence summary, no additional text."""
         return ""
 
 
+async def redact_pii(text: str) -> str:
+    """Redact PII from text using OpenAI. Fails open (returns original on error)."""
+    if not text or not text.strip():
+        return text
+
+    try:
+        client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{
+                "role": "system",
+                "content": """You are a PII redaction tool. Replace all personally identifiable information in the text with [REDACTED].
+
+PII to redact:
+- Personal names (first, last, full names)
+- Phone numbers
+- Email addresses
+- Physical addresses (street, city, zip)
+- Social Security Numbers
+- Dates of birth
+- Account numbers, credit card numbers
+- Any other identifying information
+
+Rules:
+- Keep speaker labels intact (e.g. "Caller:", "Agent:", "Maggie:", etc.)
+- Keep the conversation structure and formatting exactly the same
+- Only replace the PII values, not surrounding text
+- Do NOT add any explanation or commentary
+- Return ONLY the redacted text"""
+            }, {
+                "role": "user",
+                "content": text
+            }],
+            temperature=0,
+        )
+
+        redacted = response.choices[0].message.content.strip()
+        if not redacted:
+            logger.warning("Empty PII redaction response, returning original")
+            return text
+
+        logger.info(f"🔒 PII redacted from text ({len(text)} -> {len(redacted)} chars)")
+        return redacted
+
+    except Exception as e:
+        logger.error(f"PII redaction failed (returning original): {e}")
+        return text
+
+
 async def get_caller_memory(caller_phone: str, user_id: str, agent_id: str, memory_config: dict) -> str:
     """Retrieve conversation memory for a caller to inject into system prompt"""
     if not caller_phone or not user_id or not agent_id:
@@ -1300,7 +1350,7 @@ def create_warm_transfer_tools(user_id: str, transfer_numbers: list, room_name: 
     return [start_warm_transfer, complete_warm_transfer, cancel_warm_transfer]
 
 
-def create_collect_data_tool(user_id: str):
+def create_collect_data_tool(user_id: str, pii_mode: str = "enabled"):
     """Create dynamic data collection tool"""
 
     @function_tool(description="Store important information collected from the caller during conversation")
@@ -1312,12 +1362,23 @@ def create_collect_data_tool(user_id: str):
         """Collect and store data from caller during conversation"""
         logger.info(f"Collecting {data_type} from caller: {data_value}")
 
+        # PII disabled mode: don't store collected data
+        if pii_mode == "disabled":
+            logger.info(f"🔒 PII storage disabled - not storing collected {data_type}")
+            return "I've noted that information. Thank you!"
+
+        # PII redacted mode: redact the value before storing
+        store_value = data_value
+        if pii_mode == "redacted":
+            store_value = await redact_pii(data_value)
+            logger.info(f"🔒 PII redacted for {data_type}: {data_value} -> {store_value}")
+
         # Store in database
         try:
             supabase.table("collected_call_data").insert({
                 "user_id": user_id,
                 "data_type": data_type,
-                "data_value": data_value,
+                "data_value": store_value,
                 "context": context,
                 "collected_at": "now()",
             }).execute()
@@ -1887,6 +1948,8 @@ async def entrypoint(ctx: JobContext):
     # Initialize transcript collection and call tracking
     transcript_messages = []
     call_sid = None
+    call_record_id = None  # Resolved early for real-time transcript streaming
+    last_transcript_write = 0  # Timestamp of last partial transcript write
     call_start_time = asyncio.get_event_loop().time()
     service_number = room_metadata.get("service_number")
     caller_number = None
@@ -2124,6 +2187,25 @@ async def entrypoint(ctx: JobContext):
         logger.warning("Could not determine user_id - number not found or inactive")
         await speak_error_and_disconnect(ctx, "This number is not currently assigned. Go to Magpipe.ai to assign your number.")
         return
+
+    # Resolve call_record_id early for real-time transcript streaming
+    try:
+        if call_sid:
+            cr_resp = supabase.table("call_records").select("id").eq("livekit_call_id", call_sid).limit(1).execute()
+            if cr_resp.data:
+                call_record_id = cr_resp.data[0]["id"]
+                logger.info(f"📝 Early call_record_id resolved by livekit_call_id: {call_record_id}")
+        if not call_record_id and user_id:
+            time_window = datetime.datetime.utcnow() - datetime.timedelta(minutes=2)
+            cr_query = supabase.table("call_records").select("id").eq("user_id", user_id).gte("created_at", time_window.isoformat()).order("created_at", desc=True).limit(1)
+            if service_number:
+                cr_query = supabase.table("call_records").select("id").eq("user_id", user_id).eq("service_number", service_number).gte("created_at", time_window.isoformat()).order("created_at", desc=True).limit(1)
+            cr_resp = cr_query.execute()
+            if cr_resp.data:
+                call_record_id = cr_resp.data[0]["id"]
+                logger.info(f"📝 Early call_record_id resolved by user_id lookup: {call_record_id}")
+    except Exception as e:
+        logger.warning(f"⚠️ Early call_record_id resolution failed: {e}")
 
     # Get direction from metadata or database to determine agent role (MUST be before admin check)
     direction = room_metadata.get("direction")
@@ -2758,8 +2840,9 @@ AFTER-HOURS CONTEXT:
     extract_config = functions_config.get("extract_data", {})
     extract_enabled = extract_config.get("enabled", False)
     extract_calls_enabled = extract_config.get("channels", {}).get("calls", True)
+    pii_mode = user_config.get("pii_storage", "enabled") if user_config else "enabled"
     if extract_enabled and extract_calls_enabled:
-        collect_data_tool = create_collect_data_tool(user_id)
+        collect_data_tool = create_collect_data_tool(user_id, pii_mode=pii_mode)
         custom_tools.append(collect_data_tool)
         logger.info(f"📝 Registered extract_data/collect tool")
 
@@ -2851,6 +2934,7 @@ AFTER-HOURS CONTEXT:
     # Track transcript in real-time using conversation_item_added event
     @session.on("conversation_item_added")
     def on_conversation_item(event):
+        nonlocal last_transcript_write, call_record_id
         try:
             logger.info(f"🎤 conversation_item_added event fired! Event type: {type(event)}")
 
@@ -2865,6 +2949,28 @@ AFTER-HOURS CONTEXT:
                 transcript_messages.append({"speaker": speaker, "text": text_content})
                 logger.info(f"✅ {speaker.capitalize()} said: {text_content}")
                 logger.info(f"📝 Total messages in transcript: {len(transcript_messages)}")
+
+                # Stream partial transcript to DB for real-time inbox updates
+                # Only in "enabled" mode (disabled=no transcript, redacted=too slow for real-time)
+                if call_record_id and pii_mode == "enabled":
+                    now = asyncio.get_event_loop().time()
+                    # Debounce: write on first message or after 3+ seconds since last write
+                    if last_transcript_write == 0 or (now - last_transcript_write) >= 3:
+                        last_transcript_write = now
+                        transcript_agent_name = user_config.get("agent_name") or user_config.get("name") or "Maggie"
+                        partial_transcript = "\n\n".join([
+                            f"{transcript_agent_name if msg['speaker'] == 'agent' else 'Caller'}: {msg['text']}"
+                            for msg in transcript_messages
+                        ])
+
+                        async def write_partial_transcript(record_id, text):
+                            try:
+                                supabase.table("call_records").update({"transcript": text}).eq("id", record_id).execute()
+                                logger.info(f"📝 Partial transcript written ({len(transcript_messages)} msgs)")
+                            except Exception as e:
+                                logger.warning(f"⚠️ Partial transcript write failed: {e}")
+
+                        asyncio.create_task(write_partial_transcript(call_record_id, partial_transcript))
             else:
                 logger.warning("⚠️ conversation_item_added event had no text_content")
         except Exception as e:
@@ -2873,6 +2979,7 @@ AFTER-HOURS CONTEXT:
     # Handle call completion
     async def on_call_end():
         """Save transcript and recording when call ends"""
+        nonlocal call_record_id
         try:
             logger.info("📞 Call ending - saving transcript...")
 
@@ -2885,10 +2992,8 @@ AFTER-HOURS CONTEXT:
 
             logger.info(f"Transcript ({len(transcript_messages)} messages):\n{transcript_text}")
 
-            call_record_id = None
-
-            # Try to find call_record by livekit_call_id (LiveKit's SIP callID)
-            if call_sid:
+            # If call_record_id wasn't resolved early, try now
+            if not call_record_id and call_sid:
                 logger.info(f"Looking up call by livekit_call_id: {call_sid}")
                 response = supabase.table("call_records") \
                     .select("id") \
@@ -2940,44 +3045,67 @@ AFTER-HOURS CONTEXT:
                         logger.info(f"Found call_record by user_id only: {call_record_id}")
 
             if call_record_id:
-                # Recording is handled by SignalWire via sip-recording-callback
-                update_data = {
-                    "transcript": transcript_text,
-                    "status": "completed",
-                    "ended_at": "now()"
-                }
+                # Check PII storage mode
+                pii_mode = user_config.get("pii_storage", "enabled") if user_config else "enabled"
+                logger.info(f"🔒 PII storage mode: {pii_mode}")
 
-                # Generate call summary and extract dynamic variables in parallel
-                if transcript_text:
-                    logger.info(f"📝 Generating call summary and extracting data...")
+                if pii_mode == "disabled":
+                    # Disabled mode: only update status, no transcript/summary/extracted data
+                    update_data = {
+                        "status": "completed",
+                        "ended_at": "now()"
+                    }
+                    supabase.table("call_records") \
+                        .update(update_data) \
+                        .eq("id", call_record_id) \
+                        .execute()
+                    logger.info(f"✅ Call record updated (PII disabled - no transcript/summary stored)")
 
-                    # Run summary and extraction in parallel
-                    # Only extract if calls channel is enabled for extract_data
-                    summary_task = generate_call_summary(transcript_text)
-                    extraction_task = extract_data_from_transcript(transcript_text, dynamic_variables) if (dynamic_variables and extract_calls_enabled) else None
+                else:
+                    # Enabled or Redacted mode
+                    store_transcript = transcript_text
 
-                    if extraction_task:
-                        call_summary, extracted_data = await asyncio.gather(summary_task, extraction_task)
-                    else:
-                        call_summary = await summary_task
-                        extracted_data = {}
+                    # Redact transcript if in redacted mode
+                    if pii_mode == "redacted" and transcript_text:
+                        logger.info(f"🔒 Redacting PII from transcript...")
+                        store_transcript = await redact_pii(transcript_text)
 
-                    if call_summary:
-                        update_data["call_summary"] = call_summary
-                        logger.info(f"📝 Call summary: {call_summary}")
+                    update_data = {
+                        "transcript": store_transcript,
+                        "status": "completed",
+                        "ended_at": "now()"
+                    }
 
-                    if extracted_data:
-                        update_data["extracted_data"] = extracted_data
-                        logger.info(f"📊 Extracted data: {extracted_data}")
+                    # Generate call summary and extract dynamic variables in parallel
+                    # In redacted mode, use the redacted transcript so PII can't leak through
+                    if store_transcript:
+                        logger.info(f"📝 Generating call summary and extracting data...")
 
-                supabase.table("call_records") \
-                    .update(update_data) \
-                    .eq("id", call_record_id) \
-                    .execute()
+                        summary_task = generate_call_summary(store_transcript)
+                        extraction_task = extract_data_from_transcript(store_transcript, dynamic_variables) if (dynamic_variables and extract_calls_enabled) else None
 
-                logger.info(f"✅ Call transcript saved to database{' with summary' if update_data.get('call_summary') else ''}{' with extracted_data' if update_data.get('extracted_data') else ''}")
+                        if extraction_task:
+                            call_summary, extracted_data = await asyncio.gather(summary_task, extraction_task)
+                        else:
+                            call_summary = await summary_task
+                            extracted_data = {}
 
-                # Deduct credits for the call
+                        if call_summary:
+                            update_data["call_summary"] = call_summary
+                            logger.info(f"📝 Call summary: {call_summary}")
+
+                        if extracted_data:
+                            update_data["extracted_data"] = extracted_data
+                            logger.info(f"📊 Extracted data: {extracted_data}")
+
+                    supabase.table("call_records") \
+                        .update(update_data) \
+                        .eq("id", call_record_id) \
+                        .execute()
+
+                    logger.info(f"✅ Call transcript saved to database{' with summary' if update_data.get('call_summary') else ''}{' with extracted_data' if update_data.get('extracted_data') else ''}{' (redacted)' if pii_mode == 'redacted' else ''}")
+
+                # Deduct credits for the call (always, regardless of PII mode)
                 call_duration = int(asyncio.get_event_loop().time() - call_start_time)
                 billing_agent_id = user_config.get("id") if user_config else None
                 # Count TTS characters (agent speech only) for accurate vendor cost tracking
@@ -2991,21 +3119,22 @@ AFTER-HOURS CONTEXT:
                     tts_characters=tts_characters
                 ))
 
-                # Update caller memory if enabled
-                if user_config and user_config.get("memory_enabled") and update_data.get("call_summary"):
+                # Update caller memory if enabled (skip entirely in disabled mode)
+                if pii_mode != "disabled" and user_config and user_config.get("memory_enabled") and update_data.get("call_summary"):
                     agent_id = user_config.get("id")
                     memory_phone = remote_party_phone
 
                     if memory_phone and agent_id:
                         # Generate embeddings if semantic memory is enabled
                         should_generate_embedding = user_config.get("semantic_memory_enabled", False)
+                        # In redacted mode, memory gets the redacted summary (already redacted above)
                         await update_caller_memory(
                             caller_phone=memory_phone,
                             user_id=user_id,
                             agent_id=agent_id,
                             call_summary=update_data["call_summary"],
                             call_record_id=call_record_id,
-                            transcript_text=transcript_text,
+                            transcript_text=store_transcript if pii_mode != "disabled" else "",
                             generate_embedding_flag=should_generate_embedding,
                             direction=direction,
                             service_number=service_number
