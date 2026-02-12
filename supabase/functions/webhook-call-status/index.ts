@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { shouldNotify } from '../_shared/app-function-prefs.ts'
 
 serve(async (req) => {
   try {
@@ -45,17 +46,43 @@ serve(async (req) => {
     if (error) {
       console.error('Error updating call status:', error)
     } else if (callRecord && (callStatus === 'completed' || callStatus === 'failed' || callStatus === 'busy' || callStatus === 'no-answer')) {
-      // Send Slack notification for terminal call states
+      // Send Slack notification for terminal call states (if enabled)
       const phoneNumber = callRecord.contact_phone || callRecord.caller_number
-      sendSlackCallNotification(
-        supabase,
-        callRecord.id,
-        callRecord.user_id,
-        phoneNumber,
-        callRecord.direction || 'inbound',
-        callStatus.toLowerCase(),
-        durationSeconds
-      ).catch(err => console.error('Failed to send Slack call notification:', err))
+
+      // Look up agent config to check notification prefs
+      let agentFunctions = null;
+      {
+        const svcPhone = callRecord.direction === 'inbound'
+          ? (callRecord.contact_phone ? callRecord.caller_number : null)
+          : callRecord.caller_number;
+        if (svcPhone) {
+          const { data: svcNum } = await supabase
+            .from('service_numbers')
+            .select('agent_id')
+            .eq('phone_number', svcPhone)
+            .maybeSingle();
+          if (svcNum?.agent_id) {
+            const { data: ac } = await supabase
+              .from('agent_configs')
+              .select('functions')
+              .eq('id', svcNum.agent_id)
+              .single();
+            agentFunctions = ac?.functions;
+          }
+        }
+      }
+
+      if (shouldNotify(agentFunctions, 'slack', 'calls')) {
+        sendSlackCallNotification(
+          supabase,
+          callRecord.id,
+          callRecord.user_id,
+          phoneNumber,
+          callRecord.direction || 'inbound',
+          callStatus.toLowerCase(),
+          durationSeconds
+        ).catch(err => console.error('Failed to send Slack call notification:', err))
+      }
 
       // Send email/SMS/push notifications for terminal call states
       const isMissed = callStatus === 'failed' || callStatus === 'busy' || callStatus === 'no-answer'

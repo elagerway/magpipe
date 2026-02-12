@@ -404,6 +404,18 @@ export default class AgentConfigPage {
               </p>
             </div>
 
+            <div class="form-group" id="translate-group">
+              <label class="form-label" for="owner-language">Agent Translation</label>
+              <select id="owner-language" class="form-select">
+                <option value="">Off</option>
+                <option value="en">English</option>
+                <option value="fr">French</option>
+                <option value="es">Spanish</option>
+                <option value="de">German</option>
+              </select>
+              <p class="form-help" id="translate-help"></p>
+            </div>
+
             <div class="form-group">
               <label class="form-label" for="vetting-strategy">Unknown Caller Vetting</label>
               <select id="vetting-strategy" class="form-select">
@@ -1403,6 +1415,42 @@ export default class AgentConfigPage {
     }
   }
 
+  // Returns the base language code (e.g. 'en-US' → 'en', 'fr' → 'fr')
+  getBaseLanguage(lang) {
+    if (!lang) return 'en';
+    return lang.split('-')[0].toLowerCase();
+  }
+
+  // Compute translate_to based on owner language selection
+  computeTranslateTo() {
+    const ownerLang = document.getElementById('owner-language')?.value;
+    if (!ownerLang) return null; // "Off" selected
+    return ownerLang;
+  }
+
+  // Update the translate help text based on agent language vs owner language
+  updateTranslateGroupVisibility() {
+    const help = document.getElementById('translate-help');
+    if (!help) return;
+
+    const ownerLang = document.getElementById('owner-language')?.value;
+    if (!ownerLang) {
+      help.textContent = 'No translation applied to inbox messages';
+      return;
+    }
+    const agentLang = document.getElementById('agent-language')?.value || 'en-US';
+    const langNames = { en: 'English', fr: 'French', es: 'Spanish', de: 'German' };
+    const ownerName = langNames[ownerLang] || ownerLang;
+
+    if (agentLang !== 'multi' && this.getBaseLanguage(agentLang) === ownerLang) {
+      help.textContent = `Translation off — agent already speaks ${ownerName}`;
+    } else if (agentLang === 'multi') {
+      help.textContent = `Non-${ownerName} messages translated in inbox`;
+    } else {
+      help.textContent = `Inbox messages translated to ${ownerName}`;
+    }
+  }
+
   async autoSave(voiceChanged = false, transferChanged = false, promptChanged = false) {
     if (this.isInitialSetup) return; // Don't auto-save during initial setup
 
@@ -1420,6 +1468,7 @@ export default class AgentConfigPage {
         ambient_sound_volume: parseFloat(document.getElementById('adv-ambient-volume').value),
         noise_suppression: document.getElementById('adv-noise-suppression').value,
         language: document.getElementById('agent-language').value,
+        translate_to: this.computeTranslateTo(),
       };
 
       // Handle global agent save separately
@@ -1916,6 +1965,12 @@ Always sound approachable, keep things simple, and update the user with a quick 
           if (warning) {
             warning.style.display = field.value !== 'en-US' ? 'block' : 'none';
           }
+          this.updateTranslateGroupVisibility();
+        }
+
+        // Update translate group when owner language changes
+        if (field.id === 'owner-language') {
+          this.updateTranslateGroupVisibility();
         }
 
         // Stop preview audio when voice changes
@@ -1951,6 +2006,19 @@ Always sound approachable, keep things simple, and update the user with a quick 
       }
     });
 
+    // Initialize owner-language dropdown from existing translate_to value
+    const ownerLangSelect = document.getElementById('owner-language');
+    if (ownerLangSelect) {
+      const activeConfig = this.isEditingGlobalAgent ? this.globalAgentConfig : this.config;
+      const existingTranslateTo = activeConfig?.translate_to;
+      if (existingTranslateTo) {
+        // Handle old 'fr-en' format — extract target language
+        const targetLang = existingTranslateTo.includes('-') ? existingTranslateTo.split('-').pop() : existingTranslateTo;
+        ownerLangSelect.value = targetLang;
+      }
+      this.updateTranslateGroupVisibility();
+    }
+
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
 
@@ -1967,6 +2035,7 @@ Always sound approachable, keep things simple, and update the user with a quick 
         ambient_sound_volume: parseFloat(document.getElementById('adv-ambient-volume').value),
         noise_suppression: document.getElementById('adv-noise-suppression').value,
         language: document.getElementById('agent-language').value,
+        translate_to: this.computeTranslateTo(),
       };
 
       // Validate

@@ -4,6 +4,7 @@
  */
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { shouldNotify } from '../_shared/app-function-prefs.ts'
 
 Deno.serve(async (req) => {
   try {
@@ -87,7 +88,7 @@ Deno.serve(async (req) => {
       // First get the call record to know user_id and call details
       const { data: callRecord, error: fetchError } = await supabase
         .from('call_records')
-        .select('user_id, phone_number, direction, started_at')
+        .select('user_id, phone_number, caller_number, direction, started_at')
         .eq('id', callRecordId)
         .single();
 
@@ -106,16 +107,36 @@ Deno.serve(async (req) => {
         fetchRecordings(supabaseUrl, supabaseKey, callRecordId, CallSid as string)
           .catch(err => console.error('Failed to fetch recordings:', err));
 
-        // Send Slack call summary notification (fire and forget)
+        // Send Slack call summary notification (fire and forget, if enabled)
         if (callRecord) {
-          sendSlackCallNotification(
-            supabase,
-            callRecord.user_id,
-            callRecord.phone_number,
-            callRecord.direction || 'outbound',
-            dbStatus,
-            duration
-          ).catch(err => console.error('Failed to send Slack call notification:', err));
+          // Look up agent config to check notification prefs
+          const serviceNum = callRecord.phone_number || callRecord.caller_number;
+          const { data: svcNum } = await supabase
+            .from('service_numbers')
+            .select('agent_id')
+            .eq('phone_number', serviceNum)
+            .maybeSingle();
+
+          let agentFunctions = null;
+          if (svcNum?.agent_id) {
+            const { data: ac } = await supabase
+              .from('agent_configs')
+              .select('functions')
+              .eq('id', svcNum.agent_id)
+              .single();
+            agentFunctions = ac?.functions;
+          }
+
+          if (shouldNotify(agentFunctions, 'slack', 'calls')) {
+            sendSlackCallNotification(
+              supabase,
+              callRecord.user_id,
+              callRecord.phone_number,
+              callRecord.direction || 'outbound',
+              dbStatus,
+              duration
+            ).catch(err => console.error('Failed to send Slack call notification:', err));
+          }
 
           // Deduct credits for completed calls with duration
           if (status?.toLowerCase() === 'completed' && duration > 0) {

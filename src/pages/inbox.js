@@ -73,6 +73,24 @@ export default class InboxPage {
   }
 
   /**
+   * Check if translate links should be shown for a given service number.
+   * Returns false when the agent language already matches the translate target
+   * (e.g. English agent + English owner = no need to translate).
+   */
+  shouldShowTranslate(serviceNumber) {
+    if (!this.translateTo) return false;
+    const agentLang = serviceNumber ? this.serviceNumberLanguages?.[serviceNumber] : null;
+    // If we don't know the agent language, default to showing translate
+    if (!agentLang) return true;
+    // Multi-language agents always need translate
+    if (agentLang === 'multi') return true;
+    // Compare base language (e.g. 'en-US' → 'en') to translate target
+    const baseLang = agentLang.split('-')[0].toLowerCase();
+    const targetLang = this.translateTo.includes('-') ? this.translateTo.split('-').pop() : this.translateTo;
+    return baseLang !== targetLang;
+  }
+
+  /**
    * Convert phone numbers and addresses in text to clickable links
    */
   linkifyPhoneNumbers(text) {
@@ -1019,17 +1037,38 @@ export default class InboxPage {
 
   async loadConversations(userId) {
     // Load all data in parallel for speed
-    const [messagesResult, callsResult, contactsResult, chatSessionsResult] = await Promise.all([
+    const [messagesResult, callsResult, contactsResult, chatSessionsResult, agentConfigsResult, serviceNumbersResult] = await Promise.all([
       supabase.from('sms_messages').select('*').eq('user_id', userId).order('sent_at', { ascending: false }),
       supabase.from('call_records').select('*').eq('user_id', userId).order('started_at', { ascending: false }),
       supabase.from('contacts').select('*').eq('user_id', userId),
-      ChatSession.getRecentWithPreview(userId, 50)
+      ChatSession.getRecentWithPreview(userId, 50),
+      supabase.from('agent_configs').select('id, translate_to, language').eq('user_id', userId),
+      supabase.from('service_numbers').select('phone_number, agent_id').eq('user_id', userId).eq('is_active', true),
     ]);
 
     const messages = messagesResult.data;
     const calls = callsResult.data;
     const contacts = contactsResult.data;
     const chatSessions = chatSessionsResult.sessions || [];
+
+    // Build agent configs map and service number → agent language mapping
+    const agentConfigs = agentConfigsResult.data || [];
+    const agentConfigMap = {};
+    agentConfigs.forEach(ac => { agentConfigMap[ac.id] = ac; });
+
+    // Map service numbers to their agent's language
+    this.serviceNumberLanguages = {};
+    const serviceNumbers = serviceNumbersResult.data || [];
+    serviceNumbers.forEach(sn => {
+      if (sn.agent_id && agentConfigMap[sn.agent_id]) {
+        this.serviceNumberLanguages[sn.phone_number] = agentConfigMap[sn.agent_id].language || 'en-US';
+      }
+    });
+
+    // Check if any agent has translate_to configured
+    const translateConfigs = agentConfigs.filter(ac => ac.translate_to);
+    this.translateTo = translateConfigs.length > 0 ? translateConfigs[0].translate_to : null;
+
     console.log('Inbox loaded:', messages?.length || 0, 'messages,', calls?.length || 0, 'calls,', chatSessions.length, 'chats');
 
     // Create a map of phone number to contact for quick lookup
@@ -1576,6 +1615,14 @@ export default class InboxPage {
           </div>
         </div>
       </div>
+      ${this.shouldShowTranslate(conv.serviceNumber) && conv.messages.some(m => !m.translation) ? `
+        <div style="display: flex; justify-content: center; padding: 0.5rem 0;">
+          <a href="#" class="translate-all-link" style="display: inline-flex; align-items: center; gap: 0.375rem; padding: 0.3rem 0.75rem; font-size: 0.75rem; color: var(--primary-color); border: 1px solid var(--primary-color); border-radius: 999px; text-decoration: none; opacity: 0.9;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>
+            Translate all
+          </a>
+        </div>
+      ` : ''}
       <div class="thread-messages" id="thread-messages">
         ${conv.messages.map(msg => this.renderSmsMessage(msg)).join('')}
       </div>
@@ -1682,9 +1729,26 @@ export default class InboxPage {
     // Get delivery status indicator for outbound messages
     const deliveryStatus = this.getDeliveryStatusIcon(msg);
 
+    // Translation display
+    let translationHtml = '';
+    if (this.shouldShowTranslate(this.selectedServiceNumber)) {
+      if (msg.translation) {
+        translationHtml = `
+          <div style="margin-top: 0.375rem; padding: 0.375rem 0.5rem; background: var(--bg-secondary); border-radius: var(--radius-md); border-left: 2px solid var(--primary-color); font-size: 0.85rem; color: var(--text-secondary);">
+            ${this.linkifyPhoneNumbers(msg.translation)}
+          </div>`;
+      } else {
+        translationHtml = `
+          <div style="margin-top: 0.25rem;">
+            <a href="#" class="translate-msg-link" data-translate-msg-id="${msg.id}" style="font-size: 0.75rem; color: var(--primary-color); text-decoration: none; opacity: 0.8;">Translate</a>
+          </div>`;
+      }
+    }
+
     return `
       <div class="message-bubble ${isInbound ? 'inbound' : 'outbound'} ${isAI ? 'ai-message' : ''} ${isHuman ? 'human-message' : ''}" data-message-id="${msg.id}">
         <div class="message-content">${this.linkifyPhoneNumbers(msg.content)}</div>
+        ${translationHtml}
         <div class="message-time">
           ${this.formatTime(timestamp)}
           ${deliveryStatus}
@@ -2114,9 +2178,9 @@ export default class InboxPage {
               </div>`);
             }
           }
-          return `<div style="display: flex; flex-direction: column; gap: 0.5rem; padding: 0.5rem;">${bubbles.join('')}</div>`;
+          return `<div style="display: flex; flex-direction: column; gap: 0.5rem; padding: 0.5rem;">${bubbles.join('')}${this.renderTranscriptTranslation(call)}</div>`;
         }
-        return `<div style="font-size: 0.9rem; color: var(--text-secondary); white-space: pre-wrap; padding: 0.5rem;">${this.linkifyPhoneNumbers(call.transcript)}</div>`;
+        return `<div style="font-size: 0.9rem; color: var(--text-secondary); white-space: pre-wrap; padding: 0.5rem;">${this.linkifyPhoneNumbers(call.transcript)}${this.renderTranscriptTranslation(call)}</div>`;
       }
       return `<div style="padding: 3rem 1.5rem; text-align: center; color: var(--text-secondary);"><p>No transcript available for this call.</p></div>`;
     }
@@ -2224,10 +2288,186 @@ export default class InboxPage {
           </div>
           ${audioHtml}
           ${syncingIndicator}
-          ${transcriptHtml ? `<div style="margin-top: 0.5rem;">${transcriptHtml}</div>` : ''}
+          ${transcriptHtml ? `<div style="margin-top: 0.5rem;">${transcriptHtml}${isFirstMainRecording ? this.renderTranscriptTranslation(call) : ''}</div>` : ''}
         </div>
       `;
     }).join('');
+  }
+
+  renderTranscriptTranslation(call) {
+    const callServiceNumber = call.service_number || (call.direction === 'inbound' ? call.callee_number : call.caller_number);
+    if (!this.shouldShowTranslate(callServiceNumber) || !call.transcript) return '';
+    if (call.translated_transcript) {
+      return `
+        <div style="margin-top: 0.75rem; padding: 0.5rem 0.75rem; background: var(--bg-secondary); border-radius: var(--radius-md); border-left: 2px solid var(--primary-color); font-size: 0.85rem; color: var(--text-secondary); white-space: pre-wrap;">
+          ${this.linkifyPhoneNumbers(call.translated_transcript)}
+        </div>`;
+    }
+    return `
+      <div style="margin-top: 0.5rem; text-align: center;">
+        <a href="#" class="translate-transcript-link" data-translate-call-id="${call.id}" style="display: inline-block; padding: 0.375rem 0.75rem; font-size: 0.8rem; color: var(--primary-color); border: 1px solid var(--primary-color); border-radius: 999px; text-decoration: none; opacity: 0.9;">Translate transcript</a>
+      </div>`;
+  }
+
+  async translateMessage(msgId, linkEl) {
+    if (!this.translateTo) return;
+    const targetLang = this.translateTo.split('-').pop() || 'en';
+
+    // Find the message in current SMS conversation
+    const conv = this.conversations.find(c =>
+      c.type === 'sms' && c.phone === this.selectedContact && c.serviceNumber === this.selectedServiceNumber
+    );
+    const msg = conv?.messages?.find(m => m.id === msgId);
+    if (!msg) return;
+
+    // Show loading state
+    linkEl.textContent = 'Translating...';
+    linkEl.style.pointerEvents = 'none';
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/translate-text`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          texts: [msg.content],
+          targetLang,
+          cacheType: 'sms',
+          cacheIds: [msgId],
+        }),
+      });
+
+      const result = await resp.json();
+      if (result.translations && result.translations[0]) {
+        // Update the local message object
+        msg.translation = result.translations[0];
+        // Replace the link with the translation div
+        const container = linkEl.closest('div');
+        container.outerHTML = `
+          <div style="margin-top: 0.375rem; padding: 0.375rem 0.5rem; background: var(--bg-secondary); border-radius: var(--radius-md); border-left: 2px solid var(--primary-color); font-size: 0.85rem; color: var(--text-secondary);">
+            ${this.linkifyPhoneNumbers(result.translations[0])}
+          </div>`;
+      } else {
+        linkEl.textContent = 'Translation failed';
+      }
+    } catch (err) {
+      console.error('Translation error:', err);
+      linkEl.textContent = 'Translation failed';
+    }
+  }
+
+  async translateTranscript(callId, linkEl) {
+    if (!this.translateTo) return;
+    const targetLang = this.translateTo.split('-').pop() || 'en';
+
+    // Find the call in conversations
+    const conv = this.conversations.find(c => c.type === 'call' && c.callId === callId);
+    const call = conv?.call;
+    if (!call || !call.transcript) return;
+
+    // Show loading state
+    linkEl.textContent = 'Translating...';
+    linkEl.style.pointerEvents = 'none';
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/translate-text`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          texts: [call.transcript],
+          targetLang,
+          cacheType: 'transcript',
+          cacheIds: [callId],
+        }),
+      });
+
+      const result = await resp.json();
+      if (result.translations && result.translations[0]) {
+        // Update the local call object
+        call.translated_transcript = result.translations[0];
+        // Replace the link with the translation panel
+        const container = linkEl.closest('div');
+        container.outerHTML = `
+          <div style="margin-top: 0.75rem; padding: 0.5rem 0.75rem; background: var(--bg-secondary); border-radius: var(--radius-md); border-left: 2px solid var(--primary-color); font-size: 0.85rem; color: var(--text-secondary); white-space: pre-wrap;">
+            ${this.linkifyPhoneNumbers(result.translations[0])}
+          </div>`;
+      } else {
+        linkEl.textContent = 'Translation failed';
+      }
+    } catch (err) {
+      console.error('Transcript translation error:', err);
+      linkEl.textContent = 'Translation failed';
+    }
+  }
+
+  async translateAllMessages(linkEl) {
+    if (!this.translateTo) return;
+    const targetLang = this.translateTo.split('-').pop() || 'en';
+
+    const conv = this.conversations.find(c =>
+      c.type === 'sms' && c.phone === this.selectedContact && c.serviceNumber === this.selectedServiceNumber
+    );
+    if (!conv) return;
+
+    // Collect untranslated messages
+    const untranslated = conv.messages.filter(m => !m.translation);
+    if (untranslated.length === 0) return;
+
+    // Show loading state
+    linkEl.innerHTML = `
+      <svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>
+      Translating ${untranslated.length} messages...`;
+    linkEl.style.pointerEvents = 'none';
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      // Batch in groups of 20 to avoid token limits
+      const batchSize = 20;
+      for (let i = 0; i < untranslated.length; i += batchSize) {
+        const batch = untranslated.slice(i, i + batchSize);
+        const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/translate-text`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            texts: batch.map(m => m.content),
+            targetLang,
+            cacheType: 'sms',
+            cacheIds: batch.map(m => m.id),
+          }),
+        });
+
+        const result = await resp.json();
+        if (result.translations) {
+          batch.forEach((msg, idx) => {
+            if (result.translations[idx]) {
+              msg.translation = result.translations[idx];
+            }
+          });
+        }
+      }
+
+      // Re-render the thread to show all translations
+      const threadElement = document.getElementById('message-thread');
+      if (threadElement) {
+        threadElement.innerHTML = this.renderMessageThread();
+        this.attachMessageInputListeners();
+      }
+    } catch (err) {
+      console.error('Translate all error:', err);
+      linkEl.textContent = 'Translation failed';
+      linkEl.style.pointerEvents = '';
+    }
   }
 
   getCallStatusInfo(status) {
@@ -5545,6 +5785,23 @@ Examples:
           e.preventDefault();
           const phoneNumber = e.target.dataset.phone;
           window.navigateTo(`/phone?dial=${encodeURIComponent(phoneNumber)}`);
+        }
+        // Translate single SMS message
+        if (e.target.classList.contains('translate-msg-link')) {
+          e.preventDefault();
+          const msgId = e.target.dataset.translateMsgId;
+          if (msgId) this.translateMessage(msgId, e.target);
+        }
+        // Translate call transcript
+        if (e.target.classList.contains('translate-transcript-link')) {
+          e.preventDefault();
+          const callId = e.target.dataset.translateCallId;
+          if (callId) this.translateTranscript(callId, e.target);
+        }
+        // Translate all messages in conversation
+        if (e.target.closest('.translate-all-link')) {
+          e.preventDefault();
+          this.translateAllMessages(e.target.closest('.translate-all-link'));
         }
       });
     }
