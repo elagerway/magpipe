@@ -969,7 +969,29 @@ export default class PhonePage {
 
       if (error) throw error;
 
-      this.serviceNumbers = numbers || [];
+      this.serviceNumbers = (numbers || []).map(n => ({ ...n, source: 'signalwire' }));
+
+      // Load external SIP numbers
+      const { data: extNumbers } = await supabase
+        .from('external_sip_numbers')
+        .select('*, trunk:external_sip_trunks!inner(name), agent:agent_configs(id, name)')
+        .eq('user_id', this.userId);
+
+      if (extNumbers) {
+        const mapped = extNumbers.map(n => ({
+          id: n.id,
+          phone_number: n.phone_number,
+          is_active: !!n.agent,
+          source: 'external_sip',
+          trunk_name: n.trunk?.name,
+          capabilities: n.capabilities || { voice: true, sms: false, mms: false },
+          agent: n.agent || null,
+        }));
+        this.serviceNumbers = [...this.serviceNumbers, ...mapped];
+      }
+
+      // Sync capabilities from SignalWire and is_active based on agent assignment (non-blocking)
+      this.syncNumbersState(this.serviceNumbers);
 
       // Load numbers scheduled for deletion
       const { data: toDelete, error: deleteError } = await supabase
@@ -1005,11 +1027,76 @@ export default class PhonePage {
     }
   }
 
+  async syncNumbersState(numbers) {
+    const SYSTEM_AGENT_ID = '00000000-0000-0000-0000-000000000002';
+    try {
+      // Sync is_active based on agent assignment
+      for (const num of numbers) {
+        const isAssigned = num.agent && num.agent.id !== SYSTEM_AGENT_ID;
+        if (num.is_active !== !!isAssigned) {
+          const table = num.source === 'external_sip' ? 'external_sip_numbers' : 'service_numbers';
+          await supabase.from(table).update({ is_active: !!isAssigned }).eq('id', num.id);
+        }
+      }
+
+      // Sync capabilities from providers
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        const syncCalls = [];
+        const hasSignalWire = numbers.some(n => n.source === 'signalwire');
+        const hasExternal = numbers.some(n => n.source === 'external_sip');
+
+        if (hasSignalWire) {
+          syncCalls.push(fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fix-number-capabilities`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+          }));
+        }
+        if (hasExternal) {
+          syncCalls.push(fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sync-external-capabilities`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+          }));
+        }
+
+        const results = await Promise.allSettled(syncCalls);
+        let anyUpdated = false;
+        for (const r of results) {
+          if (r.status === 'fulfilled' && r.value.ok) {
+            const json = await r.value.json();
+            if (json.updated > 0) anyUpdated = true;
+          }
+        }
+
+        if (anyUpdated) {
+          // Reload capabilities from both tables
+          const [swFresh, extFresh] = await Promise.all([
+            supabase.from('service_numbers').select('id, capabilities').eq('user_id', this.userId),
+            supabase.from('external_sip_numbers').select('id, capabilities').eq('user_id', this.userId),
+          ]);
+          for (const f of (swFresh.data || []).concat(extFresh.data || [])) {
+            const num = this.serviceNumbers.find(n => n.id === f.id);
+            if (num) num.capabilities = f.capabilities;
+          }
+          const container = document.getElementById('numbers-list-container');
+          if (container) {
+            container.innerHTML = this.renderServiceNumbersList();
+            this.attachNumbersEventListeners();
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error syncing numbers state:', err);
+    }
+  }
+
   renderServiceNumbersList() {
     // Filter out US Relay numbers
+    const SYSTEM_AGENT_ID = '00000000-0000-0000-0000-000000000002';
     const isUSRelay = (n) => n.friendly_name?.includes('Auto US Relay');
-    const activeNumbers = this.serviceNumbers.filter(n => n.is_active && !isUSRelay(n));
-    const inactiveNumbers = this.serviceNumbers.filter(n => !n.is_active && !isUSRelay(n));
+    const isAssigned = (n) => n.agent && n.agent.id !== SYSTEM_AGENT_ID;
+    const activeNumbers = this.serviceNumbers.filter(n => isAssigned(n) && !isUSRelay(n));
+    const inactiveNumbers = this.serviceNumbers.filter(n => !isAssigned(n) && !isUSRelay(n));
 
     return `
       ${activeNumbers.length > 0 ? `
@@ -1054,7 +1141,9 @@ export default class PhonePage {
     const capabilities = number.capabilities || {};
     const hasVoice = capabilities.voice !== false;
     const hasSms = capabilities.sms !== false;
-    const agentName = number.agent?.name;
+    const SYSTEM_AGENT_ID = '00000000-0000-0000-0000-000000000002';
+    const isAssigned = number.agent && number.agent.id !== SYSTEM_AGENT_ID;
+    const agentName = isAssigned ? number.agent.name : null;
 
     return `
       <div class="number-item" style="
@@ -1064,10 +1153,11 @@ export default class PhonePage {
         padding: 0.75rem;
         background: var(--bg-secondary);
         border-radius: var(--radius-md);
-        border: 1px solid ${number.is_active ? 'var(--primary-color)' : 'var(--border-color)'};
+        border: none;
       " data-number-id="${number.id}">
         <div style="flex: 1; min-width: 0;">
           <div style="font-weight: 600; font-size: 0.9375rem;">${this.formatPhoneNumber(number.phone_number)}</div>
+          ${number.source === 'external_sip' && number.trunk_name ? `<div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.125rem;">${number.trunk_name}</div>` : ''}
           <div style="display: flex; gap: 0.5rem; margin-top: 0.25rem;">
             ${hasVoice ? '<span style="font-size: 0.7rem; padding: 0.125rem 0.375rem; background: rgba(34, 197, 94, 0.1); color: rgb(34, 197, 94); border-radius: 0.25rem;">Voice</span>' : ''}
             ${hasSms ? '<span style="font-size: 0.7rem; padding: 0.125rem 0.375rem; background: rgba(59, 130, 246, 0.1); color: rgb(59, 130, 246); border-radius: 0.25rem;">SMS</span>' : ''}
@@ -1093,7 +1183,7 @@ export default class PhonePage {
               </svg>
             </button>
             <label class="toggle-switch" style="margin: 0;">
-              <input type="checkbox" class="number-toggle" data-id="${number.id}" ${number.is_active ? 'checked' : ''} />
+              <input type="checkbox" class="number-toggle" data-id="${number.id}" ${isAssigned ? 'checked' : ''} />
               <span class="toggle-slider"></span>
             </label>
           </div>
@@ -1181,9 +1271,10 @@ export default class PhonePage {
       const number = this.serviceNumbers.find(n => n.id === numberId);
       if (!number) return;
 
-      // Update the number status
+      // Update the number status in the correct table
+      const table = number.source === 'external_sip' ? 'external_sip_numbers' : 'service_numbers';
       const { error } = await supabase
-        .from('service_numbers')
+        .from(table)
         .update({ is_active: newStatus })
         .eq('id', numberId);
 
