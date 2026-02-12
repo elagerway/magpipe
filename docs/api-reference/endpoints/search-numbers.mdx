@@ -67,7 +67,7 @@ Search for available phone numbers to add to your account. Filter by area code, 
 <RequestExample>
 ```bash cURL
 curl -X POST https://api.magpipe.ai/functions/v1/search-phone-numbers \
-  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "area_code": "604",
@@ -82,7 +82,7 @@ const response = await fetch(
   {
     method: 'POST',
     headers: {
-      'Authorization': 'Bearer YOUR_API_TOKEN',
+      'Authorization': 'Bearer YOUR_API_KEY',
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -103,7 +103,7 @@ import requests
 response = requests.post(
     'https://api.magpipe.ai/functions/v1/search-phone-numbers',
     headers={
-        'Authorization': 'Bearer YOUR_API_TOKEN',
+        'Authorization': 'Bearer YOUR_API_KEY',
         'Content-Type': 'application/json',
     },
     json={

@@ -29,7 +29,7 @@ This action is irreversible. All chunks and embeddings from this source will be 
 <RequestExample>
 ```bash cURL
 curl -X POST https://api.magpipe.ai/functions/v1/delete-knowledge-source \
-  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"source_id": "f7a8b9c0-d1e2-3f4a-5b6c-789012def345"}'
 ```
@@ -40,7 +40,7 @@ const response = await fetch(
   {
     method: 'POST',
     headers: {
-      'Authorization': 'Bearer YOUR_API_TOKEN',
+      'Authorization': 'Bearer YOUR_API_KEY',
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -59,7 +59,7 @@ import requests
 response = requests.post(
     'https://api.magpipe.ai/functions/v1/delete-knowledge-source',
     headers={
-        'Authorization': 'Bearer YOUR_API_TOKEN',
+        'Authorization': 'Bearer YOUR_API_KEY',
         'Content-Type': 'application/json',
     },
     json={'source_id': 'f7a8b9c0-d1e2-3f4a-5b6c-789012def345'}

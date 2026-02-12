@@ -1,5 +1,5 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2";
+import { resolveUser } from "../_shared/api-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -7,7 +7,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -23,14 +23,8 @@ serve(async (req) => {
       }
     );
 
-    const authHeader = req.headers.get("Authorization")!;
-    const token = authHeader.replace("Bearer ", "");
-    const {
-      data: { user },
-      error: userError,
-    } = await supabaseClient.auth.getUser(token);
-
-    if (userError || !user) {
+    const user = await resolveUser(req, supabaseClient);
+    if (!user) {
       return new Response(
         JSON.stringify({ error: { code: "unauthorized", message: "Unauthorized" } }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -39,6 +33,13 @@ serve(async (req) => {
 
     const { call_id } = await req.json();
 
+    const queryClient = user.authMethod === "api_key"
+      ? createClient(
+          Deno.env.get("SUPABASE_URL") ?? "",
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+        )
+      : supabaseClient;
+
     if (!call_id) {
       return new Response(
         JSON.stringify({ error: { code: "missing_param", message: "call_id is required" } }),
@@ -46,12 +47,9 @@ serve(async (req) => {
       );
     }
 
-    const { data: call, error } = await supabaseClient
+    const { data: call, error } = await queryClient
       .from("call_records")
-      .select(`
-        *,
-        agent:agent_configs(id, name)
-      `)
+      .select("*")
       .eq("id", call_id)
       .eq("user_id", user.id)
       .single();
@@ -63,11 +61,22 @@ serve(async (req) => {
       );
     }
 
+    // Fetch agent name separately (no FK exists)
+    let agentName = null;
+    if (call.agent_id) {
+      const { data: agent } = await queryClient
+        .from("agent_configs")
+        .select("name")
+        .eq("id", call.agent_id)
+        .single();
+      agentName = agent?.name;
+    }
+
     // Format response
     const response = {
       id: call.id,
       agent_id: call.agent_id,
-      agent_name: call.agent?.name,
+      agent_name: agentName,
       from_number: call.direction === "inbound" ? call.caller_number : call.service_number,
       to_number: call.direction === "inbound" ? call.service_number : call.caller_number,
       direction: call.direction,
@@ -75,8 +84,7 @@ serve(async (req) => {
       duration: call.duration_seconds,
       recording_url: call.recording_url,
       transcript: call.transcript,
-      transcript_segments: call.transcript_segments,
-      sentiment: call.sentiment,
+      sentiment: call.user_sentiment,
       call_summary: call.call_summary,
       metadata: call.metadata,
       started_at: call.started_at,

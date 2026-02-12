@@ -281,44 +281,42 @@ Handle data subject requests:
 
 ### API Keys
 
-Manage API access:
+Generate and manage API keys for programmatic access to the Magpipe REST API. Keys use the `mgp_` prefix and persist until revoked.
+
+**Generating a key:**
 
 1. Go to **Settings** → **API**
-2. View existing keys
-3. Click **Generate New Key**
-4. Copy and save the key securely
+2. Click **Generate New Key**
+3. Enter a descriptive name (e.g., "Production Server")
+4. Copy the full key immediately — it is only shown once
+5. The key appears in your keys list showing the prefix (`mgp_abc12345...`)
 
-**Key types:**
-- **Full Access**: All API operations
-- **Read Only**: GET operations only
+<Warning>
+The full API key is only displayed at creation time. If you lose it, you'll need to generate a new one.
+</Warning>
 
-### Webhook URLs
+**Managing keys:**
 
-Configure webhooks for real-time events:
+| Column | Description |
+|--------|-------------|
+| **Name** | Descriptive label you assigned |
+| **Key** | First 8 characters (`mgp_...`) for identification |
+| **Created** | When the key was generated |
+| **Last Used** | When the key was last used in an API request |
+| **Actions** | Revoke button to permanently disable the key |
 
-1. Go to **Settings** → **API** → **Webhooks**
-2. Click **Add Webhook**
-3. Enter your endpoint URL
-4. Select events to receive
-5. Save
+**Limits:** Maximum 10 active API keys per account.
 
-**Available events:**
-- `call.started`
-- `call.ended`
-- `message.received`
-- `message.sent`
-- `chat.message`
-- `contact.created`
+**Using a key:** Include it as a Bearer token in the `Authorization` header:
 
-### Rate Limits
+```bash
+curl -X POST "https://api.magpipe.ai/functions/v1/list-agents" \
+  -H "Authorization: Bearer mgp_your_key_here" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
 
-View your API rate limits:
-
-| Plan | Requests/minute |
-|------|-----------------|
-| Free | 60 |
-| Pro | 300 |
-| Enterprise | Custom |
+See [Authentication](/api-reference/authentication) for full details on API keys vs session tokens.
 
 ## Billing Settings
 

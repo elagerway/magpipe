@@ -1,5 +1,5 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2";
+import { resolveUser } from "../_shared/api-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -7,7 +7,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -23,14 +23,9 @@ serve(async (req) => {
       }
     );
 
-    const authHeader = req.headers.get("Authorization")!;
-    const token = authHeader.replace("Bearer ", "");
-    const {
-      data: { user },
-      error: userError,
-    } = await supabaseClient.auth.getUser(token);
+    const user = await resolveUser(req, supabaseClient);
 
-    if (userError || !user) {
+    if (!user) {
       return new Response(
         JSON.stringify({ error: { code: "unauthorized", message: "Unauthorized" } }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -49,12 +44,18 @@ serve(async (req) => {
       phone_number
     } = body;
 
-    let query = supabaseClient
+    const queryClient = user.authMethod === "api_key"
+      ? createClient(
+          Deno.env.get("SUPABASE_URL") ?? "",
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+        )
+      : supabaseClient;
+
+    let query = queryClient
       .from("call_records")
       .select(`
         id, direction, status, duration_seconds, caller_number, service_number,
-        sentiment, call_summary, started_at, ended_at, created_at,
-        agent:agent_configs(id, name)
+        user_sentiment, call_summary, started_at, ended_at, created_at, agent_id
       `, { count: "exact" })
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
@@ -94,17 +95,30 @@ serve(async (req) => {
       );
     }
 
+    // Batch-lookup agent names
+    const agentIds = [...new Set((calls || []).map(c => c.agent_id).filter(Boolean))];
+    let agentMap: Record<string, string> = {};
+    if (agentIds.length > 0) {
+      const { data: agents } = await queryClient
+        .from("agent_configs")
+        .select("id, name")
+        .in("id", agentIds);
+      if (agents) {
+        agentMap = Object.fromEntries(agents.map(a => [a.id, a.name]));
+      }
+    }
+
     // Format response
     const formattedCalls = (calls || []).map(call => ({
       id: call.id,
-      agent_id: call.agent?.id,
-      agent_name: call.agent?.name,
+      agent_id: call.agent_id,
+      agent_name: agentMap[call.agent_id] || null,
       from_number: call.direction === "inbound" ? call.caller_number : call.service_number,
       to_number: call.direction === "inbound" ? call.service_number : call.caller_number,
       direction: call.direction,
       status: call.status || "completed",
       duration: call.duration_seconds,
-      sentiment: call.sentiment,
+      sentiment: call.user_sentiment,
       call_summary: call.call_summary,
       started_at: call.started_at,
       ended_at: call.ended_at,

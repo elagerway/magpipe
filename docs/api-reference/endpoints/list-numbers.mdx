@@ -37,7 +37,7 @@ Retrieve all phone numbers provisioned in your account with their current config
 <RequestExample>
 ```bash cURL
 curl -X POST https://api.magpipe.ai/functions/v1/list-phone-numbers \
-  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{}'
 ```
@@ -48,7 +48,7 @@ const response = await fetch(
   {
     method: 'POST',
     headers: {
-      'Authorization': 'Bearer YOUR_API_TOKEN',
+      'Authorization': 'Bearer YOUR_API_KEY',
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({}),
@@ -65,7 +65,7 @@ import requests
 response = requests.post(
     'https://api.magpipe.ai/functions/v1/list-phone-numbers',
     headers={
-        'Authorization': 'Bearer YOUR_API_TOKEN',
+        'Authorization': 'Bearer YOUR_API_KEY',
         'Content-Type': 'application/json',
     },
     json={}

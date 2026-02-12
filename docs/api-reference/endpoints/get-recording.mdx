@@ -29,7 +29,7 @@ Retrieve a signed URL to download or stream a call recording. URLs are temporary
 <RequestExample>
 ```bash cURL
 curl -X POST https://api.magpipe.ai/functions/v1/get-signed-recording-url \
-  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "call_id": "7f3d8e00-a1b2-4c3d-9e4f-567890abcdef",
@@ -43,7 +43,7 @@ const response = await fetch(
   {
     method: 'POST',
     headers: {
-      'Authorization': 'Bearer YOUR_API_TOKEN',
+      'Authorization': 'Bearer YOUR_API_KEY',
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -63,7 +63,7 @@ import requests
 response = requests.post(
     'https://api.magpipe.ai/functions/v1/get-signed-recording-url',
     headers={
-        'Authorization': 'Bearer YOUR_API_TOKEN',
+        'Authorization': 'Bearer YOUR_API_KEY',
         'Content-Type': 'application/json',
     },
     json={

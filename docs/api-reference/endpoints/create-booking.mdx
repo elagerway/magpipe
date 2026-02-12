@@ -71,7 +71,7 @@ Create a new appointment booking through your connected Cal.com calendar. The bo
 <RequestExample>
 ```bash cURL
 curl -X POST https://api.magpipe.ai/functions/v1/cal-com-create-booking \
-  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "start_time": "2024-01-15T14:00:00-08:00",
@@ -88,7 +88,7 @@ const response = await fetch(
   {
     method: 'POST',
     headers: {
-      'Authorization': 'Bearer YOUR_API_TOKEN',
+      'Authorization': 'Bearer YOUR_API_KEY',
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -111,7 +111,7 @@ import requests
 response = requests.post(
     'https://api.magpipe.ai/functions/v1/cal-com-create-booking',
     headers={
-        'Authorization': 'Bearer YOUR_API_TOKEN',
+        'Authorization': 'Bearer YOUR_API_KEY',
         'Content-Type': 'application/json',
     },
     json={

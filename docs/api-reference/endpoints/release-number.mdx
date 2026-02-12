@@ -29,7 +29,7 @@ This action is irreversible. The number will be immediately released and you may
 <RequestExample>
 ```bash cURL
 curl -X POST https://api.magpipe.ai/functions/v1/release-phone-number \
-  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"number_id": "a1b2c3d4-5678-9012-3456-789012345678"}'
 ```
@@ -40,7 +40,7 @@ const response = await fetch(
   {
     method: 'POST',
     headers: {
-      'Authorization': 'Bearer YOUR_API_TOKEN',
+      'Authorization': 'Bearer YOUR_API_KEY',
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -59,7 +59,7 @@ import requests
 response = requests.post(
     'https://api.magpipe.ai/functions/v1/release-phone-number',
     headers={
-        'Authorization': 'Bearer YOUR_API_TOKEN',
+        'Authorization': 'Bearer YOUR_API_KEY',
         'Content-Type': 'application/json',
     },
     json={'number_id': 'a1b2c3d4-5678-9012-3456-789012345678'}
