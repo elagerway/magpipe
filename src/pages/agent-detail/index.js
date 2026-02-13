@@ -41,6 +41,8 @@ export default class AgentDetailPage {
     this.clonedVoices = [];
     this.serviceNumbers = [];
     this.chatWidget = null; // Chat widget for this agent
+    this.gmailIntegration = null; // Gmail integration for this user
+    this.emailConfig = null; // Agent email config
     this.knowledgeSources = []; // Knowledge bases for this user
     this.memories = []; // Agent memory entries
     this.memoryCount = 0; // Count of memory entries
@@ -179,6 +181,32 @@ export default class AgentDetailPage {
         icon_url: a.integration_providers.icon_url,
       }));
 
+    // Load Gmail integration status for this user
+    const { data: gmailProvider } = await supabase
+      .from('integration_providers')
+      .select('id')
+      .eq('slug', 'google_email')
+      .single();
+
+    if (gmailProvider) {
+      const { data: gmailIntegration } = await supabase
+        .from('user_integrations')
+        .select('id, status, config, external_user_id')
+        .eq('user_id', user.id)
+        .eq('provider_id', gmailProvider.id)
+        .eq('status', 'connected')
+        .single();
+      this.gmailIntegration = gmailIntegration;
+    }
+
+    // Load agent email config
+    const { data: emailConfig } = await supabase
+      .from('agent_email_configs')
+      .select('*')
+      .eq('agent_id', this.agentId)
+      .single();
+    this.emailConfig = emailConfig;
+
     // Add styles
     this.addStyles();
 
@@ -303,6 +331,26 @@ export default class AgentDetailPage {
       setTimeout(() => {
         this.showBookingModal();
       }, 500);
+    }
+
+    // Check for Gmail OAuth callback success
+    if (urlParams.get('integration_connected') === 'google_email') {
+      window.history.replaceState({}, '', `/agents/${this.agentId}?tab=deployment`);
+      showToast('Gmail connected successfully', 'success');
+
+      // Reload Gmail integration data
+      if (gmailProvider) {
+        const { data: freshGmail } = await supabase
+          .from('user_integrations')
+          .select('id, status, config, external_user_id')
+          .eq('user_id', user.id)
+          .eq('provider_id', gmailProvider.id)
+          .eq('status', 'connected')
+          .single();
+        this.gmailIntegration = freshGmail;
+      }
+
+      this.switchTab('deployment');
     }
 
     // Check for Cal.com error

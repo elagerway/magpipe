@@ -10,7 +10,7 @@ export const deploymentTabMethods = {
     return `
       <div class="config-section">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-          <h3 style="margin: 0;">Phone Numbers</h3>
+          <h3 style="margin: 0;">Calls & Texts</h3>
           ${availableNumbers.length > 0 ? `
             <button class="btn btn-primary btn-sm" id="assign-numbers-btn" style="display: flex; align-items: center;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.4rem;">
@@ -21,7 +21,7 @@ export const deploymentTabMethods = {
             </button>
           ` : ''}
         </div>
-        <p class="section-desc">Assign phone numbers to this agent for handling calls and messages.</p>
+        <p class="section-desc">Assign phone numbers to this agent for handling calls and text messages.</p>
 
         ${assignedNumbers.length > 0 ? `
           <div class="assigned-numbers">
@@ -52,10 +52,13 @@ export const deploymentTabMethods = {
         ` : ''}
       </div>
 
-      <!-- Web Chat Widget Section -->
+      <!-- Email Section -->
+      ${this.renderEmailSection()}
+
+      <!-- Chat Section -->
       <div class="config-section">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-          <h3 style="margin: 0;">Web Chat Widget</h3>
+          <h3 style="margin: 0;">Chat</h3>
           ${!this.chatWidget ? `
             <button class="btn btn-primary btn-sm" id="create-widget-btn" style="display: flex; align-items: center;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.4rem;">
@@ -66,7 +69,7 @@ export const deploymentTabMethods = {
             </button>
           ` : ''}
         </div>
-        <p class="section-desc">Embed a chat widget on your website so visitors can chat with this agent.</p>
+        <p class="section-desc">Embed a chat widget on your website so visitors can interact with this agent.</p>
 
         ${this.chatWidget ? `
           <div class="assigned-numbers">
@@ -172,6 +175,43 @@ export const deploymentTabMethods = {
       widgetActiveToggle.addEventListener('change', async () => {
         await this.toggleChatWidgetActive(widgetActiveToggle.checked);
       });
+    }
+
+    // Email section listeners
+    const connectEmailBtn = document.getElementById('connect-email-btn');
+    if (connectEmailBtn) {
+      connectEmailBtn.addEventListener('click', () => this.connectEmail());
+    }
+
+    const emailActiveToggle = document.getElementById('email-active-toggle');
+    if (emailActiveToggle) {
+      emailActiveToggle.addEventListener('change', async () => {
+        if (!this.emailConfig) {
+          // No config yet — create one on first enable
+          await this.assignEmail();
+        } else {
+          await this.saveEmailConfig({ is_active: emailActiveToggle.checked });
+        }
+      });
+    }
+
+    const emailSendAs = document.getElementById('email-send-as');
+    if (emailSendAs) {
+      emailSendAs.addEventListener('blur', async () => {
+        await this.saveEmailConfig({ send_as_email: emailSendAs.value.trim() || null });
+      });
+    }
+
+    const emailAgentMode = document.getElementById('email-agent-mode');
+    if (emailAgentMode) {
+      emailAgentMode.addEventListener('change', async () => {
+        await this.saveEmailConfig({ agent_mode: emailAgentMode.value });
+      });
+    }
+
+    const detachEmailBtn = document.getElementById('detach-email-btn');
+    if (detachEmailBtn) {
+      detachEmailBtn.addEventListener('click', () => this.detachEmail());
     }
   },
 
@@ -605,6 +645,235 @@ export const deploymentTabMethods = {
       console.error('Error assigning numbers:', err);
       showToast('Failed to assign some numbers. Please try again.', 'error');
     }
+  },
+
+  // --- Email section methods ---
+
+  renderEmailSection() {
+    const gmailAddress = this.gmailIntegration?.config?.gmail_address || this.gmailIntegration?.external_user_id || null;
+
+    // State 3: Email configured for this agent
+    if (this.emailConfig) {
+      const displayEmail = this.emailConfig.gmail_address || gmailAddress || 'Gmail';
+      return `
+        <div class="config-section">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+            <h3 style="margin: 0;">Email</h3>
+            <label class="toggle-switch-sm">
+              <input type="checkbox" id="email-active-toggle" ${this.emailConfig.is_active ? 'checked' : ''} />
+              <span class="toggle-slider-sm"></span>
+            </label>
+          </div>
+          <p class="section-desc">Let this agent handle email conversations via Gmail.</p>
+
+          <div class="assigned-numbers">
+            <div class="assigned-number" style="flex-direction: column; align-items: flex-start; gap: 0.75rem;">
+              <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                <div class="number-info">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.25rem; flex-shrink: 0;">
+                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                    <polyline points="22,6 12,13 2,6"></polyline>
+                  </svg>
+                  <span class="number-value">${displayEmail}</span>
+                  <span class="number-name">(${this.emailConfig.is_active ? 'Active' : 'Inactive'})</span>
+                </div>
+              </div>
+
+              <div style="display: flex; flex-direction: column; gap: 0.75rem; width: 100%;">
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label">Send As</label>
+                  <input type="email" id="email-send-as" class="form-input" placeholder="${displayEmail}"
+                    value="${this.emailConfig.send_as_email || ''}" />
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label">AI Mode</label>
+                  <select id="email-agent-mode" class="form-select">
+                    <option value="off" ${this.emailConfig.agent_mode === 'off' ? 'selected' : ''}>Off</option>
+                    <option value="draft" ${this.emailConfig.agent_mode === 'draft' ? 'selected' : ''}>Draft</option>
+                    <option value="auto" ${this.emailConfig.agent_mode === 'auto' ? 'selected' : ''}>Auto</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                <button class="btn btn-sm btn-secondary" id="detach-email-btn" style="color: #ef4444;">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.25rem;">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                  Detach
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // State 2: Gmail connected but not yet assigned to this agent — show toggle (off)
+    if (this.gmailIntegration && gmailAddress) {
+      return `
+        <div class="config-section">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+            <h3 style="margin: 0;">Email</h3>
+            <label class="toggle-switch-sm">
+              <input type="checkbox" id="email-active-toggle" />
+              <span class="toggle-slider-sm"></span>
+            </label>
+          </div>
+          <p class="section-desc">Let this agent handle email conversations via Gmail.</p>
+
+          <div class="assigned-numbers">
+            <div class="assigned-number">
+              <div class="number-info">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.25rem; flex-shrink: 0;">
+                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                  <polyline points="22,6 12,13 2,6"></polyline>
+                </svg>
+                <span class="number-value">${gmailAddress}</span>
+                <span class="number-name">(Inactive)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // State 1: No Gmail connected
+    return `
+      <div class="config-section">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+          <h3 style="margin: 0;">Email</h3>
+          <button class="btn btn-primary btn-sm" id="connect-email-btn" style="display: flex; align-items: center;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.4rem;">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+            </svg>
+            Connect
+          </button>
+        </div>
+        <p class="section-desc">Connect a Gmail account to let this agent handle email conversations.</p>
+        <div class="no-numbers-message">No email configured for this agent</div>
+      </div>
+    `;
+  },
+
+  async connectEmail() {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        showToast('Please log in again', 'error');
+        return;
+      }
+
+      const response = await fetch('https://api.magpipe.ai/functions/v1/integration-oauth-start', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          provider: 'google_email',
+          redirect_path: `/agents/${this.agentId}?tab=deployment`,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.url) {
+        window.location.href = result.url;
+      } else {
+        showToast(result.error || 'Failed to start Gmail connection', 'error');
+      }
+    } catch (err) {
+      console.error('Error connecting email:', err);
+      showToast('Failed to start Gmail connection. Please try again.', 'error');
+    }
+  },
+
+  async assignEmail() {
+    if (!this.gmailIntegration) return;
+
+    try {
+      const gmailAddress = this.gmailIntegration.config?.gmail_address || null;
+
+      const { data, error } = await supabase
+        .from('agent_email_configs')
+        .insert({
+          agent_id: this.agentId,
+          user_id: this.userId,
+          integration_id: this.gmailIntegration.id,
+          gmail_address: gmailAddress,
+          agent_mode: 'off',
+          is_active: true,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      this.emailConfig = data;
+      this.switchTab('deployment');
+      showToast('Email assigned to agent', 'success');
+    } catch (err) {
+      console.error('Error assigning email:', err);
+      showToast('Failed to assign email. Please try again.', 'error');
+    }
+  },
+
+  async saveEmailConfig(updates) {
+    if (!this.emailConfig) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('agent_email_configs')
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .eq('id', this.emailConfig.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      this.emailConfig = data;
+
+      // Show save indicator
+      const indicator = document.getElementById('save-indicator');
+      if (indicator) {
+        indicator.classList.remove('hidden');
+        setTimeout(() => indicator.classList.add('hidden'), 2000);
+      }
+    } catch (err) {
+      console.error('Error saving email config:', err);
+      showToast('Failed to save email settings', 'error');
+    }
+  },
+
+  async detachEmail() {
+    if (!this.emailConfig) return;
+
+    this.showConfirmModal({
+      title: 'Detach Email',
+      message: 'Are you sure you want to remove the email configuration from this agent? The Gmail connection will remain active for other agents.',
+      confirmText: 'Detach',
+      cancelText: 'Cancel',
+      onConfirm: async () => {
+        try {
+          const { error } = await supabase
+            .from('agent_email_configs')
+            .delete()
+            .eq('id', this.emailConfig.id);
+
+          if (error) throw error;
+
+          this.emailConfig = null;
+          this.switchTab('deployment');
+          showToast('Email detached from agent', 'success');
+        } catch (err) {
+          console.error('Error detaching email:', err);
+          showToast('Failed to detach email. Please try again.', 'error');
+        }
+      },
+    });
   },
 
   showNoNumberModal() {

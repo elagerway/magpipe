@@ -22,6 +22,7 @@ class InboxPage {
     this.selectedServiceNumber = null; // Which of our numbers the conversation is on
     this.selectedCallId = null;
     this.selectedChatSessionId = null; // For chat conversations
+    this.selectedEmailThreadId = null; // For email conversations
     this.subscription = null;
     this.userId = null;
     this.dropdownListenersAttached = false;
@@ -45,6 +46,8 @@ class InboxPage {
     this.editModeExpanded = false; // Toggle for edit mode options
     this.selectMode = false; // Multi-select mode for deletion
     this.selectedForDeletion = new Set(); // Conversations selected for deletion
+    this.displayLimit = 20; // Render-window pagination: how many conversations to show
+    this.DISPLAY_PAGE_SIZE = 20; // How many more to load on scroll
   }
 
   /**
@@ -153,6 +156,7 @@ class InboxPage {
         this.selectedContact = null;
         this.selectedServiceNumber = null;
         this.selectedChatSessionId = null;
+        this.selectedEmailThreadId = null;
       }
     } else if (deepLinkSmsPhone) {
       window.history.replaceState({}, '', '/inbox');
@@ -162,6 +166,7 @@ class InboxPage {
         this.selectedServiceNumber = smsConv.serviceNumber;
         this.selectedCallId = null;
         this.selectedChatSessionId = null;
+        this.selectedEmailThreadId = null;
       }
     } else if (deepLinkContact) {
       window.history.replaceState({}, '', '/inbox');
@@ -371,6 +376,48 @@ class InboxPage {
                 </svg>
                 <span>Agent Message</span>
               </button>
+              <button class="dropdown-item" data-action="new-email" style="
+                display: flex;
+                align-items: center;
+                gap: 0.75rem;
+                width: 100%;
+                padding: 0.75rem 1rem;
+                border: none;
+                background: none;
+                cursor: pointer;
+                font-size: 0.875rem;
+                color: var(--text-primary);
+                text-align: left;
+                transition: background 0.15s;
+              " onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='none'">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                  <polyline points="22,6 12,13 2,6"></polyline>
+                </svg>
+                <span>Email</span>
+              </button>
+              <button class="dropdown-item" data-action="agent-email" style="
+                display: flex;
+                align-items: center;
+                gap: 0.75rem;
+                width: 100%;
+                padding: 0.75rem 1rem;
+                border: none;
+                background: none;
+                cursor: pointer;
+                font-size: 0.875rem;
+                color: var(--text-primary);
+                text-align: left;
+                transition: background 0.15s;
+              " onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='none'">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                  <polyline points="22,6 12,13 2,6"></polyline>
+                  <circle cx="19" cy="5" r="4" fill="var(--primary-color)" stroke="var(--primary-color)"></circle>
+                  <text x="19" y="7" text-anchor="middle" font-size="6" fill="white" font-weight="bold">AI</text>
+                </svg>
+                <span>Agent Email</span>
+              </button>
               <button class="dropdown-item" data-action="bulk-message" style="
                 display: flex;
                 align-items: center;
@@ -427,6 +474,7 @@ class InboxPage {
               <button class="inbox-filter-btn ${this.typeFilter === 'calls' ? 'active' : ''}" data-filter-type="calls">Calls</button>
               <button class="inbox-filter-btn ${this.typeFilter === 'texts' ? 'active' : ''}" data-filter-type="texts">Texts</button>
               <button class="inbox-filter-btn ${this.typeFilter === 'chat' ? 'active' : ''}" data-filter-type="chat">Chat</button>
+              <button class="inbox-filter-btn ${this.typeFilter === 'email' ? 'active' : ''}" data-filter-type="email">Email</button>
             </div>
             <div class="inbox-filters" id="inbox-filters-status" style="justify-content: center; gap: 0.5rem; padding-top: 0.375rem; border-bottom: none; padding-bottom: 0;">
               <button class="inbox-filter-btn ${this.directionFilter === 'inbound' ? 'active' : ''}" data-filter-direction="inbound">In</button>
@@ -477,7 +525,7 @@ class InboxPage {
 
         <!-- Message Thread -->
         <div class="message-thread" id="message-thread">
-          ${(this.selectedContact || this.selectedCallId || this.selectedChatSessionId) ? this.renderMessageThread() : this.renderEmptyState()}
+          ${(this.selectedContact || this.selectedCallId || this.selectedChatSessionId || this.selectedEmailThreadId) ? this.renderMessageThread() : this.renderEmptyState()}
         </div>
       </div>
       ${renderBottomNav('/inbox')}
@@ -521,6 +569,7 @@ class InboxPage {
     // Set the selected contact and show the message input
     this.selectedContact = phoneNumber;
     this.selectedCallId = null;
+    this.selectedEmailThreadId = null;
 
     // Check if conversation exists (with specific service number if provided)
     const existingConv = serviceNumber
@@ -640,6 +689,17 @@ class InboxPage {
       }, (payload) => {
         console.log('💬 New chat message received:', payload);
         this.handleNewChatMessage(payload.new);
+      })
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'email_messages'
+      }, (payload) => {
+        console.log('📧 Email realtime event:', payload.new?.direction, payload.new?.user_id);
+        if (payload.new?.user_id === this.userId) {
+          console.log('📧 New email received in inbox');
+          this.handleNewEmailMessage(payload.new);
+        }
       })
       .subscribe((status) => {
         console.log('Inbox subscription status:', status);
@@ -992,10 +1052,64 @@ class InboxPage {
     }
   }
 
+  async handleNewEmailMessage(emailMsg) {
+    // Find existing email thread
+    const conv = this.conversations.find(c =>
+      c.type === 'email' && c.emailThreadId === emailMsg.thread_id
+    );
+
+    if (!conv) {
+      // New thread, reload conversations
+      await this.loadConversations(this.userId);
+      const conversationsEl = document.getElementById('conversations');
+      if (conversationsEl) {
+        conversationsEl.innerHTML = this.renderConversationList();
+        this.attachConversationListeners();
+      }
+      return;
+    }
+
+    // Add message to existing thread
+    const exists = conv.messages.some(m => m.id === emailMsg.id);
+    if (!exists) {
+      conv.messages.push(emailMsg);
+      conv.lastMessage = emailMsg.body_text || emailMsg.subject || 'Email';
+      conv.lastActivity = new Date(emailMsg.sent_at || emailMsg.created_at);
+      if (emailMsg.subject) conv.subject = emailMsg.subject;
+
+      if (emailMsg.direction === 'inbound') {
+        conv.unreadCount = (conv.unreadCount || 0) + 1;
+      }
+    }
+
+    // Update conversation list
+    const conversationsEl = document.getElementById('conversations');
+    if (conversationsEl) {
+      conversationsEl.innerHTML = this.renderConversationList();
+      this.attachConversationListeners();
+    }
+
+    // If viewing this email thread, reload
+    if (this.selectedEmailThreadId === emailMsg.thread_id) {
+      const threadElement = document.getElementById('message-thread');
+      if (threadElement) {
+        threadElement.innerHTML = this.renderMessageThread();
+        setTimeout(() => {
+          const threadMessages = document.getElementById('thread-messages');
+          if (threadMessages) threadMessages.scrollTop = threadMessages.scrollHeight;
+        }, 50);
+      }
+    }
+  }
+
   cleanup() {
     if (this.subscription) {
       this.subscription.unsubscribe();
       this.subscription = null;
+    }
+    if (this.scrollObserver) {
+      this.scrollObserver.disconnect();
+      this.scrollObserver = null;
     }
     // Clear any pending recording refresh timers
     if (this._recordingRefreshTimers) {
@@ -1012,19 +1126,21 @@ class InboxPage {
 
   async loadConversations(userId) {
     // Load all data in parallel for speed
-    const [messagesResult, callsResult, contactsResult, chatSessionsResult, agentConfigsResult, serviceNumbersResult] = await Promise.all([
+    const [messagesResult, callsResult, contactsResult, chatSessionsResult, agentConfigsResult, serviceNumbersResult, emailResult] = await Promise.all([
       supabase.from('sms_messages').select('*').eq('user_id', userId).order('sent_at', { ascending: false }),
       supabase.from('call_records').select('*').eq('user_id', userId).order('started_at', { ascending: false }),
       supabase.from('contacts').select('*').eq('user_id', userId),
       ChatSession.getRecentWithPreview(userId, 50),
       supabase.from('agent_configs').select('id, translate_to, language').eq('user_id', userId),
       supabase.from('service_numbers').select('phone_number, agent_id').eq('user_id', userId).eq('is_active', true),
+      supabase.from('email_messages').select('*').eq('user_id', userId).order('sent_at', { ascending: false }).limit(500),
     ]);
 
     const messages = messagesResult.data;
     const calls = callsResult.data;
     const contacts = contactsResult.data;
     const chatSessions = chatSessionsResult.sessions || [];
+    const emailMessages = emailResult.data || [];
 
     // Build agent configs map and service number → agent language mapping
     const agentConfigs = agentConfigsResult.data || [];
@@ -1048,9 +1164,13 @@ class InboxPage {
 
     // Create a map of phone number to contact for quick lookup
     this.contactsMap = {};
+    this.contactsEmailMap = {};
     contacts?.forEach(contact => {
       if (contact.phone_number) {
         this.contactsMap[contact.phone_number] = contact;
+      }
+      if (contact.email) {
+        this.contactsEmailMap[contact.email.toLowerCase()] = contact;
       }
     });
     console.log('Contacts loaded:', contacts?.length || 0);
@@ -1181,6 +1301,56 @@ class InboxPage {
       });
     });
 
+    // Group email messages by thread_id
+    const emailGrouped = {};
+    emailMessages?.forEach(em => {
+      if (!emailGrouped[em.thread_id]) {
+        // Determine the "other party" email (not us)
+        const otherEmail = em.direction === 'inbound' ? em.from_email : em.to_email;
+        emailGrouped[em.thread_id] = {
+          type: 'email',
+          emailThreadId: em.thread_id,
+          email: otherEmail,
+          fromName: em.direction === 'inbound' ? em.from_name : null,
+          subject: em.subject,
+          messages: [],
+          lastActivity: new Date(em.sent_at || em.created_at || Date.now()),
+          lastMessage: em.body_text || em.subject || 'Email',
+          unreadCount: 0,
+          agentId: em.agent_id,
+        };
+      }
+      emailGrouped[em.thread_id].messages.push(em);
+
+      // Track unread inbound emails
+      const convKey = `email_${em.thread_id}`;
+      if (em.direction === 'inbound' && !em.is_read && !this.viewedConversations.has(convKey)) {
+        emailGrouped[em.thread_id].unreadCount++;
+      }
+
+      // Capture fromName from any inbound message if not set yet
+      if (!emailGrouped[em.thread_id].fromName && em.direction === 'inbound' && em.from_name) {
+        emailGrouped[em.thread_id].fromName = em.from_name;
+      }
+
+      const msgDate = new Date(em.sent_at || em.created_at || Date.now());
+      if (msgDate > emailGrouped[em.thread_id].lastActivity) {
+        emailGrouped[em.thread_id].lastActivity = msgDate;
+        emailGrouped[em.thread_id].lastMessage = em.body_text || em.subject || 'Email';
+        emailGrouped[em.thread_id].subject = em.subject || emailGrouped[em.thread_id].subject;
+        if (em.direction === 'inbound' && em.from_name) {
+          emailGrouped[em.thread_id].fromName = em.from_name;
+        }
+      }
+    });
+
+    // Sort email messages within each thread (oldest first)
+    Object.values(emailGrouped).forEach(conv => {
+      conv.messages.sort((a, b) => new Date(a.sent_at || a.created_at) - new Date(b.sent_at || b.created_at));
+    });
+
+    conversationsList.push(...Object.values(emailGrouped));
+
     // Sort all conversations by last activity
     this.conversations = conversationsList.sort((a, b) => b.lastActivity - a.lastActivity);
 
@@ -1202,8 +1372,12 @@ class InboxPage {
         const hasRecentChat = conv.type === 'chat' &&
           conv.lastMessageRole === 'visitor' &&
           new Date(conv.lastActivity) > twentyFourHoursAgo;
+        // For email, check if there's recent inbound email
+        const hasRecentEmail = conv.type === 'email' && conv.messages?.some(m =>
+          m.direction === 'inbound' && new Date(m.sent_at || m.created_at) > twentyFourHoursAgo
+        );
 
-        if (hasRecentInbound || isRecentCall || hasRecentChat) {
+        if (hasRecentInbound || isRecentCall || hasRecentChat || hasRecentEmail) {
           console.log('Auto-unhiding conversation with recent activity:', convKey);
           this.unhideConversation(convKey);
         }
@@ -1226,6 +1400,7 @@ class InboxPage {
   getConversationKey(conv) {
     if (conv.type === 'call') return `call_${conv.callId}`;
     if (conv.type === 'chat') return `chat_${conv.chatSessionId}`;
+    if (conv.type === 'email') return `email_${conv.emailThreadId}`;
     return `sms_${conv.phone}_${conv.serviceNumber}`;
   }
 

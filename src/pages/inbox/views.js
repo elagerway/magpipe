@@ -17,6 +17,7 @@ export const viewsMethods = {
         if (this.typeFilter === 'calls') return conv.type === 'call';
         if (this.typeFilter === 'texts') return conv.type === 'sms';
         if (this.typeFilter === 'chat') return conv.type === 'chat';
+        if (this.typeFilter === 'email') return conv.type === 'email';
         return true;
       });
     }
@@ -28,6 +29,10 @@ export const viewsMethods = {
         if (conv.type === 'chat') {
           // Chat is always considered "inbound" since visitors initiate
           return this.directionFilter === 'inbound';
+        } else if (conv.type === 'email') {
+          // For email, check direction of first message
+          const firstMsg = conv.messages?.[0];
+          return firstMsg?.direction === this.directionFilter;
         } else if (conv.type === 'call') {
           return conv.call?.direction === this.directionFilter;
         } else {
@@ -78,6 +83,14 @@ export const viewsMethods = {
         // Search by transcript (calls)
         if (conv.type === 'call' && conv.call?.transcript?.toLowerCase().includes(query)) return true;
 
+        // Search by email address, subject, or message content
+        if (conv.type === 'email') {
+          if (conv.email?.toLowerCase().includes(query)) return true;
+          if (conv.subject?.toLowerCase().includes(query)) return true;
+          if (conv.fromName?.toLowerCase().includes(query)) return true;
+          if (conv.messages?.some(m => m.body_text?.toLowerCase().includes(query))) return true;
+        }
+
         return false;
       });
     }
@@ -122,16 +135,30 @@ export const viewsMethods = {
       `;
     }
 
-    return visibleConversations.map(conv => {
-      const isSelected = (conv.type === 'sms' && this.selectedContact === conv.phone && this.selectedServiceNumber === conv.serviceNumber && !this.selectedCallId && !this.selectedChatSessionId) ||
+    // Render-window pagination: only render up to displayLimit
+    const totalVisible = visibleConversations.length;
+    const displayedConversations = visibleConversations.slice(0, this.displayLimit);
+
+    const listHtml = displayedConversations.map(conv => {
+      const isSelected = (conv.type === 'sms' && this.selectedContact === conv.phone && this.selectedServiceNumber === conv.serviceNumber && !this.selectedCallId && !this.selectedChatSessionId && !this.selectedEmailThreadId) ||
                         (conv.type === 'call' && this.selectedCallId === conv.callId) ||
-                        (conv.type === 'chat' && this.selectedChatSessionId === conv.chatSessionId);
+                        (conv.type === 'chat' && this.selectedChatSessionId === conv.chatSessionId) ||
+                        (conv.type === 'email' && this.selectedEmailThreadId === conv.emailThreadId);
+
+      // Shared avatar style: 40px circle with border, initial letter
+      const avatarStyle = 'flex-shrink: 0; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 1rem; border: 2px solid var(--border-color, #e5e7eb); background: var(--bg-secondary, #f9fafb); color: var(--text-primary, #374151);';
+
+      // Type indicator icons (small, shown next to timestamp)
+      const typeIcons = {
+        sms: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>`,
+        call: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>`,
+        email: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>`,
+        chat: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>`,
+      };
 
       if (conv.type === 'chat') {
-        // Chat conversation rendering
-        const chatIcon = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
-        </svg>`;
+        const displayName = conv.visitorName || 'Visitor';
+        const initial = displayName[0].toUpperCase();
 
         return `
           <div class="swipe-container" data-conv-key="chat_${conv.chatSessionId}">
@@ -148,14 +175,13 @@ export const viewsMethods = {
                 <input type="checkbox" data-conv-key="chat_${conv.chatSessionId}" ${this.selectedForDeletion.has(`chat_${conv.chatSessionId}`) ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--primary-color);">
               </label>
               ` : ''}
-              <div class="conversation-avatar chat-avatar" style="flex-shrink: 0; background: linear-gradient(135deg, #6366f1, #8b5cf6);">
-                ${chatIcon}
-              </div>
+              <div style="${avatarStyle}">${initial}</div>
               <div class="conversation-content" style="flex: 1 !important; min-width: 0;">
                 <div class="conversation-header" style="display: flex !important; justify-content: space-between !important; align-items: baseline; width: 100%;">
                   <span class="conversation-name">${conv.visitorName}${conv.aiPaused ? ' <span style="font-size: 0.65rem; background: #fef3c7; color: #92400e; padding: 0.125rem 0.375rem; border-radius: 0.25rem; margin-left: 0.25rem;">Human</span>' : ''}</span>
-                  <div style="display: flex; align-items: center; gap: 0.5rem; margin-left: 0.5rem;">
+                  <div style="display: flex; align-items: center; gap: 0.375rem; margin-left: 0.5rem;">
                     ${conv.unreadCount > 0 ? `<span class="conversation-unread-badge">${conv.unreadCount > 99 ? '99+' : conv.unreadCount}</span>` : ''}
+                    ${typeIcons.chat}
                     <span class="conversation-time" style="white-space: nowrap;">${this.formatTimestamp(conv.lastActivity)}</span>
                   </div>
                 </div>
@@ -167,29 +193,58 @@ export const viewsMethods = {
             </div>
           </div>
         `;
+      } else if (conv.type === 'email') {
+        // Look up contact by email address
+        const emailContact = this.contactsEmailMap?.[conv.email?.toLowerCase()];
+        const emailContactName = emailContact ? [emailContact.first_name, emailContact.last_name].filter(Boolean).join(' ') || emailContact.name : null;
+        const displayName = emailContactName || conv.fromName || conv.email;
+        const hasName = !!(emailContactName || conv.fromName);
+        const previewText = conv.lastMessage;
+        const initial = (displayName || '?')[0].toUpperCase();
+
+        return `
+          <div class="swipe-container" data-conv-key="email_${conv.emailThreadId}">
+            <div class="swipe-delete-btn" data-conv-key="email_${conv.emailThreadId}">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+              <span>Delete</span>
+            </div>
+            <div class="conversation-item swipe-content ${isSelected ? 'selected' : ''} ${conv.unreadCount > 0 ? 'unread' : ''}" data-email-thread-id="${conv.emailThreadId}" data-type="email" style="display: flex !important; flex-direction: row !important; gap: 0.75rem;">
+              ${this.selectMode ? `
+              <label class="select-checkbox" style="display: flex; align-items: center; flex-shrink: 0; cursor: pointer;">
+                <input type="checkbox" data-conv-key="email_${conv.emailThreadId}" ${this.selectedForDeletion.has(`email_${conv.emailThreadId}`) ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--primary-color);">
+              </label>
+              ` : ''}
+              ${emailContact?.avatar_url
+                ? `<img src="${emailContact.avatar_url}" style="${avatarStyle} object-fit: cover;" onerror="this.outerHTML='<div style=\\'${avatarStyle}\\'>${initial}</div>';" />`
+                : `<div style="${avatarStyle}">${initial}</div>`
+              }
+              <div class="conversation-content" style="flex: 1 !important; min-width: 0;">
+                <div class="conversation-header" style="display: flex !important; justify-content: space-between !important; align-items: baseline; width: 100%;">
+                  <span class="conversation-name">${displayName}</span>
+                  <div style="display: flex; align-items: center; gap: 0.375rem; margin-left: 0.5rem;">
+                    ${conv.unreadCount > 0 ? `<span class="conversation-unread-badge">${conv.unreadCount > 99 ? '99+' : conv.unreadCount}</span>` : ''}
+                    ${typeIcons.email}
+                    <span class="conversation-time" style="white-space: nowrap;">${this.formatTimestamp(conv.lastActivity)}</span>
+                  </div>
+                </div>
+                <div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${hasName ? conv.email : (conv.subject || 'No subject')}</div>
+                <div class="conversation-preview" style="display: flex; align-items: center;">
+                  <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${hasName ? (conv.subject || previewText) : previewText}</span>
+                  ${this.formatSentimentLabel(this.getConversationSentiment(conv))}
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+
       } else if (conv.type === 'call') {
-        // Determine icon based on direction - using Feather icons
-        const isOutbound = conv.call.direction === 'outbound';
-        const iconSvg = isOutbound
-          ? `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-               <polyline points="23 7 23 1 17 1"></polyline>
-               <line x1="13" y1="11" x2="23" y2="1"></line>
-               <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
-             </svg>` // phone-outgoing
-          : `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-               <polyline points="16 2 16 8 22 8"></polyline>
-               <line x1="23" y1="1" x2="16" y2="8"></line>
-               <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
-             </svg>`; // phone-incoming
-
-        // For outbound: show "To: contact" and "From: service number"
-        // For inbound: show "From: contact" and "To: service number"
-        const primaryNumber = conv.phone; // The contact number
-        const serviceNumber = conv.call.service_number || conv.call.caller_number;
-
-        // Look up contact name
+        const primaryNumber = conv.phone;
         const contact = this.contactsMap?.[primaryNumber];
         const contactName = contact ? [contact.first_name, contact.last_name].filter(Boolean).join(' ') || contact.name : null;
+        const initial = contactName ? contactName[0].toUpperCase() : '?';
 
         return `
           <div class="swipe-container" data-conv-key="call_${conv.callId}">
@@ -206,13 +261,17 @@ export const viewsMethods = {
                 <input type="checkbox" data-conv-key="call_${conv.callId}" ${this.selectedForDeletion.has(`call_${conv.callId}`) ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--primary-color);">
               </label>
               ` : ''}
-              <div class="conversation-avatar call-avatar" style="flex-shrink: 0;">
-                ${iconSvg}
-              </div>
+              ${contact?.avatar_url
+                ? `<img src="${contact.avatar_url}" style="${avatarStyle} object-fit: cover;" onerror="this.outerHTML='<div style=\\'${avatarStyle}\\'>${initial}</div>';" />`
+                : `<div style="${avatarStyle}">${initial}</div>`
+              }
               <div class="conversation-content" style="flex: 1 !important; min-width: 0;">
                 <div class="conversation-header" style="display: flex !important; justify-content: space-between !important; align-items: baseline; width: 100%;">
                   <span class="conversation-name">${contactName || this.formatPhoneNumber(primaryNumber)}</span>
-                  <span class="conversation-time" style="white-space: nowrap; margin-left: 0.5rem;">${this.formatTimestamp(conv.lastActivity)}</span>
+                  <div style="display: flex; align-items: center; gap: 0.375rem; margin-left: 0.5rem;">
+                    ${typeIcons.call}
+                    <span class="conversation-time" style="white-space: nowrap;">${this.formatTimestamp(conv.lastActivity)}</span>
+                  </div>
                 </div>
                 ${contactName ? `<div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 2px;">${this.formatPhoneNumber(primaryNumber)}</div>` : ''}
                 <div class="conversation-preview" style="display: flex; align-items: center;">
@@ -225,9 +284,10 @@ export const viewsMethods = {
           </div>
         `;
       } else {
-        // Get contact info if available
+        // SMS
         const contact = this.contactsMap?.[conv.phone];
         const contactName = contact ? [contact.first_name, contact.last_name].filter(Boolean).join(' ') || contact.name : null;
+        const initial = contactName ? contactName[0].toUpperCase() : '?';
 
         return `
           <div class="swipe-container" data-conv-key="sms_${conv.phone}_${conv.serviceNumber}">
@@ -244,19 +304,16 @@ export const viewsMethods = {
                 <input type="checkbox" data-conv-key="sms_${conv.phone}_${conv.serviceNumber}" ${this.selectedForDeletion.has(`sms_${conv.phone}_${conv.serviceNumber}`) ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--primary-color);">
               </label>
               ` : ''}
-              <div class="conversation-avatar sms-avatar" style="flex-shrink: 0; ${contact?.avatar_url ? 'padding: 0; background: none;' : ''}">
-                ${contact?.avatar_url
-                  ? `<img src="${contact.avatar_url}" alt="${contactName}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" />`
-                  : `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                    </svg>`
-                }
-              </div>
+              ${contact?.avatar_url
+                ? `<img src="${contact.avatar_url}" style="${avatarStyle} object-fit: cover;" onerror="this.outerHTML='<div style=\\'${avatarStyle}\\'>${initial}</div>';" />`
+                : `<div style="${avatarStyle}">${initial}</div>`
+              }
               <div class="conversation-content" style="flex: 1 !important; min-width: 0;">
                 <div class="conversation-header" style="display: flex !important; justify-content: space-between !important; align-items: baseline; width: 100%;">
                   <span class="conversation-name">${contactName || this.formatPhoneNumber(conv.phone)}</span>
-                  <div style="display: flex; align-items: center; gap: 0.5rem; margin-left: 0.5rem;">
+                  <div style="display: flex; align-items: center; gap: 0.375rem; margin-left: 0.5rem;">
                     ${conv.unreadCount > 0 ? `<span class="conversation-unread-badge">${conv.unreadCount > 99 ? '99+' : conv.unreadCount}</span>` : ''}
+                    ${typeIcons.sms}
                     <span class="conversation-time" style="white-space: nowrap;">${this.formatTimestamp(conv.lastActivity)}</span>
                   </div>
                 </div>
@@ -271,6 +328,12 @@ export const viewsMethods = {
         `;
       }
     }).join('');
+
+    // Show sentinel with count if more items remain
+    if (displayedConversations.length < totalVisible) {
+      return listHtml + `<div class="inbox-load-more-sentinel" style="padding: 12px; text-align: center; color: var(--text-secondary); font-size: 0.8rem;">Showing ${displayedConversations.length} of ${totalVisible}</div>`;
+    }
+    return listHtml;
   },
 
   renderMessageThread() {
@@ -296,6 +359,13 @@ export const viewsMethods = {
       return this.renderChatThreadView(conv);
     }
 
+    // Check if we're viewing an email thread
+    if (this.selectedEmailThreadId) {
+      const conv = this.conversations.find(c => c.type === 'email' && c.emailThreadId === this.selectedEmailThreadId);
+      if (!conv) return this.renderEmptyState();
+      return this.renderEmailThreadView(conv);
+    }
+
     const conv = this.conversations.find(c => c.type === 'sms' && c.phone === this.selectedContact && c.serviceNumber === this.selectedServiceNumber);
     if (!conv) return this.renderEmptyState();
 
@@ -319,8 +389,10 @@ export const viewsMethods = {
           line-height: 1;
         ">←</button>
         ${contact?.avatar_url ? `
-          <img src="${contact.avatar_url}" alt="${contactName}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex-shrink: 0;" />
-        ` : ''}
+          <img src="${contact.avatar_url}" alt="${contactName}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex-shrink: 0; border: 2px solid var(--border-color, #e5e7eb);" onerror="this.outerHTML='<div style=\\'width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:600;font-size:1rem;border:2px solid var(--border-color,#e5e7eb);background:var(--bg-secondary,#f9fafb);color:var(--text-primary,#374151)\\'>${(contactName || '?')[0].toUpperCase()}</div>';" />
+        ` : `
+          <div style="width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-weight: 600; font-size: 1rem; border: 2px solid var(--border-color, #e5e7eb); background: var(--bg-secondary, #f9fafb); color: var(--text-primary, #374151);">${contactName ? contactName[0].toUpperCase() : '?'}</div>
+        `}
         <div style="flex: 1; display: flex; flex-direction: column; gap: 0.25rem;">
           <div style="display: flex; align-items: center; gap: 0.75rem; justify-content: space-between;">
             <h2 style="margin: 0; font-size: calc(1.125rem - 5px); font-weight: 600; line-height: 1;">
@@ -582,20 +654,25 @@ export const viewsMethods = {
     }
 
     return `
-      <div class="thread-header" style="display: flex; flex-direction: column; gap: 0.25rem;">
+      <div class="thread-header" style="display: flex; align-items: flex-start; gap: 0.75rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border-color);">
+        <button class="back-button" id="back-button" style="
+          display: none;
+          background: none;
+          border: none;
+          font-size: 1.5rem;
+          cursor: pointer;
+          padding: 0;
+          margin: 0;
+          color: var(--primary-color);
+          line-height: 1;
+        ">←</button>
+        ${contact?.avatar_url ? `
+          <img src="${contact.avatar_url}" alt="${contactName}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex-shrink: 0; border: 2px solid var(--border-color, #e5e7eb);" onerror="this.outerHTML='<div style=\\'width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:600;font-size:1rem;border:2px solid var(--border-color,#e5e7eb);background:var(--bg-secondary,#f9fafb);color:var(--text-primary,#374151)\\'>${(contactName || '?')[0].toUpperCase()}</div>';" />
+        ` : `
+          <div style="width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-weight: 600; font-size: 1rem; border: 2px solid var(--border-color, #e5e7eb); background: var(--bg-secondary, #f9fafb); color: var(--text-primary, #374151);">${contactName && !isUnknownContact ? contactName[0].toUpperCase() : '?'}</div>
+        `}
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 0.25rem;">
         <div style="display: flex; align-items: center; gap: 0.75rem; justify-content: space-between;">
-          <div style="display: flex; align-items: center; gap: 0.5rem;">
-            <button class="back-button" id="back-button" style="
-              display: none;
-              background: none;
-              border: none;
-              font-size: 1.5rem;
-              cursor: pointer;
-              padding: 0;
-              margin: 0;
-              color: var(--primary-color);
-              line-height: 1;
-            ">←</button>
             <h2 style="margin: 0; font-size: calc(1.125rem - 5px); font-weight: 600; line-height: 1;">
               ${contactName && !isUnknownContact
                 ? contactName
@@ -603,7 +680,6 @@ export const viewsMethods = {
                   ? `Unknown <span style="font-weight: 400; font-size: 0.85em;">(could be <a href="#" class="add-contact-link" data-name="${suggestedName}" data-phone="${call.contact_phone}" style="color: var(--primary-color); text-decoration: underline; cursor: pointer;">${suggestedName}</a>)</span>`
                   : 'Unknown'}
             </h2>
-          </div>
           <div style="display: flex; align-items: center; gap: 0.5rem; padding-bottom: 5px;">
               <a href="#" id="call-action-btn" data-phone="${call.contact_phone}" style="
                 padding: 0.2rem 0.5rem;
@@ -649,6 +725,7 @@ export const viewsMethods = {
         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: -5px;">
           <span class="clickable-phone" data-phone="${call.contact_phone}" style="font-size: 0.8rem; color: var(--text-secondary); cursor: pointer;">${this.formatPhoneNumber(call.contact_phone)}</span>
           <span style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.7;">Called: <span class="clickable-phone" data-phone="${call.service_number || (call.direction === 'inbound' ? call.callee_number : call.caller_number) || ''}" style="cursor: pointer;">${this.formatPhoneNumber(call.service_number || (call.direction === 'inbound' ? call.callee_number : call.caller_number) || '')}</span></span>
+        </div>
         </div>
       </div>
 
@@ -1346,6 +1423,175 @@ export const viewsMethods = {
   /**
    * Render chat thread view for web chat conversations
    */
+  renderEmailThreadView(conv) {
+    setPhoneNavActive(false);
+    const inboxBtn = document.querySelector('.bottom-nav-item[onclick*="inbox"]');
+    if (inboxBtn) inboxBtn.classList.add('active');
+
+    // Look up contact by email
+    const emailContact = this.contactsEmailMap?.[conv.email?.toLowerCase()];
+    const contactName = emailContact ? [emailContact.first_name, emailContact.last_name].filter(Boolean).join(' ') || emailContact.name : null;
+    const displayName = contactName || conv.fromName || conv.email;
+
+    return `
+      <div class="thread-header" style="display: flex; align-items: flex-start; gap: 0.75rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border-color);">
+        <button class="back-button" id="back-button" style="
+          display: none;
+          background: none;
+          border: none;
+          font-size: 1.5rem;
+          cursor: pointer;
+          padding: 0;
+          margin: 0;
+          color: var(--primary-color);
+          line-height: 1;
+        ">←</button>
+        ${emailContact?.avatar_url ? `
+          <img src="${emailContact.avatar_url}" alt="${contactName}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex-shrink: 0; border: 2px solid var(--border-color, #e5e7eb);" onerror="this.outerHTML='<div style=\\'width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:600;font-size:1rem;border:2px solid var(--border-color,#e5e7eb);background:var(--bg-secondary,#f9fafb);color:var(--text-primary,#374151)\\'>${(displayName || '?')[0].toUpperCase()}</div>';" />
+        ` : `
+          <div style="width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-weight: 600; font-size: 1rem; border: 2px solid var(--border-color, #e5e7eb); background: var(--bg-secondary, #f9fafb); color: var(--text-primary, #374151);">${(displayName || '?')[0].toUpperCase()}</div>
+        `}
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 0.25rem;">
+          <div style="display: flex; align-items: center; gap: 0.75rem; justify-content: space-between;">
+            <h2 style="margin: 0; font-size: calc(1.125rem - 5px); font-weight: 600; line-height: 1;">
+              ${displayName}
+            </h2>
+            <div style="display: flex; align-items: center; gap: 0.5rem; padding-bottom: 5px;">
+              ${emailContact?.phone_number ? `
+                <a href="#" id="call-action-btn" data-phone="${emailContact.phone_number}" style="
+                  padding: 0.2rem 0.5rem;
+                  color: var(--primary-color, #6366f1);
+                  text-decoration: none;
+                  border: 1px solid var(--border-color, #e5e7eb);
+                  border-radius: 9999px;
+                  font-size: 0.7rem;
+                  transition: background-color 0.15s ease;
+                " onmouseenter="this.style.backgroundColor='var(--bg-tertiary, #f3f4f6)'" onmouseleave="this.style.backgroundColor=''">Call</a>
+                <a href="#" id="message-action-btn" data-phone="${emailContact.phone_number}" style="
+                  padding: 0.2rem 0.5rem;
+                  color: var(--primary-color, #6366f1);
+                  text-decoration: none;
+                  border: 1px solid var(--border-color, #e5e7eb);
+                  border-radius: 9999px;
+                  font-size: 0.7rem;
+                  transition: background-color 0.15s ease;
+                " onmouseenter="this.style.backgroundColor='var(--bg-tertiary, #f3f4f6)'" onmouseleave="this.style.backgroundColor=''">Message</a>
+              ` : ''}
+              <a href="mailto:${conv.email}" style="
+                padding: 0.2rem 0.5rem;
+                color: var(--primary-color, #6366f1);
+                text-decoration: none;
+                border: 1px solid var(--border-color, #e5e7eb);
+                border-radius: 9999px;
+                font-size: 0.7rem;
+                transition: background-color 0.15s ease;
+              " onmouseenter="this.style.backgroundColor='var(--bg-tertiary, #f3f4f6)'" onmouseleave="this.style.backgroundColor=''">Email</a>
+              ${emailContact?.company || emailContact?.job_title || emailContact?.linkedin_url || emailContact?.twitter_url ? `
+                <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; color: var(--text-secondary);">
+                  ${emailContact?.company || emailContact?.job_title ? `
+                    <span>${[emailContact.job_title, emailContact.company].filter(Boolean).join(' at ')}</span>
+                  ` : ''}
+                  ${emailContact?.linkedin_url ? `
+                    <a href="${emailContact.linkedin_url}" target="_blank" rel="noopener" style="color: #0077b5; display: flex;" title="LinkedIn">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+                      </svg>
+                    </a>
+                  ` : ''}
+                  ${emailContact?.twitter_url ? `
+                    <a href="${emailContact.twitter_url}" target="_blank" rel="noopener" style="color: #1da1f2; display: flex;" title="Twitter/X">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                      </svg>
+                    </a>
+                  ` : ''}
+                </div>
+              ` : ''}
+            </div>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: -5px;">
+            <span style="font-size: 0.8rem; color: var(--text-secondary);">${conv.email}</span>
+            <span style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.7;">${conv.subject || 'No subject'}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="thread-messages" id="thread-messages">
+        ${conv.messages.map(msg => this.renderEmailMessage(msg, conv)).join('')}
+      </div>
+
+      <div class="email-reply-bar" style="
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        padding: 0.75rem 1rem;
+        border-top: 1px solid var(--border-color);
+        background: var(--bg-primary);
+      ">
+        <button class="btn btn-primary" id="email-reply-btn" style="
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          padding: 0.5rem 1.5rem;
+          border-radius: 8px;
+        ">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="9 17 4 12 9 7"></polyline>
+            <path d="M20 18v-2a4 4 0 0 0-4-4H4"></path>
+          </svg>
+          Reply
+        </button>
+      </div>
+    `;
+  },
+
+  stripEmailQuotedText(text) {
+    if (!text) return '';
+    const lines = text.split('\n');
+    const cleanLines = [];
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+      // Stop at "On ... wrote:" pattern (Gmail quote header)
+      if (/^On .+ wrote:$/.test(trimmed)) break;
+      // Stop at lines starting with ">" (quoted text)
+      if (trimmed.startsWith('>')) break;
+      // Stop at signature delimiter
+      if (trimmed === '--') break;
+      // Stop at common email signature patterns (after blank line)
+      if (cleanLines.length > 0 && cleanLines[cleanLines.length - 1].trim() === '') {
+        // Signature-like: starts with URL, phone, "Sent from", "Get Outlook", company-like patterns
+        if (/^(https?:\/\/|www\.|Sent from|Get Outlook|\*[A-Z])/.test(trimmed)) break;
+        if (/^\+?\d[\d\s\-.()]{7,}/.test(trimmed)) break;
+      }
+      cleanLines.push(line);
+    }
+    return cleanLines.join('\n').trim();
+  },
+
+  renderEmailMessage(msg, conv) {
+    const isInbound = msg.direction === 'inbound';
+    const isAI = msg.is_ai_generated === true;
+    const isHuman = !isInbound && !isAI;
+    const timestamp = new Date(msg.sent_at || msg.created_at);
+    const deliveryStatus = this.getDeliveryStatusIcon(msg);
+
+    // Strip quoted replies and signatures from email body
+    const rawText = msg.body_text || '';
+    const cleanedText = this.stripEmailQuotedText(rawText);
+    const content = cleanedText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    return `
+      <div class="message-bubble ${isInbound ? 'inbound' : 'outbound'} ${isAI ? 'ai-message' : ''} ${isHuman ? 'human-message' : ''}" data-message-id="${msg.id}">
+        <div class="message-content">${content}</div>
+        <div class="message-time">
+          ${this.formatTime(timestamp)}
+          ${deliveryStatus}
+        </div>
+      </div>
+    `;
+  },
+
   renderChatThreadView(conv) {
     // Deactivate phone nav when showing chat thread
     setPhoneNavActive(false);
@@ -1371,10 +1617,8 @@ export const viewsMethods = {
           color: var(--primary-color);
           line-height: 1;
         ">←</button>
-        <div class="conversation-avatar chat-avatar" style="width: 40px; height: 40px; background: linear-gradient(135deg, #6366f1, #8b5cf6); border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
-            <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
-          </svg>
+        <div style="width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-weight: 600; font-size: 1rem; border: 2px solid var(--border-color, #e5e7eb); background: var(--bg-secondary, #f9fafb); color: var(--text-primary, #374151);">
+          ${conv.visitorName ? conv.visitorName[0].toUpperCase() : '?'}
         </div>
         <div style="flex: 1; display: flex; flex-direction: column; gap: 0.25rem;">
           <div style="display: flex; align-items: center; gap: 0.75rem; justify-content: space-between;">
@@ -1621,6 +1865,12 @@ export const viewsMethods = {
         ?.filter(m => m.direction === 'inbound' && m.sentiment)
         ?.sort((a, b) => new Date(b.sent_at) - new Date(a.sent_at));
       return inboundWithSentiment?.[0]?.sentiment || null;
+    } else if (conv.type === 'email') {
+      // Find most recent message with sentiment (all directions analyzed)
+      const withSentiment = conv.messages
+        ?.filter(m => m.sentiment)
+        ?.sort((a, b) => new Date(b.sent_at) - new Date(a.sent_at));
+      return withSentiment?.[0]?.sentiment || null;
     }
     return null;
   },

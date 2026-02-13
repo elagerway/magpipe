@@ -140,10 +140,12 @@ export const listenersMethods = {
           this.missedFilter = false;
           this.unreadFilter = false;
           this.sentimentFilter = 'all';
+          this.displayLimit = this.DISPLAY_PAGE_SIZE;
 
           // Re-render conversation list
           const conversationsEl = document.getElementById('conversations');
           if (conversationsEl) {
+            delete conversationsEl.dataset.delegated;
             conversationsEl.innerHTML = this.renderConversationList();
             this.attachConversationListeners();
           }
@@ -297,6 +299,9 @@ export const listenersMethods = {
           // Delete chat session and messages
           await supabase.from('chat_messages').delete().eq('session_id', conv.chatSessionId);
           await supabase.from('chat_sessions').delete().eq('id', conv.chatSessionId);
+        } else if (conv.type === 'email') {
+          // Delete email messages for this thread
+          await supabase.from('email_messages').delete().eq('thread_id', conv.emailThreadId).eq('user_id', user.id);
         } else if (conv.type === 'call') {
           // Delete call record
           await supabase.from('call_records').delete().eq('id', conv.callId);
@@ -398,8 +403,10 @@ export const listenersMethods = {
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
           this.searchQuery = e.target.value;
+          this.displayLimit = this.DISPLAY_PAGE_SIZE;
           const conversationsEl = document.getElementById('conversations');
           if (conversationsEl) {
+            delete conversationsEl.dataset.delegated;
             conversationsEl.innerHTML = this.renderConversationList();
             this.attachConversationListeners();
           }
@@ -411,8 +418,10 @@ export const listenersMethods = {
     if (dateFilter) {
       dateFilter.addEventListener('change', (e) => {
         this.dateFilter = e.target.value;
+        this.displayLimit = this.DISPLAY_PAGE_SIZE;
         const conversationsEl = document.getElementById('conversations');
         if (conversationsEl) {
+          delete conversationsEl.dataset.delegated;
           conversationsEl.innerHTML = this.renderConversationList();
           this.attachConversationListeners();
         }
@@ -474,9 +483,11 @@ export const listenersMethods = {
       // Update button states
       this.updateFilterButtonStates();
 
-      // Re-render conversation list
+      // Reset pagination and re-render conversation list
+      this.displayLimit = this.DISPLAY_PAGE_SIZE;
       const conversationsEl = document.getElementById('conversations');
       if (conversationsEl) {
+        delete conversationsEl.dataset.delegated;
         conversationsEl.innerHTML = this.renderConversationList();
         this.attachConversationListeners();
       }
@@ -495,6 +506,8 @@ export const listenersMethods = {
     const allBtn = document.querySelector('[data-filter-reset]');
     const callsBtn = document.querySelector('[data-filter-type="calls"]');
     const textsBtn = document.querySelector('[data-filter-type="texts"]');
+    const chatBtn = document.querySelector('[data-filter-type="chat"]');
+    const emailBtn = document.querySelector('[data-filter-type="email"]');
     const inBtn = document.querySelector('[data-filter-direction="inbound"]');
     const outBtn = document.querySelector('[data-filter-direction="outbound"]');
     const missedBtn = document.querySelector('[data-filter-missed]');
@@ -504,7 +517,7 @@ export const listenersMethods = {
     const negativeBtn = document.querySelector('[data-filter-sentiment="negative"]');
 
     // Reset all
-    [allBtn, callsBtn, textsBtn, inBtn, outBtn, missedBtn, unreadBtn, positiveBtn, neutralBtn, negativeBtn].forEach(b => b?.classList.remove('active'));
+    [allBtn, callsBtn, textsBtn, chatBtn, emailBtn, inBtn, outBtn, missedBtn, unreadBtn, positiveBtn, neutralBtn, negativeBtn].forEach(b => b?.classList.remove('active'));
 
     // Set active states
     const isAllClear = this.typeFilter === 'all' && this.directionFilter === 'all' && !this.missedFilter && !this.unreadFilter && this.sentimentFilter === 'all';
@@ -513,6 +526,8 @@ export const listenersMethods = {
     } else {
       if (this.typeFilter === 'calls') callsBtn?.classList.add('active');
       if (this.typeFilter === 'texts') textsBtn?.classList.add('active');
+      if (this.typeFilter === 'chat') chatBtn?.classList.add('active');
+      if (this.typeFilter === 'email') emailBtn?.classList.add('active');
       if (this.directionFilter === 'inbound') inBtn?.classList.add('active');
       if (this.directionFilter === 'outbound') outBtn?.classList.add('active');
       if (this.missedFilter) missedBtn?.classList.add('active');
@@ -599,6 +614,10 @@ export const listenersMethods = {
             this.showNewConversationModal();
           } else if (action === 'agent-message') {
             this.showAgentMessageInterface();
+          } else if (action === 'new-email') {
+            this.showEmailComposeInterface();
+          } else if (action === 'agent-email') {
+            this.showEmailComposeInterface({ agentMode: true });
           }
           // Future actions: bulk-message, bulk-agent-message
         });
@@ -617,6 +636,22 @@ export const listenersMethods = {
 
     // Attach swipe handlers for mobile
     this.attachSwipeHandlers(conversationsEl);
+
+    // Infinite scroll: observe sentinel to load more conversations
+    if (this.scrollObserver) this.scrollObserver.disconnect();
+    const sentinel = conversationsEl.querySelector('.inbox-load-more-sentinel');
+    if (sentinel) {
+      this.scrollObserver = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting) {
+          this.displayLimit += this.DISPLAY_PAGE_SIZE;
+          // Remove delegated flag so listeners get re-attached after re-render
+          delete conversationsEl.dataset.delegated;
+          conversationsEl.innerHTML = this.renderConversationList();
+          this.attachConversationListeners();
+        }
+      });
+      this.scrollObserver.observe(sentinel);
+    }
 
     conversationsEl.addEventListener('click', async (e) => {
       // Handle delete button click
@@ -685,6 +720,7 @@ export const listenersMethods = {
         this.selectedContact = null;
         this.selectedServiceNumber = null;
         this.selectedChatSessionId = null;
+        this.selectedEmailThreadId = null;
 
         // Save as last selected for next page load
         localStorage.setItem('inbox_last_selected_call', this.selectedCallId);
@@ -707,6 +743,7 @@ export const listenersMethods = {
         this.selectedContact = null;
         this.selectedServiceNumber = null;
         this.selectedCallId = null;
+        this.selectedEmailThreadId = null;
 
         // Save as last selected for next page load
         localStorage.setItem('inbox_last_selected_chat', this.selectedChatSessionId);
@@ -726,18 +763,44 @@ export const listenersMethods = {
 
         // Mark messages as read in database
         ChatSession.markAsRead(this.selectedChatSessionId);
+      } else if (type === 'email') {
+        // Handle email conversation click
+        this.selectedEmailThreadId = item.dataset.emailThreadId;
+        this.selectedContact = null;
+        this.selectedServiceNumber = null;
+        this.selectedCallId = null;
+        this.selectedChatSessionId = null;
+
+        // Save as last selected for next page load
+        localStorage.setItem('inbox_last_selected_email', this.selectedEmailThreadId);
+        localStorage.removeItem('inbox_last_selected_contact');
+        localStorage.removeItem('inbox_last_selected_service_number');
+        localStorage.removeItem('inbox_last_selected_call');
+        localStorage.removeItem('inbox_last_selected_chat');
+
+        // Mark as read
+        markAsRead('email', this.selectedEmailThreadId);
+        this.viewedConversations.add(`email_${this.selectedEmailThreadId}`);
+
+        // Clear unread count
+        const conv = this.conversations.find(c => c.type === 'email' && c.emailThreadId === this.selectedEmailThreadId);
+        if (conv) {
+          conv.unreadCount = 0;
+        }
       } else {
         // Handle SMS conversation click
         this.selectedContact = item.dataset.phone;
         this.selectedServiceNumber = item.dataset.serviceNumber;
         this.selectedCallId = null;
         this.selectedChatSessionId = null;
+        this.selectedEmailThreadId = null;
 
         // Save as last selected for next page load
         localStorage.setItem('inbox_last_selected_contact', this.selectedContact);
         localStorage.setItem('inbox_last_selected_service_number', this.selectedServiceNumber);
         localStorage.removeItem('inbox_last_selected_call');
         localStorage.removeItem('inbox_last_selected_chat');
+        localStorage.removeItem('inbox_last_selected_email');
 
         // Mark as read using unified service
         const smsKey = `${this.selectedContact}_${this.selectedServiceNumber}`;
@@ -766,6 +829,16 @@ export const listenersMethods = {
       // Attach input listeners for SMS and chat threads
       if (type === 'sms' || type === 'chat') {
         this.attachMessageInputListeners();
+      }
+
+      // Attach email reply button listener
+      if (type === 'email') {
+        this.attachEmailReplyListener();
+        // Scroll to bottom
+        const threadMessages = document.getElementById('thread-messages');
+        if (threadMessages) {
+          setTimeout(() => { threadMessages.scrollTop = threadMessages.scrollHeight; }, 100);
+        }
       }
 
       // Show thread on mobile
@@ -976,6 +1049,30 @@ export const listenersMethods = {
         }
       }
     });
+  },
+
+  attachEmailReplyListener() {
+    const replyBtn = document.getElementById('email-reply-btn');
+    if (replyBtn) {
+      replyBtn.addEventListener('click', () => {
+        const conv = this.conversations.find(c => c.type === 'email' && c.emailThreadId === this.selectedEmailThreadId);
+        if (!conv) return;
+
+        // Pre-fill compose with reply context
+        const lastInbound = [...conv.messages].reverse().find(m => m.direction === 'inbound');
+        const replyTo = lastInbound?.from_email || conv.email;
+        const replySubject = conv.subject?.startsWith('Re:') ? conv.subject : `Re: ${conv.subject || ''}`;
+        const threadId = conv.emailThreadId;
+        const inReplyTo = lastInbound?.gmail_message_id;
+
+        this.showEmailComposeInterface({
+          replyTo,
+          subject: replySubject,
+          threadId,
+          inReplyTo,
+        });
+      });
+    }
   },
 
   attachRedialButtonListener() {
