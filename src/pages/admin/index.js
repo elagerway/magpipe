@@ -58,6 +58,10 @@ class AdminPage {
     // Expose for retry buttons
     window.adminPage = this;
 
+    // Hide the main app nav on admin page
+    const persistentNav = document.getElementById('persistent-nav');
+    if (persistentNav) persistentNav.style.display = 'none';
+
     this.adminHeader = new AdminHeader({
       title: 'Admin Portal',
       backPath: '/inbox',
@@ -103,8 +107,10 @@ class AdminPage {
 
     if (urlParams.get('integration_connected') === 'google_email') {
       showToast('Gmail connected successfully!', 'success');
-      // Clean URL
-      window.history.replaceState({}, '', window.location.pathname);
+      // Clean URL but preserve tab param
+      const cleanUrl = new URL(window.location.href);
+      cleanUrl.searchParams.delete('integration_connected');
+      window.history.replaceState({}, '', cleanUrl.toString());
     }
 
     if (initialTab !== 'analytics') {

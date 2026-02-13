@@ -77,15 +77,6 @@ export const functionsTabMethods = {
             <button id="configure-semantic-match-btn" type="button" class="configure-btn">Configure</button>
           </div>
 
-          <div class="function-toggle" style="padding: 0; cursor: default;">
-            <label style="display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem; cursor: pointer; flex: 1;">
-              <input type="checkbox" id="func-support-tickets" ${this.agent.functions?.support_tickets?.enabled ? 'checked' : ''} style="margin-top: 0.2rem;" />
-              <div class="toggle-content">
-                <span class="toggle-label">Support Tickets</span>
-                <span class="toggle-desc">Allow agent to create support tickets from chat conversations</span>
-              </div>
-            </label>
-          </div>
         </div>
       </div>
 
@@ -216,7 +207,6 @@ export const functionsTabMethods = {
     const funcExtract = document.getElementById('func-extract');
     const funcEndCall = document.getElementById('func-end-call');
     const funcSemanticMatch = document.getElementById('func-semantic-match');
-    const funcSupportTickets = document.getElementById('func-support-tickets');
 
     const updateFunctions = () => {
       const functions = {
@@ -227,7 +217,6 @@ export const functionsTabMethods = {
         extract_data: { ...this.agent.functions?.extract_data, enabled: funcExtract?.checked ?? false },
         end_call: { ...this.agent.functions?.end_call, enabled: funcEndCall?.checked ?? true },
         semantic_match: { ...this.agent.functions?.semantic_match, enabled: funcSemanticMatch?.checked ?? false },
-        support_tickets: { ...this.agent.functions?.support_tickets, enabled: funcSupportTickets?.checked ?? false },
       };
       this.agent.functions = functions;
       this.scheduleAutoSave({ functions });
@@ -421,11 +410,6 @@ export const functionsTabMethods = {
         e.stopPropagation();
         this.showSemanticMatchConfigModal();
       });
-    }
-
-    // Support Tickets toggle - simple enable/disable
-    if (funcSupportTickets) {
-      funcSupportTickets.addEventListener('change', updateFunctions);
     }
 
     // App Functions — master toggles and channel toggles

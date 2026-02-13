@@ -643,8 +643,13 @@ TROUBLESHOOTING:
       })
     }
 
-    // Add support ticket tool if enabled
-    const hasSupportTickets = !!agentConfig.functions?.support_tickets?.enabled
+    // Add support ticket tool if enabled globally in support config
+    const { data: supportCfg } = await supabase
+      .from('support_email_config')
+      .select('ticket_creation_enabled')
+      .limit(1)
+      .single()
+    const hasSupportTickets = supportCfg?.ticket_creation_enabled !== false
     if (hasSupportTickets) {
       allTools.push({
         name: 'create_support_ticket',

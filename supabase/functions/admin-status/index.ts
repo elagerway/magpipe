@@ -57,6 +57,7 @@ Deno.serve(async (req) => {
       checkOpenAI(),
       checkElevenLabs(),
       checkDeepgram(),
+      checkApollo(),
       checkHubSpot(supabase),
       checkSlack(supabase),
       checkCalCom(supabase),
@@ -509,6 +510,45 @@ async function checkDeepgram(): Promise<ServiceStatus> {
     }
   } catch (error) {
     return { name: 'Deepgram', status: 'down', latency: Date.now() - start, message: error.message, statusUrl }
+  }
+}
+
+async function checkApollo(): Promise<ServiceStatus> {
+  const start = Date.now()
+  const statusUrl = 'https://status.apollo.io/'
+  const apiKey = Deno.env.get('APOLLO_API_KEY')
+
+  if (!apiKey) {
+    return { name: 'Apollo', status: 'down', message: 'Not configured', statusUrl }
+  }
+
+  try {
+    // Use people/match with a test email — any non-401 response = API working
+    const response = await fetch('https://api.apollo.io/api/v1/people/match', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email: 'healthcheck@example.com' }),
+      signal: AbortSignal.timeout(5000)
+    })
+
+    const latency = Date.now() - start
+
+    if (response.status === 401 || response.status === 403) {
+      return { name: 'Apollo', status: 'down', latency, message: 'Invalid API key', statusUrl }
+    }
+
+    return {
+      name: 'Apollo',
+      status: latency > 3000 ? 'degraded' : 'operational',
+      latency,
+      message: latency > 3000 ? 'High latency' : undefined,
+      statusUrl
+    }
+  } catch (error) {
+    return { name: 'Apollo', status: 'down', latency: Date.now() - start, message: error.message, statusUrl }
   }
 }
 
