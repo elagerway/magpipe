@@ -135,6 +135,20 @@ Deno.serve(async (req) => {
       console.error('SMS send failed:', await smsResponse.text())
     }
 
+    // Also send via configurable admin notification system (fire and forget)
+    fetch(`${supabaseUrl}/functions/v1/admin-send-notification`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseKey}`,
+      },
+      body: JSON.stringify({
+        category: 'signups',
+        title: 'New User Signup',
+        body: `${name || 'Unknown'} (${email})${locationInfo}`,
+      }),
+    }).catch(err => console.error('Admin notification failed:', err))
+
     return new Response(JSON.stringify({ success: true }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }

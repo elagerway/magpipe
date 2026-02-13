@@ -3,6 +3,13 @@ import { requireAdmin, corsHeaders, handleCors, errorResponse, successResponse }
 
 const CONFIG_ID = '00000000-0000-0000-0000-000000000001'
 
+function buildReplySubject(subject: string | null, ticketRef: string | null): string {
+  let clean = (subject || '').replace(/\s*\[TKT-\d+\]\s*/g, '').trim()
+  if (!clean.startsWith('Re:')) clean = `Re: ${clean}`
+  if (ticketRef) clean = `${clean} [${ticketRef}]`
+  return clean
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return handleCors()
 
@@ -338,6 +345,17 @@ async function handleSendReply(supabase: any, body: any) {
   const latestMsg = threadMessages?.[0]
   if (!latestMsg) return errorResponse('Thread not found')
 
+  // Look up ticket_ref for subject threading
+  const { data: ticketRefRow } = await supabase
+    .from('support_tickets')
+    .select('ticket_ref')
+    .eq('thread_id', threadId)
+    .not('ticket_ref', 'is', null)
+    .limit(1)
+    .single()
+  const ticketRef = ticketRefRow?.ticket_ref
+  const replySubject = buildReplySubject(latestMsg.subject, ticketRef)
+
   // Determine recipient (reply to the last inbound message's sender)
   const inboundMsg = threadMessages?.find((m: any) => m.direction === 'inbound') || latestMsg
   const toEmail = inboundMsg.from_email
@@ -364,7 +382,7 @@ async function handleSendReply(supabase: any, body: any) {
       accessToken,
       config.gmail_address,
       toEmail,
-      latestMsg.subject,
+      replySubject,
       threadId,
       latestMsg.gmail_message_id,
       replyBody
@@ -378,7 +396,7 @@ async function handleSendReply(supabase: any, body: any) {
       from_email: config.gmail_address,
       from_name: '',
       to_email: toEmail,
-      subject: latestMsg.subject?.startsWith('Re:') ? latestMsg.subject : `Re: ${latestMsg.subject}`,
+      subject: replySubject,
       body_text: replyBody,
       direction: 'outbound',
       status: latestMsg.status || 'open',
@@ -386,7 +404,7 @@ async function handleSendReply(supabase: any, body: any) {
     })
   } else {
     // Non-Gmail ticket (chat- or manual-) — send via Postmark
-    await sendPostmarkReply(toEmail, latestMsg.subject, replyBody)
+    await sendPostmarkReply(toEmail, replySubject, replyBody)
     sentMsgId = `postmark-${Date.now()}`
 
     // Insert outbound record
@@ -395,7 +413,7 @@ async function handleSendReply(supabase: any, body: any) {
       from_email: 'support@snapsonic.com',
       from_name: '',
       to_email: toEmail,
-      subject: latestMsg.subject?.startsWith('Re:') ? latestMsg.subject : `Re: ${latestMsg.subject}`,
+      subject: replySubject,
       body_text: replyBody,
       direction: 'outbound',
       status: latestMsg.status || 'open',
@@ -426,6 +444,17 @@ async function handleApproveDraft(supabase: any, body: any) {
 
   const draftText = editedBody || ticket.ai_draft
 
+  // Look up ticket_ref for subject threading
+  const { data: draftRefRow } = await supabase
+    .from('support_tickets')
+    .select('ticket_ref')
+    .eq('thread_id', ticket.thread_id)
+    .not('ticket_ref', 'is', null)
+    .limit(1)
+    .single()
+  const draftTicketRef = draftRefRow?.ticket_ref
+  const replySubject = buildReplySubject(ticket.subject, draftTicketRef)
+
   // Check if this is a Gmail ticket
   const isGmailTicket = !!ticket.gmail_message_id && !ticket.gmail_message_id.startsWith('reply-') && !ticket.gmail_message_id.startsWith('approved-')
 
@@ -446,7 +475,7 @@ async function handleApproveDraft(supabase: any, body: any) {
       accessToken,
       config.gmail_address,
       ticket.from_email,
-      ticket.subject,
+      replySubject,
       ticket.thread_id,
       ticket.gmail_message_id,
       draftText
@@ -464,7 +493,7 @@ async function handleApproveDraft(supabase: any, body: any) {
       thread_id: ticket.thread_id,
       from_email: config.gmail_address,
       to_email: ticket.from_email,
-      subject: ticket.subject?.startsWith('Re:') ? ticket.subject : `Re: ${ticket.subject}`,
+      subject: replySubject,
       body_text: draftText,
       direction: 'outbound',
       status: ticket.status,
@@ -472,7 +501,7 @@ async function handleApproveDraft(supabase: any, body: any) {
     })
   } else {
     // Non-Gmail ticket — send via Postmark
-    await sendPostmarkReply(ticket.from_email, ticket.subject, draftText)
+    await sendPostmarkReply(ticket.from_email, replySubject, draftText)
 
     // Update draft status
     await supabase
@@ -485,7 +514,7 @@ async function handleApproveDraft(supabase: any, body: any) {
       thread_id: ticket.thread_id,
       from_email: 'support@snapsonic.com',
       to_email: ticket.from_email,
-      subject: ticket.subject?.startsWith('Re:') ? ticket.subject : `Re: ${ticket.subject}`,
+      subject: replySubject,
       body_text: draftText,
       direction: 'outbound',
       status: ticket.status,
@@ -607,8 +636,6 @@ async function sendPostmarkReply(toEmail: string, subject: string, body: string)
     throw new Error('Email service not configured')
   }
 
-  const replySubject = subject?.startsWith('Re:') ? subject : `Re: ${subject}`
-
   const resp = await fetch('https://api.postmarkapp.com/email', {
     method: 'POST',
     headers: {
@@ -619,7 +646,7 @@ async function sendPostmarkReply(toEmail: string, subject: string, body: string)
     body: JSON.stringify({
       From: 'support@snapsonic.com',
       To: toEmail,
-      Subject: replySubject,
+      Subject: subject,
       TextBody: body,
       MessageStream: 'outbound',
     }),
@@ -752,12 +779,10 @@ async function sendGmailReply(
   inReplyTo: string,
   body: string
 ) {
-  const replySubject = subject?.startsWith('Re:') ? subject : `Re: ${subject}`
-
   const rawMessage = [
     `From: ${fromAddress}`,
     `To: ${toAddress}`,
-    `Subject: ${replySubject}`,
+    `Subject: ${subject}`,
     `In-Reply-To: ${inReplyTo}`,
     `References: ${inReplyTo}`,
     'Content-Type: text/plain; charset=UTF-8',

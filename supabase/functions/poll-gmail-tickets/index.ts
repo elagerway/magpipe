@@ -2,6 +2,13 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 
 const CONFIG_ID = '00000000-0000-0000-0000-000000000001'
 
+function buildReplySubject(subject: string | null, ticketRef: string | null): string {
+  let clean = (subject || '').replace(/\s*\[TKT-\d+\]\s*/g, '').trim()
+  if (!clean.startsWith('Re:')) clean = `Re: ${clean}`
+  if (ticketRef) clean = `${clean} [${ticketRef}]`
+  return clean
+}
+
 Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
@@ -85,6 +92,22 @@ Deno.serve(async (req) => {
         .single()
 
       if (existing) continue // Already have this message
+
+      // Check subject for ticket ref tag to match existing threads (e.g. Postmark replies)
+      const refMatch = parsed.subject?.match(/\[TKT-(\d+)\]/)
+      if (refMatch) {
+        const refTag = `TKT-${refMatch[1]}`
+        const { data: existingThread } = await supabase
+          .from('support_tickets')
+          .select('thread_id')
+          .eq('ticket_ref', refTag)
+          .limit(1)
+          .single()
+
+        if (existingThread) {
+          parsed.thread_id = existingThread.thread_id
+        }
+      }
 
       // For new inbound messages, check if this is the first in a thread and assign ticket_ref
       if (parsed.direction === 'inbound') {
@@ -382,7 +405,7 @@ async function sendTicketAcknowledgment(accessToken: string, fromAddress: string
       return
     }
 
-    const subject = `Re: ${msg.subject}`
+    const subject = `Re: ${msg.subject} [${msg.ticket_ref}]`
     const senderName = msg.from_name || 'there'
 
     const body = `Hi ${senderName},
@@ -427,7 +450,7 @@ The Support Team`
     if (!response.ok) {
       console.error('Failed to send ticket acknowledgment:', await response.text())
     } else {
-      console.log('Ticket acknowledgment sent for:', ticketRef)
+      console.log('Ticket acknowledgment sent for:', msg.ticket_ref)
     }
   } catch (e) {
     console.error('Error sending ticket acknowledgment:', e)
@@ -506,9 +529,19 @@ async function generateAiDraft(supabase: any, accessToken: string, config: any, 
 
     if (!draftText) return
 
+    // Look up ticket_ref for subject threading
+    const { data: draftRefRow } = await supabase
+      .from('support_tickets')
+      .select('ticket_ref')
+      .eq('thread_id', msg.thread_id)
+      .not('ticket_ref', 'is', null)
+      .limit(1)
+      .single()
+    const draftTicketRef = draftRefRow?.ticket_ref
+
     if (config.agent_mode === 'auto') {
       // Auto-send: send via Gmail and record
-      await sendGmailReply(accessToken, config.gmail_address, msg, draftText)
+      await sendGmailReply(accessToken, config.gmail_address, msg, draftText, draftTicketRef)
 
       // Insert outbound record
       await supabase.from('support_tickets').insert({
@@ -517,7 +550,7 @@ async function generateAiDraft(supabase: any, accessToken: string, config: any, 
         from_email: config.gmail_address,
         from_name: '',
         to_email: msg.from_email,
-        subject: `Re: ${msg.subject}`,
+        subject: buildReplySubject(msg.subject, draftTicketRef),
         body_text: draftText,
         direction: 'outbound',
         status: 'open',
@@ -544,8 +577,8 @@ async function generateAiDraft(supabase: any, accessToken: string, config: any, 
 }
 
 
-async function sendGmailReply(accessToken: string, fromAddress: string, originalMsg: any, body: string) {
-  const subject = originalMsg.subject?.startsWith('Re:') ? originalMsg.subject : `Re: ${originalMsg.subject}`
+async function sendGmailReply(accessToken: string, fromAddress: string, originalMsg: any, body: string, ticketRef?: string | null) {
+  const subject = buildReplySubject(originalMsg.subject, ticketRef || null)
 
   // Build RFC 2822 message
   const rawMessage = [
