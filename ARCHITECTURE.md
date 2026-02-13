@@ -37,15 +37,16 @@
 
 | Route | File | Purpose | DB Tables | Edge Functions |
 |-------|------|---------|-----------|----------------|
-| `/inbox` | `inbox.js` | Main messaging UI — SMS, calls, chat. Real-time subscriptions. | `sms_messages`, `call_records`, `chat_sessions`, `contacts`, `service_numbers`, `agent_configs` | None (real-time subs) |
+| Route | File | Purpose | DB Tables | Edge Functions |
+|-------|------|---------|-----------|----------------|
+| `/inbox` | `inbox/index.js` | Main messaging UI — SMS, calls, chat. Real-time subscriptions. Split into `call-interface.js`, `listeners.js`, `messaging.js`, `views.js`, `voice-loader.js` | `sms_messages`, `call_records`, `chat_sessions`, `contacts`, `service_numbers`, `agent_configs` | None (real-time subs) |
 | `/agent` | `agent.js` | Admin chat interface for AI agent | `sms_messages` | None |
 | `/agents` | `agents.js` | Multi-agent list | `agent_configs`, `service_numbers` | None |
-| `/agents/:id` | `agent-detail.js` | Agent config detail (Configure tab) | `agent_configs`, `service_numbers`, `knowledge_sources`, `dynamic_variables`, `custom_functions`, `transfer_numbers` | `preview-voice`, `clone-voice`, `fetch-agent-avatar` |
-| `/phone` | `phone.js` | Phone number management | `service_numbers`, `external_sip_numbers`, `agent_configs` | `cancel-number-deletion`, `submit-cnam-request`, `fix-number-capabilities`, `sync-external-capabilities` |
+| `/agents/:id` | `agent-detail/index.js` | Agent config detail. Split into `configure-tab.js`, `prompt-tab.js`, `functions-tab.js`, `knowledge-tab.js`, `memory-tab.js`, `analytics-tab.js`, `deployment-tab.js`, `schedule-tab.js`, `modals.js`, `styles.js` | `agent_configs`, `service_numbers`, `knowledge_sources`, `dynamic_variables`, `custom_functions`, `transfer_numbers` | `preview-voice`, `clone-voice`, `fetch-agent-avatar` |
+| `/phone` | `phone/index.js` | Phone number management. Split into `call-handler.js`, `dialpad.js`, `number-management.js` | `service_numbers`, `external_sip_numbers`, `agent_configs` | `cancel-number-deletion`, `submit-cnam-request`, `fix-number-capabilities`, `sync-external-capabilities` |
 | `/contacts` | `contacts.js` | Contact list with CSV import | `contacts` | `contact-lookup` |
 | `/calls` | `calls.js` | Call history | `call_records` | None |
 | `/messages` | `messages.js` | SMS history | `sms_messages` | None |
-| `/inbox` | `inbox.js` | Unified inbox | `sms_messages`, `call_records`, `contacts` | None (real-time) |
 | `/knowledge` | `knowledge.js` | Knowledge base management | `knowledge_sources`, `knowledge_chunks` | `knowledge-source-add`, `knowledge-source-delete`, `knowledge-source-sync`, `knowledge-source-manual` |
 | `/apps` | `apps.js` | Integrations & MCP servers | `user_integrations`, `mcp_servers`, `user_mcp_configs` | `integration-oauth-start`, `mcp-catalog-refresh`, `mcp-test-connection` |
 | `/analytics` | `analytics.js` | Org-wide analytics dashboard | None directly | `org-analytics` |
@@ -62,9 +63,19 @@
 
 | Route | File | Purpose |
 |-------|------|---------|
-| `/admin` | `admin.js` | Full admin portal — user management, number management, agent chat, analytics, status dashboard |
+| `/admin` | `admin/index.js` | Admin portal — split into tab modules. Tabs: Support (default), Users, Analytics, KPIs, Global Agent, Chat, Notifications |
 
-Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-update-user`, `admin-impersonate`, `admin-manage-numbers`, `admin-analytics`, `admin-status`, `admin-agent-chat`, `admin-notifications-api`, etc.
+Admin tab modules in `src/pages/admin/`:
+- `support-tab.js` — Support ticket management, Gmail integration, AI agent settings, ticket creation toggle
+- `users-tab.js` — User management, impersonation, number assignment
+- `analytics-tab.js` — Usage analytics dashboard
+- `kpi-tab.js` — KPI/metrics display
+- `global-agent-tab.js` — Global agent configuration
+- `chat-tab.js` — Admin omni-chat interface
+- `notifications-tab.js` — Notification channel settings (SMS, email, Slack)
+- `styles.js` — Centralized admin CSS
+
+Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-update-user`, `admin-impersonate`, `admin-manage-numbers`, `admin-analytics`, `admin-status`, `admin-agent-chat`, `admin-notifications-api`, `support-tickets-api`, etc.
 
 ---
 
@@ -81,6 +92,7 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 | `PublicFooter.js` | Public page footer | None |
 | `ConfirmModal.js` | Custom confirm dialog | None |
 | `ImpersonationBanner.js` | Admin impersonation banner | None |
+| `LowBalanceBanner.js` | Low balance warning banner (at $1) | `users` |
 | `VoiceToggle.js` | Voice mode toggle | None |
 | `KnowledgeSourceManager.js` | KB source CRUD | `knowledge_sources` + edge functions |
 | `AccessCodeSettings.js` | Access code config | `access_codes` |
@@ -154,7 +166,7 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 | `send-password-reset` | No JWT | None | Supabase Auth | forgot-password page |
 | `notify-signup` | Service role | `users` | Postmark, Slack | signup (fire & forget) |
 | `send-team-invitation` | JWT | `users` | Postmark | team page |
-| `send-contact-email` | No JWT | None | Postmark | contact form |
+| `send-contact-email` | JWT | None | Postmark | contact form (sends to help@magpipe.ai) |
 | `send-custom-plan-inquiry` | No JWT | None | Postmark | custom-plan page |
 | `manage-api-keys` | JWT | `api_keys` | None | settings page |
 | `create-user-sip-endpoint` | JWT | `users`, `user_sip_endpoints` | SignalWire | SIP config |
@@ -287,6 +299,7 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 | `mcp-execute` | JWT/Service role | Many tables | OpenAI, various MCP servers | admin chat, agent |
 | `mcp-proxy` | JWT | None | MCP servers | MCP client |
 | `mcp-tools` | JWT | None | None | MCP client |
+| `contact-lookup` | JWT | None | Apollo.io | contacts page |
 
 ### Admin
 
@@ -309,9 +322,15 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 
 | Function | Auth | Tables | External APIs | Called By |
 |----------|------|--------|---------------|----------|
-| `support-tickets-api` | JWT | `support_tickets`, `support_ticket_messages` | None | admin page |
-| `webhook-inbound-email` | **No JWT** | `support_tickets`, `support_ticket_messages` | None | email webhook |
-| `poll-gmail-tickets` | Cron | `support_tickets`, `support_ticket_messages` | Gmail API | cron job |
+| `support-tickets-api` | JWT | `support_tickets`, `support_email_config` | Gmail API, Postmark | admin page |
+| `poll-gmail-tickets` | Cron (5m) | `support_tickets`, `support_email_config`, `user_integrations` | Gmail API, OpenAI, Postmark | cron job |
+
+### Referrals & Balance
+
+| Function | Auth | Tables | External APIs | Called By |
+|----------|------|--------|---------------|----------|
+| `process-referral` | JWT | `users`, `referral_rewards` | None | signup page |
+| `_shared/balance-check.ts` | — | `users` | — | Shared helper used by call/SMS functions |
 
 ---
 
@@ -342,7 +361,10 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 `admin_conversations`, `admin_messages`, `admin_impersonation_tokens`, `admin_audit_log`, `admin_action_logs`, `admin_notification_config`
 
 ### Support
-`support_tickets`, `support_ticket_notes`, `support_email_config`
+`support_tickets`, `support_email_config`
+
+### Referrals
+`referral_rewards`
 
 ### Security
 `phone_verifications`, `sms_opt_outs`, `access_code_attempts`, `sms_confirmations`, `oauth_states`, `api_keys`
@@ -404,6 +426,7 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 | **Firecrawl** | Web scraping for KB | `knowledge-source-add`, `knowledge-source-sync`, `knowledge-crawl-process` |
 | **Slack** | Notifications, integration | `admin-agent-chat`, `admin-send-notification`, `webhook-inbound-sms` (mirror) |
 | **Cal.com** | Calendar booking | `cal-com-*` functions, agent.py tools |
+| **Apollo.io** | Contact enrichment | `contact-lookup` |
 | **HubSpot** | CRM | `mcp-execute` (native tools) |
 | **Google Places** | Business search | `admin-agent-chat`, `mcp-execute` |
 

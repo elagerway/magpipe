@@ -34,10 +34,13 @@ Maggie is a Progressive Web App (PWA) that acts as your personal AI assistant fo
 
 ## Tech Stack
 
-- **Frontend**: Vanilla JavaScript (ES6+), HTML5, CSS3
-- **Backend**: Supabase (PostgreSQL, Auth, Realtime, Edge Functions)
+- **Frontend**: Vanilla JavaScript (ES6+), HTML5, CSS3, Vite
+- **Backend**: Supabase (PostgreSQL, Auth, Realtime, Edge Functions — TypeScript/Deno)
 - **Telephony**: SignalWire (PSTN calls, SMS, conference bridging)
 - **Voice AI**: LiveKit (real-time audio), OpenAI (LLM), Deepgram (STT), ElevenLabs (TTS)
+- **Payments**: Stripe (credits, subscriptions)
+- **Email**: Postmark (transactional), Gmail API (support tickets)
+- **Enrichment**: Apollo.io (contact data)
 - **Vector DB**: pgvector (conversation context embeddings)
 
 ## Project Structure
@@ -45,52 +48,81 @@ Maggie is a Progressive Web App (PWA) that acts as your personal AI assistant fo
 ```
 pat/
 ├── agents/
-│   └── livekit-voice-agent/    # Python LiveKit agent (deployed on Render)
-│       ├── agent.py            # Main agent logic
+│   └── livekit-voice-agent/      # Python LiveKit agent (deployed on Render)
+│       ├── agent.py              # Main agent logic (~3,400 lines)
 │       ├── requirements.txt
-│       └── render.yaml         # Render deployment config
-├── public/                     # Static assets
+│       └── render.yaml           # Render deployment config
+├── public/                       # Static assets
 │   ├── index.html
-│   ├── manifest.json           # PWA manifest
-│   ├── sw.js                   # Service worker
+│   ├── manifest.json             # PWA manifest
+│   ├── sw.js                     # Service worker
 │   └── styles/
 ├── src/
-│   ├── components/             # Reusable UI components
-│   │   ├── AdminChatInterface.js
-│   │   ├── BottomNav.js
-│   │   └── OutboundTemplateModal.js
-│   ├── lib/                    # Utilities
-│   │   └── supabase.js         # Supabase client
-│   ├── models/                 # Data models
-│   │   ├── User.js
-│   │   ├── Contact.js
-│   │   ├── CallRecord.js
-│   │   ├── SmsMessage.js
-│   │   ├── AgentConfig.js
-│   │   └── OutboundTemplate.js
-│   ├── pages/                  # UI pages
-│   │   ├── agent.js            # Agent chat interface
-│   │   ├── agent-config.js     # Agent settings
-│   │   ├── phone.js            # Dialer & calling
-│   │   ├── inbox.js            # Messages & calls
-│   │   ├── contacts.js
+│   ├── components/               # Reusable UI components
+│   │   ├── AdminChatInterface.js # Admin AI chat
+│   │   ├── AdminHeader.js        # Admin portal header with status dropdown
+│   │   ├── BottomNav.js          # Mobile bottom nav / desktop sidebar
+│   │   ├── ConfirmModal.js       # Custom confirm dialog
+│   │   ├── ImpersonationBanner.js
+│   │   ├── LowBalanceBanner.js   # Low credit balance warning
 │   │   └── ...
-│   ├── services/
-│   │   ├── adminAgentService.js
-│   │   └── realtimeAdminService.js
-│   ├── main.js                 # App entry point
-│   └── router.js               # Client-side routing
+│   ├── lib/                      # Utilities
+│   │   └── supabase.js           # Supabase client
+│   ├── models/                   # Data models (User, Contact, AgentConfig, etc.)
+│   ├── pages/                    # UI pages (large pages split into subdirectories)
+│   │   ├── admin/                # Admin portal (split from admin.js)
+│   │   │   ├── index.js          # Entry point
+│   │   │   ├── support-tab.js    # Support tickets, Gmail, AI settings
+│   │   │   ├── users-tab.js      # User management
+│   │   │   ├── analytics-tab.js
+│   │   │   ├── kpi-tab.js
+│   │   │   ├── notifications-tab.js
+│   │   │   ├── chat-tab.js
+│   │   │   ├── global-agent-tab.js
+│   │   │   └── styles.js
+│   │   ├── agent-detail/         # Agent config (split from agent-detail.js)
+│   │   │   ├── index.js
+│   │   │   ├── configure-tab.js
+│   │   │   ├── prompt-tab.js
+│   │   │   ├── functions-tab.js
+│   │   │   ├── knowledge-tab.js
+│   │   │   ├── memory-tab.js
+│   │   │   └── ...
+│   │   ├── inbox/                # Inbox (split from inbox.js)
+│   │   │   ├── index.js
+│   │   │   ├── call-interface.js
+│   │   │   ├── listeners.js
+│   │   │   ├── messaging.js
+│   │   │   └── views.js
+│   │   ├── phone/                # Phone (split from phone.js)
+│   │   │   ├── index.js
+│   │   │   ├── call-handler.js
+│   │   │   ├── dialpad.js
+│   │   │   └── number-management.js
+│   │   ├── contacts.js
+│   │   ├── settings.js
+│   │   └── ...
+│   ├── services/                 # Business logic services
+│   │   ├── unreadService.js
+│   │   ├── pushNotifications.js
+│   │   ├── mcpClient.js
+│   │   └── ...
+│   ├── main.js                   # App entry point
+│   └── router.js                 # Client-side SPA routing
 ├── supabase/
-│   ├── functions/              # Edge Functions
-│   │   ├── admin-agent-chat/   # Agent chat backend
+│   ├── functions/                # ~60 Edge Functions (TypeScript/Deno)
+│   │   ├── _shared/             # Shared utilities (cors, auth, balance-check)
+│   │   ├── admin-status/
+│   │   ├── contact-lookup/       # Apollo.io enrichment
 │   │   ├── initiate-bridged-call/
-│   │   ├── outbound-call-swml/
-│   │   ├── sip-call-handler/
+│   │   ├── poll-gmail-tickets/
+│   │   ├── support-tickets-api/
+│   │   ├── webhook-inbound-call/
 │   │   ├── webhook-inbound-sms/
 │   │   └── ...
-│   └── migrations/             # Database migrations
-├── tests/                      # Playwright & contract tests
-└── specs/                      # Feature specifications
+│   └── migrations/               # Database migrations
+├── tests/                        # Playwright & contract tests
+└── specs/                        # Feature specifications
 ```
 
 ## Getting Started
@@ -205,15 +237,20 @@ pat/
 
 ### Core Tables
 
-- `users` - User profiles, SIP credentials, preferences
+- `users` - User profiles, SIP credentials, preferences, credit balance
+- `organizations` - Multi-user org management
 - `contacts` - Contact information with enrichment fields
-- `agent_configs` - AI agent configuration (prompts, voice, settings)
+- `agent_configs` - AI agent configuration (prompts, voice, settings, functions)
 - `call_records` - Call history with purpose, goal, transcripts
 - `sms_messages` - SMS message history
 - `conversation_contexts` - Conversation memory with embeddings
-- `outbound_call_templates` - Reusable call purpose/goal templates
-- `transfer_numbers` - Configured transfer destinations
 - `service_numbers` - User's phone numbers from SignalWire
+- `support_tickets` - Support ticket threads (Gmail integration)
+- `support_email_config` - Gmail connection, AI agent settings, ticket creation toggle
+- `credit_transactions` - Billing and credit history
+- `knowledge_sources` / `knowledge_chunks` - RAG knowledge base (pgvector)
+- `chat_widgets` / `chat_sessions` / `chat_messages` - Embeddable chat widget
+- `referral_rewards` - Referral tracking and bonus payouts
 
 ## Deployment
 
