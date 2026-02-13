@@ -5,6 +5,7 @@
 
 import { getCurrentUser, supabase } from './lib/supabase.js';
 import { initImpersonationBanner } from './components/ImpersonationBanner.js';
+import { initLowBalanceBanner } from './components/LowBalanceBanner.js';
 
 export class Router {
   constructor() {
@@ -107,6 +108,9 @@ export class Router {
   async init() {
     // Initialize impersonation banner
     initImpersonationBanner();
+
+    // Initialize low balance banner
+    initLowBalanceBanner();
 
     // Start preloading Inbox immediately (most common first navigation)
     this.preloadInbox();
