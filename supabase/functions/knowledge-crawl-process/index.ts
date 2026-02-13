@@ -8,11 +8,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import { DOMParser } from 'https://deno.land/x/deno_dom@v0.1.38/deno-dom-wasm.ts';
 import { extractLinks } from '../_shared/link-extractor.ts';
 import { isUrlAllowed, RobotsRules } from '../_shared/robots-parser.ts';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { corsHeaders, handleCors } from '../_shared/cors.ts'
 
 // Configuration
 const BATCH_SIZE = 10;  // URLs to process per job per run
@@ -123,7 +119,7 @@ function sleep(ms: number): Promise<void> {
 Deno.serve(async (req) => {
   // Handle CORS
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return handleCors()
   }
 
   try {

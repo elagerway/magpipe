@@ -1,8 +1,7 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'npm:@supabase/supabase-js@2'
 import { getSenderNumber, isOptedOut } from '../_shared/sms-compliance.ts'
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   try {
     const { userId, type, data } = await req.json()
 

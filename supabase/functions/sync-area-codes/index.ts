@@ -1,5 +1,4 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'npm:@supabase/supabase-js@2'
 
 /**
  * Sync area codes from NANPA database
@@ -10,7 +9,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
  * https://www.nationalnanpa.com/reports/reports_npa.html (Reports)
  */
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   try {
     // Verify this is an authorized request (you can add a secret header check here)
     const authHeader = req.headers.get('authorization')

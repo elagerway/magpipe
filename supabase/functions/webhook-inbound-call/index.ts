@@ -1,16 +1,14 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { checkBalance } from '../_shared/balance-check.ts'
+import { corsHeaders, handleCors } from '../_shared/cors.ts'
 
 // This webhook is called by SignalWire, which doesn't send auth headers
 // We handle auth by validating the phone number exists in our database
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
 
 Deno.serve(async (req) => {
   // Handle OPTIONS for CORS
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return handleCors()
   }
   try {
     console.log('=== WEBHOOK INBOUND CALL START ===')
@@ -52,6 +50,23 @@ Deno.serve(async (req) => {
     }
 
     console.log('Number is active, processing call for user:', serviceNumber.user_id)
+
+    // Check if the user has sufficient credits
+    const { allowed: hasCredits } = await checkBalance(supabase, serviceNumber.user_id)
+    if (!hasCredits) {
+      console.log(`Blocking inbound call for user ${serviceNumber.user_id}: insufficient credits`)
+      return new Response(
+        `<?xml version="1.0" encoding="UTF-8"?>
+        <Response>
+          <Say voice="alice">This number is temporarily unavailable. Please try again later.</Say>
+          <Hangup/>
+        </Response>`,
+        {
+          headers: { 'Content-Type': 'text/xml' },
+          status: 200,
+        }
+      )
+    }
 
     // Get agent config - prioritize number-specific agent, then default agent
     let agentConfig = null

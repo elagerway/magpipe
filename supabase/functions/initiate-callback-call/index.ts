@@ -1,11 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { resolveUser } from "../_shared/api-auth.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-};
+import { checkBalance } from "../_shared/balance-check.ts";
+import { corsHeaders, handleCors } from '../_shared/cors.ts'
 
 /**
  * Initiate Callback Call
@@ -19,7 +15,7 @@ const corsHeaders = {
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return handleCors()
   }
 
   try {
@@ -61,6 +57,16 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
+
+    // Check balance before allowing the call
+    const { allowed, balance } = await checkBalance(serviceRoleClient, user.id);
+    if (!allowed) {
+      console.log(`Blocking callback call for user ${user.id}: insufficient credits ($${balance})`);
+      return new Response(
+        JSON.stringify({ error: { code: "insufficient_credits", message: `Insufficient credits. Your balance is $${balance.toFixed(2)}. Please add credits to make calls.` } }),
+        { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // Get user's cell phone number from users table
     const { data: userData, error: userDataError } = await serviceRoleClient

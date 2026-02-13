@@ -1,4 +1,4 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'npm:@supabase/supabase-js@2'
 
 // No CORS needed — this is a Postmark inbound webhook (server-to-server)
 // Deploy with: npx supabase functions deploy webhook-inbound-email --no-verify-jwt

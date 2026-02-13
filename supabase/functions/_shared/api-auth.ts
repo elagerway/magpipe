@@ -4,11 +4,7 @@
  */
 
 import { createClient, SupabaseClient } from 'npm:@supabase/supabase-js@2'
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+import { corsHeaders } from './cors.ts'
 
 async function sha256(message: string): Promise<string> {
   const encoder = new TextEncoder()

@@ -4,11 +4,7 @@ import { parseSitemapWithIndex, discoverSitemap } from '../_shared/sitemap-parse
 import { extractLinks } from '../_shared/link-extractor.ts';
 import { fetchRobotsTxt, isUrlAllowed } from '../_shared/robots-parser.ts';
 import { resolveUser } from "../_shared/api-auth.ts";
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { corsHeaders, handleCors } from '../_shared/cors.ts'
 
 interface AddSourceRequest {
   url: string;
@@ -97,7 +93,7 @@ function calculateNextSync(syncPeriod: string): Date {
 Deno.serve(async (req) => {
   // Handle CORS
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return handleCors()
   }
 
   try {

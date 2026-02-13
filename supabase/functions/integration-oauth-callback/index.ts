@@ -1,4 +1,4 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'npm:@supabase/supabase-js@2';
 
 // Environment variable mapping for provider credentials
 const PROVIDER_CREDENTIALS: Record<string, { clientIdEnv: string; clientSecretEnv: string }> = {

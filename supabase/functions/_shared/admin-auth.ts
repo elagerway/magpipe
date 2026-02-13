@@ -125,43 +125,6 @@ export function getTokenExpiry(): Date {
   return expiry
 }
 
-/**
- * CORS headers for admin endpoints
- */
-export const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
-
-/**
- * Create a JSON error response
- */
-export function errorResponse(message: string, status: number = 400): Response {
-  return new Response(
-    JSON.stringify({ error: message }),
-    {
-      status,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    }
-  )
-}
-
-/**
- * Create a JSON success response
- */
-export function successResponse(data: unknown, status: number = 200): Response {
-  return new Response(
-    JSON.stringify(data),
-    {
-      status,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    }
-  )
-}
-
-/**
- * Handle CORS preflight request
- */
-export function handleCors(): Response {
-  return new Response('ok', { headers: corsHeaders })
-}
+// Re-export shared CORS and response utilities for backwards compatibility
+export { corsHeaders, handleCors } from './cors.ts'
+export { jsonResponse as successResponse, errorResponse } from './response.ts'
