@@ -50,13 +50,14 @@ export default class SettingsPage {
       ({ profile, billingInfo, notifPrefs, serviceNumbers, organization } = this.cachedData);
     } else {
       // Fetch all data in parallel for speed
-      const [profileResult, billingResult, notifResult, numbersResult, calComResult, orgResult] = await Promise.all([
+      const [profileResult, billingResult, notifResult, numbersResult, calComResult, orgResult, referralResult] = await Promise.all([
         User.getProfile(user.id),
-        supabase.from('users').select('plan, stripe_customer_id, stripe_subscription_id, stripe_subscription_status, stripe_current_period_end, credits_balance, credits_used_this_period, has_payment_method, received_signup_bonus, auto_recharge_enabled, auto_recharge_amount, auto_recharge_threshold').eq('id', user.id).single(),
+        supabase.from('users').select('plan, stripe_customer_id, stripe_subscription_id, stripe_subscription_status, stripe_current_period_end, credits_balance, credits_used_this_period, has_payment_method, received_signup_bonus, auto_recharge_enabled, auto_recharge_amount, auto_recharge_threshold, cc_bonus_claimed, recharge_bonus_claimed, referral_code').eq('id', user.id).single(),
         supabase.from('notification_preferences').select('*').eq('user_id', user.id).single(),
         supabase.from('service_numbers').select('phone_number, is_active').eq('user_id', user.id).order('is_active', { ascending: false }),
         supabase.from('users').select('cal_com_access_token, cal_com_user_id').eq('id', user.id).single(),
-        Organization.getForUser(user.id)
+        Organization.getForUser(user.id),
+        supabase.from('referral_rewards').select('threshold_met').eq('referrer_id', user.id).eq('threshold_met', true).limit(1)
       ]);
 
       profile = profileResult.profile;
@@ -70,6 +71,9 @@ export default class SettingsPage {
         profile.cal_com_connected = !!calComResult.data.cal_com_access_token;
         profile.cal_com_user_id = calComResult.data.cal_com_user_id;
       }
+
+      // Add referral completion status
+      profile.has_completed_referral = (referralResult.data?.length || 0) > 0;
 
       // Cache the data
       this.cachedData = { profile, billingInfo, notifPrefs, serviceNumbers, organization };
@@ -794,6 +798,8 @@ export default class SettingsPage {
           </div>
           ` : ''}
 
+          ${this.renderBonusCreditsCard()}
+
           <!-- Credits Balance -->
           <div class="credits-balance" style="display: flex; justify-content: space-between; align-items: center; padding: 1.25rem; background: var(--bg-secondary); border-radius: var(--radius-md); margin-bottom: 1rem;">
             <div>
@@ -898,6 +904,107 @@ export default class SettingsPage {
             </div>
           ` : ''}
         </div>
+      </div>
+    `;
+  }
+
+  renderBonusCreditsCard() {
+    const ccClaimed = this.profile?.cc_bonus_claimed;
+    const rechargeClaimed = this.profile?.recharge_bonus_claimed;
+    const hasCard = this.profile?.has_payment_method;
+    const autoRecharge = this.profile?.auto_recharge_enabled;
+    const hasCompletedReferral = this.profile?.has_completed_referral;
+
+    // Count completed items
+    const completed = (ccClaimed ? 1 : 0) + (rechargeClaimed ? 1 : 0) + (hasCompletedReferral ? 1 : 0);
+    const progressPercent = Math.round((completed / 3) * 100);
+
+    // Don't show if all 3 are claimed
+    if (completed === 3) return '';
+
+    // CC item state
+    let ccContent;
+    if (ccClaimed) {
+      ccContent = `<span style="color: #22c55e; font-weight: 600;">Claimed!</span>`;
+    } else if (hasCard) {
+      ccContent = `<button class="btn btn-sm btn-primary" id="claim-cc-bonus-btn" style="font-size: 0.75rem; padding: 0.25rem 0.75rem;">Claim $10</button>`;
+    } else {
+      ccContent = `<button class="btn btn-sm btn-secondary" id="bonus-add-card-btn" style="font-size: 0.75rem; padding: 0.25rem 0.75rem;">Add Card</button>`;
+    }
+
+    // Recharge item state
+    let rechargeContent;
+    if (rechargeClaimed) {
+      rechargeContent = `<span style="color: #22c55e; font-weight: 600;">Claimed!</span>`;
+    } else if (autoRecharge) {
+      rechargeContent = `<button class="btn btn-sm btn-primary" id="claim-recharge-bonus-btn" style="font-size: 0.75rem; padding: 0.25rem 0.75rem;">Claim $10</button>`;
+    } else {
+      rechargeContent = `<span style="color: var(--text-secondary); font-size: 0.75rem;">Enable above to claim</span>`;
+    }
+
+    // Referral item state
+    let referralContent;
+    if (hasCompletedReferral) {
+      referralContent = `<span style="color: #22c55e; font-weight: 600;">Earned!</span>`;
+    } else {
+      referralContent = `<button class="btn btn-sm btn-secondary" id="copy-referral-link-btn" style="font-size: 0.75rem; padding: 0.25rem 0.75rem;">Copy Invite Link</button>`;
+    }
+
+    return `
+      <!-- Earn Bonus Credits -->
+      <div style="border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+          <h3 style="margin: 0; font-size: 1rem;">Earn Bonus Credits</h3>
+          <span style="font-size: 0.75rem; color: var(--text-secondary);">${completed}/3 completed</span>
+        </div>
+
+        <!-- Progress bar -->
+        <div style="height: 6px; background: var(--bg-secondary); border-radius: 3px; margin-bottom: 1rem; overflow: hidden;">
+          <div style="height: 100%; width: ${progressPercent}%; background: linear-gradient(90deg, #6366f1, #8b5cf6); border-radius: 3px; transition: width 0.3s ease;"></div>
+        </div>
+
+        <!-- Checklist -->
+        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+          <!-- 1. Add Credit Card -->
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <span style="width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; ${ccClaimed ? 'background: #22c55e; color: white;' : 'background: var(--bg-secondary); color: var(--text-secondary);'}">${ccClaimed ? '&#10003;' : '1'}</span>
+              <div>
+                <div style="font-size: 0.875rem; font-weight: 500; color: var(--text-primary);">Add a credit card</div>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">+$10 bonus</div>
+              </div>
+            </div>
+            ${ccContent}
+          </div>
+
+          <!-- 2. Enable Auto-Recharge -->
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <span style="width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; ${rechargeClaimed ? 'background: #22c55e; color: white;' : 'background: var(--bg-secondary); color: var(--text-secondary);'}">${rechargeClaimed ? '&#10003;' : '2'}</span>
+              <div>
+                <div style="font-size: 0.875rem; font-weight: 500; color: var(--text-primary);">Enable auto-recharge</div>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">+$10 bonus</div>
+              </div>
+            </div>
+            ${rechargeContent}
+          </div>
+
+          <!-- 3. Invite a Friend -->
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <span style="width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; ${hasCompletedReferral ? 'background: #22c55e; color: white;' : 'background: var(--bg-secondary); color: var(--text-secondary);'}">${hasCompletedReferral ? '&#10003;' : '3'}</span>
+              <div>
+                <div style="font-size: 0.875rem; font-weight: 500; color: var(--text-primary);">Invite a friend</div>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">+$10 for you, +$10 for them</div>
+              </div>
+            </div>
+            ${referralContent}
+          </div>
+        </div>
+
+        <p style="margin: 0.75rem 0 0 0; font-size: 0.7rem; color: var(--text-secondary);">
+          Referral bonus is awarded after your friend makes 5 minutes of calls.
+        </p>
       </div>
     `;
   }
@@ -1051,6 +1158,113 @@ export default class SettingsPage {
 
     if (rechargeThreshold) rechargeThreshold.addEventListener('change', saveAutoRechargeSettings);
     if (rechargeAmount) rechargeAmount.addEventListener('change', saveAutoRechargeSettings);
+
+    // Bonus credits card listeners
+    const claimCcBonusBtn = document.getElementById('claim-cc-bonus-btn');
+    const claimRechargeBonusBtn = document.getElementById('claim-recharge-bonus-btn');
+    const bonusAddCardBtn = document.getElementById('bonus-add-card-btn');
+    const copyReferralLinkBtn = document.getElementById('copy-referral-link-btn');
+
+    if (claimCcBonusBtn) {
+      claimCcBonusBtn.addEventListener('click', async () => {
+        claimCcBonusBtn.disabled = true;
+        claimCcBonusBtn.textContent = 'Claiming...';
+        try {
+          const { user } = await getCurrentUser();
+          const { data, error } = await supabase.rpc('claim_cc_bonus', { p_user_id: user.id });
+          if (error) throw error;
+          if (data?.success) {
+            showToast('$10 bonus credited to your account!', 'success');
+            this.cachedData = null; // Force refresh
+            this.render();
+          } else {
+            showToast(data?.error || 'Could not claim bonus', 'error');
+            claimCcBonusBtn.disabled = false;
+            claimCcBonusBtn.textContent = 'Claim $10';
+          }
+        } catch (error) {
+          console.error('Claim CC bonus error:', error);
+          showToast('Failed to claim bonus. Please try again.', 'error');
+          claimCcBonusBtn.disabled = false;
+          claimCcBonusBtn.textContent = 'Claim $10';
+        }
+      });
+    }
+
+    if (claimRechargeBonusBtn) {
+      claimRechargeBonusBtn.addEventListener('click', async () => {
+        claimRechargeBonusBtn.disabled = true;
+        claimRechargeBonusBtn.textContent = 'Claiming...';
+        try {
+          const { user } = await getCurrentUser();
+          const { data, error } = await supabase.rpc('claim_recharge_bonus', { p_user_id: user.id });
+          if (error) throw error;
+          if (data?.success) {
+            showToast('$10 bonus credited to your account!', 'success');
+            this.cachedData = null;
+            this.render();
+          } else {
+            showToast(data?.error || 'Could not claim bonus', 'error');
+            claimRechargeBonusBtn.disabled = false;
+            claimRechargeBonusBtn.textContent = 'Claim $10';
+          }
+        } catch (error) {
+          console.error('Claim recharge bonus error:', error);
+          showToast('Failed to claim bonus. Please try again.', 'error');
+          claimRechargeBonusBtn.disabled = false;
+          claimRechargeBonusBtn.textContent = 'Claim $10';
+        }
+      });
+    }
+
+    if (bonusAddCardBtn) {
+      bonusAddCardBtn.addEventListener('click', async () => {
+        bonusAddCardBtn.disabled = true;
+        bonusAddCardBtn.textContent = 'Loading...';
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session) throw new Error('Not authenticated');
+          const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/stripe-setup-payment`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ returnUrl: `${window.location.origin}/settings?payment_method=success&tab=billing` })
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || 'Failed to create setup session');
+          window.location.href = data.url;
+        } catch (error) {
+          console.error('Bonus add card error:', error);
+          showToast('Failed to setup payment method. Please try again.', 'error');
+          bonusAddCardBtn.disabled = false;
+          bonusAddCardBtn.textContent = 'Add Card';
+        }
+      });
+    }
+
+    if (copyReferralLinkBtn) {
+      copyReferralLinkBtn.addEventListener('click', async () => {
+        try {
+          let code = this.profile?.referral_code;
+          // Generate code if not exists
+          if (!code) {
+            const { user } = await getCurrentUser();
+            const { data, error } = await supabase.rpc('generate_referral_code', { p_user_id: user.id });
+            if (error) throw error;
+            code = data;
+          }
+          const referralUrl = `https://magpipe.ai/signup?ref=${code}`;
+          await navigator.clipboard.writeText(referralUrl);
+          showToast('Referral link copied to clipboard!', 'success');
+          copyReferralLinkBtn.textContent = 'Copied!';
+          setTimeout(() => {
+            if (copyReferralLinkBtn) copyReferralLinkBtn.textContent = 'Copy Invite Link';
+          }, 2000);
+        } catch (error) {
+          console.error('Copy referral link error:', error);
+          showToast('Failed to copy link. Please try again.', 'error');
+        }
+      });
+    }
   }
 
   renderBrandingTab() {

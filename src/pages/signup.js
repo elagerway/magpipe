@@ -13,8 +13,14 @@ export default class SignupPage {
   async render() {
     const appElement = document.getElementById('app');
 
-    // Check for team invitation
+    // Check for referral code in URL
     const urlParams = new URLSearchParams(window.location.search);
+    const refCode = urlParams.get('ref');
+    if (refCode) {
+      localStorage.setItem('magpipe_referral_code', refCode);
+    }
+
+    // Check for team invitation
     const inviteId = urlParams.get('invite');
     let invitation = null;
 
@@ -587,6 +593,22 @@ export default class SignupPage {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name, email })
         }).catch(() => {}); // Ignore errors
+
+        // Process referral code (fire and forget)
+        const storedRefCode = localStorage.getItem('magpipe_referral_code');
+        if (storedRefCode && user) {
+          const { data: { session } } = await supabase.auth.getSession();
+          fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-referral`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session?.access_token || ''}`
+            },
+            body: JSON.stringify({ referral_code: storedRefCode })
+          }).then(() => {
+            localStorage.removeItem('magpipe_referral_code');
+          }).catch(() => {}); // Ignore errors
+        }
 
         // If this signup was from a team invitation, approve membership
         if (invitation && user) {
