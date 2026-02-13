@@ -1,10 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { DOMParser } from 'https://deno.land/x/deno_dom@v0.1.38/deno-dom-wasm.ts';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { corsHeaders, handleCors } from '../_shared/cors.ts'
 
 // Simple text chunking (500-1000 tokens ~= 2000-4000 characters)
 function chunkText(text: string, maxChunkSize = 3000): string[] {
@@ -63,7 +59,7 @@ function extractContent(html: string): { title: string; description: string; tex
 Deno.serve(async (req) => {
   // Handle CORS
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return handleCors()
   }
 
   try {

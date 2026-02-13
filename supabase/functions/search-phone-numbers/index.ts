@@ -1,9 +1,4 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+import { corsHeaders, handleCors } from '../_shared/cors.ts'
 
 // Regional area code mappings for fallbacks
 const areaCodeRegions: Record<string, string[]> = {
@@ -34,10 +29,10 @@ const areaCodeRegions: Record<string, string[]> = {
   '718': ['212', '646', '917', '332'],
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return handleCors()
   }
 
   try {

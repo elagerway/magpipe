@@ -1,11 +1,6 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { encode as base64UrlEncode } from 'https://deno.land/std@0.168.0/encoding/base64url.ts';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { createClient } from 'npm:@supabase/supabase-js@2';
+import { encodeBase64Url as base64UrlEncode } from 'jsr:@std/encoding@1/base64url';
+import { corsHeaders, handleCors } from '../_shared/cors.ts'
 
 // Generate PKCE code verifier (43-128 chars, URL-safe)
 function generateCodeVerifier(): string {
@@ -22,10 +17,10 @@ async function generateCodeChallenge(verifier: string): Promise<string> {
   return base64UrlEncode(new Uint8Array(hash));
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   // Handle CORS
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return handleCors()
   }
 
   try {

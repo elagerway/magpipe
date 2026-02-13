@@ -1,18 +1,13 @@
+import { corsHeaders, handleCors } from '../_shared/cors.ts'
 /**
  * Search Business Edge Function
  * Searches Google Places API for business info
  */
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
-
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return handleCors()
   }
 
   try {

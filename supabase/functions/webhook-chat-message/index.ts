@@ -8,13 +8,8 @@
  * - Supports function calling with MCP server tools (e.g., HubSpot)
  */
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-}
+import { createClient } from 'npm:@supabase/supabase-js@2'
+import { corsHeaders, handleCors } from '../_shared/cors.ts'
 
 interface ToolDefinition {
   name: string
@@ -245,7 +240,7 @@ async function executeMcpTool(
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return handleCors()
   }
 
   try {
@@ -601,7 +596,6 @@ TROUBLESHOOTING:
     const systemPrompt = agentConfig.system_prompt
       ? `${visitorPrefix}${agentConfig.system_prompt}${AGENT_IDENTITY}${SUPPORT_AGENT_KNOWLEDGE}${CHAT_CONTEXT_SUFFIX}`
       : `${visitorPrefix}You are a helpful AI assistant responding via website chat. Be friendly, professional, and concise. Keep responses to 2-4 sentences unless more detail is needed.${AGENT_IDENTITY}${SUPPORT_AGENT_KNOWLEDGE}${CHAT_CONTEXT_SUFFIX}`
-
 
     // Map conversation history to OpenAI format
     const conversationHistory = (history || [])

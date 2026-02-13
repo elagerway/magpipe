@@ -4,13 +4,9 @@
  * Adds, removes, and updates phone numbers associated with external SIP trunks
  */
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'npm:@supabase/supabase-js@2'
 import { SipClient } from 'npm:livekit-server-sdk@2.14.0'
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+import { corsHeaders, handleCors } from '../_shared/cors.ts'
 
 interface AddNumberRequest {
   action: 'add'
@@ -41,7 +37,7 @@ type NumberRequest = AddNumberRequest | RemoveNumberRequest | UpdateNumberReques
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return handleCors()
   }
 
   try {

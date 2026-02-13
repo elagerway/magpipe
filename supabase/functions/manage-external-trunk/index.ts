@@ -5,13 +5,9 @@
  * who want to bring their own SIP providers (e.g., Orange West Africa)
  */
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'npm:@supabase/supabase-js@2'
 import { SipClient } from 'npm:livekit-server-sdk@2.14.0'
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+import { corsHeaders, handleCors } from '../_shared/cors.ts'
 
 // LiveKit SIP domain for this project
 const LIVEKIT_SIP_DOMAIN = '378ads1njtd.sip.livekit.cloud'
@@ -64,7 +60,7 @@ type TrunkRequest = CreateTrunkRequest | UpdateTrunkRequest | DeleteTrunkRequest
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return handleCors()
   }
 
   try {

@@ -3,7 +3,7 @@
  * Handles STOP/CANCEL/UNSUBSCRIBE requirements for US SMS
  */
 
-import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { SupabaseClient } from 'npm:@supabase/supabase-js@2'
 
 // USA Campaign phone number for SignalWire
 export const USA_CAMPAIGN_NUMBER = '+16503912711'

@@ -1,12 +1,6 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import Stripe from 'https://esm.sh/stripe@14.10.0?target=deno'
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS'
-}
+import { createClient } from 'npm:@supabase/supabase-js@2'
+import Stripe from 'npm:stripe@14.10.0'
+import { corsHeaders, handleCors } from '../_shared/cors.ts'
 
 // Pricing rates (per minute for voice, per message for SMS)
 const VOICE_RATES = {
@@ -266,7 +260,213 @@ async function triggerAutoRecharge(
   }
 }
 
-serve(async (req) => {
+/**
+ * Send low balance notification via email (Postmark) and SMS (SignalWire)
+ * Fired once when balance drops to/below $1
+ */
+async function sendLowBalanceNotification(
+  supabase: any,
+  userId: string,
+  balance: number
+): Promise<void> {
+  // Get user's email and phone
+  const { data: user, error } = await supabase
+    .from('users')
+    .select('email, phone_number, name')
+    .eq('id', userId)
+    .single()
+
+  if (error || !user?.email) {
+    console.error('Cannot send low balance notification - user not found:', error)
+    return
+  }
+
+  const balanceStr = `$${balance.toFixed(2)}`
+  const firstName = user.name?.split(' ')[0] || 'there'
+
+  // Send email via Postmark
+  const postmarkApiKey = Deno.env.get('POSTMARK_API_KEY')
+  if (postmarkApiKey) {
+    const htmlBody = `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 2rem;">
+        <div style="text-align: center; margin-bottom: 2rem;">
+          <h1 style="color: #1a1a1a; font-size: 1.5rem; margin: 0;">You've hit a milestone at Magpipe!</h1>
+        </div>
+
+        <p style="color: #4a4a4a; font-size: 1rem; line-height: 1.6;">
+          Hey ${firstName}, you've been putting your AI agent to work! Your balance is now <strong>${balanceStr}</strong>.
+        </p>
+
+        <p style="color: #4a4a4a; font-size: 1rem; line-height: 1.6;">
+          Here's how you can earn up to <strong>$30 in bonus credits</strong>:
+        </p>
+
+        <div style="display: flex; flex-direction: column; gap: 1rem; margin: 1.5rem 0;">
+          <div style="border: 1px solid #e5e7eb; border-radius: 12px; padding: 1.25rem; background: #f9fafb;">
+            <div style="font-weight: 600; color: #1a1a1a; margin-bottom: 0.25rem;">1. Add a credit card &mdash; +$10</div>
+            <div style="color: #6b7280; font-size: 0.875rem;">Add a payment method and claim your $10 bonus.</div>
+          </div>
+          <div style="border: 1px solid #e5e7eb; border-radius: 12px; padding: 1.25rem; background: #f9fafb;">
+            <div style="font-weight: 600; color: #1a1a1a; margin-bottom: 0.25rem;">2. Enable auto-recharge &mdash; +$10</div>
+            <div style="color: #6b7280; font-size: 0.875rem;">Never run out of credits. Turn on auto-recharge and claim $10.</div>
+          </div>
+          <div style="border: 1px solid #e5e7eb; border-radius: 12px; padding: 1.25rem; background: #f9fafb;">
+            <div style="font-weight: 600; color: #1a1a1a; margin-bottom: 0.25rem;">3. Invite a friend &mdash; +$10 each</div>
+            <div style="color: #6b7280; font-size: 0.875rem;">Share your referral link. You both get $10 after they make 5 minutes of calls.</div>
+          </div>
+        </div>
+
+        <div style="text-align: center; margin: 2rem 0;">
+          <a href="https://magpipe.ai/settings?tab=billing" style="display: inline-block; background: #6366f1; color: white; padding: 0.75rem 2rem; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 1rem;">
+            Add Credits
+          </a>
+        </div>
+
+        <p style="color: #9ca3af; font-size: 0.75rem; text-align: center; margin-top: 2rem; border-top: 1px solid #e5e7eb; padding-top: 1rem;">
+          You're receiving this because your Magpipe balance is low.
+        </p>
+      </div>
+    `
+
+    const textBody = `Hey ${firstName}, you've been putting your AI agent to work! Your balance is now ${balanceStr}.\n\nEarn up to $30 in bonus credits:\n1. Add a credit card — +$10\n2. Enable auto-recharge — +$10\n3. Invite a friend — +$10 each\n\nAdd credits: https://magpipe.ai/settings?tab=billing`
+
+    try {
+      await fetch('https://api.postmarkapp.com/email', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'X-Postmark-Server-Token': postmarkApiKey
+        },
+        body: JSON.stringify({
+          From: 'notifications@snapsonic.com',
+          To: user.email,
+          Subject: "You've hit a milestone at Magpipe!",
+          HtmlBody: htmlBody,
+          TextBody: textBody,
+          MessageStream: 'outbound'
+        })
+      })
+      console.log(`Low balance email sent to ${user.email}`)
+    } catch (err) {
+      console.error('Failed to send low balance email:', err)
+    }
+  }
+
+  // Send SMS via SignalWire (if user has a phone number)
+  if (user.phone_number) {
+    const signalwireProjectId = Deno.env.get('SIGNALWIRE_PROJECT_ID')
+    const signalwireToken = Deno.env.get('SIGNALWIRE_API_TOKEN')
+    const signalwireSpaceUrl = Deno.env.get('SIGNALWIRE_SPACE_URL')
+
+    if (signalwireProjectId && signalwireToken && signalwireSpaceUrl) {
+      const smsBody = `MAGPIPE: Your balance is ${balanceStr}. Earn up to $30 in bonus credits! Add a card (+$10), enable auto-recharge (+$10), or invite a friend (+$10 each). magpipe.ai/settings`
+
+      try {
+        const signalwireAuth = btoa(`${signalwireProjectId}:${signalwireToken}`)
+        // Use a service number to send from
+        const { data: serviceNum } = await supabase
+          .from('service_numbers')
+          .select('phone_number')
+          .eq('user_id', userId)
+          .eq('is_active', true)
+          .eq('sms_enabled', true)
+          .limit(1)
+          .single()
+
+        if (serviceNum?.phone_number) {
+          await fetch(
+            `https://${signalwireSpaceUrl}/api/laml/2010-04-01/Accounts/${signalwireProjectId}/Messages`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Basic ${signalwireAuth}`,
+                'Content-Type': 'application/x-www-form-urlencoded'
+              },
+              body: new URLSearchParams({
+                From: serviceNum.phone_number,
+                To: user.phone_number,
+                Body: smsBody
+              }).toString()
+            }
+          )
+          console.log(`Low balance SMS sent to ${user.phone_number}`)
+        }
+      } catch (err) {
+        console.error('Failed to send low balance SMS:', err)
+      }
+    }
+  }
+}
+
+/**
+ * Track referred user's call minutes toward the 5-minute referral threshold
+ * Awards $10 to both referrer and referred user when threshold is met
+ */
+async function trackReferralMinutes(
+  supabase: any,
+  userId: string,
+  durationSeconds: number
+): Promise<void> {
+  // Check if this user has a pending referral reward
+  const { data: reward, error } = await supabase
+    .from('referral_rewards')
+    .select('id, referrer_id, referred_call_minutes')
+    .eq('referred_id', userId)
+    .eq('threshold_met', false)
+    .single()
+
+  if (error || !reward) return // No pending referral
+
+  const newMinutes = parseFloat(reward.referred_call_minutes) + (durationSeconds / 60)
+
+  if (newMinutes >= 5) {
+    // Threshold met! Award bonuses
+    console.log(`Referral threshold met for user ${userId} (${newMinutes.toFixed(2)} min). Awarding bonuses.`)
+
+    // Update referral record
+    await supabase
+      .from('referral_rewards')
+      .update({
+        referred_call_minutes: newMinutes,
+        threshold_met: true,
+        completed_at: new Date().toISOString(),
+        referrer_bonus_paid: true,
+        referred_bonus_paid: true,
+      })
+      .eq('id', reward.id)
+
+    // Award $10 to referrer
+    await supabase.rpc('add_credits', {
+      p_user_id: reward.referrer_id,
+      p_amount: 10.00,
+      p_transaction_type: 'bonus',
+      p_description: 'Referral bonus: +$10 for referring a friend',
+      p_reference_type: 'referral',
+      p_reference_id: reward.id,
+    })
+
+    // Award $10 to referred user
+    await supabase.rpc('add_credits', {
+      p_user_id: userId,
+      p_amount: 10.00,
+      p_transaction_type: 'bonus',
+      p_description: 'Referral bonus: +$10 welcome reward',
+      p_reference_type: 'referral',
+      p_reference_id: reward.id,
+    })
+
+    console.log(`Referral bonuses paid: $10 to referrer ${reward.referrer_id}, $10 to referred ${userId}`)
+  } else {
+    // Just update the minutes
+    await supabase
+      .from('referral_rewards')
+      .update({ referred_call_minutes: newMinutes })
+      .eq('id', reward.id)
+  }
+}
+
+Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -377,6 +577,18 @@ serve(async (req) => {
     let autoRechargeResult = null
     if (result?.needs_recharge && stripe) {
       autoRechargeResult = await triggerAutoRecharge(supabase, stripe, userId, result.balance_after)
+    }
+
+    // Send low balance notification (fire and forget, one-time)
+    if (result?.trigger_low_balance_notification) {
+      sendLowBalanceNotification(supabase, userId, result.balance_after)
+        .catch(err => console.error('Failed to send low balance notification:', err))
+    }
+
+    // Track referral call minutes (fire and forget, voice calls only)
+    if (type === 'voice' && durationSeconds) {
+      trackReferralMinutes(supabase, userId, durationSeconds)
+        .catch(err => console.error('Failed to track referral minutes:', err))
     }
 
     return new Response(JSON.stringify({
