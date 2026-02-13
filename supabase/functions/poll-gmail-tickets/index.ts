@@ -152,9 +152,10 @@ Deno.serve(async (req) => {
       .eq('id', CONFIG_ID)
 
     // 6. Process new inbound messages
+    const sendFrom = config.send_as_email || config.gmail_address
     for (const msg of newInboundMessages) {
       // Send ticket acknowledgment auto-reply (only for new threads with ticket_ref)
-      await sendTicketAcknowledgment(accessToken, config.gmail_address, msg)
+      await sendTicketAcknowledgment(accessToken, sendFrom, msg)
 
       // Multi-channel admin notification (replaces old SMS-only alert)
       await sendAdminNotification(supabaseUrl, msg)
@@ -494,11 +495,97 @@ async function generateAiDraft(supabase: any, accessToken: string, config: any, 
       .order('received_at', { ascending: true })
       .limit(10)
 
-    const threadContext = (threadMessages || [])
+    // Filter out auto-acknowledgment messages from thread context
+    const humanMessages = (threadMessages || []).filter((m: any) => {
+      if (m.direction !== 'outbound') return true
+      if (m.body_text?.includes('created a support ticket')) return false
+      return true
+    })
+
+    const threadContext = humanMessages
       .map((m: any) => `[${m.direction}] ${m.from_name || m.from_email}: ${(m.body_text || '').substring(0, 500)}`)
       .join('\n\n')
 
-    const systemPrompt = config.agent_system_prompt || 'You are a helpful support agent. Be concise and professional.'
+    const hasHumanReply = humanMessages.some((m: any) => m.direction === 'outbound')
+
+    // Build system prompt from selected agent or default
+    let systemPrompt = ''
+    let agentModel = 'gpt-4o-mini'
+
+    if (config.support_agent_id) {
+      const { data: agent } = await supabase
+        .from('agent_configs')
+        .select('system_prompt, llm_model, temperature, knowledge_source_ids, agent_name')
+        .eq('id', config.support_agent_id)
+        .single()
+
+      if (agent) {
+        systemPrompt = agent.system_prompt || ''
+        if (agent.llm_model) agentModel = agent.llm_model
+
+        // Add support-specific instructions
+        systemPrompt += `\n\nYou are now responding to a support email (not a phone call). Write a professional email reply.
+- Be warm but concise
+- Address the customer's question directly
+- If you don't know the answer, say the team will follow up
+- Never say the issue has "already been addressed" unless there is a substantive prior reply
+- Sign off as "${agent.agent_name || 'The Support Team'}"`
+
+        // Search knowledge base for relevant context
+        if (agent.knowledge_source_ids?.length > 0) {
+          try {
+            const queryText = `${msg.subject || ''} ${(msg.body_text || '').substring(0, 500)}`
+
+            // Generate embedding for the email content
+            const embResponse = await fetch('https://api.openai.com/v1/embeddings', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${openaiApiKey}`,
+              },
+              body: JSON.stringify({
+                model: 'text-embedding-ada-002',
+                input: queryText,
+              }),
+            })
+
+            if (embResponse.ok) {
+              const embData = await embResponse.json()
+              const embedding = embData.data?.[0]?.embedding
+
+              if (embedding) {
+                const { data: chunks } = await supabase.rpc('match_knowledge_chunks', {
+                  query_embedding: embedding,
+                  source_ids: agent.knowledge_source_ids,
+                  match_count: 5,
+                  similarity_threshold: 0.5,
+                })
+
+                if (chunks?.length > 0) {
+                  const kbContext = chunks.map((c: any) => c.content).join('\n\n---\n\n')
+                  systemPrompt += `\n\nRelevant knowledge base information:\n${kbContext}`
+                  console.log(`Injected ${chunks.length} KB chunks into support draft`)
+                }
+              }
+            }
+          } catch (kbError) {
+            console.error('KB search failed (non-fatal):', kbError)
+          }
+        }
+      }
+    }
+
+    if (!systemPrompt) {
+      systemPrompt = config.agent_system_prompt || `You are a support agent for Magpipe, an AI-powered phone and communications platform. Draft a helpful, professional reply to the customer's email.
+
+Guidelines:
+- Address the customer's specific question or issue directly
+- Be warm but concise — aim for 2-4 sentences unless the topic needs more detail
+- If you don't have enough context to fully answer, acknowledge their question and let them know the team will look into it
+- Never say the issue has "already been addressed" unless there is a clear prior reply that resolved it
+- Never make up features or pricing — if unsure, say the team will follow up with details
+- Sign off as "The Magpipe Team"`
+    }
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -507,13 +594,13 @@ async function generateAiDraft(supabase: any, accessToken: string, config: any, 
         'Authorization': `Bearer ${openaiApiKey}`,
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: agentModel,
         temperature: 0.3,
         messages: [
           { role: 'system', content: systemPrompt },
           {
             role: 'user',
-            content: `Reply to this support email thread:\n\nFrom: ${msg.from_name || msg.from_email}\nSubject: ${msg.subject}\n\n${msg.body_text || ''}\n\n${threadContext ? `Previous messages in thread:\n${threadContext}` : ''}`,
+            content: `Draft a reply to this support email:\n\nFrom: ${msg.from_name || msg.from_email}\nSubject: ${msg.subject}\n\n${msg.body_text || ''}${threadContext ? `\n\nPrevious messages in thread:\n${threadContext}` : ''}${!hasHumanReply ? '\n\nNote: No one from the team has replied yet. This is the first response the customer will receive.' : ''}`,
           },
         ],
       }),
@@ -539,15 +626,16 @@ async function generateAiDraft(supabase: any, accessToken: string, config: any, 
       .single()
     const draftTicketRef = draftRefRow?.ticket_ref
 
+    const sendFrom = config.send_as_email || config.gmail_address
     if (config.agent_mode === 'auto') {
       // Auto-send: send via Gmail and record
-      await sendGmailReply(accessToken, config.gmail_address, msg, draftText, draftTicketRef)
+      await sendGmailReply(accessToken, sendFrom, msg, draftText, draftTicketRef)
 
       // Insert outbound record
       await supabase.from('support_tickets').insert({
         gmail_message_id: `auto-${Date.now()}-${msg.gmail_message_id}`,
         thread_id: msg.thread_id,
-        from_email: config.gmail_address,
+        from_email: sendFrom,
         from_name: '',
         to_email: msg.from_email,
         subject: buildReplySubject(msg.subject, draftTicketRef),

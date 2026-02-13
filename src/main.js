@@ -223,8 +223,7 @@ class App {
 
       // Store hidden pages for route change handling
       // Always force /admin to be hidden (system-protected page)
-      const hiddenPages = widget.hidden_portal_pages || ['/agent', '/inbox'];
-      this.hiddenPortalPages = hiddenPages.includes('/admin') ? hiddenPages : [...hiddenPages, '/admin'];
+      this.hiddenPortalPages = widget.hidden_portal_pages || ['/agent', '/inbox'];
 
       // Check if widget should be hidden on current page
       const currentPath = window.location.pathname;

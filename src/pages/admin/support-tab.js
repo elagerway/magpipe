@@ -29,6 +29,7 @@ export const supportTabMethods = {
       const data = await response.json();
       this.supportConfig = data.config || {};
       this.supportGmailConnected = data.gmailConnected;
+      this.supportAgents = data.agents || [];
       this.supportFilter = this.supportFilter || 'open';
       this.supportThreadView = null;
 
@@ -117,13 +118,22 @@ export const supportTabMethods = {
                 <button class="btn btn-primary notif-test-btn" id="connect-gmail-btn">Connect</button>
               `}
             </div>
+            ${this.supportGmailConnected ? `
+              <div class="notif-channel-body">
+                <div class="form-group">
+                  <label class="form-label" style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em;">Send As</label>
+                  <input type="text" id="support-send-as-email" class="form-input" placeholder="e.g. help@yourdomain.com" value="${this.escapeHtml(this.supportConfig.send_as_email || '')}" style="max-width: 320px;">
+                  <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 0.25rem;">Outgoing emails will be sent from this address. Must be a verified Send As alias in Gmail.</p>
+                </div>
+              </div>
+            ` : ''}
           </div>
         </div>
 
         <!-- AI Agent Settings -->
         <div class="support-section">
           <h3>AI Agent</h3>
-          <p class="notif-section-desc">Configure automated responses for support tickets.</p>
+          <p class="notif-section-desc">Select an agent to handle automated support responses. The agent's system prompt, knowledge base, and memory will be used.</p>
           <div class="notif-channel-card">
             <div class="notif-channel-header">
               <div class="notif-channel-icon" style="background: #ede9fe; color: #7c3aed;">
@@ -149,8 +159,13 @@ export const supportTabMethods = {
                 </select>
               </div>
               <div class="form-group">
-                <label class="form-label" style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em;">System Prompt</label>
-                <textarea id="support-agent-prompt" class="form-input" rows="3" placeholder="You are a support agent for Magpipe. Be helpful and concise.">${this.supportConfig.agent_system_prompt || ''}</textarea>
+                <label class="form-label" style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em;">Agent</label>
+                <select id="support-agent-id" class="form-input form-select">
+                  <option value="">None (default prompt)</option>
+                  ${(this.supportAgents || []).map(a => `
+                    <option value="${a.id}" ${this.supportConfig.support_agent_id === a.id ? 'selected' : ''}>${this.escapeHtml(a.name || a.agent_name || 'Unnamed Agent')}</option>
+                  `).join('')}
+                </select>
               </div>
             </div>
           </div>
@@ -183,7 +198,7 @@ export const supportTabMethods = {
     this._agentSaving = true;
 
     const mode = document.getElementById('support-agent-mode')?.value || 'off';
-    const prompt = document.getElementById('support-agent-prompt')?.value || '';
+    const agentId = document.getElementById('support-agent-id')?.value || '';
 
     fetch(
       `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/support-tickets-api`,
@@ -196,7 +211,7 @@ export const supportTabMethods = {
         body: JSON.stringify({
           action: 'update_config',
           agent_mode: mode,
-          agent_system_prompt: prompt,
+          support_agent_id: agentId,
         }),
       }
     )
@@ -209,6 +224,30 @@ export const supportTabMethods = {
       })
       .finally(() => {
         this._agentSaving = false;
+      });
+  },
+
+  _supportSaveSendAs(email) {
+    fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/support-tickets-api`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'update_config',
+          send_as_email: email,
+        }),
+      }
+    )
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to save');
+        showToast('Send As email saved', 'success');
+      })
+      .catch(err => {
+        showToast('Error: ' + err.message, 'error');
       });
   },
 
@@ -281,18 +320,22 @@ export const supportTabMethods = {
       });
     }
 
-    // Auto-save agent settings: mode saves immediately, prompt debounced
-    let agentDebounce = null;
+    // Auto-save agent settings: both dropdowns save immediately
     document.getElementById('support-agent-mode')?.addEventListener('change', () => this._supportSaveAgentSettings());
-    const promptEl = document.getElementById('support-agent-prompt');
-    if (promptEl) {
-      promptEl.addEventListener('input', () => {
-        clearTimeout(agentDebounce);
-        agentDebounce = setTimeout(() => this._supportSaveAgentSettings(), 800);
+    document.getElementById('support-agent-id')?.addEventListener('change', () => this._supportSaveAgentSettings());
+
+    // Send As email - save on blur
+    const sendAsInput = document.getElementById('support-send-as-email');
+    if (sendAsInput) {
+      sendAsInput.addEventListener('blur', () => {
+        const val = sendAsInput.value.trim();
+        if (val !== (this.supportConfig.send_as_email || '')) {
+          this.supportConfig.send_as_email = val;
+          this._supportSaveSendAs(val);
+        }
       });
-      promptEl.addEventListener('blur', () => {
-        clearTimeout(agentDebounce);
-        this._supportSaveAgentSettings();
+      sendAsInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); sendAsInput.blur(); }
       });
     }
 
@@ -375,19 +418,24 @@ export const supportTabMethods = {
         return new Date(d).toLocaleDateString();
       };
 
+      const viewedTickets = JSON.parse(localStorage.getItem('viewed-tickets') || '[]');
+
       listContainer.innerHTML = `
         <div class="tl-list">
           ${tickets.map(t => {
             const ticketId = t.ticket_ref || (t.thread_id || t.id || '').substring(0, 8).toUpperCase();
             const priority = t.priority || 'medium';
+            const threadKey = t.thread_id || t.id;
+            const isNew = !viewedTickets.includes(threadKey);
             return `
-              <div class="tl-item" data-thread-id="${t.thread_id || t.id}" data-ticket-status="${t.status}">
+              <div class="tl-item ${isNew ? 'tl-item-new' : ''}" data-thread-id="${threadKey}" data-ticket-status="${t.status}">
                 <div class="tl-item-left">
                   <span class="priority-badge ${priorityColors[priority] || 'priority-medium'}">${priority}</span>
                   <span class="tl-item-ref">#${this.escapeHtml(ticketId)}</span>
                 </div>
                 <div class="tl-item-main">
                   <div class="tl-item-top">
+                    ${isNew ? '<span class="tl-new-badge">NEW</span>' : ''}
                     <span class="tl-item-subject">${this.escapeHtml(t.subject || '(no subject)')}</span>
                   </div>
                   <div class="tl-item-bottom">
@@ -428,6 +476,16 @@ export const supportTabMethods = {
     const threadView = document.getElementById('support-thread-view');
     if (!threadView) return;
 
+    // Update URL with thread ID
+    this.updateUrl({ tab: 'support', thread: threadId });
+
+    // Mark ticket as viewed
+    const viewed = JSON.parse(localStorage.getItem('viewed-tickets') || '[]');
+    if (!viewed.includes(threadId)) {
+      viewed.push(threadId);
+      localStorage.setItem('viewed-tickets', JSON.stringify(viewed));
+    }
+
     // Hide main content, show thread
     document.querySelectorAll('.support-subtabs, .support-subtab-content').forEach(s => s.style.display = 'none');
     threadView.style.display = 'block';
@@ -450,6 +508,11 @@ export const supportTabMethods = {
       const data = await response.json();
       const messages = data.messages || [];
       const notes = data.notes || [];
+
+      // Resolve status from data if not passed (e.g. deep-link reload)
+      if (!currentStatus) {
+        currentStatus = messages[0]?.status || 'open';
+      }
 
       const subject = messages[0]?.subject || '(no subject)';
       const firstMsg = messages[0] || {};
@@ -489,9 +552,8 @@ export const supportTabMethods = {
             Back
           </button>
           <div class="tv-topbar-right">
-            <span class="ticket-status-badge ${statusBadgeClass}">${currentStatus}</span>
             <button class="btn ${currentStatus === 'open' ? 'btn-secondary' : 'btn-primary'}" id="toggle-status-btn" style="font-size: 0.8rem; padding: 0.35rem 0.75rem;">
-              ${currentStatus === 'open' ? 'Close' : 'Reopen'}
+              ${currentStatus === 'open' ? 'Close Ticket' : 'Reopen Ticket'}
             </button>
           </div>
         </div>
@@ -546,18 +608,20 @@ export const supportTabMethods = {
         </div>
 
         <div class="tv-messages">
-          ${messages.map(m => `
-            <div class="tv-msg tv-msg-${m.direction}">
-              <div class="tv-msg-avatar">${(m.from_name || m.from_email || '?')[0].toUpperCase()}</div>
+          ${messages.map(m => {
+            const isAi = m.direction === 'outbound' && m.ai_draft_status === 'sent';
+            return `
+            <div class="tv-msg tv-msg-${m.direction}${isAi ? ' tv-msg-ai' : ''}">
+              <div class="tv-msg-avatar">${isAi ? 'AI' : (m.from_name || m.from_email || '?')[0].toUpperCase()}</div>
               <div class="tv-msg-content">
                 <div class="tv-msg-header">
-                  <strong>${this.escapeHtml(m.from_name || m.from_email || 'Unknown')}</strong>
+                  <strong>${this.escapeHtml(m.from_name || m.from_email || 'Unknown')}${isAi ? ' <span class="tv-ai-tag">AI</span>' : ''}</strong>
                   <span>${new Date(m.received_at).toLocaleString()}</span>
                 </div>
                 <div class="tv-msg-body">${this.escapeHtml(m.body_text || '').replace(/\n/g, '<br>')}</div>
               </div>
-            </div>
-          `).join('')}
+            </div>`;
+          }).join('')}
         </div>
 
         ${pendingDraft ? `
@@ -580,7 +644,7 @@ export const supportTabMethods = {
         <div class="tv-reply">
           <textarea id="support-reply-text" class="form-input" rows="3" placeholder="Type your reply..."></textarea>
           <div class="tv-reply-footer">
-            <button class="btn btn-primary" id="send-reply-btn">Send Reply</button>
+            <button class="btn btn-primary" id="send-reply-btn">Send Reply to Customer</button>
           </div>
         </div>
 
@@ -612,6 +676,7 @@ export const supportTabMethods = {
         document.querySelector('.support-subtabs').style.display = '';
         document.getElementById('support-subtab-tickets').style.display = 'block';
         this.supportSubTab = 'tickets';
+        this.updateUrl({ tab: 'support' });
         this.loadSupportTickets();
       });
 
@@ -691,6 +756,18 @@ export const supportTabMethods = {
       // Toggle status
       document.getElementById('toggle-status-btn')?.addEventListener('click', async () => {
         const newStatus = currentStatus === 'open' ? 'closed' : 'open';
+
+        if (newStatus === 'closed') {
+          const confirmed = await showConfirmModal({
+            title: 'Close Ticket',
+            message: 'Are you sure you want to close this ticket? The customer will no longer receive replies until it is reopened.',
+            confirmText: 'Close Ticket',
+            cancelText: 'Cancel',
+            isDangerous: true,
+          });
+          if (!confirmed) return;
+        }
+
         try {
           await fetch(
             `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/support-tickets-api`,
@@ -742,7 +819,7 @@ export const supportTabMethods = {
         } catch (e) {
           showToast('Error: ' + e.message, 'error');
           btn.disabled = false;
-          btn.textContent = 'Send Reply';
+          btn.textContent = 'Send Reply to Customer';
         }
       });
 
@@ -871,6 +948,15 @@ export const supportTabMethods = {
       <div class="new-ticket-form">
         <h4 style="margin: 0 0 0.75rem 0;">New Ticket</h4>
         <div class="form-group" style="margin-bottom: 0.75rem;">
+          <label class="form-label" style="font-size: 0.8rem;">On Behalf Of</label>
+          <div class="behalf-search-wrapper" style="position: relative;">
+            <input type="text" id="new-ticket-behalf" class="form-input" placeholder="Search user or type address..." autocomplete="nope" role="combobox">
+            <input type="hidden" id="new-ticket-behalf-email" value="">
+            <input type="hidden" id="new-ticket-behalf-name" value="">
+            <div id="behalf-suggestions" class="behalf-suggestions" style="display: none;"></div>
+          </div>
+        </div>
+        <div class="form-group" style="margin-bottom: 0.75rem;">
           <input type="text" id="new-ticket-subject" class="form-input" placeholder="Subject *">
         </div>
         <div class="form-group" style="margin-bottom: 0.75rem;">
@@ -912,6 +998,81 @@ export const supportTabMethods = {
       container.style.display = 'none';
     });
 
+    // On Behalf Of - smart user search
+    const behalfInput = document.getElementById('new-ticket-behalf');
+    const behalfSuggestions = document.getElementById('behalf-suggestions');
+    let behalfDebounce = null;
+
+    if (behalfInput) {
+      behalfInput.addEventListener('input', () => {
+        clearTimeout(behalfDebounce);
+        const query = behalfInput.value.trim();
+        if (query.length < 2) {
+          behalfSuggestions.style.display = 'none';
+          return;
+        }
+        behalfDebounce = setTimeout(async () => {
+          try {
+            const params = new URLSearchParams({ search: query, limit: '5' });
+            const res = await fetch(
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-list-users?${params}`,
+              {
+                headers: {
+                  'Authorization': `Bearer ${this.session.access_token}`,
+                  'Content-Type': 'application/json',
+                },
+              }
+            );
+            if (!res.ok) return;
+            const data = await res.json();
+            const users = data.users || [];
+
+            if (users.length === 0) {
+              behalfSuggestions.style.display = 'none';
+              // Clear hidden fields so raw input is used
+              document.getElementById('new-ticket-behalf-email').value = '';
+              document.getElementById('new-ticket-behalf-name').value = '';
+              return;
+            }
+
+            behalfSuggestions.innerHTML = users.map(u => `
+              <div class="behalf-suggestion-item" data-email="${this.escapeHtml(u.email)}" data-name="${this.escapeHtml(u.name || '')}">
+                <strong>${this.escapeHtml(u.name || 'Unknown')}</strong>
+                <span>${this.escapeHtml(u.email)}</span>
+              </div>
+            `).join('');
+            behalfSuggestions.style.display = 'block';
+
+            behalfSuggestions.querySelectorAll('.behalf-suggestion-item').forEach(item => {
+              item.addEventListener('click', () => {
+                const email = item.dataset.email;
+                const name = item.dataset.name;
+                behalfInput.value = name ? `${name} (${email})` : email;
+                document.getElementById('new-ticket-behalf-email').value = email;
+                document.getElementById('new-ticket-behalf-name').value = name;
+                behalfSuggestions.style.display = 'none';
+              });
+            });
+          } catch (e) {
+            console.error('Behalf search error:', e);
+          }
+        }, 300);
+      });
+
+      // Clear hidden fields when user manually edits after selecting
+      behalfInput.addEventListener('keydown', () => {
+        document.getElementById('new-ticket-behalf-email').value = '';
+        document.getElementById('new-ticket-behalf-name').value = '';
+      });
+
+      // Close suggestions on click outside
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('.behalf-search-wrapper')) {
+          behalfSuggestions.style.display = 'none';
+        }
+      });
+    }
+
     document.getElementById('submit-new-ticket-btn')?.addEventListener('click', async () => {
       const subject = document.getElementById('new-ticket-subject').value.trim();
       if (!subject) {
@@ -926,6 +1087,10 @@ export const supportTabMethods = {
       const tagsStr = document.getElementById('new-ticket-tags').value;
       const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(Boolean) : [];
 
+      // On behalf of
+      const from_email = document.getElementById('new-ticket-behalf-email').value || document.getElementById('new-ticket-behalf').value.trim() || null;
+      const from_name = document.getElementById('new-ticket-behalf-name').value || null;
+
       const btn = document.getElementById('submit-new-ticket-btn');
       btn.disabled = true;
       btn.textContent = 'Creating...';
@@ -939,7 +1104,7 @@ export const supportTabMethods = {
               'Authorization': `Bearer ${this.session.access_token}`,
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ action: 'create_ticket', subject, description, priority, tags, assigned_to, due_date }),
+            body: JSON.stringify({ action: 'create_ticket', subject, description, priority, tags, assigned_to, due_date, from_email, from_name }),
           }
         );
 

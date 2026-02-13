@@ -49,8 +49,8 @@ export const analyticsTabMethods = {
       this.renderCharts();
 
       // Load Leaflet and render map
-      await this.loadLeaflet();
-      this.renderSignupMap();
+      // Leaflet removed (activity map removed for performance)
+      // Map removed for performance
     } catch (error) {
       console.error('Error loading analytics:', error);
       container.innerHTML = `
@@ -67,20 +67,6 @@ export const analyticsTabMethods = {
     const data = this.analyticsData;
 
     container.innerHTML = `
-      <!-- Activity Map -->
-      <div class="analytics-section">
-        <h2>Activity Map</h2>
-        <div class="analytics-panel">
-          <div class="map-legend">
-            <span class="map-legend-item"><span class="map-legend-dot" style="background:#6366f1;"></span>Signups</span>
-            <span class="map-legend-item"><span class="map-legend-dot" style="background:#10b981;"></span>Calls</span>
-            <span class="map-legend-item"><span class="map-legend-dot" style="background:#f59e0b;"></span>Messages</span>
-            <span class="map-legend-item"><span class="map-legend-dot" style="background:#ef4444;"></span>Web Chats</span>
-          </div>
-          <div id="signup-map" class="signup-map"></div>
-        </div>
-      </div>
-
       <!-- Overview Metrics -->
       <div class="analytics-section">
         <h2>Overview</h2>
@@ -550,21 +536,13 @@ export const analyticsTabMethods = {
     });
   },
 
-  navigateToUser(userId, email) {
-    // Switch to users tab
-    this.activeTab = 'users';
-    this.render();
-
-    // Set search filter to user email and reload
-    setTimeout(() => {
-      const searchInput = document.getElementById('search-input');
-      if (searchInput) {
-        searchInput.value = email;
-        this.filters.search = email;
-        this.pagination.page = 1;
-        this.loadUsers();
-      }
-    }, 100);
+  async navigateToUser(userId, email) {
+    // Switch to users tab, filter to show user in list, and select them
+    this.adminHeader.setActiveTab('users');
+    this.filters.search = email;
+    this.pagination.page = 1;
+    await this.switchTab('users');
+    this.selectUser(userId);
   },
 
   openChartModal(chartId) {
@@ -849,124 +827,4 @@ export const analyticsTabMethods = {
     };
   },
 
-  async loadLeaflet() {
-    if (this.leafletLoaded || window.L) {
-      this.leafletLoaded = true;
-      return;
-    }
-
-    // Load Leaflet CSS
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-    document.head.appendChild(link);
-
-    // Load Leaflet JS
-    return new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-      script.onload = () => {
-        this.leafletLoaded = true;
-        resolve();
-      };
-      script.onerror = reject;
-      document.head.appendChild(script);
-    });
-  },
-
-  renderSignupMap() {
-    if (!window.L || !this.analyticsData) return;
-
-    const mapContainer = document.getElementById('signup-map');
-    if (!mapContainer) return;
-
-    // Destroy existing map
-    if (this.signupMap) {
-      this.signupMap.remove();
-    }
-
-    // Create map centered on world view
-    this.signupMap = L.map('signup-map', {
-      center: [20, 0],
-      zoom: 2,
-      minZoom: 1,
-      maxZoom: 10
-    });
-
-    // Add tile layer (using CartoDB Positron for clean look)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-      subdomains: 'abcd',
-      maxZoom: 20
-    }).addTo(this.signupMap);
-
-    const locations = this.analyticsData.activityLocations;
-    if (!locations || (
-      (!locations.signups || locations.signups.length === 0) &&
-      (!locations.calls || locations.calls.length === 0) &&
-      (!locations.messages || locations.messages.length === 0) &&
-      (!locations.chats || locations.chats.length === 0)
-    )) {
-      mapContainer.innerHTML = `
-        <div class="map-no-data">
-          <p>No location data available yet</p>
-          <p class="text-muted">Location will be captured for new signups</p>
-        </div>
-      `;
-      return;
-    }
-
-    this.addActivityMarkers(locations);
-  },
-
-  addActivityMarkers(locations) {
-    const types = [
-      { key: 'signups', label: 'signup', color: '#6366f1', border: '#4f46e5' },
-      { key: 'calls', label: 'call', color: '#10b981', border: '#059669' },
-      { key: 'messages', label: 'message', color: '#f59e0b', border: '#d97706' },
-      { key: 'chats', label: 'web chat', color: '#ef4444', border: '#dc2626' }
-    ];
-
-    const bounds = [];
-
-    for (const type of types) {
-      const items = locations[type.key] || [];
-      for (const item of items) {
-        if (!item.lat || !item.lng) continue;
-
-        // Offset overlapping markers slightly by type
-        const offset = types.indexOf(type) * 0.15;
-        const lat = item.lat + offset;
-        const lng = item.lng + offset;
-        const marker = L.circleMarker([lat, lng], {
-          radius: Math.min(6 + item.count * 1.5, 18),
-          fillColor: type.color,
-          color: type.border,
-          weight: 2,
-          opacity: 1,
-          fillOpacity: 0.7
-        }).addTo(this.signupMap);
-
-        bounds.push([item.lat, item.lng]);
-
-        const label = `${item.count} ${type.label}${item.count > 1 ? 's' : ''}`;
-        const popupContent = `
-          <div class="map-popup">
-            <strong>${item.city}, ${item.country}</strong><br>
-            <span>${label}</span>
-            <ul class="map-popup-users">
-              ${item.users.slice(0, 5).map(u => `<li>${u}</li>`).join('')}
-              ${item.users.length > 5 ? `<li>+${item.users.length - 5} more</li>` : ''}
-            </ul>
-          </div>
-        `;
-        marker.bindPopup(popupContent);
-      }
-    }
-
-    // Fit map to markers if we have any
-    if (bounds.length > 0) {
-      this.signupMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 8 });
-    }
-  },
 };

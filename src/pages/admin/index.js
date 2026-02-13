@@ -63,15 +63,15 @@ class AdminPage {
       backPath: '/inbox',
       role: profile.role,
       tabs: [
-        { id: 'analytics', label: 'Analytics', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>' },
-        { id: 'users', label: 'Users', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>' },
-        { id: 'global-agent', label: 'Global Agent', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>' },
-        { id: 'kpi', label: 'KPI', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>' },
-        { id: 'chat', label: 'Chat', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' },
         { id: 'support', label: 'Support', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 7L2 7"/></svg>' },
+        { id: 'users', label: 'Users', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>' },
+        { id: 'analytics', label: 'Analytics', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>' },
+        { id: 'kpi', label: 'KPIs', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>' },
+        { id: 'global-agent', label: 'Global Agent', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>' },
+        { id: 'chat', label: 'Chat', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' },
         { id: 'notifications', label: 'Notifications', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>' },
       ],
-      activeTab: 'analytics',
+      activeTab: 'support',
       onTabChange: (tabId) => this.switchTab(tabId),
       session: this.session,
     });
@@ -99,7 +99,7 @@ class AdminPage {
     const urlParams = new URLSearchParams(window.location.search);
     const tabParam = urlParams.get('tab');
     const validTabs = ['analytics', 'users', 'global-agent', 'kpi', 'chat', 'support', 'notifications'];
-    const initialTab = validTabs.includes(tabParam) ? tabParam : 'analytics';
+    const initialTab = validTabs.includes(tabParam) ? tabParam : 'support';
 
     if (urlParams.get('integration_connected') === 'google_email') {
       showToast('Gmail connected successfully!', 'success');
@@ -111,6 +111,12 @@ class AdminPage {
       this.adminHeader.setActiveTab(initialTab);
     }
     await this.switchTab(initialTab);
+
+    // Restore deep-link state (e.g. open ticket thread)
+    const threadParam = urlParams.get('thread');
+    if (initialTab === 'support' && threadParam) {
+      this.openSupportThread(threadParam);
+    }
   }
 
   renderAdminReminders() {
@@ -161,8 +167,18 @@ class AdminPage {
     });
   }
 
+  updateUrl(params = {}) {
+    const url = new URL(window.location.href);
+    url.search = '';
+    url.searchParams.set('tab', params.tab || this.activeTab);
+    if (params.thread) url.searchParams.set('thread', params.thread);
+    if (params.subtab) url.searchParams.set('subtab', params.subtab);
+    window.history.replaceState({}, '', url.toString());
+  }
+
   async switchTab(tabName) {
     this.activeTab = tabName;
+    this.updateUrl({ tab: tabName });
 
     // Update tab button active states
     document.querySelectorAll('.admin-tab').forEach(tab => {
