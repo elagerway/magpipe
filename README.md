@@ -39,7 +39,7 @@ Maggie is a Progressive Web App (PWA) that acts as your personal AI assistant fo
 - **Telephony**: SignalWire (PSTN calls, SMS, conference bridging)
 - **Voice AI**: LiveKit (real-time audio), OpenAI (LLM), Deepgram (STT), ElevenLabs (TTS)
 - **Payments**: Stripe (credits, subscriptions)
-- **Email**: Postmark (transactional), Gmail API (support tickets)
+- **Email**: Postmark (transactional), Gmail API (support tickets, inbox email send/receive)
 - **Enrichment**: Apollo.io (contact data)
 - **Vector DB**: pgvector (conversation context embeddings)
 
@@ -243,6 +243,7 @@ pat/
 - `agent_configs` - AI agent configuration (prompts, voice, settings, functions)
 - `call_records` - Call history with purpose, goal, transcripts
 - `sms_messages` - SMS message history
+- `email_messages` - Email threads for inbox (id, user_id, agent_id, contact_id, thread_id, gmail_message_id, from/to/cc/bcc, subject, body_text, body_html, direction, status, is_ai_generated, is_read, sent_at)
 - `conversation_contexts` - Conversation memory with embeddings
 - `service_numbers` - User's phone numbers from SignalWire
 - `support_tickets` - Support ticket threads (Gmail integration)

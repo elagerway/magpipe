@@ -90,6 +90,7 @@ navItems.push({ path: '/new', label: 'New' });
 - **Do NOT include Co-Authored-By footer**: Keep commit messages clean
 - **Format**: Brief summary, then details of what/why/how
 - **Update session notes after every commit**: Add a summary of completed work to `.claude/session-notes.md`
+- **Update docs after new features**: When adding pages, components, edge functions, DB tables, or external APIs, update `ARCHITECTURE.md`, `README.md` (project structure/tech stack), and relevant `.specify/` files (plan.md, spec.md, tasks.md) before committing
 
 ### Vercel (Frontend)
 - **Production**: https://magpipe.ai

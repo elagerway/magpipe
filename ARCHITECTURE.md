@@ -39,7 +39,7 @@
 |-------|------|---------|-----------|----------------|
 | Route | File | Purpose | DB Tables | Edge Functions |
 |-------|------|---------|-----------|----------------|
-| `/inbox` | `inbox/index.js` | Main messaging UI — SMS, calls, chat. Real-time subscriptions. Split into `call-interface.js`, `listeners.js`, `messaging.js`, `views.js`, `voice-loader.js` | `sms_messages`, `call_records`, `chat_sessions`, `contacts`, `service_numbers`, `agent_configs` | None (real-time subs) |
+| `/inbox` | `inbox/index.js` | Main messaging UI — SMS, calls, chat, email. Email filter pill, email threads grouped by thread_id, email thread view with reply, compose with WYSIWYG toolbar, Email/Agent Email options in new message dropdown. Real-time subscriptions. Split into `call-interface.js`, `listeners.js`, `messaging.js`, `views.js`, `voice-loader.js` | `sms_messages`, `call_records`, `chat_sessions`, `contacts`, `service_numbers`, `agent_configs`, `email_messages` | `send-email` (real-time subs) |
 | `/agent` | `agent.js` | Admin chat interface for AI agent | `sms_messages` | None |
 | `/agents` | `agents.js` | Multi-agent list | `agent_configs`, `service_numbers` | None |
 | `/agents/:id` | `agent-detail/index.js` | Agent config detail. Split into `configure-tab.js`, `prompt-tab.js`, `functions-tab.js`, `knowledge-tab.js`, `memory-tab.js`, `analytics-tab.js`, `deployment-tab.js`, `schedule-tab.js`, `modals.js`, `styles.js` | `agent_configs`, `service_numbers`, `knowledge_sources`, `dynamic_variables`, `custom_functions`, `transfer_numbers` | `preview-voice`, `clone-voice`, `fetch-agent-avatar` |
@@ -318,6 +318,12 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 | `admin-send-notification` | Service role | `admin_notification_config` | SignalWire, Postmark, Slack | internal |
 | `admin-list-agents` | JWT (admin) | `agent_configs`, `users` | None | admin page |
 
+### Email
+
+| Function | Auth | Tables | External APIs | Called By |
+|----------|------|--------|---------------|----------|
+| `send-email` | JWT | `email_messages`, `user_integrations` | Gmail API (OAuth) | inbox page |
+
 ### Support & Ticketing
 
 | Function | Auth | Tables | External APIs | Called By |
@@ -340,7 +346,7 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 `users`, `organizations`, `organization_members`, `service_numbers`, `agent_configs`
 
 ### Communication
-`call_records`, `sms_messages`, `chat_sessions`, `chat_messages`, `contacts`, `conversation_contexts`
+`call_records`, `sms_messages`, `email_messages`, `chat_sessions`, `chat_messages`, `contacts`, `conversation_contexts`
 
 ### Knowledge & AI
 `knowledge_sources`, `knowledge_chunks` (pgvector), `dynamic_variables`, `semantic_match_actions`, `custom_functions`
@@ -423,6 +429,7 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 | **Deepgram** | STT | agent.py only |
 | **Stripe** | Payments, subscriptions | `stripe-webhook`, `stripe-create-checkout`, `stripe-add-credits`, `stripe-setup-payment`, `stripe-create-portal` |
 | **Postmark** | Transactional email | `notify-signup`, `send-team-invitation`, `send-contact-email`, `send-password-reset`, `admin-send-notification` |
+| **Gmail API** | Email inbox send/receive (OAuth) | `send-email`, `poll-gmail-tickets`, `support-tickets-api` |
 | **Firecrawl** | Web scraping for KB | `knowledge-source-add`, `knowledge-source-sync`, `knowledge-crawl-process` |
 | **Slack** | Notifications, integration | `admin-agent-chat`, `admin-send-notification`, `webhook-inbound-sms` (mirror) |
 | **Cal.com** | Calendar booking | `cal-com-*` functions, agent.py tools |
