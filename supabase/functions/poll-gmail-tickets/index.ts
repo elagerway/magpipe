@@ -80,9 +80,27 @@ Deno.serve(async (req) => {
     let newInboundCount = 0
     const newInboundMessages: any[] = []
 
+    // Build set of our addresses for filtering
+    const ourAddresses = new Set<string>()
+    if (config.gmail_address) ourAddresses.add(config.gmail_address.toLowerCase())
+    if (config.send_as_email) ourAddresses.add(config.send_as_email.toLowerCase())
+
     for (const msg of messages) {
-      const parsed = parseGmailMessage(msg, config.gmail_address)
+      const parsed = parseGmailMessage(msg, config.gmail_address, config.send_as_email)
       if (!parsed) continue
+
+      // Skip system/automated emails
+      const fromLower = (parsed.from_email || '').toLowerCase()
+      if (fromLower.includes('mailer-daemon') ||
+          fromLower.includes('noreply') ||
+          fromLower.includes('no-reply') ||
+          fromLower.includes('postmaster') ||
+          fromLower.includes('notifications@') ||
+          fromLower.includes('notification@') ||
+          fromLower.includes('systemgenerated')) {
+        console.log(`Skipping system email from: ${parsed.from_email}`)
+        continue
+      }
 
       // Upsert (dedup by gmail_message_id)
       const { data: existing } = await supabase
@@ -137,6 +155,10 @@ Deno.serve(async (req) => {
       if (parsed.direction === 'inbound') {
         newInboundCount++
         newInboundMessages.push(parsed)
+
+        // Auto-enrich contact if not exists (fire and forget)
+        autoEnrichEmailContact(integration.user_id, parsed.from_email, parsed.from_name, supabase)
+          .catch(err => console.error('Email contact enrichment error:', err))
       }
     }
 
@@ -160,8 +182,32 @@ Deno.serve(async (req) => {
       // Multi-channel admin notification (replaces old SMS-only alert)
       await sendAdminNotification(supabaseUrl, msg)
 
-      // AI draft generation
+      // AI draft generation — only if we haven't already replied AFTER this inbound message
       if (config.agent_mode === 'draft' || config.agent_mode === 'auto') {
+        const msgTime = msg.received_at || new Date().toISOString()
+
+        const { count: ticketReplies } = await supabase
+          .from('support_tickets')
+          .select('id', { count: 'exact', head: true })
+          .eq('thread_id', msg.thread_id)
+          .eq('direction', 'outbound')
+          .not('ai_draft', 'is', null)
+          .gte('received_at', msgTime)
+
+        const { count: emailReplies } = await supabase
+          .from('email_messages')
+          .select('id', { count: 'exact', head: true })
+          .eq('thread_id', msg.thread_id)
+          .eq('direction', 'outbound')
+          .eq('is_ai_generated', true)
+          .gte('sent_at', msgTime)
+
+        const totalReplies = (ticketReplies || 0) + (emailReplies || 0)
+        if (totalReplies > 0) {
+          console.log(`Skipping AI draft for thread ${msg.thread_id} — already replied after ${msgTime}`)
+          continue
+        }
+
         await generateAiDraft(supabase, accessToken, config, msg)
       }
     }
@@ -315,7 +361,7 @@ async function getLatestHistoryId(accessToken: string): Promise<string | null> {
 }
 
 
-function parseGmailMessage(msg: any, gmailAddress: string) {
+function parseGmailMessage(msg: any, gmailAddress: string, sendAsEmail?: string) {
   try {
     const headers = msg.payload?.headers || []
     const getHeader = (name: string) =>
@@ -326,14 +372,24 @@ function parseGmailMessage(msg: any, gmailAddress: string) {
     const subject = getHeader('Subject')
     const date = getHeader('Date')
     const messageId = msg.id
+    const messageIdHeader = getHeader('Message-ID') || getHeader('Message-Id')
 
-    // Parse from name and email
-    const fromMatch = from.match(/^(?:"?(.+?)"?\s*)?<?([^>]+@[^>]+)>?$/)
-    const fromName = fromMatch?.[1]?.trim() || ''
-    const fromEmail = fromMatch?.[2]?.trim() || from
+    // Parse "Name <email>" or bare "email" formats
+    let fromName = ''
+    let fromEmail = from
+    const angleMatch = from.match(/<([^>]+@[^>]+)>/)
+    if (angleMatch) {
+      fromEmail = angleMatch[1].trim()
+      fromName = from.substring(0, from.indexOf('<')).replace(/"/g, '').trim()
+    } else {
+      const simpleMatch = from.match(/([^\s]+@[^\s]+)/)
+      if (simpleMatch) fromEmail = simpleMatch[1].trim()
+    }
 
-    // Determine direction
-    const isOutbound = fromEmail.toLowerCase() === gmailAddress.toLowerCase()
+    // Determine direction - check both gmail_address and send_as_email
+    const fromLower = fromEmail.toLowerCase()
+    const isOutbound = fromLower === gmailAddress.toLowerCase() ||
+      (sendAsEmail ? fromLower === sendAsEmail.toLowerCase() : false)
     const direction = isOutbound ? 'outbound' : 'inbound'
 
     // Extract body
@@ -345,6 +401,7 @@ function parseGmailMessage(msg: any, gmailAddress: string) {
     return {
       gmail_message_id: messageId,
       thread_id: msg.threadId,
+      message_id_header: messageIdHeader,
       from_email: fromEmail,
       from_name: fromName,
       to_email: to,
@@ -423,12 +480,13 @@ If you have any additional details to share, simply reply to this email.
 Best regards,
 The Support Team`
 
+    const replyToId = msg.message_id_header || `<${msg.gmail_message_id}@mail.gmail.com>`
     const rawMessage = [
       `From: ${fromAddress}`,
       `To: ${msg.from_email}`,
       `Subject: ${subject}`,
-      `In-Reply-To: ${msg.gmail_message_id}`,
-      `References: ${msg.gmail_message_id}`,
+      `In-Reply-To: ${replyToId}`,
+      `References: ${replyToId}`,
       'Content-Type: text/plain; charset=UTF-8',
       '',
       body,
@@ -673,8 +731,8 @@ async function sendGmailReply(accessToken: string, fromAddress: string, original
     `From: ${fromAddress}`,
     `To: ${originalMsg.from_email}`,
     `Subject: ${subject}`,
-    `In-Reply-To: ${originalMsg.gmail_message_id}`,
-    `References: ${originalMsg.gmail_message_id}`,
+    `In-Reply-To: ${originalMsg.message_id_header || '<' + originalMsg.gmail_message_id + '@mail.gmail.com>'}`,
+    `References: ${originalMsg.message_id_header || '<' + originalMsg.gmail_message_id + '@mail.gmail.com>'}`,
     'Content-Type: text/plain; charset=UTF-8',
     '',
     body,
@@ -701,4 +759,90 @@ async function sendGmailReply(accessToken: string, fromAddress: string, original
   }
 
   return await response.json()
+}
+
+async function autoEnrichEmailContact(
+  userId: string,
+  email: string,
+  fromName: string | null,
+  supabase: any
+) {
+  const normalizedEmail = email.toLowerCase().trim()
+
+  // Check if contact already exists by email
+  const { data: existingContact } = await supabase
+    .from('contacts')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('email', normalizedEmail)
+    .maybeSingle()
+
+  if (existingContact) {
+    console.log('Contact already exists for', normalizedEmail)
+    return
+  }
+
+  console.log('No contact found for', normalizedEmail, '- attempting enrichment')
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+  const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+
+  // Call contact-lookup with email (Apollo supports email lookups)
+  const response = await fetch(
+    `${supabaseUrl}/functions/v1/contact-lookup`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${supabaseKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email: normalizedEmail }),
+    }
+  )
+
+  const data = await response.json()
+
+  if (!response.ok || data.notFound || !data.success) {
+    // No enrichment data — create basic contact from email header name
+    console.log('No enrichment data for', normalizedEmail, '- creating basic contact')
+    const nameParts = fromName ? fromName.trim().split(/\s+/) : []
+    const firstName = nameParts[0] || normalizedEmail.split('@')[0]
+    const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : null
+
+    await supabase.from('contacts').insert({
+      user_id: userId,
+      email: normalizedEmail,
+      name: fromName || firstName,
+      first_name: firstName,
+      last_name: lastName,
+      is_whitelisted: false,
+    })
+    console.log('Created basic email contact for', normalizedEmail)
+    return
+  }
+
+  // Create enriched contact
+  const contact = data.contact
+  const firstName = contact.first_name || (fromName ? fromName.split(' ')[0] : normalizedEmail.split('@')[0])
+  const lastName = contact.last_name || (fromName ? fromName.split(' ').slice(1).join(' ') : null)
+  const fullName = contact.name || [firstName, lastName].filter(Boolean).join(' ')
+
+  await supabase.from('contacts').insert({
+    user_id: userId,
+    email: normalizedEmail,
+    phone_number: contact.phone || null,
+    name: fullName,
+    first_name: firstName,
+    last_name: lastName,
+    address: contact.address || null,
+    company: contact.company || null,
+    job_title: contact.job_title || null,
+    avatar_url: contact.avatar_url || null,
+    linkedin_url: contact.linkedin_url || null,
+    twitter_url: contact.twitter_url || null,
+    facebook_url: contact.facebook_url || null,
+    enriched_at: new Date().toISOString(),
+    is_whitelisted: false,
+  })
+  console.log('Created enriched email contact for', normalizedEmail, '- company:', contact.company)
 }

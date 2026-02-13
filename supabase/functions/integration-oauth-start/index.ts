@@ -65,7 +65,7 @@ Deno.serve(async (req) => {
 
     // Parse request body
     const body = await req.json();
-    const { provider } = body;
+    const { provider, redirect_path } = body;
 
     if (!provider) {
       return new Response(
@@ -134,12 +134,16 @@ Deno.serve(async (req) => {
     }
 
     // Generate state parameter
-    const state = btoa(JSON.stringify({
+    const statePayload: Record<string, unknown> = {
       userId: user.id,
       provider: provider,
       timestamp: Date.now(),
       nonce: crypto.randomUUID(),
-    }));
+    };
+    if (redirect_path) {
+      statePayload.redirect_path = redirect_path;
+    }
+    const state = btoa(JSON.stringify(statePayload));
 
     // Generate PKCE if required
     let codeVerifier: string | null = null;

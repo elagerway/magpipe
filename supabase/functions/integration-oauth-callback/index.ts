@@ -46,7 +46,7 @@ Deno.serve(async (req) => {
       return Response.redirect(`${frontendUrl}/settings?integration_error=invalid_state`);
     }
 
-    const { userId, provider } = stateData;
+    const { userId, provider, redirect_path } = stateData;
 
     if (!userId || !provider) {
       return Response.redirect(`${frontendUrl}/settings?integration_error=invalid_state`);
@@ -197,6 +197,12 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Build config object (store gmail_address for easy access from frontend)
+    const integrationConfig: Record<string, unknown> = {};
+    if (provider === 'google_email' && externalUserId) {
+      integrationConfig.gmail_address = externalUserId; // externalUserId is the email address for Google
+    }
+
     // Store tokens in user_integrations table
     const { error: insertError } = await supabase
       .from('user_integrations')
@@ -209,7 +215,7 @@ Deno.serve(async (req) => {
         token_expires_at: expiresAt.toISOString(),
         external_user_id: externalUserId,
         external_workspace_id: externalWorkspaceId,
-        config: {},
+        config: integrationConfig,
         connected_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }, {
@@ -221,7 +227,11 @@ Deno.serve(async (req) => {
       return Response.redirect(`${frontendUrl}/settings?integration_error=storage_failed`);
     }
 
-    // Success - redirect based on provider
+    // Success - redirect based on provider / custom redirect path
+    if (redirect_path) {
+      const separator = redirect_path.includes('?') ? '&' : '?';
+      return Response.redirect(`${frontendUrl}${redirect_path}${separator}integration_connected=${provider}`);
+    }
     if (provider === 'google_email') {
       return Response.redirect(`${frontendUrl}/admin?tab=support&integration_connected=google_email`);
     }
