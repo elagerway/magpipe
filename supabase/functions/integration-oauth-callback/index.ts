@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { setupGmailWatch } from '../_shared/gmail-helpers.ts';
 
 // Environment variable mapping for provider credentials
 const PROVIDER_CREDENTIALS: Record<string, { clientIdEnv: string; clientSecretEnv: string }> = {
@@ -190,6 +191,28 @@ Deno.serve(async (req) => {
               .eq('id', '00000000-0000-0000-0000-000000000001');
 
             console.log('Gmail connected:', profile.emailAddress);
+
+            // Set up Gmail Pub/Sub watch for near-real-time email notifications
+            const topicName = Deno.env.get('GMAIL_PUBSUB_TOPIC');
+            if (topicName) {
+              try {
+                const watchResult = await setupGmailWatch(tokens.access_token, topicName);
+                if (watchResult) {
+                  await supabase
+                    .from('agent_email_configs')
+                    .update({
+                      watch_expiration: new Date(parseInt(watchResult.expiration)).toISOString(),
+                      watch_resource_id: watchResult.resourceId || null,
+                      updated_at: new Date().toISOString(),
+                    })
+                    .eq('user_id', userId)
+                    .eq('is_active', true);
+                  console.log('Gmail Pub/Sub watch set up, expires:', watchResult.expiration);
+                }
+              } catch (watchErr) {
+                console.error('Gmail watch setup failed (non-fatal):', watchErr);
+              }
+            }
           }
         } catch (e) {
           console.error('Failed to fetch Gmail profile:', e);

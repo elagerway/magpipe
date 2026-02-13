@@ -115,6 +115,9 @@ pat/
 │   │   ├── admin-status/
 │   │   ├── contact-lookup/       # Apollo.io enrichment
 │   │   ├── initiate-bridged-call/
+│   │   ├── gmail-push-webhook/   # Gmail Pub/Sub push notifications
+│   │   ├── gmail-watch-renew/    # Daily Gmail watch renewal
+│   │   ├── poll-gmail-inbox/     # Fallback email polling (30m)
 │   │   ├── poll-gmail-tickets/
 │   │   ├── support-tickets-api/
 │   │   ├── webhook-inbound-call/
@@ -244,6 +247,7 @@ pat/
 - `call_records` - Call history with purpose, goal, transcripts
 - `sms_messages` - SMS message history
 - `email_messages` - Email threads for inbox (id, user_id, agent_id, contact_id, thread_id, gmail_message_id, from/to/cc/bcc, subject, body_text, body_html, direction, status, is_ai_generated, is_read, sent_at)
+- `agent_email_configs` - Per-agent email channel config (gmail_address, agent_mode: off/draft/auto, watch_expiration, last_history_id)
 - `conversation_contexts` - Conversation memory with embeddings
 - `service_numbers` - User's phone numbers from SignalWire
 - `support_tickets` - Support ticket threads (Gmail integration)
