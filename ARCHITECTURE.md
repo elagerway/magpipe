@@ -323,6 +323,9 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 | Function | Auth | Tables | External APIs | Called By |
 |----------|------|--------|---------------|----------|
 | `send-email` | JWT | `email_messages`, `user_integrations` | Gmail API (OAuth) | inbox page |
+| `poll-gmail-inbox` | Cron (30m) | `agent_email_configs`, `email_messages`, `user_integrations`, `contacts` | Gmail API, OpenAI | cron job (fallback) |
+| `gmail-push-webhook` | Pub/Sub secret | `agent_email_configs`, `email_messages`, `user_integrations`, `contacts` | Gmail API, OpenAI | Google Cloud Pub/Sub |
+| `gmail-watch-renew` | Service role | `agent_email_configs`, `user_integrations` | Gmail API (watch) | cron job (daily) |
 
 ### Support & Ticketing
 
@@ -429,7 +432,8 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 | **Deepgram** | STT | agent.py only |
 | **Stripe** | Payments, subscriptions | `stripe-webhook`, `stripe-create-checkout`, `stripe-add-credits`, `stripe-setup-payment`, `stripe-create-portal` |
 | **Postmark** | Transactional email | `notify-signup`, `send-team-invitation`, `send-contact-email`, `send-password-reset`, `admin-send-notification` |
-| **Gmail API** | Email inbox send/receive (OAuth) | `send-email`, `poll-gmail-tickets`, `support-tickets-api` |
+| **Gmail API** | Email inbox send/receive (OAuth), Pub/Sub watch | `send-email`, `poll-gmail-inbox`, `gmail-push-webhook`, `gmail-watch-renew`, `poll-gmail-tickets`, `support-tickets-api` |
+| **Google Cloud Pub/Sub** | Gmail push notifications | `gmail-push-webhook` (receiver) |
 | **Firecrawl** | Web scraping for KB | `knowledge-source-add`, `knowledge-source-sync`, `knowledge-crawl-process` |
 | **Slack** | Notifications, integration | `admin-agent-chat`, `admin-send-notification`, `webhook-inbound-sms` (mirror) |
 | **Cal.com** | Calendar booking | `cal-com-*` functions, agent.py tools |

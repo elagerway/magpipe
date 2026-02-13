@@ -1079,6 +1079,7 @@ class InboxPage {
 
       if (emailMsg.direction === 'inbound') {
         conv.unreadCount = (conv.unreadCount || 0) + 1;
+        refreshUnreadBadge(this.userId);
       }
     }
 
@@ -1324,8 +1325,14 @@ class InboxPage {
 
       // Track unread inbound emails
       const convKey = `email_${em.thread_id}`;
-      if (em.direction === 'inbound' && !em.is_read && !this.viewedConversations.has(convKey)) {
-        emailGrouped[em.thread_id].unreadCount++;
+      if (em.direction === 'inbound' && !em.is_read) {
+        const lastViewedKey = `conversation_last_viewed_email_${em.thread_id}`;
+        const lastViewed = localStorage.getItem(lastViewedKey);
+        const msgDate = new Date(em.sent_at || em.created_at || Date.now());
+        const isNew = !lastViewed || msgDate > new Date(lastViewed);
+        if (isNew) {
+          emailGrouped[em.thread_id].unreadCount++;
+        }
       }
 
       // Capture fromName from any inbound message if not set yet

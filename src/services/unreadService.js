@@ -102,12 +102,14 @@ function isViewed(type, key, itemDate) {
     lastViewedKey = `conversation_last_viewed_email_${key}`;
   }
 
-  // Check if in viewedConversations set (current session)
-  if (viewedConversations.has(convKey)) return true;
-
-  // Check lastViewed timestamp
+  // Check lastViewed timestamp first — newer messages should always count as unread
   const lastViewed = localStorage.getItem(lastViewedKey);
-  if (lastViewed && itemDate <= new Date(lastViewed)) return true;
+  if (lastViewed) {
+    return itemDate <= new Date(lastViewed);
+  }
+
+  // Fall back to viewedConversations set (for items without a timestamp)
+  if (viewedConversations.has(convKey)) return true;
 
   return false;
 }
