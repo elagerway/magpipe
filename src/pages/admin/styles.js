@@ -1460,7 +1460,6 @@ export const stylesMethods = {
       .support-subtabs {
         display: flex;
         gap: 0;
-        border-bottom: 1px solid var(--border-color);
         margin-bottom: 1.5rem;
       }
 

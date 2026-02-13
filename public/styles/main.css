@@ -1675,6 +1675,32 @@ p {
   border: 2px solid rgba(99, 102, 241, 0.1);
 }
 
+/* Email compose contenteditable placeholder */
+#email-body.empty:before {
+  content: attr(data-placeholder);
+  color: var(--text-secondary);
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* Email content in thread bubbles */
+.email-content blockquote {
+  border-left: 3px solid var(--border-color);
+  margin: 0.5rem 0;
+  padding-left: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.email-content a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.email-content img {
+  max-width: 100%;
+  height: auto;
+}
+
 .call-indicator {
   align-self: center;
   display: flex;

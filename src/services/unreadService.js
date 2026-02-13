@@ -10,6 +10,7 @@ let unreadCounts = {
   sms: 0,
   chat: 0,
   calls: 0,
+  email: 0,
   total: 0
 };
 
@@ -96,6 +97,9 @@ function isViewed(type, key, itemDate) {
   } else if (type === 'call') {
     convKey = `call_${key}`;
     lastViewedKey = `conversation_last_viewed_call_${key}`;
+  } else if (type === 'email') {
+    convKey = `email_${key}`;
+    lastViewedKey = `conversation_last_viewed_email_${key}`;
   }
 
   // Check if in viewedConversations set (current session)
@@ -216,12 +220,38 @@ export async function recalculateUnreads(userId = null) {
     console.error('Error counting call unreads:', e);
   }
 
+  // Count email unreads (inbound only)
+  let emailUnread = 0;
+  try {
+    const { data: emails } = await supabase
+      .from('email_messages')
+      .select('thread_id, sent_at, created_at')
+      .eq('user_id', userId)
+      .eq('direction', 'inbound')
+      .eq('is_read', false)
+      .order('sent_at', { ascending: false });
+
+    if (emails?.length > 0) {
+      const unreadThreads = new Set();
+      emails.forEach(em => {
+        const msgDate = new Date(em.sent_at || em.created_at || Date.now());
+        if (!isViewed('email', em.thread_id, msgDate)) {
+          unreadThreads.add(em.thread_id);
+        }
+      });
+      emailUnread = unreadThreads.size;
+    }
+  } catch (e) {
+    console.error('Error counting email unreads:', e);
+  }
+
   // Update state
   unreadCounts = {
     sms: smsUnread,
     chat: chatUnread,
     calls: callsUnread,
-    total: smsUnread + chatUnread + callsUnread
+    email: emailUnread,
+    total: smsUnread + chatUnread + callsUnread + emailUnread
   };
 
   console.log('📊 Unread counts recalculated:', unreadCounts);
@@ -247,6 +277,9 @@ export function markAsRead(type, key) {
   } else if (type === 'call') {
     convKey = `call_${key}`;
     lastViewedKey = `conversation_last_viewed_call_${key}`;
+  } else if (type === 'email') {
+    convKey = `email_${key}`;
+    lastViewedKey = `conversation_last_viewed_email_${key}`;
   }
 
   // Update both localStorage mechanisms
@@ -325,10 +358,30 @@ export async function markAllAsRead() {
     console.error('Error marking calls as read:', e);
   }
 
+  // Mark all emails as read
+  try {
+    const { data: emails } = await supabase
+      .from('email_messages')
+      .select('thread_id')
+      .eq('user_id', currentUserId)
+      .eq('direction', 'inbound');
+
+    const seenThreads = new Set();
+    emails?.forEach(em => {
+      if (!seenThreads.has(em.thread_id)) {
+        seenThreads.add(em.thread_id);
+        viewedConversations.add(`email_${em.thread_id}`);
+        localStorage.setItem(`conversation_last_viewed_email_${em.thread_id}`, now);
+      }
+    });
+  } catch (e) {
+    console.error('Error marking emails as read:', e);
+  }
+
   // Save and update
   localStorage.setItem('inbox_viewed_conversations', JSON.stringify([...viewedConversations]));
 
-  unreadCounts = { sms: 0, chat: 0, calls: 0, total: 0 };
+  unreadCounts = { sms: 0, chat: 0, calls: 0, email: 0, total: 0 };
   updateBadgeDOM();
   notifyListeners();
 }
@@ -418,6 +471,26 @@ export async function initUnreadTracking() {
     })
     .subscribe();
   subscriptions.push(chatSubscription);
+
+  // Subscribe to new emails
+  const emailChannelId = `unread-email-${user.id}-${Date.now()}`;
+  const emailSubscription = supabase
+    .channel(emailChannelId)
+    .on('postgres_changes', {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'email_messages'
+    }, (payload) => {
+      console.log('📧 Email realtime event:', payload.new?.direction, payload.new?.user_id);
+      if (payload.new?.user_id === user.id && payload.new?.direction === 'inbound') {
+        console.log('📧 New inbound email - recalculating unreads');
+        recalculateUnreads(user.id);
+      }
+    })
+    .subscribe((status, err) => {
+      console.log('📧 Email subscription status:', status, err || '');
+    });
+  subscriptions.push(emailSubscription);
 
   // Subscribe to new calls
   const callSubscription = supabase

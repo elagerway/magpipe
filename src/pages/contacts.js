@@ -360,7 +360,7 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
                   : ''
                 }
               </div>
-              <div class="text-sm text-muted">${this.formatPhoneNumber(contact.phone_number)}</div>
+              ${contact.phone_number ? `<div class="text-sm text-muted">${this.formatPhoneNumber(contact.phone_number)}</div>` : ''}
               ${contact.job_title || contact.company ? `
                 <div class="text-sm text-muted" style="margin-top: 0.25rem;">
                   ${[contact.job_title, contact.company].filter(Boolean).join(' at ')}
@@ -397,6 +397,7 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
 
               <!-- Call and Text action buttons -->
               <div style="display: flex; gap: 0.5rem; margin-top: 0.75rem;">
+                ${contact.phone_number ? `
                 <button class="btn btn-primary btn-sm call-contact-btn" data-phone="${contact.phone_number}" style="display: flex; align-items: center; gap: 0.25rem;">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
@@ -409,6 +410,16 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
                   </svg>
                   Text
                 </button>
+                ` : ''}
+                ${contact.email ? `
+                <a href="mailto:${contact.email}" class="btn btn-secondary btn-sm" style="display: flex; align-items: center; gap: 0.25rem; text-decoration: none;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                    <polyline points="22,6 12,13 2,6"></polyline>
+                  </svg>
+                  Email
+                </a>
+                ` : ''}
               </div>
             </div>
           </div>
@@ -420,6 +431,7 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
   }
 
   formatPhoneNumber(phoneNumber) {
+    if (!phoneNumber) return '';
     const cleaned = phoneNumber.replace(/\D/g, '');
     const match = cleaned.match(/^1?(\d{3})(\d{3})(\d{4})$/);
 
@@ -450,7 +462,7 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
           const name = (contact.name || '').toLowerCase();
           return fullName.includes(query) ||
                  name.includes(query) ||
-                 contact.phone_number.includes(query) ||
+                 (contact.phone_number && contact.phone_number.includes(query)) ||
                  (contact.email && contact.email.toLowerCase().includes(query));
         }
       );

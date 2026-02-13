@@ -92,44 +92,6 @@ export const supportTabMethods = {
 
       <!-- Settings sub-tab -->
       <div id="support-subtab-settings" class="support-subtab-content" style="display: ${this.supportSubTab === 'settings' ? 'block' : 'none'};">
-        <!-- Email Connection -->
-        <div class="support-section">
-          <h3>Email Connection</h3>
-          <p class="notif-section-desc">Connect a Gmail account to sync support emails.</p>
-          <div class="notif-channel-card">
-            <div class="notif-channel-header">
-              <div class="notif-channel-icon notif-channel-icon-email">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <rect x="2" y="4" width="20" height="16" rx="2"/>
-                  <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
-                </svg>
-              </div>
-              <div class="notif-channel-info">
-                <span class="notif-channel-name">Gmail</span>
-                <span class="notif-channel-status ${this.supportGmailConnected ? 'notif-status-active' : 'notif-status-inactive'}">
-                  ${this.supportGmailConnected ? (this.supportConfig.gmail_address || 'Connected') : 'Not connected'}
-                </span>
-                ${this.supportGmailConnected && this.supportConfig.last_polled_at ? `<span class="notif-channel-status notif-status-inactive" style="font-size: 0.7rem;">Last polled: ${new Date(this.supportConfig.last_polled_at).toLocaleString()}</span>` : ''}
-              </div>
-              ${this.supportGmailConnected ? `
-                <button class="btn btn-secondary notif-test-btn" id="connect-gmail-btn">Change</button>
-                <button class="btn btn-secondary notif-test-btn" id="disconnect-gmail-btn" style="color: var(--error-color);">Disconnect</button>
-              ` : `
-                <button class="btn btn-primary notif-test-btn" id="connect-gmail-btn">Connect</button>
-              `}
-            </div>
-            ${this.supportGmailConnected ? `
-              <div class="notif-channel-body">
-                <div class="form-group">
-                  <label class="form-label" style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em;">Send As</label>
-                  <input type="text" id="support-send-as-email" class="form-input" placeholder="e.g. help@yourdomain.com" value="${this.escapeHtml(this.supportConfig.send_as_email || '')}" style="max-width: 320px;">
-                  <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 0.25rem;">Outgoing emails will be sent from this address. Must be a verified Send As alias in Gmail.</p>
-                </div>
-              </div>
-            ` : ''}
-          </div>
-        </div>
-
         <!-- AI Agent Settings -->
         <div class="support-section">
           <h3>AI Agent</h3>
@@ -253,30 +215,6 @@ export const supportTabMethods = {
       });
   },
 
-  _supportSaveSendAs(email) {
-    fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/support-tickets-api`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          action: 'update_config',
-          send_as_email: email,
-        }),
-      }
-    )
-      .then(res => {
-        if (!res.ok) throw new Error('Failed to save');
-        showToast('Send As email saved', 'success');
-      })
-      .catch(err => {
-        showToast('Error: ' + err.message, 'error');
-      });
-  },
-
   _supportSaveTicketCreation(enabled) {
     fetch(
       `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/support-tickets-api`,
@@ -302,92 +240,9 @@ export const supportTabMethods = {
   },
 
   attachSupportListeners() {
-    // Connect Gmail
-    const connectBtn = document.getElementById('connect-gmail-btn');
-    if (connectBtn) {
-      connectBtn.addEventListener('click', async () => {
-        connectBtn.disabled = true;
-        connectBtn.textContent = 'Connecting...';
-        try {
-          const response = await fetch(
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/integration-oauth-start`,
-            {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${this.session.access_token}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({ provider: 'google_email' }),
-            }
-          );
-          const data = await response.json();
-          if (data.url) {
-            window.location.href = data.url;
-          } else {
-            throw new Error(data.error || 'Failed to start OAuth');
-          }
-        } catch (error) {
-          showToast('Error: ' + error.message, 'error');
-          connectBtn.disabled = false;
-          connectBtn.textContent = 'Connect Gmail';
-        }
-      });
-    }
-
-    // Disconnect Gmail
-    const disconnectBtn = document.getElementById('disconnect-gmail-btn');
-    if (disconnectBtn) {
-      disconnectBtn.addEventListener('click', async () => {
-        const confirmed = await showConfirmModal({
-          title: 'Disconnect Gmail',
-          message: 'Disconnect this Gmail account? Polling will stop and you won\'t be able to send replies until you reconnect.',
-          confirmText: 'Disconnect',
-          confirmStyle: 'danger',
-        });
-        if (!confirmed) return;
-        disconnectBtn.disabled = true;
-        disconnectBtn.textContent = 'Disconnecting...';
-        try {
-          const response = await fetch(
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/support-tickets-api`,
-            {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${this.session.access_token}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({ action: 'disconnect_gmail' }),
-            }
-          );
-          if (!response.ok) throw new Error('Failed to disconnect');
-          showToast('Gmail disconnected', 'success');
-          this.renderSupportTab();
-        } catch (error) {
-          showToast('Error: ' + error.message, 'error');
-          disconnectBtn.disabled = false;
-          disconnectBtn.textContent = 'Disconnect';
-        }
-      });
-    }
-
     // Auto-save agent settings: both dropdowns save immediately
     document.getElementById('support-agent-mode')?.addEventListener('change', () => this._supportSaveAgentSettings());
     document.getElementById('support-agent-id')?.addEventListener('change', () => this._supportSaveAgentSettings());
-
-    // Send As email - save on blur
-    const sendAsInput = document.getElementById('support-send-as-email');
-    if (sendAsInput) {
-      sendAsInput.addEventListener('blur', () => {
-        const val = sendAsInput.value.trim();
-        if (val !== (this.supportConfig.send_as_email || '')) {
-          this.supportConfig.send_as_email = val;
-          this._supportSaveSendAs(val);
-        }
-      });
-      sendAsInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); sendAsInput.blur(); }
-      });
-    }
 
     // Ticket creation from chat toggle
     document.getElementById('support-ticket-creation-toggle')?.addEventListener('change', (e) => {
