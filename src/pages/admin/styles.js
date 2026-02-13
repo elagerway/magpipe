@@ -1608,6 +1608,22 @@ export const stylesMethods = {
         gap: 0.25rem;
       }
 
+      .tl-item-new {
+        border-left: 3px solid var(--primary-color);
+      }
+
+      .tl-new-badge {
+        display: inline-block;
+        background: var(--primary-color);
+        color: white;
+        font-size: 0.6rem;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        padding: 0.15rem 0.4rem;
+        border-radius: 4px;
+        flex-shrink: 0;
+      }
+
       .tl-item-subject {
         font-weight: 500;
         font-size: 0.9rem;
@@ -1757,6 +1773,48 @@ export const stylesMethods = {
         border-radius: 10px;
         padding: 1.25rem;
         margin-bottom: 1rem;
+      }
+
+      .behalf-suggestions {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: var(--bg-primary);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        z-index: 100;
+        max-height: 200px;
+        overflow-y: auto;
+        margin-top: 2px;
+      }
+
+      .behalf-suggestion-item {
+        padding: 0.5rem 0.75rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.85rem;
+        border-bottom: 1px solid var(--border-color);
+      }
+
+      .behalf-suggestion-item:last-child {
+        border-bottom: none;
+      }
+
+      .behalf-suggestion-item:hover {
+        background: var(--bg-secondary);
+      }
+
+      .behalf-suggestion-item strong {
+        color: var(--text-primary);
+      }
+
+      .behalf-suggestion-item span {
+        color: var(--text-muted);
+        font-size: 0.8rem;
       }
 
       /* ── Thread View (tv-) ── */
@@ -1938,8 +1996,32 @@ export const stylesMethods = {
       }
 
       .tv-msg-outbound .tv-msg-content {
+        background: #eef2ff;
+        border-color: #c7d2fe;
+      }
+
+      .tv-msg-ai .tv-msg-content {
         background: #faf5ff;
         border-color: #e9d5ff;
+      }
+
+      .tv-msg-ai .tv-msg-avatar {
+        background: #ede9fe;
+        color: #7c3aed;
+        font-size: 0.65rem;
+        font-weight: 700;
+      }
+
+      .tv-ai-tag {
+        display: inline-block;
+        background: #ede9fe;
+        color: #7c3aed;
+        font-size: 0.6rem;
+        font-weight: 700;
+        padding: 0.1rem 0.35rem;
+        border-radius: 4px;
+        margin-left: 0.35rem;
+        vertical-align: middle;
       }
 
       .tv-msg-header {

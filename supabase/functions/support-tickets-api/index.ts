@@ -302,7 +302,7 @@ async function handleListAssignees(supabase: any) {
 
 
 async function handleCreateTicket(supabase: any, body: any) {
-  const { subject, description, priority, tags, assigned_to, due_date } = body
+  const { subject, description, priority, tags, assigned_to, due_date, from_email, from_name } = body
   if (!subject) return errorResponse('Missing subject')
 
   const threadId = `manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -322,10 +322,35 @@ async function handleCreateTicket(supabase: any, body: any) {
     tags: tags || [],
     assigned_to: assigned_to || null,
     due_date: due_date || null,
+    from_email: from_email || null,
+    from_name: from_name || null,
     received_at: new Date().toISOString(),
   })
 
   if (error) return errorResponse('Failed to create ticket: ' + error.message)
+
+  // Send acknowledgment email to the user if created on their behalf
+  if (from_email) {
+    try {
+      const senderName = from_name || 'there'
+      const ackSubject = ticketRef ? `${subject} [${ticketRef}]` : subject
+      const ackBody = `Hi ${senderName},
+
+A support ticket has been created on your behalf.
+
+${ticketRef ? `Ticket Reference: ${ticketRef}\n` : ''}Subject: ${subject}${description ? `\n\nDetails:\n${description}` : ''}
+
+Our team will follow up with you shortly. If you have any additional details to share, simply reply to this email.
+
+Best regards,
+The Support Team`
+
+      await sendPostmarkReply(from_email, ackSubject, ackBody)
+    } catch (e) {
+      console.error('Failed to send ticket acknowledgment email:', e)
+      // Don't fail the ticket creation if email fails
+    }
+  }
 
   return successResponse({ success: true, threadId })
 }
@@ -372,15 +397,16 @@ async function handleSendReply(supabase: any, body: any) {
 
     const { data: config } = await supabase
       .from('support_email_config')
-      .select('gmail_address')
+      .select('gmail_address, send_as_email')
       .eq('id', CONFIG_ID)
       .single()
 
     if (!config?.gmail_address) return errorResponse('Gmail address not configured')
+    const sendFrom = config.send_as_email || config.gmail_address
 
     const sentMsg = await sendGmailReply(
       accessToken,
-      config.gmail_address,
+      sendFrom,
       toEmail,
       replySubject,
       threadId,
@@ -393,7 +419,7 @@ async function handleSendReply(supabase: any, body: any) {
     await supabase.from('support_tickets').insert({
       gmail_message_id: sentMsg?.id || `reply-${Date.now()}`,
       thread_id: threadId,
-      from_email: config.gmail_address,
+      from_email: sendFrom,
       from_name: '',
       to_email: toEmail,
       subject: replySubject,
@@ -410,7 +436,7 @@ async function handleSendReply(supabase: any, body: any) {
     // Insert outbound record
     await supabase.from('support_tickets').insert({
       thread_id: threadId,
-      from_email: 'support@snapsonic.com',
+      from_email: 'help@magpipe.ai',
       from_name: '',
       to_email: toEmail,
       subject: replySubject,
@@ -465,15 +491,16 @@ async function handleApproveDraft(supabase: any, body: any) {
 
     const { data: config } = await supabase
       .from('support_email_config')
-      .select('gmail_address')
+      .select('gmail_address, send_as_email')
       .eq('id', CONFIG_ID)
       .single()
 
     if (!config?.gmail_address) return errorResponse('Gmail address not configured')
+    const sendFrom = config.send_as_email || config.gmail_address
 
     const sentMsg = await sendGmailReply(
       accessToken,
-      config.gmail_address,
+      sendFrom,
       ticket.from_email,
       replySubject,
       ticket.thread_id,
@@ -491,7 +518,7 @@ async function handleApproveDraft(supabase: any, body: any) {
     await supabase.from('support_tickets').insert({
       gmail_message_id: sentMsg?.id || `approved-${Date.now()}`,
       thread_id: ticket.thread_id,
-      from_email: config.gmail_address,
+      from_email: sendFrom,
       to_email: ticket.from_email,
       subject: replySubject,
       body_text: draftText,
@@ -512,7 +539,7 @@ async function handleApproveDraft(supabase: any, body: any) {
     // Insert outbound record
     await supabase.from('support_tickets').insert({
       thread_id: ticket.thread_id,
-      from_email: 'support@snapsonic.com',
+      from_email: 'help@magpipe.ai',
       to_email: ticket.from_email,
       subject: replySubject,
       body_text: draftText,
@@ -602,21 +629,30 @@ async function handleGetConfig(supabase: any) {
     gmailConnected = !!integration
   }
 
+  // Fetch available agents for the selector
+  const { data: agents } = await supabase
+    .from('agent_configs')
+    .select('id, name, agent_name')
+    .order('name', { ascending: true })
+
   return successResponse({
     config: config || {},
     gmailConnected,
+    agents: agents || [],
   })
 }
 
 
 async function handleUpdateConfig(supabase: any, body: any) {
-  const { sms_alert_enabled, sms_alert_phone, agent_mode, agent_system_prompt } = body
+  const { sms_alert_enabled, sms_alert_phone, agent_mode, agent_system_prompt, support_agent_id, send_as_email } = body
 
   const updates: Record<string, any> = { updated_at: new Date().toISOString() }
   if (sms_alert_enabled !== undefined) updates.sms_alert_enabled = sms_alert_enabled
   if (sms_alert_phone !== undefined) updates.sms_alert_phone = sms_alert_phone
   if (agent_mode !== undefined) updates.agent_mode = agent_mode
   if (agent_system_prompt !== undefined) updates.agent_system_prompt = agent_system_prompt
+  if (support_agent_id !== undefined) updates.support_agent_id = support_agent_id || null
+  if (send_as_email !== undefined) updates.send_as_email = send_as_email || null
 
   const { error } = await supabase
     .from('support_email_config')
@@ -644,7 +680,7 @@ async function sendPostmarkReply(toEmail: string, subject: string, body: string)
       'X-Postmark-Server-Token': postmarkApiKey,
     },
     body: JSON.stringify({
-      From: 'support@snapsonic.com',
+      From: 'help@magpipe.ai',
       To: toEmail,
       Subject: subject,
       TextBody: body,
