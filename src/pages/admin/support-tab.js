@@ -62,21 +62,25 @@ export const supportTabMethods = {
       <!-- Tickets sub-tab -->
       <div id="support-subtab-tickets" class="support-subtab-content" style="display: ${this.supportSubTab === 'tickets' ? 'block' : 'none'};">
         <div class="support-section">
-          <div class="support-filter-bar">
-            <button class="kpi-filter-btn ${this.supportFilter === 'open' ? 'active' : ''}" data-support-filter="open">Open</button>
-            <button class="kpi-filter-btn ${this.supportFilter === 'closed' ? 'active' : ''}" data-support-filter="closed">Closed</button>
-            <button class="kpi-filter-btn ${this.supportFilter === 'all' ? 'active' : ''}" data-support-filter="all">All</button>
-            <select id="support-priority-filter" class="form-input form-select" style="max-width: 140px; font-size: 0.8rem; padding: 0.35rem 0.5rem; margin-left: 0.5rem;">
-              <option value="">All Priorities</option>
-              <option value="low" ${this.supportPriorityFilter === 'low' ? 'selected' : ''}>Low</option>
-              <option value="medium" ${this.supportPriorityFilter === 'medium' ? 'selected' : ''}>Medium</option>
-              <option value="high" ${this.supportPriorityFilter === 'high' ? 'selected' : ''}>High</option>
-              <option value="urgent" ${this.supportPriorityFilter === 'urgent' ? 'selected' : ''}>Urgent</option>
-            </select>
-            <select id="support-assignee-filter" class="form-input form-select" style="max-width: 160px; font-size: 0.8rem; padding: 0.35rem 0.5rem;">
-              <option value="">All Assignees</option>
-            </select>
-            <button class="btn btn-primary" id="new-ticket-btn" style="margin-left: auto; font-size: 0.8rem; padding: 0.35rem 0.75rem;">+ New Ticket</button>
+          <div class="tl-toolbar">
+            <div class="tl-filter-group">
+              <button class="kpi-filter-btn ${this.supportFilter === 'open' ? 'active' : ''}" data-support-filter="open">Open</button>
+              <button class="kpi-filter-btn ${this.supportFilter === 'closed' ? 'active' : ''}" data-support-filter="closed">Closed</button>
+              <button class="kpi-filter-btn ${this.supportFilter === 'all' ? 'active' : ''}" data-support-filter="all">All</button>
+            </div>
+            <div class="tl-filter-selects">
+              <select id="support-priority-filter" class="form-input form-select tl-filter-select">
+                <option value="">All Priorities</option>
+                <option value="low" ${this.supportPriorityFilter === 'low' ? 'selected' : ''}>Low</option>
+                <option value="medium" ${this.supportPriorityFilter === 'medium' ? 'selected' : ''}>Medium</option>
+                <option value="high" ${this.supportPriorityFilter === 'high' ? 'selected' : ''}>High</option>
+                <option value="urgent" ${this.supportPriorityFilter === 'urgent' ? 'selected' : ''}>Urgent</option>
+              </select>
+              <select id="support-assignee-filter" class="form-input form-select tl-filter-select">
+                <option value="">All Assignees</option>
+              </select>
+            </div>
+            <button class="btn btn-primary" id="new-ticket-btn" style="font-size: 0.8rem; padding: 0.35rem 0.75rem; white-space: nowrap;">+ New</button>
           </div>
           <div id="new-ticket-form-container" style="display: none;"></div>
           <div id="support-tickets-list">
@@ -90,46 +94,65 @@ export const supportTabMethods = {
         <!-- Email Connection -->
         <div class="support-section">
           <h3>Email Connection</h3>
-          <div class="support-card">
-            ${this.supportGmailConnected ? `
-              <div style="display: flex; align-items: center; gap: 0.75rem; justify-content: space-between; flex-wrap: wrap;">
-                <div style="display: flex; align-items: center; gap: 0.75rem;">
-                  <span style="width: 10px; height: 10px; background: #10b981; border-radius: 50%; display: inline-block;"></span>
-                  <div>
-                    <strong>${this.supportConfig.gmail_address || 'Connected'}</strong>
-                    ${this.supportConfig.last_polled_at ? `<div style="color: var(--text-muted); font-size: 0.8rem;">Last polled: ${new Date(this.supportConfig.last_polled_at).toLocaleString()}</div>` : ''}
-                  </div>
-                </div>
-                <div style="display: flex; gap: 0.5rem;">
-                  <button class="btn btn-primary" id="connect-gmail-btn" style="font-size: 0.8rem; padding: 0.35rem 0.75rem;">Change Email</button>
-                  <button class="btn btn-secondary" id="disconnect-gmail-btn" style="font-size: 0.8rem; padding: 0.35rem 0.75rem; color: var(--error-color);">Disconnect</button>
-                </div>
+          <p class="notif-section-desc">Connect a Gmail account to sync support emails.</p>
+          <div class="notif-channel-card">
+            <div class="notif-channel-header">
+              <div class="notif-channel-icon notif-channel-icon-email">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="2" y="4" width="20" height="16" rx="2"/>
+                  <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
+                </svg>
               </div>
-            ` : `
-              <p style="color: var(--text-muted); margin-bottom: 0.75rem;">Connect a Gmail account to sync support emails.</p>
-              <button class="btn btn-primary" id="connect-gmail-btn">Connect Gmail</button>
-            `}
+              <div class="notif-channel-info">
+                <span class="notif-channel-name">Gmail</span>
+                <span class="notif-channel-status ${this.supportGmailConnected ? 'notif-status-active' : 'notif-status-inactive'}">
+                  ${this.supportGmailConnected ? (this.supportConfig.gmail_address || 'Connected') : 'Not connected'}
+                </span>
+                ${this.supportGmailConnected && this.supportConfig.last_polled_at ? `<span class="notif-channel-status notif-status-inactive" style="font-size: 0.7rem;">Last polled: ${new Date(this.supportConfig.last_polled_at).toLocaleString()}</span>` : ''}
+              </div>
+              ${this.supportGmailConnected ? `
+                <button class="btn btn-secondary notif-test-btn" id="connect-gmail-btn">Change</button>
+                <button class="btn btn-secondary notif-test-btn" id="disconnect-gmail-btn" style="color: var(--error-color);">Disconnect</button>
+              ` : `
+                <button class="btn btn-primary notif-test-btn" id="connect-gmail-btn">Connect</button>
+              `}
+            </div>
           </div>
         </div>
 
         <!-- AI Agent Settings -->
         <div class="support-section">
-          <h3>AI Agent Settings</h3>
-          <div class="support-card">
-            <div class="form-group" style="margin-bottom: 1rem;">
-              <label class="form-label">Mode</label>
-              <select id="support-agent-mode" class="form-input form-select" style="max-width: 300px;">
-                <option value="off" ${this.supportConfig.agent_mode === 'off' ? 'selected' : ''}>Off</option>
-                <option value="draft" ${this.supportConfig.agent_mode === 'draft' ? 'selected' : ''}>Draft (AI drafts, you approve)</option>
-                <option value="auto" ${this.supportConfig.agent_mode === 'auto' ? 'selected' : ''}>Auto (AI sends immediately)</option>
-              </select>
+          <h3>AI Agent</h3>
+          <p class="notif-section-desc">Configure automated responses for support tickets.</p>
+          <div class="notif-channel-card">
+            <div class="notif-channel-header">
+              <div class="notif-channel-icon" style="background: #ede9fe; color: #7c3aed;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
+                  <path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/>
+                </svg>
+              </div>
+              <div class="notif-channel-info">
+                <span class="notif-channel-name">AI Agent</span>
+                <span class="notif-channel-status ${this.supportConfig.agent_mode === 'auto' ? 'notif-status-active' : this.supportConfig.agent_mode === 'draft' ? 'notif-status-active' : 'notif-status-inactive'}">
+                  ${this.supportConfig.agent_mode === 'auto' ? 'Auto mode' : this.supportConfig.agent_mode === 'draft' ? 'Draft mode' : 'Disabled'}
+                </span>
+              </div>
             </div>
-            <div class="form-group" style="margin-bottom: 1rem;">
-              <label class="form-label">System Prompt</label>
-              <textarea id="support-agent-prompt" class="form-input" rows="3" placeholder="You are a support agent for Magpipe. Be helpful and concise.">${this.supportConfig.agent_system_prompt || ''}</textarea>
+            <div class="notif-channel-body">
+              <div class="form-group" style="margin-bottom: 0.75rem;">
+                <label class="form-label" style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em;">Mode</label>
+                <select id="support-agent-mode" class="form-input form-select">
+                  <option value="off" ${this.supportConfig.agent_mode === 'off' ? 'selected' : ''}>Off</option>
+                  <option value="draft" ${this.supportConfig.agent_mode === 'draft' ? 'selected' : ''}>Draft (AI drafts, you approve)</option>
+                  <option value="auto" ${this.supportConfig.agent_mode === 'auto' ? 'selected' : ''}>Auto (AI sends immediately)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label" style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em;">System Prompt</label>
+                <textarea id="support-agent-prompt" class="form-input" rows="3" placeholder="You are a support agent for Magpipe. Be helpful and concise.">${this.supportConfig.agent_system_prompt || ''}</textarea>
+              </div>
             </div>
-            <button class="btn btn-primary" id="save-agent-settings-btn">Save Agent Settings</button>
-            <span id="agent-settings-status" class="form-status" style="display: none;"></span>
           </div>
         </div>
 
@@ -153,6 +176,40 @@ export const supportTabMethods = {
 
     this.attachSupportListeners();
     this.loadSupportTickets();
+  },
+
+  _supportSaveAgentSettings() {
+    if (this._agentSaving) return;
+    this._agentSaving = true;
+
+    const mode = document.getElementById('support-agent-mode')?.value || 'off';
+    const prompt = document.getElementById('support-agent-prompt')?.value || '';
+
+    fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/support-tickets-api`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'update_config',
+          agent_mode: mode,
+          agent_system_prompt: prompt,
+        }),
+      }
+    )
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to save');
+        showToast('Settings saved', 'success');
+      })
+      .catch(err => {
+        showToast('Error: ' + err.message, 'error');
+      })
+      .finally(() => {
+        this._agentSaving = false;
+      });
   },
 
   attachSupportListeners() {
@@ -224,40 +281,20 @@ export const supportTabMethods = {
       });
     }
 
-    // Save agent settings
-    document.getElementById('save-agent-settings-btn')?.addEventListener('click', async () => {
-      const mode = document.getElementById('support-agent-mode').value;
-      const prompt = document.getElementById('support-agent-prompt').value;
-      const status = document.getElementById('agent-settings-status');
-
-      try {
-        const response = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/support-tickets-api`,
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${this.session.access_token}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              action: 'update_config',
-              agent_mode: mode,
-              agent_system_prompt: prompt,
-            }),
-          }
-        );
-
-        if (!response.ok) throw new Error('Failed to save');
-        status.style.display = 'inline';
-        status.className = 'form-status success';
-        status.textContent = 'Saved';
-        setTimeout(() => { status.style.display = 'none'; }, 2000);
-      } catch (error) {
-        status.style.display = 'inline';
-        status.className = 'form-status error';
-        status.textContent = 'Error: ' + error.message;
-      }
-    });
+    // Auto-save agent settings: mode saves immediately, prompt debounced
+    let agentDebounce = null;
+    document.getElementById('support-agent-mode')?.addEventListener('change', () => this._supportSaveAgentSettings());
+    const promptEl = document.getElementById('support-agent-prompt');
+    if (promptEl) {
+      promptEl.addEventListener('input', () => {
+        clearTimeout(agentDebounce);
+        agentDebounce = setTimeout(() => this._supportSaveAgentSettings(), 800);
+      });
+      promptEl.addEventListener('blur', () => {
+        clearTimeout(agentDebounce);
+        this._supportSaveAgentSettings();
+      });
+    }
 
     // Ticket filters
     document.querySelectorAll('[data-support-filter]').forEach(btn => {
@@ -318,49 +355,64 @@ export const supportTabMethods = {
       const tickets = data.tickets || [];
 
       if (tickets.length === 0) {
-        listContainer.innerHTML = '<p style="color: var(--text-muted); padding: 1rem;">No tickets found.</p>';
+        listContainer.innerHTML = `
+          <div class="tl-empty">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <p>No tickets found.</p>
+          </div>`;
         return;
       }
 
-      const priorityBadge = (p) => {
-        const colors = { low: 'priority-low', medium: 'priority-medium', high: 'priority-high', urgent: 'priority-urgent' };
-        return `<span class="priority-badge ${colors[p] || 'priority-medium'}">${p || 'medium'}</span>`;
+      const priorityColors = { low: 'priority-low', medium: 'priority-medium', high: 'priority-high', urgent: 'priority-urgent' };
+      const timeAgo = (d) => {
+        const diff = Date.now() - new Date(d).getTime();
+        const mins = Math.floor(diff / 60000);
+        if (mins < 60) return `${mins}m ago`;
+        const hrs = Math.floor(mins / 60);
+        if (hrs < 24) return `${hrs}h ago`;
+        const days = Math.floor(hrs / 24);
+        if (days < 30) return `${days}d ago`;
+        return new Date(d).toLocaleDateString();
       };
-      const formatDue = (d) => d ? new Date(d).toLocaleDateString() : '';
 
       listContainer.innerHTML = `
-        <table class="support-table">
-          <thead>
-            <tr>
-              <th>Priority</th>
-              <th>From</th>
-              <th>Subject</th>
-              <th>Assigned</th>
-              <th>Due</th>
-              <th>Date</th>
-              <th>Status</th>
-              <th>AI</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${tickets.map(t => `
-              <tr class="ticket-row" data-thread-id="${t.thread_id || t.id}" data-ticket-status="${t.status}">
-                <td>${priorityBadge(t.priority)}</td>
-                <td>${this.escapeHtml(t.from_name || t.from_email || '')}</td>
-                <td>${this.escapeHtml(t.subject || '(no subject)')}</td>
-                <td>${this.escapeHtml(t.assigned_name || '')}</td>
-                <td style="font-size: 0.8rem; color: var(--text-muted);">${formatDue(t.due_date)}</td>
-                <td>${new Date(t.received_at).toLocaleDateString()}</td>
-                <td><span class="ticket-status-badge ticket-status-${t.status}">${t.status}</span></td>
-                <td>${t.has_pending_draft ? '<span class="ai-draft-indicator" title="Pending AI draft">AI</span>' : ''}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
+        <div class="tl-list">
+          ${tickets.map(t => {
+            const ticketId = t.ticket_ref || (t.thread_id || t.id || '').substring(0, 8).toUpperCase();
+            const priority = t.priority || 'medium';
+            return `
+              <div class="tl-item" data-thread-id="${t.thread_id || t.id}" data-ticket-status="${t.status}">
+                <div class="tl-item-left">
+                  <span class="priority-badge ${priorityColors[priority] || 'priority-medium'}">${priority}</span>
+                  <span class="tl-item-ref">#${this.escapeHtml(ticketId)}</span>
+                </div>
+                <div class="tl-item-main">
+                  <div class="tl-item-top">
+                    <span class="tl-item-subject">${this.escapeHtml(t.subject || '(no subject)')}</span>
+                  </div>
+                  <div class="tl-item-bottom">
+                    <span class="tl-item-from">${this.escapeHtml(t.from_name || t.from_email || 'Unknown')}</span>
+                    ${t.assigned_name ? `<span class="tl-item-detail">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                      ${this.escapeHtml(t.assigned_name)}
+                    </span>` : ''}
+                    ${t.due_date ? `<span class="tl-item-detail">Due ${new Date(t.due_date).toLocaleDateString()}</span>` : ''}
+                  </div>
+                </div>
+                <div class="tl-item-right">
+                  <span class="tl-item-time">${timeAgo(t.received_at)}</span>
+                  <div class="tl-item-badges">
+                    ${t.has_pending_draft ? '<span class="ai-draft-indicator" title="Pending AI draft">AI</span>' : ''}
+                    <span class="ticket-status-badge ticket-status-${t.status}">${t.status}</span>
+                  </div>
+                </div>
+              </div>`;
+          }).join('')}
+        </div>
       `;
 
       // Attach row click handlers
-      listContainer.querySelectorAll('.ticket-row').forEach(row => {
+      listContainer.querySelectorAll('.tl-item').forEach(row => {
         row.addEventListener('click', () => {
           this.openSupportThread(row.dataset.threadId, row.dataset.ticketStatus);
         });
@@ -426,94 +478,98 @@ export const supportTabMethods = {
         submittedBy = `Chat Widget${firstMsg.from_email ? ' (' + this.escapeHtml(firstMsg.from_email) + ')' : ''}`;
       }
 
-      const ticketRef = firstMsg.ticket_ref || '';
+      const ticketRef = firstMsg.ticket_ref || (threadId || '').substring(0, 8).toUpperCase();
+
+      const statusBadgeClass = currentStatus === 'open' ? 'ticket-status-open' : 'ticket-status-closed';
 
       threadView.innerHTML = `
-        <div class="thread-header">
+        <div class="tv-topbar">
           <button class="btn btn-secondary thread-back-btn">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M19 12H5M12 19l-7-7 7-7"/>
-            </svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
             Back
           </button>
-          <h3 style="margin: 0; flex: 1;">${this.escapeHtml(subject)}</h3>
-          <button class="btn ${currentStatus === 'open' ? 'btn-secondary' : 'btn-primary'}" id="toggle-status-btn">
-            ${currentStatus === 'open' ? 'Close Ticket' : 'Reopen Ticket'}
-          </button>
+          <div class="tv-topbar-right">
+            <span class="ticket-status-badge ${statusBadgeClass}">${currentStatus}</span>
+            <button class="btn ${currentStatus === 'open' ? 'btn-secondary' : 'btn-primary'}" id="toggle-status-btn" style="font-size: 0.8rem; padding: 0.35rem 0.75rem;">
+              ${currentStatus === 'open' ? 'Close' : 'Reopen'}
+            </button>
+          </div>
         </div>
 
-        ${submittedBy || ticketRef ? `
-          <div class="ticket-meta-bar">
-            ${submittedBy ? `<span class="ticket-meta-item">Submitted by: <strong>${submittedBy}</strong></span>` : ''}
-            ${ticketRef ? `<span class="ticket-meta-item">Ref: <strong>${this.escapeHtml(ticketRef)}</strong></span>` : ''}
-          </div>
-        ` : ''}
+        <div class="tv-subject-row">
+          <span class="tv-ref-badge">#${this.escapeHtml(ticketRef)}</span>
+          <h2 class="tv-subject">${this.escapeHtml(subject)}</h2>
+        </div>
 
-        <div class="ticket-detail-fields">
-          <div class="ticket-detail-row">
-            <div class="ticket-detail-field">
-              <label>Priority</label>
-              <select id="thread-priority" class="form-input form-select">
-                <option value="low" ${firstMsg.priority === 'low' ? 'selected' : ''}>Low</option>
-                <option value="medium" ${firstMsg.priority === 'medium' ? 'selected' : ''}>Medium</option>
-                <option value="high" ${firstMsg.priority === 'high' ? 'selected' : ''}>High</option>
-                <option value="urgent" ${firstMsg.priority === 'urgent' ? 'selected' : ''}>Urgent</option>
-              </select>
-            </div>
-            <div class="ticket-detail-field">
-              <label>Assignee</label>
-              <select id="thread-assignee" class="form-input form-select">
-                <option value="">Unassigned</option>
-                ${assigneeOptions}
-              </select>
-            </div>
-            <div class="ticket-detail-field">
-              <label>Due Date</label>
-              <input type="date" id="thread-due-date" class="form-input" value="${currentDue}">
-            </div>
+        <div class="tv-meta">
+          ${submittedBy ? `<span class="tv-meta-item">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            ${submittedBy}
+            </span>` : ''}
+        </div>
+
+        <div class="tv-sidebar-fields">
+          <div class="tv-field-group">
+            <label>Priority</label>
+            <select id="thread-priority" class="form-input form-select">
+              <option value="low" ${firstMsg.priority === 'low' ? 'selected' : ''}>Low</option>
+              <option value="medium" ${firstMsg.priority === 'medium' ? 'selected' : ''}>Medium</option>
+              <option value="high" ${firstMsg.priority === 'high' ? 'selected' : ''}>High</option>
+              <option value="urgent" ${firstMsg.priority === 'urgent' ? 'selected' : ''}>Urgent</option>
+            </select>
           </div>
-          <div class="ticket-detail-row" style="margin-top: 0.5rem;">
-            <div class="ticket-detail-field" style="flex: 1;">
-              <label>Tags</label>
-              <div style="display: flex; gap: 0.5rem; align-items: center;">
-                <input type="text" id="thread-tags" class="form-input" value="${this.escapeHtml(currentTags)}" placeholder="tag1, tag2, ...">
+          <div class="tv-field-group">
+            <label>Assignee</label>
+            <select id="thread-assignee" class="form-input form-select">
+              <option value="">Unassigned</option>
+              ${assigneeOptions}
+            </select>
+          </div>
+          <div class="tv-field-group">
+            <label>Due Date</label>
+            <input type="date" id="thread-due-date" class="form-input" value="${currentDue}">
+          </div>
+          <div class="tv-field-group">
+            <label>Tags</label>
+            <input type="text" id="thread-tags" class="form-input" value="${this.escapeHtml(currentTags)}" placeholder="tag1, tag2, ...">
+            ${(firstMsg.tags || []).length > 0 ? `
+              <div class="tv-tags-list">
+                ${(firstMsg.tags || []).map(tag => `<span class="tag-pill">${this.escapeHtml(tag)}</span>`).join('')}
               </div>
-            </div>
-            <div style="display: flex; align-items: flex-end;">
-              <button class="btn btn-primary" id="save-ticket-details-btn" style="font-size: 0.8rem; padding: 0.4rem 0.75rem;">Save</button>
-              <span id="ticket-detail-status" class="form-status" style="display: none; margin-left: 0.5rem;"></span>
-            </div>
+            ` : ''}
           </div>
-          ${(firstMsg.tags || []).length > 0 ? `
-            <div style="margin-top: 0.5rem; display: flex; gap: 0.25rem; flex-wrap: wrap;">
-              ${(firstMsg.tags || []).map(tag => `<span class="tag-pill">${this.escapeHtml(tag)}</span>`).join('')}
-            </div>
-          ` : ''}
         </div>
 
-        <div class="thread-messages">
+        <div class="tv-section-label">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          Conversation
+        </div>
+
+        <div class="tv-messages">
           ${messages.map(m => `
-            <div class="thread-message thread-message-${m.direction}">
-              <div class="thread-message-header">
-                <strong>${this.escapeHtml(m.from_name || m.from_email || '')}</strong>
-                <span style="color: var(--text-muted); font-size: 0.8rem;">${new Date(m.received_at).toLocaleString()}</span>
+            <div class="tv-msg tv-msg-${m.direction}">
+              <div class="tv-msg-avatar">${(m.from_name || m.from_email || '?')[0].toUpperCase()}</div>
+              <div class="tv-msg-content">
+                <div class="tv-msg-header">
+                  <strong>${this.escapeHtml(m.from_name || m.from_email || 'Unknown')}</strong>
+                  <span>${new Date(m.received_at).toLocaleString()}</span>
+                </div>
+                <div class="tv-msg-body">${this.escapeHtml(m.body_text || '').replace(/\n/g, '<br>')}</div>
               </div>
-              <div class="thread-message-body">${this.escapeHtml(m.body_text || '').replace(/\n/g, '<br>')}</div>
             </div>
           `).join('')}
         </div>
 
         ${pendingDraft ? `
-          <div class="ai-draft-card">
-            <div class="ai-draft-header">
+          <div class="tv-draft">
+            <div class="tv-draft-label">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 2a4 4 0 0 1 4 4c0 1.95-1.4 3.58-3.25 3.93L12 22"/>
-                <path d="M8 6a4 4 0 0 1 .64-2.18"/>
+                <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
               </svg>
               AI Draft Reply
             </div>
-            <div class="ai-draft-body">${this.escapeHtml(pendingDraft.ai_draft || '').replace(/\n/g, '<br>')}</div>
-            <div class="ai-draft-actions">
+            <div class="tv-draft-body">${this.escapeHtml(pendingDraft.ai_draft || '').replace(/\n/g, '<br>')}</div>
+            <div class="tv-draft-actions">
               <button class="btn btn-primary" id="approve-draft-btn" data-ticket-id="${pendingDraft.id}">Approve & Send</button>
               <button class="btn btn-secondary" id="edit-draft-btn" data-draft-text="${this.escapeHtml(pendingDraft.ai_draft || '')}">Edit</button>
               <button class="btn btn-secondary" id="reject-draft-btn" data-ticket-id="${pendingDraft.id}" style="color: var(--error-color);">Reject</button>
@@ -521,27 +577,31 @@ export const supportTabMethods = {
           </div>
         ` : ''}
 
-        <div class="reply-area">
-          <textarea id="support-reply-text" class="form-input" rows="4" placeholder="Type your reply..."></textarea>
-          <button class="btn btn-primary" id="send-reply-btn">Send Reply</button>
+        <div class="tv-reply">
+          <textarea id="support-reply-text" class="form-input" rows="3" placeholder="Type your reply..."></textarea>
+          <div class="tv-reply-footer">
+            <button class="btn btn-primary" id="send-reply-btn">Send Reply</button>
+          </div>
         </div>
 
-        <div class="ticket-notes-section">
-          <h4 style="margin: 0 0 0.75rem 0; font-size: 0.95rem;">Internal Notes</h4>
-          <div id="ticket-notes-list">
-            ${notes.length > 0 ? notes.map(n => `
-              <div class="ticket-note">
-                <div class="ticket-note-header">
-                  <strong>${this.escapeHtml(n.author_name || 'Unknown')}</strong>
-                  <span>${new Date(n.created_at).toLocaleString()}</span>
-                </div>
-                <div class="ticket-note-body">${this.escapeHtml(n.content).replace(/\n/g, '<br>')}</div>
+        <div class="tv-section-label" style="margin-top: 1.5rem;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          Internal Notes
+        </div>
+
+        <div class="tv-notes">
+          ${notes.length > 0 ? notes.map(n => `
+            <div class="tv-note">
+              <div class="tv-note-header">
+                <strong>${this.escapeHtml(n.author_name || 'Unknown')}</strong>
+                <span>${new Date(n.created_at).toLocaleString()}</span>
               </div>
-            `).join('') : '<p style="color: var(--text-muted); font-size: 0.85rem;">No notes yet.</p>'}
-          </div>
-          <div class="ticket-note-input">
+              <div class="tv-note-body">${this.escapeHtml(n.content).replace(/\n/g, '<br>')}</div>
+            </div>
+          `).join('') : '<p class="tv-notes-empty">No notes yet.</p>'}
+          <div class="tv-note-input">
             <textarea id="new-note-text" class="form-input" rows="2" placeholder="Add an internal note..."></textarea>
-            <button class="btn btn-secondary" id="add-note-btn" style="align-self: flex-end; font-size: 0.8rem;">Add Note</button>
+            <button class="btn btn-secondary" id="add-note-btn">Add Note</button>
           </div>
         </div>
       `;
@@ -555,38 +615,47 @@ export const supportTabMethods = {
         this.loadSupportTickets();
       });
 
-      // Save ticket detail fields
-      document.getElementById('save-ticket-details-btn')?.addEventListener('click', async () => {
-        const priority = document.getElementById('thread-priority').value;
-        const assigned_to = document.getElementById('thread-assignee').value;
-        const due_date = document.getElementById('thread-due-date').value || null;
-        const tagsStr = document.getElementById('thread-tags').value;
-        const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(Boolean) : [];
-        const statusEl = document.getElementById('ticket-detail-status');
-
-        try {
-          const res = await fetch(
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/support-tickets-api`,
-            {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${this.session.access_token}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({ action: 'update_ticket', threadId, priority, assigned_to, tags, due_date }),
-            }
-          );
-          if (!res.ok) throw new Error('Failed to save');
-          statusEl.style.display = 'inline';
-          statusEl.className = 'form-status success';
-          statusEl.textContent = 'Saved';
-          setTimeout(() => { statusEl.style.display = 'none'; }, 2000);
-        } catch (e) {
-          statusEl.style.display = 'inline';
-          statusEl.className = 'form-status error';
-          statusEl.textContent = 'Error';
-        }
+      // Auto-save ticket detail fields
+      let ticketDetailDebounce = null;
+      const saveTicketDetails = () => {
+        clearTimeout(ticketDetailDebounce);
+        ticketDetailDebounce = setTimeout(async () => {
+          const priority = document.getElementById('thread-priority')?.value;
+          const assigned_to = document.getElementById('thread-assignee')?.value;
+          const due_date = document.getElementById('thread-due-date')?.value || null;
+          const tagsStr = document.getElementById('thread-tags')?.value || '';
+          const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(Boolean) : [];
+          try {
+            const res = await fetch(
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/support-tickets-api`,
+              {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${this.session.access_token}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ action: 'update_ticket', threadId, priority, assigned_to, tags, due_date }),
+              }
+            );
+            if (!res.ok) throw new Error('Failed to save');
+            showToast('Ticket updated', 'success');
+          } catch (e) {
+            showToast('Error: ' + e.message, 'error');
+          }
+        }, 300);
+      };
+      ['thread-priority', 'thread-assignee', 'thread-due-date'].forEach(id => {
+        document.getElementById(id)?.addEventListener('change', saveTicketDetails);
       });
+      const tagsEl = document.getElementById('thread-tags');
+      if (tagsEl) {
+        let tagsDebounce = null;
+        tagsEl.addEventListener('input', () => {
+          clearTimeout(tagsDebounce);
+          tagsDebounce = setTimeout(saveTicketDetails, 800);
+        });
+        tagsEl.addEventListener('blur', saveTicketDetails);
+      }
 
       // Add note
       document.getElementById('add-note-btn')?.addEventListener('click', async () => {
