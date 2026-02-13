@@ -171,6 +171,32 @@ export const supportTabMethods = {
           </div>
         </div>
 
+        <!-- Ticket Creation from Chat -->
+        <div class="support-section">
+          <h3>Chat Widget</h3>
+          <p class="notif-section-desc">Allow agents to create support tickets from chat conversations.</p>
+          <div class="notif-channel-card">
+            <div class="notif-channel-header">
+              <div class="notif-channel-icon" style="background: #fef3c7; color: #d97706;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/>
+                  <path d="M9 18h6"/><path d="M10 22h4"/>
+                </svg>
+              </div>
+              <div class="notif-channel-info">
+                <span class="notif-channel-name">Support Tickets</span>
+                <span class="notif-channel-status ${this.supportConfig.ticket_creation_enabled !== false ? 'notif-status-active' : 'notif-status-inactive'}">
+                  ${this.supportConfig.ticket_creation_enabled !== false ? 'Enabled' : 'Disabled'}
+                </span>
+              </div>
+              <label class="toggle-switch" style="margin-left: auto;">
+                <input type="checkbox" id="support-ticket-creation-toggle" ${this.supportConfig.ticket_creation_enabled !== false ? 'checked' : ''}>
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+        </div>
+
       </div>
 
       <!-- Thread View (hidden initially) -->
@@ -245,6 +271,30 @@ export const supportTabMethods = {
       .then(res => {
         if (!res.ok) throw new Error('Failed to save');
         showToast('Send As email saved', 'success');
+      })
+      .catch(err => {
+        showToast('Error: ' + err.message, 'error');
+      });
+  },
+
+  _supportSaveTicketCreation(enabled) {
+    fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/support-tickets-api`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'update_config',
+          ticket_creation_enabled: enabled,
+        }),
+      }
+    )
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to save');
+        showToast(enabled ? 'Ticket creation enabled' : 'Ticket creation disabled', 'success');
       })
       .catch(err => {
         showToast('Error: ' + err.message, 'error');
@@ -338,6 +388,19 @@ export const supportTabMethods = {
         if (e.key === 'Enter') { e.preventDefault(); sendAsInput.blur(); }
       });
     }
+
+    // Ticket creation from chat toggle
+    document.getElementById('support-ticket-creation-toggle')?.addEventListener('change', (e) => {
+      const enabled = e.target.checked;
+      this.supportConfig.ticket_creation_enabled = enabled;
+      // Update status text
+      const statusEl = e.target.closest('.notif-channel-header')?.querySelector('.notif-channel-status');
+      if (statusEl) {
+        statusEl.textContent = enabled ? 'Enabled' : 'Disabled';
+        statusEl.className = `notif-channel-status ${enabled ? 'notif-status-active' : 'notif-status-inactive'}`;
+      }
+      this._supportSaveTicketCreation(enabled);
+    });
 
     // Ticket filters
     document.querySelectorAll('[data-support-filter]').forEach(btn => {
@@ -450,7 +513,7 @@ export const supportTabMethods = {
                 <div class="tl-item-right">
                   <span class="tl-item-time">${timeAgo(t.received_at)}</span>
                   <div class="tl-item-badges">
-                    ${t.has_pending_draft ? '<span class="ai-draft-indicator" title="Pending AI draft">AI</span>' : ''}
+                    ${t.has_pending_draft ? '<span class="ai-draft-indicator ai-draft-pending" title="Pending AI draft">AI</span>' : t.ai_responded ? '<span class="ai-draft-indicator ai-draft-sent" title="AI responded">AI</span>' : ''}
                     <span class="ticket-status-badge ticket-status-${t.status}">${t.status}</span>
                   </div>
                 </div>

@@ -71,9 +71,9 @@ Deno.serve(async (req) => {
         'X-Postmark-Server-Token': postmarkApiKey
       },
       body: JSON.stringify({
-        From: 'info@snapsonic.com',
-        To: 'erik@snapsonic.com',
-        ReplyTo: 'info@snapsonic.com',
+        From: 'help@magpipe.ai',
+        To: 'help@magpipe.ai',
+        ReplyTo: userEmail !== 'Unknown' ? userEmail : 'help@magpipe.ai',
         Subject: `[Contact] ${subject}`,
         HtmlBody: htmlBody,
         TextBody: textBody,

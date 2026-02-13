@@ -323,7 +323,7 @@ export default class AdminHeader {
         position: absolute;
         top: calc(100% + 8px);
         right: 0;
-        width: 280px;
+        width: 260px;
         background: var(--bg-primary);
         border: 1px solid var(--border-color);
         border-radius: 8px;
@@ -345,10 +345,10 @@ export default class AdminHeader {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 0.75rem 1rem;
+        padding: 0.5rem 0.75rem;
         border-bottom: 1px solid var(--border-color);
         font-weight: 600;
-        font-size: 0.875rem;
+        font-size: 0.8rem;
       }
 
       .status-refresh {
@@ -367,7 +367,9 @@ export default class AdminHeader {
       }
 
       .status-dropdown-content {
-        padding: 0.5rem 0;
+        padding: 0.25rem 0;
+        max-height: 400px;
+        overflow-y: auto;
       }
 
       .status-loading-msg {
@@ -388,7 +390,7 @@ export default class AdminHeader {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 0.625rem 1rem;
+        padding: 0.3rem 0.75rem;
         text-decoration: none;
         color: inherit;
       }
@@ -400,7 +402,7 @@ export default class AdminHeader {
       .status-service-info {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: 0.375rem;
       }
 
       .status-service-dot {
@@ -422,23 +424,23 @@ export default class AdminHeader {
       }
 
       .status-service-name {
-        font-size: 0.875rem;
+        font-size: 0.775rem;
         font-weight: 500;
       }
 
       .status-service-meta {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: 0.35rem;
       }
 
       .status-latency {
-        font-size: 0.75rem;
+        font-size: 0.675rem;
         color: var(--text-muted);
       }
 
       .status-message {
-        font-size: 0.75rem;
+        font-size: 0.675rem;
         color: var(--text-muted);
         font-style: italic;
       }
@@ -454,9 +456,9 @@ export default class AdminHeader {
       }
 
       .status-dropdown-footer {
-        padding: 0.5rem 1rem;
+        padding: 0.35rem 0.75rem;
         border-top: 1px solid var(--border-color);
-        font-size: 0.75rem;
+        font-size: 0.675rem;
         color: var(--text-muted);
         text-align: center;
       }

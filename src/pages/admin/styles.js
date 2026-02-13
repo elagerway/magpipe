@@ -1737,8 +1737,14 @@ export const stylesMethods = {
         border-radius: 4px;
         font-size: 0.7rem;
         font-weight: 600;
+      }
+      .ai-draft-pending {
         background: #ede9fe;
         color: #7c3aed;
+      }
+      .ai-draft-sent {
+        background: #d1fae5;
+        color: #065f46;
       }
 
       /* Priority Badges */

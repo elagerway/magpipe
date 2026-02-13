@@ -906,6 +906,52 @@ p {
   font-weight: 600;
 }
 
+.contact-header-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.contact-header-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--primary-color), #818cf8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: white;
+}
+
+.contact-header-title h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.contact-header-desc {
+  margin: 0.125rem 0 0;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+.contact-modal-compact .contact-modal-body {
+  padding: 0.875rem 1.25rem;
+}
+
+.contact-modal-compact .contact-modal-footer {
+  padding: 0.75rem 1.25rem;
+}
+
+.contact-modal-compact .btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .contact-modal-header .close-modal-btn {
   background: none;
   border: none;
@@ -991,6 +1037,7 @@ p {
   padding: 1rem 1.25rem;
   border-top: 1px solid var(--border-color);
   background: var(--bg-secondary);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
 }
 
 .contact-modal-footer .btn {

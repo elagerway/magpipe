@@ -1,6 +1,6 @@
 /**
- * Contact Lookup - Enriches contact data using FullContact API
- * Takes a phone number, returns enriched contact info
+ * Contact Lookup - Enriches contact data using Apollo.io API
+ * Takes a phone number or email, returns enriched contact info
  */
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -12,11 +12,11 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { phone } = await req.json();
+    const { phone, email } = await req.json();
 
-    if (!phone) {
+    if (!phone && !email) {
       return new Response(
-        JSON.stringify({ error: 'Phone number required' }),
+        JSON.stringify({ error: 'Phone number or email required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -51,33 +51,47 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Call FullContact API
-    const fullContactApiKey = Deno.env.get('FULLCONTACT_API_KEY');
-    if (!fullContactApiKey) {
+    // Call Apollo API
+    const apolloApiKey = Deno.env.get('APOLLO_API_KEY');
+    if (!apolloApiKey) {
       return new Response(
-        JSON.stringify({ error: 'FullContact API key not configured' }),
+        JSON.stringify({ error: 'Apollo API key not configured' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log(`Looking up contact for phone: ${phone}`);
+    console.log(`Looking up contact for ${email ? `email: ${email}` : `phone: ${phone}`}`);
 
-    const fcResponse = await fetch('https://api.fullcontact.com/v3/person.enrich', {
+    // Build Apollo request body
+    const apolloBody: Record<string, unknown> = {};
+    if (email) apolloBody.email = email;
+    // Apollo doesn't support direct phone lookup — use email when available
+    // For phone-only lookups, we pass it but Apollo may not find a match
+    if (phone && !email) {
+      // Apollo doesn't have a phone lookup endpoint, so return not found for phone-only
+      return new Response(
+        JSON.stringify({ error: 'Apollo requires email for enrichment. Phone-only lookup not supported.', notFound: true }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const apolloResponse = await fetch('https://api.apollo.io/api/v1/people/match', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${fullContactApiKey}`,
+        'x-api-key': apolloApiKey,
         'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache',
       },
-      body: JSON.stringify({ phone }),
+      body: JSON.stringify(apolloBody),
     });
 
-    if (!fcResponse.ok) {
-      const errorText = await fcResponse.text();
-      console.error('FullContact API error:', fcResponse.status, errorText);
+    if (!apolloResponse.ok) {
+      const errorText = await apolloResponse.text();
+      console.error('Apollo API error:', apolloResponse.status, errorText);
 
-      if (fcResponse.status === 404 || fcResponse.status === 422) {
+      if (apolloResponse.status === 404 || apolloResponse.status === 422) {
         return new Response(
-          JSON.stringify({ error: 'No data found for this phone number', notFound: true }),
+          JSON.stringify({ error: 'No data found', notFound: true }),
           { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
@@ -88,117 +102,67 @@ Deno.serve(async (req) => {
       );
     }
 
-    const fcData = await fcResponse.json();
-    console.log('FullContact response:', JSON.stringify(fcData).substring(0, 500));
+    const apolloData = await apolloResponse.json();
+    console.log('Apollo response:', JSON.stringify(apolloData).substring(0, 500));
 
-    // Parse FullContact response into our contact format
+    const person = apolloData.person;
+    if (!person) {
+      return new Response(
+        JSON.stringify({ error: 'No data found', notFound: true }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Parse Apollo response into our contact format
     const contact: Record<string, unknown> = {};
 
-    // FullContact API returns data at top level AND in details object
-    const details = fcData.details || {};
-
-    // Name - check both top level and details
-    if (fcData.fullName) {
-      contact.name = fcData.fullName;
+    // Name
+    if (person.name) {
+      contact.name = person.name;
+    } else if (person.first_name || person.last_name) {
+      contact.name = [person.first_name, person.last_name].filter(Boolean).join(' ');
     }
-    const nameObj = fcData.name || details.name;
-    if (nameObj) {
-      contact.first_name = nameObj.given || '';
-      contact.last_name = nameObj.family || '';
-    }
+    contact.first_name = person.first_name || '';
+    contact.last_name = person.last_name || '';
 
-    // Email - check both top level and details
-    const emails = fcData.emails || details.emails;
-    if (emails && emails.length > 0) {
-      contact.email = emails[0].value || emails[0].address || emails[0];
+    // Email
+    if (person.email) {
+      contact.email = person.email;
     }
 
-    // Location - check both top level and details
-    const location = fcData.location || (details.locations && details.locations[0]);
-    if (location) {
-      contact.city = location.city;
-      contact.region = location.region;
-      contact.country = location.country;
-      // Build address string
-      const addressParts = [location.city, location.region, location.country].filter(Boolean);
+    // Location
+    if (person.city || person.state || person.country) {
+      contact.city = person.city;
+      contact.region = person.state;
+      contact.country = person.country;
+      const addressParts = [person.city, person.state, person.country].filter(Boolean);
       if (addressParts.length > 0) {
         contact.address = addressParts.join(', ');
       }
     }
 
-    // Employment - check both top level and details
-    const employment = fcData.employment || details.employment;
-    if (employment && employment.length > 0) {
-      const job = employment[0];
-      contact.company = job.name || job.domain;
-      contact.job_title = job.title || fcData.title;
-    } else if (fcData.organization || fcData.title) {
-      // Some responses have organization/title at top level
-      contact.company = fcData.organization;
-      contact.job_title = fcData.title;
+    // Employment
+    if (person.title) {
+      contact.job_title = person.title;
+    }
+    if (person.organization?.name) {
+      contact.company = person.organization.name;
     }
 
-    // Photo - check both top level and details
-    const photos = fcData.photos || details.photos;
-    if (photos && photos.length > 0) {
-      contact.avatar_url = photos[0].value || photos[0].url;
-    } else if (fcData.avatar) {
-      contact.avatar_url = fcData.avatar;
+    // Photo
+    if (person.photo_url) {
+      contact.avatar_url = person.photo_url;
     }
 
-    // Social profiles - check multiple locations
-    // Top level linkedin/twitter fields
-    if (fcData.linkedin) {
-      contact.linkedin_url = fcData.linkedin;
+    // Social profiles
+    if (person.linkedin_url) {
+      contact.linkedin_url = person.linkedin_url;
     }
-    if (fcData.twitter) {
-      contact.twitter_url = fcData.twitter;
+    if (person.twitter_url) {
+      contact.twitter_url = person.twitter_url;
     }
-
-    // Check details.profiles (object format like {linkedin: {url: ...}})
-    const profilesObj = details.profiles;
-    if (profilesObj && typeof profilesObj === 'object') {
-      if (profilesObj.linkedin?.url && !contact.linkedin_url) {
-        contact.linkedin_url = profilesObj.linkedin.url;
-      }
-      if (profilesObj.twitter?.url && !contact.twitter_url) {
-        contact.twitter_url = profilesObj.twitter.url;
-      }
-      if (profilesObj.facebook?.url && !contact.facebook_url) {
-        contact.facebook_url = profilesObj.facebook.url;
-      }
-    }
-
-    // Check top-level profiles array
-    if (fcData.profiles && Array.isArray(fcData.profiles)) {
-      for (const profile of fcData.profiles) {
-        const url = profile.url || profile.value;
-        const network = (profile.network || profile.type || profile.service || '').toLowerCase();
-
-        if (network.includes('linkedin') && !contact.linkedin_url) {
-          contact.linkedin_url = url;
-        } else if ((network.includes('twitter') || network.includes('x.com')) && !contact.twitter_url) {
-          contact.twitter_url = url;
-        } else if (network.includes('facebook') && !contact.facebook_url) {
-          contact.facebook_url = url;
-        }
-      }
-    }
-
-    // Check socialProfiles array
-    if (fcData.socialProfiles && Array.isArray(fcData.socialProfiles)) {
-      for (const profile of fcData.socialProfiles) {
-        const url = profile.url;
-        const network = (profile.network || profile.type || profile.service || '').toLowerCase();
-
-        if (network.includes('linkedin') && !contact.linkedin_url) {
-          contact.linkedin_url = url;
-        } else if ((network.includes('twitter') || network.includes('x')) && !contact.twitter_url) {
-          contact.twitter_url = url;
-        } else if (network.includes('facebook') && !contact.facebook_url) {
-          contact.facebook_url = url;
-        }
-      }
+    if (person.facebook_url) {
+      contact.facebook_url = person.facebook_url;
     }
 
     console.log('Parsed contact data:', contact);
@@ -207,7 +171,7 @@ Deno.serve(async (req) => {
       JSON.stringify({
         success: true,
         contact,
-        raw: fcData // Include raw data for debugging
+        raw: apolloData // Include raw data for debugging
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

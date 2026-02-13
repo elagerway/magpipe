@@ -122,11 +122,13 @@ async function handleList(supabase: any, body: any) {
         assigned_name: t.assigned_to ? (assigneeMap[t.assigned_to] || '') : '',
         message_count: 1,
         has_pending_draft: t.ai_draft_status === 'pending',
+        ai_responded: t.ai_draft_status === 'sent',
       })
     } else {
       const existing = threadMap.get(threadId)
       existing.message_count++
       if (t.ai_draft_status === 'pending') existing.has_pending_draft = true
+      if (t.ai_draft_status === 'sent') existing.ai_responded = true
       // Keep the latest message's info
       if (new Date(t.received_at) > new Date(existing.received_at)) {
         existing.subject = t.subject || existing.subject
@@ -644,7 +646,7 @@ async function handleGetConfig(supabase: any) {
 
 
 async function handleUpdateConfig(supabase: any, body: any) {
-  const { sms_alert_enabled, sms_alert_phone, agent_mode, agent_system_prompt, support_agent_id, send_as_email } = body
+  const { sms_alert_enabled, sms_alert_phone, agent_mode, agent_system_prompt, support_agent_id, send_as_email, ticket_creation_enabled } = body
 
   const updates: Record<string, any> = { updated_at: new Date().toISOString() }
   if (sms_alert_enabled !== undefined) updates.sms_alert_enabled = sms_alert_enabled
@@ -653,6 +655,7 @@ async function handleUpdateConfig(supabase: any, body: any) {
   if (agent_system_prompt !== undefined) updates.agent_system_prompt = agent_system_prompt
   if (support_agent_id !== undefined) updates.support_agent_id = support_agent_id || null
   if (send_as_email !== undefined) updates.send_as_email = send_as_email || null
+  if (ticket_creation_enabled !== undefined) updates.ticket_creation_enabled = ticket_creation_enabled
 
   const { error } = await supabase
     .from('support_email_config')

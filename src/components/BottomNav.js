@@ -609,9 +609,19 @@ function generateNavHtml(currentPath) {
 
       <!-- Contact Modal -->
       <div class="contact-modal-overlay" id="contact-modal-overlay" style="display: none;" onclick="handleContactOverlayClick(event)">
-        <div class="contact-modal" onclick="event.stopPropagation()">
+        <div class="contact-modal contact-modal-compact" onclick="event.stopPropagation()">
           <div class="contact-modal-header">
-            <h3>Contact Us</h3>
+            <div class="contact-header-title">
+              <div class="contact-header-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+              </div>
+              <div>
+                <h3>Get in Touch</h3>
+                <p class="contact-header-desc">We typically respond within a few hours.</p>
+              </div>
+            </div>
             <button class="close-modal-btn" onclick="closeContactModal()">&times;</button>
           </div>
           <form id="contact-form" onsubmit="submitContactForm(event)">
@@ -622,12 +632,18 @@ function generateNavHtml(currentPath) {
               </div>
               <div class="form-group">
                 <label for="contact-message">Message</label>
-                <textarea id="contact-message" name="message" required rows="5" placeholder="Tell us more..."></textarea>
+                <textarea id="contact-message" name="message" required rows="4" placeholder="Describe your issue or question..."></textarea>
               </div>
             </div>
             <div class="contact-modal-footer">
               <button type="button" class="btn btn-secondary" onclick="closeContactModal()">Cancel</button>
-              <button type="submit" class="btn btn-primary" id="contact-submit-btn">Send Message</button>
+              <button type="submit" class="btn btn-primary" id="contact-submit-btn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.25rem;">
+                  <line x1="22" y1="2" x2="11" y2="13"/>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                </svg>
+                Send
+              </button>
             </div>
           </form>
         </div>
@@ -735,6 +751,8 @@ export function renderBottomNav(currentPath = '/inbox') {
   // Check if persistent nav container exists
   const persistentNav = document.getElementById('persistent-nav');
   if (persistentNav) {
+    // Ensure nav is visible (admin page hides it)
+    persistentNav.style.display = '';
     // Check if nav content already rendered
     if (persistentNav.querySelector('.bottom-nav')) {
       // Just update active state, don't re-render
@@ -956,9 +974,19 @@ export function renderBottomNav(currentPath = '/inbox') {
 
       <!-- Contact Modal -->
       <div class="contact-modal-overlay" id="contact-modal-overlay" style="display: none;" onclick="handleContactOverlayClick(event)">
-        <div class="contact-modal" onclick="event.stopPropagation()">
+        <div class="contact-modal contact-modal-compact" onclick="event.stopPropagation()">
           <div class="contact-modal-header">
-            <h3>Contact Us</h3>
+            <div class="contact-header-title">
+              <div class="contact-header-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+              </div>
+              <div>
+                <h3>Get in Touch</h3>
+                <p class="contact-header-desc">We typically respond within a few hours.</p>
+              </div>
+            </div>
             <button class="close-modal-btn" onclick="closeContactModal()">&times;</button>
           </div>
           <form id="contact-form" onsubmit="submitContactForm(event)">
@@ -969,12 +997,18 @@ export function renderBottomNav(currentPath = '/inbox') {
               </div>
               <div class="form-group">
                 <label for="contact-message">Message</label>
-                <textarea id="contact-message" name="message" required rows="5" placeholder="Tell us more..."></textarea>
+                <textarea id="contact-message" name="message" required rows="4" placeholder="Describe your issue or question..."></textarea>
               </div>
             </div>
             <div class="contact-modal-footer">
               <button type="button" class="btn btn-secondary" onclick="closeContactModal()">Cancel</button>
-              <button type="submit" class="btn btn-primary" id="contact-submit-btn">Send Message</button>
+              <button type="submit" class="btn btn-primary" id="contact-submit-btn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.25rem;">
+                  <line x1="22" y1="2" x2="11" y2="13"/>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                </svg>
+                Send
+              </button>
             </div>
           </form>
         </div>
