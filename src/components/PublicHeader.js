@@ -28,6 +28,20 @@ export function renderPublicHeader(options = {}) {
           <a href="/login" class="btn btn-ghost" onclick="event.preventDefault(); navigateTo('/login');">Sign In</a>
           <a href="/signup" class="btn btn-primary" onclick="event.preventDefault(); navigateTo('/signup');">Get Started</a>
         </nav>
+        <button class="public-header-hamburger" onclick="document.querySelector('.public-header-mobile-menu').classList.toggle('open')" aria-label="Menu">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div class="public-header-mobile-menu">
+        <a href="/pricing" class="${isActive('pricing')}" onclick="event.preventDefault(); document.querySelector('.public-header-mobile-menu').classList.remove('open'); navigateTo('/pricing');">Pricing</a>
+        <a href="/custom-plan" class="${isActive('enterprise')}" onclick="event.preventDefault(); document.querySelector('.public-header-mobile-menu').classList.remove('open'); navigateTo('/custom-plan');">Enterprise</a>
+        <a href="https://docs.magpipe.ai" target="_blank" rel="noopener">Docs</a>
+        <a href="/login" onclick="event.preventDefault(); document.querySelector('.public-header-mobile-menu').classList.remove('open'); navigateTo('/login');">Sign In</a>
+        <a href="/signup" class="mobile-menu-cta" onclick="event.preventDefault(); document.querySelector('.public-header-mobile-menu').classList.remove('open'); navigateTo('/signup');">Get Started</a>
       </div>
     </header>
   `;
@@ -115,30 +129,56 @@ export function getPublicHeaderStyles() {
       background: var(--bg-secondary);
     }
 
-    @media (max-width: 768px) {
-      .public-header-nav .nav-link {
-        padding: 0.375rem 0.625rem;
-        font-size: 0.875rem;
-      }
+    .public-header-hamburger {
+      display: none;
+      background: none;
+      border: none;
+      color: var(--text-primary);
+      cursor: pointer;
+      padding: 0.5rem;
     }
 
-    @media (max-width: 480px) {
-      .public-header-content {
-        padding: 0 1rem;
-      }
+    .public-header-mobile-menu {
+      display: none;
+      flex-direction: column;
+      padding: 0 1.5rem 1rem;
+      border-top: 1px solid var(--border-color);
+    }
 
-      .public-header-nav .nav-link {
+    .public-header-mobile-menu a {
+      padding: 0.75rem 0;
+      color: var(--text-primary);
+      text-decoration: none;
+      font-weight: 500;
+      font-size: 1rem;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .public-header-mobile-menu a:last-child {
+      border-bottom: none;
+    }
+
+    .public-header-mobile-menu .mobile-menu-cta {
+      margin-top: 0.75rem;
+      background: var(--primary-color);
+      color: white;
+      text-align: center;
+      padding: 0.75rem;
+      border-radius: 0.5rem;
+      border-bottom: none;
+    }
+
+    @media (max-width: 768px) {
+      .public-header-nav {
         display: none;
       }
 
-      .public-header-nav .btn-ghost {
-        padding: 0.375rem 0.75rem;
-        font-size: 0.875rem;
+      .public-header-hamburger {
+        display: block;
       }
 
-      .public-header-nav .btn-primary {
-        padding: 0.375rem 0.75rem;
-        font-size: 0.875rem;
+      .public-header-mobile-menu.open {
+        display: flex;
       }
     }
   `;
