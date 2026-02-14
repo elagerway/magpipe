@@ -110,7 +110,7 @@ pat/
 │   ├── main.js                   # App entry point
 │   └── router.js                 # Client-side SPA routing
 ├── supabase/
-│   ├── functions/                # ~60 Edge Functions (TypeScript/Deno)
+│   ├── functions/                # ~160 Edge Functions (TypeScript/Deno)
 │   │   ├── _shared/             # Shared utilities (cors, auth, balance-check)
 │   │   ├── admin-status/
 │   │   ├── contact-lookup/       # Apollo.io enrichment

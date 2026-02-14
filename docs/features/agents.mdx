@@ -1,11 +1,11 @@
 ---
 title: AI Agents
-description: "Create intelligent AI agents that handle calls, texts, and chat conversations"
+description: "Create intelligent AI agents that handle calls, texts, chat, and email"
 ---
 
 ## Overview
 
-AI Agents are the core of Magpipe. Each agent is a fully customizable AI assistant with its own personality, voice, knowledge, and behavior. Agents can handle multiple communication channels simultaneously - answering phone calls, responding to SMS messages, and chatting with website visitors.
+AI Agents are the core of Magpipe. Each agent is a fully customizable AI assistant with its own personality, voice, knowledge, and behavior. Agents can handle multiple communication channels simultaneously — answering phone calls, responding to SMS messages, chatting with website visitors, and handling email conversations.
 
 ## Agent Capabilities
 
@@ -42,6 +42,15 @@ AI Agents are the core of Magpipe. Each agent is a fully customizable AI assista
 - Human handoff capability
 - Visitor information collection
 - Custom welcome messages
+
+### Email
+- Connect Gmail accounts to agents
+- Monitor and respond to incoming emails
+- Three modes: Off, Draft (review before sending), Auto (automatic replies)
+- Contact enrichment from email senders
+- Full email threads viewable in inbox
+
+See [Email Integration](/features/email) for setup details.
 
 ## Agent Configuration
 
@@ -236,6 +245,16 @@ Deploy your agent to a website chat widget:
 
 See [Chat Widget](/features/chat-widget) for detailed configuration.
 
+### Email
+Connect a Gmail account to let your agent handle email:
+
+1. Go to **Agent Detail** → **Deploy** tab
+2. Click **Connect Gmail** in the Email section
+3. Authorize access via Google OAuth
+4. Configure agent mode (Off, Draft, or Auto)
+
+See [Email Integration](/features/email) for detailed configuration.
+
 ## Multiple Agents
 
 Create multiple agents for different purposes:
@@ -318,6 +337,9 @@ AI generates summaries after each call:
 <CardGroup cols={2}>
   <Card title="Create Your First Agent" icon="plus" href="/guides/create-agent">
     Step-by-step setup guide
+  </Card>
+  <Card title="Email Integration" icon="envelope" href="/features/email">
+    Connect Gmail to your agent
   </Card>
   <Card title="Voice Cloning" icon="microphone" href="/api-reference/endpoints/clone-voice">
     Create custom voice clones

@@ -70,6 +70,7 @@
         "features/custom-functions",
         "features/phone-numbers",
         "features/inbox",
+        "features/email",
         "features/knowledge-base",
         "features/chat-widget",
         "features/apps",
