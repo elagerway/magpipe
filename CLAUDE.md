@@ -172,8 +172,45 @@ const sessionResult = await page.evaluate(async ({ email, otp }) => {
   - Test both viewports when making UI changes
 - **NEVER use native browser alerts/confirms** (`alert()`, `confirm()`, `prompt()`):
   - Always use custom modals that match the app design (see `src/components/ConfirmModal.js`)
-  - Modals should have: backdrop, styled buttons, mobile-friendly header with back button
   - Use `showConfirmModal(title, message, options)` for confirmations
+
+### Modal Style Guide (MANDATORY — follow this for ALL modals)
+
+**Reference implementation**: Contact Us modal in `src/components/BottomNav.js` (line ~610), styled in `public/styles/main.css` (`.contact-modal-*` classes).
+
+**Pattern**: Three-section layout — fixed header, scrollable body, fixed footer. The Save/Submit button NEVER scrolls off screen.
+
+**HTML Structure**:
+```html
+<div class="contact-modal-overlay" id="my-modal-overlay" style="display: none;"
+     onclick="document.getElementById('my-modal-overlay').style.display='none'">
+  <div class="contact-modal" onclick="event.stopPropagation()">
+    <div class="contact-modal-header">
+      <h3>Modal Title</h3>
+      <button class="close-modal-btn" onclick="...">&times;</button>
+    </div>
+    <form id="my-form">
+      <div class="contact-modal-body">
+        <!-- Form fields go here -->
+      </div>
+      <div class="contact-modal-footer">
+        <button type="button" class="btn btn-secondary">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+```
+
+**Key rules**:
+- **Overlay**: `contact-modal-overlay` — fixed fullscreen, centered flex, `z-index: 10000`, semi-transparent backdrop
+- **Card**: `contact-modal` — white bg, rounded corners, `max-width` per use case (500px default, 650-700px for forms with many fields)
+- **Header**: `contact-modal-header` — title + close X, `border-bottom`
+- **Body**: `contact-modal-body` — scrollable area (`max-height: 60vh` on mobile, unconstrained on desktop). Add `scrollable` class for tall forms to keep `max-height: 70vh` on all viewports
+- **Footer**: `contact-modal-footer` — action buttons, `border-top`, gray bg, always visible at bottom
+- **Show/hide**: Toggle `style.display` (`'flex'` / `'none'`), NOT class toggle
+- **NO `.modal` / `.modal-content` classes** — those are deprecated legacy. All new modals use `contact-modal-*`
+- **NO body scroll lock needed** — the overlay captures all scroll/click events naturally
 
 ## Database Management
 

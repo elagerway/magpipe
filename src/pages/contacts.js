@@ -7,6 +7,7 @@ import { getCurrentUser, supabase } from '../lib/supabase.js';
 import { renderBottomNav } from '../components/BottomNav.js';
 import { User } from '../models/index.js';
 import { showToast } from '../lib/toast.js';
+import { showConfirmModal } from '../components/ConfirmModal.js';
 
 export default class ContactsPage {
   constructor() {
@@ -112,208 +113,173 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
           </div>
         </div>
 
-        <!-- Add/Edit Contact Modal -->
-        <div id="contact-modal" class="modal hidden">
-          <div class="modal-backdrop"></div>
-          <div class="modal-content card" style="position: relative;">
-            <!-- Mobile header with back button -->
-            <div class="modal-mobile-header">
-              <button type="button" class="back-btn" id="modal-back-btn">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M19 12H5"></path>
-                  <path d="M12 19l-7-7 7-7"></path>
-                </svg>
-              </button>
-              <h2 id="modal-title-mobile">Add Contact</h2>
+        <!-- Add/Edit Contact Modal (uses contact-modal pattern) -->
+        <div class="contact-modal-overlay" id="contact-modal-overlay" style="display: none;" onclick="document.getElementById('contact-modal-overlay').style.display='none'">
+          <div class="contact-modal" style="max-width: 700px;" onclick="event.stopPropagation()">
+            <div class="contact-modal-header">
+              <h3 id="modal-title">Add Contact</h3>
+              <button class="close-modal-btn" id="close-modal-btn">&times;</button>
             </div>
-            <!-- Close X button (desktop only) -->
-            <button type="button" id="close-modal-btn" style="
-              position: absolute;
-              top: 0.75rem;
-              right: 0.75rem;
-              background: none;
-              border: none;
-              cursor: pointer;
-              color: var(--text-muted);
-              padding: 0.25rem;
-              line-height: 1;
-              opacity: 0.6;
-              transition: opacity 0.2s;
-            " title="Close">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
-              </svg>
-            </button>
-            <h2 id="modal-title" class="desktop-only">Add Contact</h2>
             <form id="contact-form">
-              <!-- Avatar Upload -->
-              <div class="form-group">
-                <label class="form-label">Avatar</label>
-                <div style="display: flex; align-items: center; gap: 1rem;">
-                  <div id="avatar-preview" style="
-                    width: 80px;
-                    height: 80px;
-                    border-radius: 50%;
-                    background: var(--border-color);
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    overflow: hidden;
-                    flex-shrink: 0;
-                  ">
-                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                      <circle cx="12" cy="7" r="4"></circle>
-                    </svg>
+              <div class="contact-modal-body scrollable">
+                <!-- Avatar Upload -->
+                <div class="form-group">
+                  <label>Avatar</label>
+                  <div style="display: flex; align-items: center; gap: 1rem;">
+                    <div id="avatar-preview" style="
+                      width: 64px;
+                      height: 64px;
+                      border-radius: 50%;
+                      background: var(--border-color);
+                      display: flex;
+                      align-items: center;
+                      justify-content: center;
+                      overflow: hidden;
+                      flex-shrink: 0;
+                    ">
+                      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="12" cy="7" r="4"></circle>
+                      </svg>
+                    </div>
+                    <div style="flex: 1;">
+                      <input
+                        type="file"
+                        id="contact-avatar"
+                        accept="image/*"
+                        style="display: none;"
+                      />
+                      <button type="button" id="upload-avatar-btn" class="btn btn-secondary btn-sm" style="margin-bottom: 0.25rem;">
+                        Choose Photo
+                      </button>
+                      <button type="button" id="remove-avatar-btn" class="btn btn-secondary btn-sm" style="display: none; margin-bottom: 0.25rem;">
+                        Remove
+                      </button>
+                      <p style="margin: 0; font-size: 0.75rem; color: var(--text-secondary);">JPG, PNG, or GIF (max 2MB)</p>
+                    </div>
                   </div>
-                  <div style="flex: 1;">
+                </div>
+
+                <div class="form-row">
+                  <div class="form-group">
+                    <label for="contact-first-name">First Name</label>
                     <input
-                      type="file"
-                      id="contact-avatar"
-                      accept="image/*"
-                      style="display: none;"
+                      type="text"
+                      id="contact-first-name"
+                      placeholder="John"
+                      required
                     />
-                    <button type="button" id="upload-avatar-btn" class="btn btn-secondary" style="margin-bottom: 0.5rem;">
-                      Choose Photo
-                    </button>
-                    <button type="button" id="remove-avatar-btn" class="btn btn-secondary" style="display: none; margin-bottom: 0.5rem;">
-                      Remove
-                    </button>
-                    <p class="form-help" style="margin: 0;">JPG, PNG, or GIF (max 2MB)</p>
+                  </div>
+                  <div class="form-group">
+                    <label for="contact-last-name">Last Name</label>
+                    <input
+                      type="text"
+                      id="contact-last-name"
+                      placeholder="Doe"
+                    />
                   </div>
                 </div>
-              </div>
 
-              <div class="form-group">
-                <label class="form-label" for="contact-first-name">First Name</label>
-                <input
-                  type="text"
-                  id="contact-first-name"
-                  class="form-input"
-                  placeholder="John"
-                  required
-                />
-              </div>
-
-              <div class="form-group">
-                <label class="form-label" for="contact-last-name">Last Name</label>
-                <input
-                  type="text"
-                  id="contact-last-name"
-                  class="form-input"
-                  placeholder="Doe"
-                />
-              </div>
-
-              <div class="form-group">
-                <label class="form-label" for="contact-phone">Phone Number</label>
-                <div style="display: flex; gap: 0.5rem;">
-                  <input
-                    type="tel"
-                    id="contact-phone"
-                    class="form-input"
-                    placeholder="+14155551234"
-                    required
-                    style="flex: 1;"
-                  />
-                  <button type="button" id="lookup-contact-btn" class="btn btn-secondary" style="white-space: nowrap;" title="Look up contact info">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;">
-                      <circle cx="11" cy="11" r="8"></circle>
-                      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                    </svg>
-                    Lookup
-                  </button>
+                <div class="form-group">
+                  <label for="contact-phone">Phone Number</label>
+                  <div style="display: flex; gap: 0.5rem;">
+                    <input
+                      type="tel"
+                      id="contact-phone"
+                      placeholder="+14155551234"
+                      required
+                      style="flex: 1;"
+                    />
+                    <button type="button" id="lookup-contact-btn" class="btn btn-secondary btn-sm" style="white-space: nowrap;" title="Look up contact info">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                      </svg>
+                      Lookup
+                    </button>
+                  </div>
+                  <p style="margin: 0.25rem 0 0; font-size: 0.75rem; color: var(--text-secondary);">E.164 format (e.g., +14155551234)</p>
                 </div>
-                <p class="form-help">E.164 format (e.g., +14155551234)</p>
-              </div>
 
-              <div class="form-group">
-                <label class="form-label" for="contact-email">Email</label>
-                <input
-                  type="email"
-                  id="contact-email"
-                  class="form-input"
-                  placeholder="john.doe@example.com"
-                />
-              </div>
-
-              <div class="form-group">
-                <label class="form-label" for="contact-address">Address</label>
-                <textarea
-                  id="contact-address"
-                  class="form-textarea"
-                  placeholder="123 Main St, City, State ZIP"
-                  rows="2"
-                ></textarea>
-              </div>
-
-              <div style="display: flex; gap: 0.5rem;">
-                <div class="form-group" style="flex: 1;">
-                  <label class="form-label" for="contact-company">Company</label>
+                <div class="form-group">
+                  <label for="contact-email">Email</label>
                   <input
-                    type="text"
-                    id="contact-company"
-                    class="form-input"
-                    placeholder="Acme Inc."
+                    type="email"
+                    id="contact-email"
+                    placeholder="john.doe@example.com"
                   />
                 </div>
-                <div class="form-group" style="flex: 1;">
-                  <label class="form-label" for="contact-job-title">Job Title</label>
-                  <input
-                    type="text"
-                    id="contact-job-title"
-                    class="form-input"
-                    placeholder="Software Engineer"
-                  />
+
+                <div class="form-group">
+                  <label for="contact-address">Address</label>
+                  <textarea
+                    id="contact-address"
+                    placeholder="123 Main St, City, State ZIP"
+                    rows="2"
+                  ></textarea>
+                </div>
+
+                <div class="form-row">
+                  <div class="form-group">
+                    <label for="contact-company">Company</label>
+                    <input
+                      type="text"
+                      id="contact-company"
+                      placeholder="Acme Inc."
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label for="contact-job-title">Job Title</label>
+                    <input
+                      type="text"
+                      id="contact-job-title"
+                      placeholder="Software Engineer"
+                    />
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label>Social Profiles</label>
+                  <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                    <input
+                      type="url"
+                      id="contact-linkedin"
+                      placeholder="LinkedIn URL"
+                    />
+                    <input
+                      type="url"
+                      id="contact-twitter"
+                      placeholder="Twitter/X URL"
+                    />
+                    <input
+                      type="url"
+                      id="contact-facebook"
+                      placeholder="Facebook URL"
+                    />
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label for="contact-notes">Notes</label>
+                  <textarea
+                    id="contact-notes"
+                    placeholder="Additional notes about this contact..."
+                    rows="2"
+                  ></textarea>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                    <input type="checkbox" id="contact-whitelisted" checked />
+                    <span>Whitelist this contact</span>
+                  </label>
+                  <p style="margin: 0.25rem 0 0; font-size: 0.75rem; color: var(--text-secondary);">Whitelisted contacts bypass vetting</p>
                 </div>
               </div>
-
-              <div class="form-group">
-                <label class="form-label">Social Profiles</label>
-                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                  <input
-                    type="url"
-                    id="contact-linkedin"
-                    class="form-input"
-                    placeholder="LinkedIn URL"
-                  />
-                  <input
-                    type="url"
-                    id="contact-twitter"
-                    class="form-input"
-                    placeholder="Twitter/X URL"
-                  />
-                  <input
-                    type="url"
-                    id="contact-facebook"
-                    class="form-input"
-                    placeholder="Facebook URL"
-                  />
-                </div>
+              <div class="contact-modal-footer">
+                <button type="button" class="btn btn-secondary" id="cancel-modal-btn">Cancel</button>
+                <button type="submit" class="btn btn-primary" id="save-contact-btn">Save Contact</button>
               </div>
-
-              <div class="form-group">
-                <label class="form-label" for="contact-notes">Notes (Optional)</label>
-                <textarea
-                  id="contact-notes"
-                  class="form-textarea"
-                  placeholder="Additional notes about this contact..."
-                  rows="3"
-                ></textarea>
-              </div>
-
-              <div class="form-group">
-                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                  <input type="checkbox" id="contact-whitelisted" checked />
-                  <span>Whitelist this contact</span>
-                </label>
-                <p class="form-help">Whitelisted contacts bypass vetting</p>
-              </div>
-
-              <button type="submit" class="btn btn-primary btn-full" id="save-contact-btn">
-                Save Contact
-              </button>
             </form>
           </div>
         </div>
@@ -336,10 +302,9 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
           const displayName = fullName || contact.name || 'Unnamed Contact';
 
           return `
-        <div class="contact-item" data-id="${contact.id}">
-          <!-- Edit Button (top right) -->
-          <button class="edit-contact-btn edit-btn-desktop" data-id="${contact.id}">
-            Edit
+        <div class="contact-item" data-id="${contact.id}" style="cursor: pointer;">
+          <button class="delete-contact-btn edit-btn-desktop" data-id="${contact.id}">
+            Delete
           </button>
 
           <div style="display: flex; align-items: flex-start; gap: 1rem; flex: 1;">
@@ -445,13 +410,17 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
   attachEventListeners() {
     const addContactBtn = document.getElementById('add-contact-btn');
     const importContactsBtn = document.getElementById('import-contacts-btn');
-    const contactModal = document.getElementById('contact-modal');
+    const contactOverlay = document.getElementById('contact-modal-overlay');
     const contactForm = document.getElementById('contact-form');
     const closeModalBtn = document.getElementById('close-modal-btn');
+    const cancelModalBtn = document.getElementById('cancel-modal-btn');
     const searchInput = document.getElementById('search-input');
     const uploadAvatarBtn = document.getElementById('upload-avatar-btn');
     const removeAvatarBtn = document.getElementById('remove-avatar-btn');
     const avatarInput = document.getElementById('contact-avatar');
+
+    const openModal = () => { contactOverlay.style.display = 'flex'; };
+    const closeModal = () => { contactOverlay.style.display = 'none'; };
 
     // Search
     searchInput.addEventListener('input', (e) => {
@@ -475,13 +444,11 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
       this.editingContactId = null;
       this.avatarFile = null;
       this.enrichedAvatarUrl = null;
-      // Update both desktop and mobile titles
       document.getElementById('modal-title').textContent = 'Add Contact';
-      document.getElementById('modal-title-mobile').textContent = 'Add Contact';
       contactForm.reset();
       document.getElementById('contact-whitelisted').checked = true;
       this.resetAvatarPreview();
-      contactModal.classList.remove('hidden');
+      openModal();
     });
 
     // Import contacts
@@ -503,7 +470,6 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
     avatarInput.addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (file) {
-        // Check file size (max 2MB)
         if (file.size > 2 * 1024 * 1024) {
           showToast('Image must be less than 2MB', 'error');
           return;
@@ -511,7 +477,6 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
 
         this.avatarFile = file;
 
-        // Preview the image
         const reader = new FileReader();
         reader.onload = (e) => {
           const preview = document.getElementById('avatar-preview');
@@ -528,30 +493,14 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
       this.resetAvatarPreview();
     });
 
-    // Close modal (X button)
-    closeModalBtn.addEventListener('click', () => {
-      contactModal.classList.add('hidden');
-    });
-
-    // Close modal (mobile back button)
-    const modalBackBtn = document.getElementById('modal-back-btn');
-    if (modalBackBtn) {
-      modalBackBtn.addEventListener('click', () => {
-        contactModal.classList.add('hidden');
-      });
-    }
-
-    // Close modal when clicking backdrop
-    contactModal.addEventListener('click', (e) => {
-      if (e.target === contactModal || e.target.classList.contains('modal-backdrop')) {
-        contactModal.classList.add('hidden');
-      }
-    });
+    // Close modal
+    closeModalBtn.addEventListener('click', closeModal);
+    cancelModalBtn.addEventListener('click', closeModal);
 
     // Save contact
     contactForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      await this.saveContact(contactModal);
+      await this.saveContact(closeModal);
       this.attachContactListeners();
     });
 
@@ -562,7 +511,7 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
     const preview = document.getElementById('avatar-preview');
     const removeBtn = document.getElementById('remove-avatar-btn');
     preview.innerHTML = `
-      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
         <circle cx="12" cy="7" r="4"></circle>
       </svg>
@@ -571,39 +520,36 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
   }
 
   attachContactListeners() {
-    const contactModal = document.getElementById('contact-modal');
+    const contactOverlay = document.getElementById('contact-modal-overlay');
 
     // Edit buttons
-    document.querySelectorAll('.edit-contact-btn').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const button = e.target.closest('.edit-contact-btn');
-        const contactId = button?.dataset.id;
+    // Card click → open edit modal
+    document.querySelectorAll('.contact-item').forEach((card) => {
+      card.addEventListener('click', (e) => {
+        // Don't open edit if clicking action buttons
+        if (e.target.closest('.delete-contact-btn') || e.target.closest('.call-contact-btn') || e.target.closest('.text-contact-btn') || e.target.closest('a')) return;
+
+        const contactId = card.dataset.id;
         const contact = this.contacts.find((c) => c.id === contactId);
 
         if (contact) {
           this.editingContactId = contactId;
           this.avatarFile = null;
           this.enrichedAvatarUrl = null;
-          // Update both desktop and mobile titles
           document.getElementById('modal-title').textContent = 'Edit Contact';
-          document.getElementById('modal-title-mobile').textContent = 'Edit Contact';
           document.getElementById('contact-first-name').value = contact.first_name || '';
           document.getElementById('contact-last-name').value = contact.last_name || '';
-          document.getElementById('contact-phone').value = contact.phone_number;
+          document.getElementById('contact-phone').value = contact.phone_number || '';
           document.getElementById('contact-email').value = contact.email || '';
           document.getElementById('contact-address').value = contact.address || '';
           document.getElementById('contact-notes').value = contact.notes || '';
           document.getElementById('contact-whitelisted').checked = contact.is_whitelisted;
-
-          // Set enrichment fields
           document.getElementById('contact-company').value = contact.company || '';
           document.getElementById('contact-job-title').value = contact.job_title || '';
           document.getElementById('contact-linkedin').value = contact.linkedin_url || '';
           document.getElementById('contact-twitter').value = contact.twitter_url || '';
           document.getElementById('contact-facebook').value = contact.facebook_url || '';
 
-          // Set avatar preview
           const preview = document.getElementById('avatar-preview');
           const removeBtn = document.getElementById('remove-avatar-btn');
           if (contact.avatar_url) {
@@ -614,7 +560,7 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
             this.resetAvatarPreview();
           }
 
-          contactModal.classList.remove('hidden');
+          contactOverlay.style.display = 'flex';
         }
       });
     });
@@ -626,20 +572,23 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
         const button = e.target.closest('.delete-contact-btn');
         const contactId = button?.dataset.id;
         const contact = this.contacts.find((c) => c.id === contactId);
-
         const displayName = contact ? ([contact.first_name, contact.last_name].filter(Boolean).join(' ') || contact.name) : 'this contact';
 
-        if (contact && confirm(`Delete contact "${displayName}"?`)) {
-          const { error } = await Contact.delete(contactId);
+        const confirmed = await showConfirmModal({
+          title: 'Delete Contact',
+          message: `Are you sure you want to delete "${displayName}"? This cannot be undone.`,
+          confirmText: 'Delete',
+          confirmStyle: 'danger',
+        });
 
+        if (confirmed) {
+          const { error } = await Contact.delete(contactId);
           if (error) {
             showToast('Failed to delete contact', 'error');
           } else {
-            showToast('Contact deleted successfully', 'success');
-
-            // Refresh list
+            showToast('Contact deleted', 'success');
             const { user } = await getCurrentUser();
-            const { contacts } = await Contact.list(user.id, { orderBy: 'name', ascending: true });
+            const { contacts } = await Contact.list(user.id, { orderBy: 'first_name', ascending: true });
             this.contacts = contacts;
             this.filteredContacts = contacts;
             document.getElementById('contacts-list').innerHTML = this.renderContactsList();
@@ -670,7 +619,7 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
     });
   }
 
-  async saveContact(contactModal) {
+  async saveContact(closeModal) {
     try {
       const { user } = await getCurrentUser();
 
@@ -741,7 +690,7 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
       document.getElementById('contacts-list').innerHTML = this.renderContactsList();
 
       // Close modal
-      contactModal.classList.add('hidden');
+      closeModal();
     } catch (error) {
       console.error('Save contact error:', error);
       showToast(error.message || 'Failed to save contact', 'error');

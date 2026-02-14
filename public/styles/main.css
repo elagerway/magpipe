@@ -1115,6 +1115,12 @@ p {
   margin-bottom: 0;
 }
 
+/* For modals with many fields — keep body scrollable on all viewports */
+.contact-modal-body.scrollable {
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
 /* Desktop: Wider upgrade modal with full form visible */
 @media (min-width: 769px) {
   .contact-modal {
@@ -1124,6 +1130,11 @@ p {
   .contact-modal-body {
     max-height: none;
     overflow-y: visible;
+  }
+
+  .contact-modal-body.scrollable {
+    max-height: 70vh;
+    overflow-y: auto;
   }
 
   /* Two-column layout for form fields */
@@ -1294,8 +1305,9 @@ p {
 }
 
 .edit-btn-desktop:hover {
-  border-color: var(--primary-color);
-  color: var(--primary-color);
+  border-color: #fca5a5;
+  background: #fef2f2;
+  color: #dc2626;
 }
 
 /* Desktop: Contacts grid layout */
