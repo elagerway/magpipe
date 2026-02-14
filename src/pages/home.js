@@ -60,9 +60,9 @@ export default class HomePage {
             <div class="hero-grid"></div>
           </div>
           <div class="hero-content">
-            <p class="hero-byline">AI-Powered Voice and Text Platform</p>
-            <h1>Every call and text answered.</h1>
-            <p class="hero-subtitle">Intelligent call and text handling that work 24/7.</p>
+            <p class="hero-byline">AI-Powered Communications Platform</p>
+            <h1>Every Conversation<br>Answered.</h1>
+            <p class="hero-subtitle">Intelligent conversation handling that works 24/7.</p>
             <div class="hero-cta">
               <button class="btn btn-cta-primary btn-lg" onclick="navigateTo('/signup')">
                 Get Started Free
@@ -88,8 +88,8 @@ export default class HomePage {
         <!-- Features Section -->
         <section class="landing-features">
           <div class="features-header">
-            <h2>Everything you need to manage your calls</h2>
-            <p>Powered by advanced AI to handle conversations naturally</p>
+            <h2>Everything you need to manage your business communications</h2>
+            <p>Powered by advanced AI to handle calls, texts, and emails naturally</p>
           </div>
           <div class="features-grid">
             <div class="feature-card">
@@ -113,11 +113,12 @@ export default class HomePage {
             <div class="feature-card">
               <div class="feature-icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                  <polyline points="22,6 12,13 2,6"/>
                 </svg>
               </div>
-              <h3>Privacy First</h3>
-              <p>Your data is encrypted and secure. Full control over what information is shared.</p>
+              <h3>Email AI</h3>
+              <p>Automatically respond to emails with context-aware AI replies, drafts for review, or fully autonomous mode.</p>
             </div>
             <div class="feature-card">
               <div class="feature-icon">
@@ -150,6 +151,71 @@ export default class HomePage {
               </div>
               <h3>Knowledge Base</h3>
               <p>Train your assistant with custom information to answer questions accurately.</p>
+            </div>
+            <div class="feature-card">
+              <div class="feature-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
+              </div>
+              <h3>Privacy First</h3>
+              <p>Your data is encrypted and secure. Full control over what information is shared.</p>
+            </div>
+            <div class="feature-card">
+              <div class="feature-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 2a10 10 0 1 0 10 10H12V2z"/>
+                  <path d="M20 12a8 8 0 0 0-8-8v8h8z"/>
+                </svg>
+              </div>
+              <h3>Analytics & Insights</h3>
+              <p>Real-time dashboards with call volume, sentiment analysis, and conversation trends at a glance.</p>
+            </div>
+            <div class="feature-card">
+              <div class="feature-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/>
+                  <line x1="2" y1="12" x2="22" y2="12"/>
+                  <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                </svg>
+              </div>
+              <h3>Real-Time Translation</h3>
+              <p>Speak to callers in their language. Automatic translation across 30+ languages during live calls.</p>
+            </div>
+            <div class="feature-card">
+              <div class="feature-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/>
+                  <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+                  <line x1="9" y1="9" x2="9.01" y2="9"/>
+                  <line x1="15" y1="9" x2="15.01" y2="9"/>
+                </svg>
+              </div>
+              <h3>Conversation Memory</h3>
+              <p>Your agent remembers past interactions, caller preferences, and context across every conversation.</p>
+            </div>
+            <div class="feature-card">
+              <div class="feature-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="2" y="2" width="8" height="8" rx="1"/>
+                  <rect x="14" y="2" width="8" height="8" rx="1"/>
+                  <rect x="2" y="14" width="8" height="8" rx="1"/>
+                  <rect x="14" y="14" width="8" height="8" rx="1"/>
+                </svg>
+              </div>
+              <h3>Integrations</h3>
+              <p>Connect with HubSpot, Google Workspace, Zapier, and more. Sync contacts, log calls, and automate workflows.</p>
+            </div>
+            <div class="feature-card">
+              <div class="feature-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                  <circle cx="8.5" cy="7" r="4"/>
+                  <polyline points="17 11 19 13 23 9"/>
+                </svg>
+              </div>
+              <h3>Warm Transfer</h3>
+              <p>Seamlessly hand off live calls to you or your team when the AI detects a conversation needs a human touch.</p>
             </div>
           </div>
         </section>
@@ -193,7 +259,7 @@ export default class HomePage {
               </div>
               <div class="pricing-highlight">
                 <span class="highlight-price">$0.01</span>
-                <span class="highlight-label">per SMS message</span>
+                <span class="highlight-label">per SMS or email</span>
               </div>
               <div class="pricing-highlight">
                 <span class="highlight-price">$20</span>
