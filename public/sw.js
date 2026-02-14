@@ -3,7 +3,7 @@
  * Handles caching, offline support, and background sync
  */
 
-const CACHE_NAME = 'pat-v19';
+const CACHE_NAME = 'magpipe-v1';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
