@@ -1,5 +1,22 @@
 # Magpipe — Complete Technical Reference
 
+## Features
+
+- **Smart Call Handling** — AI answers calls, screens unknown callers, takes messages, and transfers important calls to you
+- **Intelligent SMS** — Context-aware text responses that understand conversation history and respond appropriately
+- **Email AI** — Automatically respond to emails with context-aware AI replies, drafts for review, or fully autonomous mode
+- **24/7 Availability** — Your assistant never sleeps. Handle calls and messages around the clock
+- **Contact Management** — Whitelist VIPs, block spam, and set custom rules for different callers
+- **Knowledge Base** — Train your assistant with custom information to answer questions accurately
+- **Privacy First** — Your data is encrypted and secure. Full control over what information is shared
+- **Analytics & Insights** — Real-time dashboards with call volume, sentiment analysis, and conversation trends
+- **Real-Time Translation** — Automatic translation across 30+ languages during live calls
+- **Conversation Memory** — Your agent remembers past interactions, caller preferences, and context across every conversation
+- **Integrations** — Connect with HubSpot, Google Workspace, Zapier, and more. Sync contacts, log calls, and automate workflows
+- **Warm Transfer** — Seamlessly hand off live calls to you or your team when the AI detects a conversation needs a human touch
+
+---
+
 ## Stack Overview
 
 | Layer | Technology | Hosting |
