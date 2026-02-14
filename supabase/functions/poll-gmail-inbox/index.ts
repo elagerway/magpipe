@@ -688,7 +688,7 @@ async function autoEnrichEmailContact(
 ) {
   const normalizedEmail = email.toLowerCase().trim()
 
-  // Check if contact already exists by email
+  // 1. Check if contact already exists by email
   const { data: existingContact } = await supabase
     .from('contacts')
     .select('id')
@@ -706,7 +706,7 @@ async function autoEnrichEmailContact(
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!
   const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
-  // Call contact-lookup with email (Apollo supports email lookups)
+  // 2. Call contact-lookup for enrichment data
   const response = await fetch(
     `${supabaseUrl}/functions/v1/contact-lookup`,
     {
@@ -722,11 +722,30 @@ async function autoEnrichEmailContact(
   const data = await response.json()
 
   if (!response.ok || data.notFound || !data.success) {
-    // No enrichment data — create basic contact from email header name
-    console.log('No enrichment data for', normalizedEmail, '- creating basic contact')
+    // No enrichment data — try name match before creating basic contact
+    console.log('No enrichment data for', normalizedEmail, '- checking for existing contact by name')
     const nameParts = fromName ? fromName.trim().split(/\s+/) : []
     const firstName = nameParts[0] || normalizedEmail.split('@')[0]
     const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : null
+
+    if (firstName && lastName) {
+      const { data: nameMatches } = await supabase
+        .from('contacts')
+        .select('*')
+        .eq('user_id', userId)
+        .ilike('first_name', firstName)
+        .ilike('last_name', lastName)
+        .is('email', null)
+        .limit(1)
+
+      if (nameMatches?.[0]) {
+        await supabase.from('contacts').update({
+          email: normalizedEmail,
+        }).eq('id', nameMatches[0].id)
+        console.log('Merged email into existing name-matched contact:', nameMatches[0].id)
+        return
+      }
+    }
 
     await supabase.from('contacts').insert({
       user_id: userId,
@@ -740,12 +759,81 @@ async function autoEnrichEmailContact(
     return
   }
 
-  // Create enriched contact
+  // Enrichment succeeded
   const contact = data.contact
   const firstName = contact.first_name || (fromName ? fromName.split(' ')[0] : normalizedEmail.split('@')[0])
   const lastName = contact.last_name || (fromName ? fromName.split(' ').slice(1).join(' ') : null)
   const fullName = contact.name || [firstName, lastName].filter(Boolean).join(' ')
 
+  // 3. If enrichment returns phone, try to find existing contact by phone
+  if (contact.phone) {
+    const phoneDigits = contact.phone.replace(/\D/g, '')
+    const phoneForms = [contact.phone]
+    if (phoneDigits.length === 10) {
+      phoneForms.push(`+1${phoneDigits}`, phoneDigits)
+    } else if (phoneDigits.length === 11 && phoneDigits.startsWith('1')) {
+      phoneForms.push(`+${phoneDigits}`, phoneDigits, phoneDigits.substring(1))
+    }
+
+    const orConditions = phoneForms.map(p => `phone_number.eq.${p}`).join(',')
+    const { data: phoneMatches } = await supabase
+      .from('contacts')
+      .select('*')
+      .eq('user_id', userId)
+      .or(orConditions)
+      .limit(1)
+
+    if (phoneMatches?.[0]) {
+      const existing = phoneMatches[0]
+      const updates: Record<string, any> = { email: normalizedEmail, enriched_at: new Date().toISOString() }
+      if (!existing.name && fullName) updates.name = fullName
+      if (!existing.first_name && firstName) updates.first_name = firstName
+      if (!existing.last_name && lastName) updates.last_name = lastName
+      if (!existing.company && contact.company) updates.company = contact.company
+      if (!existing.job_title && contact.job_title) updates.job_title = contact.job_title
+      if (!existing.address && contact.address) updates.address = contact.address
+      if (!existing.avatar_url && contact.avatar_url) updates.avatar_url = contact.avatar_url
+      if (!existing.linkedin_url && contact.linkedin_url) updates.linkedin_url = contact.linkedin_url
+      if (!existing.twitter_url && contact.twitter_url) updates.twitter_url = contact.twitter_url
+      if (!existing.facebook_url && contact.facebook_url) updates.facebook_url = contact.facebook_url
+
+      await supabase.from('contacts').update(updates).eq('id', existing.id)
+      console.log('Merged email+enrichment into phone-matched contact:', existing.id, existing.phone_number)
+      return
+    }
+  }
+
+  // 4. Try name match (first_name + last_name, case-insensitive, no email set)
+  if (firstName && lastName) {
+    const { data: nameMatches } = await supabase
+      .from('contacts')
+      .select('*')
+      .eq('user_id', userId)
+      .ilike('first_name', firstName)
+      .ilike('last_name', lastName)
+      .is('email', null)
+      .limit(1)
+
+    if (nameMatches?.[0]) {
+      const existing = nameMatches[0]
+      const updates: Record<string, any> = { email: normalizedEmail, enriched_at: new Date().toISOString() }
+      if (!existing.phone_number && contact.phone) updates.phone_number = contact.phone
+      if (!existing.name && fullName) updates.name = fullName
+      if (!existing.company && contact.company) updates.company = contact.company
+      if (!existing.job_title && contact.job_title) updates.job_title = contact.job_title
+      if (!existing.address && contact.address) updates.address = contact.address
+      if (!existing.avatar_url && contact.avatar_url) updates.avatar_url = contact.avatar_url
+      if (!existing.linkedin_url && contact.linkedin_url) updates.linkedin_url = contact.linkedin_url
+      if (!existing.twitter_url && contact.twitter_url) updates.twitter_url = contact.twitter_url
+      if (!existing.facebook_url && contact.facebook_url) updates.facebook_url = contact.facebook_url
+
+      await supabase.from('contacts').update(updates).eq('id', existing.id)
+      console.log('Merged email+enrichment into name-matched contact:', existing.id)
+      return
+    }
+  }
+
+  // 5. No match — create new enriched contact
   await supabase.from('contacts').insert({
     user_id: userId,
     email: normalizedEmail,

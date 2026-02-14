@@ -1,6 +1,11 @@
 /**
  * Modal Styles
  * Used by contacts, calls, and other pages with modal dialogs
+ *
+ * DEPRECATED: Use .contact-modal-overlay pattern instead (see main.css).
+ * These .modal classes are kept for backwards compatibility with
+ * existing modals (calls, manage-numbers, inbox, import-csv).
+ * New modals should use the contact-modal pattern — see CLAUDE.md style guide.
  */
 
 .modal {
