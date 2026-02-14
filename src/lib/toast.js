@@ -33,5 +33,7 @@ export function showToast(message, type = 'info') {
   setTimeout(() => {
     toast.classList.add('toast-fade-out');
     toast.addEventListener('animationend', () => toast.remove());
+    // Fallback: force remove if animationend doesn't fire (iOS PWA)
+    setTimeout(() => toast.remove(), 500);
   }, 3000);
 }

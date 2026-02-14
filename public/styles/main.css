@@ -260,7 +260,7 @@ p {
 /* Toast Container */
 .toast-container {
   position: fixed;
-  bottom: 80px;
+  bottom: 1rem;
   left: 50%;
   transform: translateX(-50%);
   z-index: 9999;
@@ -273,11 +273,11 @@ p {
 
 /* Toast */
 .toast {
-  font-size: 0.8rem;
-  padding: 0.4rem 0.8rem;
+  font-size: 0.85rem;
+  padding: 0.6rem 1.5rem;
   border-radius: var(--radius-md);
   text-align: center;
-  min-width: 120px;
+  white-space: nowrap;
   max-width: 90vw;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   animation: toastIn 0.25s ease-out;
