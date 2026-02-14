@@ -45,29 +45,13 @@ export default class SignupPage {
 
         <!-- Main Content -->
         <main class="signup-main">
-          <!-- Desktop Branding Panel -->
-          <div class="signup-branding">
-            <div class="branding-content">
-              <h2>Every call and text answered.</h2>
-              <p>Intelligent call and text handling that work 24/7.</p>
-              <div class="branding-features">
-                <div class="branding-feature">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-                  <span>Smart Call Handling</span>
-                </div>
-                <div class="branding-feature">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                  <span>Intelligent SMS</span>
-                </div>
-                <div class="branding-feature">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-                  <span>24/7 Availability</span>
-                </div>
-              </div>
-            </div>
+          <div class="signup-decoration">
+            <div class="signup-gradient-orb signup-orb-1"></div>
+            <div class="signup-gradient-orb signup-orb-2"></div>
+            <div class="signup-gradient-orb signup-orb-3"></div>
+            <div class="signup-grid"></div>
           </div>
 
-          <!-- Form Panel -->
           <div class="signup-container">
             <div class="signup-card">
               <h1>Create Account</h1>
@@ -196,7 +180,6 @@ export default class SignupPage {
       <style>
         .signup-page {
           min-height: 100vh;
-          background: var(--bg-secondary);
           display: flex;
           flex-direction: column;
         }
@@ -210,120 +193,119 @@ export default class SignupPage {
         /* Main Content */
         .signup-main {
           flex: 1;
+          position: relative;
           display: flex;
-          align-items: stretch;
-        }
-
-        /* Desktop Branding Panel */
-        .signup-branding {
-          display: none;
-          flex: 1;
-          background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 40%, #a855f7 70%, #d946ef 100%);
-          padding: 2rem;
           align-items: center;
           justify-content: center;
-          position: relative;
+          padding: 6rem 1.5rem 3rem;
+          background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
           overflow: hidden;
         }
 
-        .signup-branding::before {
-          content: '';
+        /* Animated Orbs */
+        .signup-decoration {
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+        }
+
+        .signup-gradient-orb {
+          position: absolute;
+          border-radius: 50%;
+          filter: blur(140px);
+          opacity: 0.5;
+          will-change: transform;
+        }
+
+        .signup-orb-1 {
+          width: 700px;
+          height: 700px;
+          background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%);
+          top: -300px;
+          left: -200px;
+          animation: signupFloat1 20s ease-in-out infinite;
+        }
+
+        .signup-orb-2 {
+          width: 600px;
+          height: 600px;
+          background: linear-gradient(135deg, #06b6d4 0%, #3b82f6 50%, #6366f1 100%);
+          bottom: -250px;
+          right: -150px;
+          animation: signupFloat2 25s ease-in-out infinite;
+        }
+
+        .signup-orb-3 {
+          width: 450px;
+          height: 450px;
+          background: linear-gradient(135deg, #10b981 0%, #06b6d4 50%, #3b82f6 100%);
+          top: 20%;
+          right: 5%;
+          opacity: 0.4;
+          animation: signupFloat3 18s ease-in-out infinite;
+        }
+
+        @keyframes signupFloat1 {
+          0%, 100% { transform: translate(0, 0); }
+          25% { transform: translate(200px, 150px); }
+          50% { transform: translate(350px, 250px); }
+          75% { transform: translate(150px, 100px); }
+        }
+
+        @keyframes signupFloat2 {
+          0%, 100% { transform: translate(0, 0); }
+          25% { transform: translate(-200px, -150px); }
+          50% { transform: translate(-350px, -200px); }
+          75% { transform: translate(-150px, -100px); }
+        }
+
+        @keyframes signupFloat3 {
+          0%, 100% { transform: translate(0, 0); }
+          25% { transform: translate(-150px, -100px); }
+          50% { transform: translate(-250px, 80px); }
+          75% { transform: translate(-100px, 150px); }
+        }
+
+        .signup-grid {
           position: absolute;
           inset: 0;
           background-image:
-            radial-gradient(circle at 20% 80%, rgba(255,255,255,0.15) 0%, transparent 50%),
-            radial-gradient(circle at 80% 20%, rgba(255,255,255,0.1) 0%, transparent 40%);
-        }
-
-        .signup-branding::after {
-          content: '';
-          position: absolute;
-          inset: 0;
-          background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
-        }
-
-        .branding-content {
-          max-width: 400px;
-          color: white;
-          position: relative;
-          z-index: 1;
-        }
-
-        .branding-content h2 {
-          font-size: 1.75rem;
-          font-weight: 700;
-          margin-bottom: 0.5rem;
-          line-height: 1.2;
-        }
-
-        .branding-content p {
-          font-size: 1rem;
-          color: rgba(255, 255, 255, 0.7);
-          margin-bottom: 1.5rem;
-        }
-
-        .branding-features {
-          display: flex;
-          flex-direction: column;
-          gap: 0.6rem;
-        }
-
-        .branding-feature {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          color: rgba(255, 255, 255, 0.9);
-          font-size: 0.875rem;
-        }
-
-        .branding-feature svg {
-          width: 20px;
-          height: 20px;
-          color: var(--primary-color);
+            linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+          background-size: 60px 60px;
         }
 
         /* Form Panel */
         .signup-container {
-          flex: 1;
+          position: relative;
+          z-index: 1;
           display: flex;
           align-items: center;
           justify-content: center;
-          padding: 1rem 1.5rem;
-          background: var(--bg-secondary);
-        }
-
-        @media (min-width: 1024px) {
-          .signup-branding {
-            display: flex;
-          }
-
-          .signup-container {
-            flex: 0 0 50%;
-            max-width: 50%;
-          }
+          width: 100%;
         }
 
         .signup-card {
           width: 100%;
-          max-width: 380px;
-          background: var(--bg-primary);
-          border-radius: 0.75rem;
-          padding: 1.5rem;
-          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+          max-width: 420px;
+          background: #ffffff;
+          border-radius: 1rem;
+          padding: 2rem;
+          box-shadow: 0 25px 60px rgba(0, 0, 0, 0.3);
         }
 
         .signup-card h1 {
           text-align: center;
-          font-size: 1.5rem;
+          font-size: 1.75rem;
           font-weight: 700;
           margin-bottom: 0.25rem;
-          color: var(--text-primary);
+          color: #1f2937;
         }
 
         .signup-subtitle {
           text-align: center;
-          color: var(--text-secondary);
-          margin-bottom: 1rem;
+          color: #6b7280;
+          margin-bottom: 1.25rem;
           font-size: 0.875rem;
         }
 
@@ -333,9 +315,9 @@ export default class SignupPage {
           border: 1px solid rgba(99, 102, 241, 0.2);
           border-radius: 0.5rem;
           padding: 0.6rem 1rem;
-          margin-bottom: 1rem;
+          margin-bottom: 1.25rem;
           font-size: 0.85rem;
-          color: var(--text-primary);
+          color: #1f2937;
         }
 
         /* SSO Buttons */
@@ -347,17 +329,19 @@ export default class SignupPage {
         }
 
         .btn-sso {
-          background: white;
+          background: #ffffff;
           color: #1f2937;
-          border: 1px solid var(--border-color);
+          border: 1px solid #e5e7eb;
           display: flex;
           align-items: center;
           justify-content: center;
           gap: 0.5rem;
           font-weight: 500;
           font-size: 0.875rem;
-          padding: 0.5rem 0.75rem;
+          padding: 0.6rem 0.75rem;
+          border-radius: 0.5rem;
           transition: all 0.2s ease;
+          cursor: pointer;
         }
 
         .btn-sso:hover {
@@ -389,60 +373,68 @@ export default class SignupPage {
           content: '';
           flex: 1;
           height: 1px;
-          background: var(--border-color);
+          background: #e5e7eb;
         }
 
         .divider span {
-          color: var(--text-secondary);
+          color: #9ca3af;
           font-size: 0.75rem;
         }
 
         /* Form */
         .form-group {
-          margin-bottom: 0.6rem;
+          margin-bottom: 0.75rem;
         }
 
         .form-label {
           display: block;
           font-weight: 500;
           font-size: 0.8rem;
-          margin-bottom: 0.2rem;
-          color: var(--text-primary);
+          margin-bottom: 0.25rem;
+          color: #374151;
         }
 
         .form-input {
           width: 100%;
-          padding: 0.5rem 0.75rem;
+          padding: 0.6rem 0.75rem;
           font-size: 0.875rem;
-          border: 1px solid var(--border-color);
-          border-radius: 0.375rem;
-          background: var(--bg-primary);
-          color: var(--text-primary);
+          border: 1px solid #e5e7eb;
+          border-radius: 0.5rem;
+          background: #ffffff;
+          color: #1f2937;
           transition: border-color 0.15s, box-shadow 0.15s;
         }
 
         .form-input:focus {
           outline: none;
-          border-color: var(--primary-color);
-          box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1);
+          border-color: #6366f1;
+          box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
         }
 
         .form-help {
           font-size: 0.7rem;
-          color: var(--text-secondary);
+          color: #9ca3af;
           margin-top: 0.2rem;
+        }
+
+        .btn-primary.btn-full {
+          width: 100%;
+          padding: 0.7rem;
+          font-size: 0.9rem;
+          font-weight: 600;
+          border-radius: 0.5rem;
         }
 
         .signup-footer-text {
           text-align: center;
           font-size: 0.8rem;
-          color: var(--text-secondary);
-          margin-top: 0.75rem;
+          color: #6b7280;
+          margin-top: 1rem;
           margin-bottom: 0;
         }
 
         .signup-footer-text a {
-          color: var(--primary-color);
+          color: #6366f1;
           text-decoration: none;
           font-weight: 500;
         }
@@ -455,21 +447,21 @@ export default class SignupPage {
           text-align: center;
           margin-top: 1rem;
           padding-top: 0.75rem;
-          border-top: 1px solid var(--border-color);
+          border-top: 1px solid #e5e7eb;
           font-size: 0.7rem;
         }
 
         .legal-links a {
-          color: var(--text-secondary);
+          color: #9ca3af;
           text-decoration: none;
         }
 
         .legal-links a:hover {
-          color: var(--primary-color);
+          color: #6366f1;
         }
 
         .legal-links .separator {
-          color: var(--text-secondary);
+          color: #d1d5db;
           margin: 0 0.5rem;
         }
 
@@ -482,8 +474,28 @@ export default class SignupPage {
 
         /* Tablet */
         @media (max-width: 768px) {
-          .signup-page {
-            padding: 1rem;
+          .signup-main {
+            padding: 5rem 1rem 2rem;
+          }
+
+          .signup-orb-1 {
+            width: 400px;
+            height: 400px;
+            top: -150px;
+            left: -150px;
+          }
+
+          .signup-orb-2 {
+            width: 350px;
+            height: 350px;
+            bottom: -150px;
+            right: -100px;
+          }
+
+          .signup-orb-3 {
+            width: 250px;
+            height: 250px;
+            opacity: 0.3;
           }
 
           .signup-card {
@@ -493,24 +505,17 @@ export default class SignupPage {
 
         /* Mobile */
         @media (max-width: 480px) {
-          .signup-page {
-            padding: 0.75rem;
+          .signup-main {
+            padding: 4.5rem 0.75rem 1.5rem;
           }
 
           .signup-card {
             padding: 1.5rem;
+            border-radius: 0.75rem;
           }
 
           .signup-card h1 {
             font-size: 1.5rem;
-          }
-
-          .sso-buttons {
-            flex-direction: column;
-          }
-
-          .sso-btn {
-            width: 100%;
           }
         }
       </style>
