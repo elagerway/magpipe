@@ -674,6 +674,7 @@ export const deploymentTabMethods = {
             </label>
           </div>
           <p class="section-desc">Let this agent handle email conversations via Gmail.</p>
+          ${this.emailConfig.is_active ? '<p style="font-size: 0.8rem; color: var(--text-secondary); margin: 0.25rem 0 0.5rem; padding: 0.4rem 0.6rem; background: var(--bg-secondary); border-radius: 0.375rem;">Add-on: $0.01 per email sent or received</p>' : ''}
 
           <div class="assigned-numbers">
             <div class="assigned-number" style="flex-direction: column; align-items: flex-start; gap: 0.75rem;">
@@ -730,7 +731,7 @@ export const deploymentTabMethods = {
               <span class="toggle-slider-sm"></span>
             </label>
           </div>
-          <p class="section-desc">Let this agent handle email conversations via Gmail.</p>
+          <p class="section-desc">Let this agent handle email conversations via Gmail. <span style="color: var(--text-secondary);">Add-on: $0.01/email.</span></p>
 
           <div class="assigned-numbers">
             <div class="assigned-number">
