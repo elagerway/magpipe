@@ -1,6 +1,6 @@
-# Magpipe - AI Conversational Platform
+# Magpipe - A Conversational Platform
 
-Magpipe is a personal AI assistant platform that manages Phone Calls, SMS/Text messsges, Email, and Web Chat. Built with vanilla JavaScript, Supabase, CPaaS, and LiveKit.
+Magpipe is a a conversational platform that manages SMS/Text messsges, Phone Calls, Email, and Web Chat. Built with vanilla JavaScript, Supabase, CPaaS, and LiveKit.
 
 ## Features
 
