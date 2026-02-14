@@ -1,6 +1,6 @@
 # Magpipe - AI Conversational Platform
 
-Maggie is a Progressive Web App (PWA) that acts as your personal AI assistant for managing phone calls and SMS messages. Built with vanilla JavaScript, Supabase, SignalWire, and LiveKit.
+Magpipe is a personal AI assistant platform that manages Phone Calls, SMS/Text messsges, Email, and Web Chat. Built with vanilla JavaScript, Supabase, CPaaS, and LiveKit.
 
 ## Features
 
