@@ -29,15 +29,18 @@ export default class ContactsPage {
 
     this.userId = user.id;
 
-    // Fetch user profile for bottom nav
-    const { profile } = await User.getProfile(user.id);
-
-    // Use cached data if fetched within last 30 seconds
+    // Fetch profile and contacts in parallel
     const now = Date.now();
-    if (this.contacts.length === 0 || (now - this.lastFetchTime) > 30000) {
-      const { contacts } = await Contact.list(user.id, { orderBy: 'first_name', ascending: true });
-      this.contacts = contacts;
-      this.filteredContacts = contacts;
+    const needsFetch = this.contacts.length === 0 || (now - this.lastFetchTime) > 30000;
+
+    const [{ profile }, contactsResult] = await Promise.all([
+      User.getProfile(user.id),
+      needsFetch ? Contact.list(user.id, { orderBy: 'first_name', ascending: true }) : Promise.resolve(null)
+    ]);
+
+    if (contactsResult) {
+      this.contacts = contactsResult.contacts;
+      this.filteredContacts = contactsResult.contacts;
       this.lastFetchTime = now;
     }
 
