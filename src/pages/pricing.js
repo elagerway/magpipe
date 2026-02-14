@@ -67,6 +67,12 @@ export default class PricingPage {
                     <svg class="feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <polyline points="20 6 9 17 4 12"></polyline>
                     </svg>
+                    <span><strong>$0.01</strong> per email</span>
+                  </li>
+                  <li>
+                    <svg class="feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
                     <span><strong>$20</strong> free credits on signup</span>
                   </li>
                   <li>
@@ -424,6 +430,14 @@ export default class PricingPage {
                         <td>Outbound SMS</td>
                         <td>$0.01/message</td>
                       </tr>
+                      <tr>
+                        <td>Inbound Email</td>
+                        <td>$0.01/email</td>
+                      </tr>
+                      <tr>
+                        <td>Outbound Email</td>
+                        <td>$0.01/email</td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
@@ -549,6 +563,18 @@ export default class PricingPage {
             <div class="breakdown-card">
               <div class="breakdown-icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                  <polyline points="22,6 12,13 2,6"/>
+                </svg>
+              </div>
+              <h3>Email</h3>
+              <div class="breakdown-price">$0.01<span>/email</span></div>
+              <p>AI-powered email replies with knowledge base context and sentiment analysis.</p>
+            </div>
+
+            <div class="breakdown-card">
+              <div class="breakdown-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
                   <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
                 </svg>
@@ -586,6 +612,11 @@ export default class PricingPage {
                 <tr>
                   <td>SMS rate</td>
                   <td>$0.01/msg</td>
+                  <td>Volume discount</td>
+                </tr>
+                <tr>
+                  <td>Email rate</td>
+                  <td>$0.01/email</td>
                   <td>Volume discount</td>
                 </tr>
                 <tr>
@@ -1809,7 +1840,7 @@ export default class PricingPage {
     const faqs = [
       {
         question: 'How does billing work?',
-        answer: "You're billed monthly based on actual usage. Voice calls are $0.07/minute and messages are $0.01 each. Your first $20 of usage each month is free."
+        answer: "You're billed monthly based on actual usage. Voice calls are $0.07/minute, SMS messages are $0.01 each, and emails are $0.01 each. Your first $20 of usage each month is free."
       },
       {
         question: 'What counts as a minute?',

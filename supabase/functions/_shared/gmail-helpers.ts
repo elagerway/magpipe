@@ -551,6 +551,12 @@ export async function generateAiReply(
           sent_at: new Date().toISOString(),
         })
         console.log(`Auto-sent AI reply for thread ${msg.thread_id}`)
+
+        // Deduct email credits for AI auto-reply (fire and forget)
+        const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+        const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+        deductEmailCredits(supabaseUrl, supabaseKey, config.user_id, 1)
+          .catch(err => console.error('Email credit deduction error:', err))
       }
     } else {
       await supabase
@@ -566,6 +572,26 @@ export async function generateAiReply(
 
   } catch (e) {
     console.error('Error generating AI reply:', e)
+  }
+}
+
+// ─── Email Billing ──────────────────────────────────────────────────
+
+async function deductEmailCredits(supabaseUrl: string, supabaseKey: string, userId: string, messageCount: number) {
+  try {
+    const response = await fetch(`${supabaseUrl}/functions/v1/deduct-credits`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseKey}` },
+      body: JSON.stringify({ userId, type: 'email', messageCount, referenceType: 'email' })
+    })
+    const result = await response.json()
+    if (result.success) {
+      console.log(`Deducted $${result.cost} for ${messageCount} email(s), balance: $${result.balanceAfter}`)
+    } else {
+      console.error('Failed to deduct email credits:', result.error)
+    }
+  } catch (err) {
+    console.error('Error deducting email credits:', err)
   }
 }
 
