@@ -30,7 +30,7 @@ magpipe.ai        A        76.76.21.21 (Vercel)
 ```
 
 ### 1.3 Vercel Domain Setup
-1. Go to [Vercel Project Settings](https://vercel.com/snapsonic/solomobile/settings/domains)
+1. Go to [Vercel Project Settings](https://vercel.com/snapsonic/magpipe/settings/domains)
 2. Add domain: `app.magpipe.ai`
 3. Set as primary domain
 4. Configure redirect: `magpipe.ai` → `app.magpipe.ai`
