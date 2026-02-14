@@ -211,45 +211,6 @@ export default class AnalyticsPage {
           margin-top: 1rem;
         }
 
-        .transactions-list {
-          margin-top: 1rem;
-        }
-
-        .transaction-item {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 0.75rem 0;
-          border-bottom: 1px solid var(--border-color);
-        }
-
-        .transaction-item:last-child {
-          border-bottom: none;
-        }
-
-        .transaction-desc {
-          font-size: 0.875rem;
-          color: var(--text-primary);
-        }
-
-        .transaction-date {
-          font-size: 0.75rem;
-          color: var(--text-secondary);
-        }
-
-        .transaction-amount {
-          font-size: 0.875rem;
-          font-weight: 600;
-        }
-
-        .transaction-amount.positive {
-          color: var(--success-color);
-        }
-
-        .transaction-amount.negative {
-          color: var(--error-color);
-        }
-
         /* Call Records Table */
         .call-records-panel {
           padding: 0;
@@ -824,27 +785,6 @@ export default class AnalyticsPage {
         </div>
       ` : ''}
 
-      <!-- Recent Transactions -->
-      ${data.credits.recentTransactions && data.credits.recentTransactions.length > 0 ? `
-        <div class="analytics-section">
-          <h2>Recent Activity</h2>
-          <div class="analytics-panel">
-            <div class="transactions-list">
-              ${data.credits.recentTransactions.map(t => `
-                <div class="transaction-item">
-                  <div>
-                    <div class="transaction-desc">${t.description || 'Credit transaction'}</div>
-                    <div class="transaction-date">${new Date(t.created_at).toLocaleDateString()}</div>
-                  </div>
-                  <div class="transaction-amount ${parseFloat(t.amount) >= 0 ? 'positive' : 'negative'}">
-                    ${parseFloat(t.amount) >= 0 ? '+' : '-'}$${this.formatAmount(t.amount)}
-                  </div>
-                </div>
-              `).join('')}
-            </div>
-          </div>
-        </div>
-      ` : ''}
     `;
   }
 
@@ -853,15 +793,6 @@ export default class AnalyticsPage {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
-  }
-
-  formatAmount(amount) {
-    const absAmount = Math.abs(parseFloat(amount));
-    // Show up to 4 decimal places for small amounts, 2 for larger
-    if (absAmount < 0.01 && absAmount > 0) {
-      return absAmount.toFixed(4).replace(/\.?0+$/, '');
-    }
-    return absAmount.toFixed(2);
   }
 
   formatDisposition(disposition) {
