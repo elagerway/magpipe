@@ -11,15 +11,24 @@ export const deploymentTabMethods = {
       <div class="config-section">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
           <h3 style="margin: 0;">Calls & Texts</h3>
-          ${availableNumbers.length > 0 ? `
-            <button class="btn btn-primary btn-sm" id="assign-numbers-btn" style="display: flex; align-items: center;">
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <a href="#" onclick="navigateTo('/select-number'); return false;" class="btn btn-sm btn-secondary" style="display: flex; align-items: center;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.4rem;">
                 <line x1="12" y1="5" x2="12" y2="19"></line>
                 <line x1="5" y1="12" x2="19" y2="12"></line>
               </svg>
-              Assign
-            </button>
-          ` : ''}
+              Add Number
+            </a>
+            ${availableNumbers.length > 0 ? `
+              <button class="btn btn-primary btn-sm" id="assign-numbers-btn" style="display: flex; align-items: center;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.4rem;">
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+                Assign
+              </button>
+            ` : ''}
+          </div>
         </div>
         <p class="section-desc">Assign phone numbers to this agent for handling calls and text messages.</p>
 
