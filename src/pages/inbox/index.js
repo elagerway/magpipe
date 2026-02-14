@@ -125,21 +125,20 @@ class InboxPage {
 
     this.userId = user.id;
 
-    // Fetch user profile for bottom nav
-    const { profile } = await User.getProfile(user.id);
-
     // Load hidden conversations from localStorage
     this.loadHiddenConversations();
     if (this.hiddenConversations.size > 0) {
       console.log('Hidden conversations loaded:', Array.from(this.hiddenConversations));
     }
 
-    // Use cached data if fetched within last 30 seconds
+    // Fetch profile and conversations in parallel
     const now = Date.now();
-    if (this.conversations.length === 0 || (now - this.lastFetchTime) > 30000) {
-      await this.loadConversations(user.id);
-      this.lastFetchTime = now;
-    }
+    const needsFetch = this.conversations.length === 0 || (now - this.lastFetchTime) > 30000;
+
+    const [{ profile }] = await Promise.all([
+      User.getProfile(user.id),
+      needsFetch ? this.loadConversations(user.id).then(() => { this.lastFetchTime = Date.now(); }) : Promise.resolve()
+    ]);
 
     // Check for deep-link parameters in URL (take priority over default selection)
     const urlParams = new URLSearchParams(window.location.search);

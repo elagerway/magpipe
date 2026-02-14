@@ -33,9 +33,6 @@ export default class ManageNumbersPage {
 
     this.user = user;
 
-    // Fetch user profile for bottom nav
-    const { profile } = await User.getProfile(user.id);
-
     const appElement = document.getElementById('app');
 
     appElement.innerHTML = `

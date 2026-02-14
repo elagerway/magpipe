@@ -111,15 +111,13 @@ export default class AgentsPage {
 
     this.userId = user.id;
 
-    // Fetch user profile
-    const { profile } = await User.getProfile(user.id);
-
     // Add component styles
     addAgentCardStyles();
     addAgentsPageStyles();
 
-    // Load agents and service numbers
-    const [agentsResult, numbersResult] = await Promise.all([
+    // Load profile, agents, and service numbers in parallel
+    const [{ profile }, agentsResult, numbersResult] = await Promise.all([
+      User.getProfile(user.id),
       AgentConfig.getAllByUserId(user.id),
       supabase.from('service_numbers').select('id, phone_number, agent_id').eq('user_id', user.id).eq('is_active', true)
     ]);
