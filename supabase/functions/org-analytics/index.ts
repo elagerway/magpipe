@@ -106,7 +106,6 @@ Deno.serve(async (req) => {
 })
 
 async function getCallMetrics(supabase: ReturnType<typeof createClient>, userIds: string[], startDate: Date | null, endDate: Date | null) {
-  // Build base query with optional date filters
   const buildQuery = (query: any) => {
     let q = query.in('user_id', userIds)
     if (startDate) q = q.gte('started_at', startDate.toISOString())
@@ -114,60 +113,45 @@ async function getCallMetrics(supabase: ReturnType<typeof createClient>, userIds
     return q
   }
 
-  // Total calls
-  const { count: totalCalls } = await buildQuery(
-    supabase.from('call_records').select('*', { count: 'exact', head: true })
-  )
+  const startOfMonth = new Date()
+  startOfMonth.setDate(1)
+  startOfMonth.setHours(0, 0, 0, 0)
 
-  // Call success rate (not failed)
-  const { count: successfulCalls } = await buildQuery(
-    supabase.from('call_records').select('*', { count: 'exact', head: true })
-  ).neq('disposition', 'failed')
-
-  // Inbound vs outbound
-  const { count: inboundCalls } = await buildQuery(
-    supabase.from('call_records').select('*', { count: 'exact', head: true })
-  ).eq('direction', 'inbound')
-
-  const { count: outboundCalls } = await buildQuery(
-    supabase.from('call_records').select('*', { count: 'exact', head: true })
-  ).eq('direction', 'outbound')
-
-  // Get calls with duration for average and total calculation
-  const { data: callsWithDuration } = await buildQuery(
-    supabase.from('call_records').select('duration_seconds')
-  ).not('duration_seconds', 'is', null).gt('duration_seconds', 0)
+  // Run all queries in parallel
+  const [
+    { count: totalCalls },
+    { count: successfulCalls },
+    { count: inboundCalls },
+    { count: outboundCalls },
+    { data: callsWithDuration },
+    ...monthResults
+  ] = await Promise.all([
+    buildQuery(supabase.from('call_records').select('*', { count: 'exact', head: true })),
+    buildQuery(supabase.from('call_records').select('*', { count: 'exact', head: true })).neq('disposition', 'failed'),
+    buildQuery(supabase.from('call_records').select('*', { count: 'exact', head: true })).eq('direction', 'inbound'),
+    buildQuery(supabase.from('call_records').select('*', { count: 'exact', head: true })).eq('direction', 'outbound'),
+    buildQuery(supabase.from('call_records').select('duration_seconds')).not('duration_seconds', 'is', null).gt('duration_seconds', 0),
+    ...(!startDate && !endDate ? [
+      supabase.from('call_records').select('*', { count: 'exact', head: true }).in('user_id', userIds).gte('started_at', startOfMonth.toISOString()),
+      supabase.from('call_records').select('duration_seconds').in('user_id', userIds).gte('started_at', startOfMonth.toISOString()).not('duration_seconds', 'is', null),
+    ] : [])
+  ])
 
   const avgDuration = callsWithDuration && callsWithDuration.length > 0
-    ? callsWithDuration.reduce((sum, c) => sum + (c.duration_seconds || 0), 0) / callsWithDuration.length
+    ? callsWithDuration.reduce((sum: number, c: any) => sum + (c.duration_seconds || 0), 0) / callsWithDuration.length
     : 0
 
   const totalMinutes = callsWithDuration
-    ? Math.round(callsWithDuration.reduce((sum, c) => sum + (c.duration_seconds || 0), 0) / 60)
+    ? Math.round(callsWithDuration.reduce((sum: number, c: any) => sum + (c.duration_seconds || 0), 0) / 60)
     : 0
 
-  // Calls this month (only if no date filter)
   let callsThisMonth = 0
   let minutesThisMonth = 0
-  if (!startDate && !endDate) {
-    const startOfMonth = new Date()
-    startOfMonth.setDate(1)
-    startOfMonth.setHours(0, 0, 0, 0)
-    const { count } = await supabase
-      .from('call_records')
-      .select('*', { count: 'exact', head: true })
-      .in('user_id', userIds)
-      .gte('started_at', startOfMonth.toISOString())
-    callsThisMonth = count || 0
-
-    const { data: monthCalls } = await supabase
-      .from('call_records')
-      .select('duration_seconds')
-      .in('user_id', userIds)
-      .gte('started_at', startOfMonth.toISOString())
-      .not('duration_seconds', 'is', null)
+  if (!startDate && !endDate && monthResults.length >= 2) {
+    callsThisMonth = (monthResults[0] as any).count || 0
+    const monthCalls = (monthResults[1] as any).data
     minutesThisMonth = monthCalls
-      ? Math.round(monthCalls.reduce((sum, c) => sum + (c.duration_seconds || 0), 0) / 60)
+      ? Math.round(monthCalls.reduce((sum: number, c: any) => sum + (c.duration_seconds || 0), 0) / 60)
       : 0
   }
 
@@ -184,7 +168,6 @@ async function getCallMetrics(supabase: ReturnType<typeof createClient>, userIds
 }
 
 async function getMessageMetrics(supabase: ReturnType<typeof createClient>, userIds: string[], startDate: Date | null, endDate: Date | null) {
-  // Build base query with optional date filters
   const buildQuery = (query: any) => {
     let q = query.in('user_id', userIds)
     if (startDate) q = q.gte('sent_at', startDate.toISOString())
@@ -192,37 +175,29 @@ async function getMessageMetrics(supabase: ReturnType<typeof createClient>, user
     return q
   }
 
-  // Total messages
-  const { count: totalMessages } = await buildQuery(
-    supabase.from('sms_messages').select('*', { count: 'exact', head: true })
-  )
+  const startOfMonth = new Date()
+  startOfMonth.setDate(1)
+  startOfMonth.setHours(0, 0, 0, 0)
 
-  // Delivery rate
-  const { count: deliveredMessages } = await buildQuery(
-    supabase.from('sms_messages').select('*', { count: 'exact', head: true })
-  ).in('status', ['sent', 'delivered'])
+  const [
+    { count: totalMessages },
+    { count: deliveredMessages },
+    { count: inboundMessages },
+    { count: outboundMessages },
+    ...monthResults
+  ] = await Promise.all([
+    buildQuery(supabase.from('sms_messages').select('*', { count: 'exact', head: true })),
+    buildQuery(supabase.from('sms_messages').select('*', { count: 'exact', head: true })).in('status', ['sent', 'delivered']),
+    buildQuery(supabase.from('sms_messages').select('*', { count: 'exact', head: true })).eq('direction', 'inbound'),
+    buildQuery(supabase.from('sms_messages').select('*', { count: 'exact', head: true })).eq('direction', 'outbound'),
+    ...(!startDate && !endDate ? [
+      supabase.from('sms_messages').select('*', { count: 'exact', head: true }).in('user_id', userIds).gte('sent_at', startOfMonth.toISOString()),
+    ] : [])
+  ])
 
-  // Inbound vs outbound
-  const { count: inboundMessages } = await buildQuery(
-    supabase.from('sms_messages').select('*', { count: 'exact', head: true })
-  ).eq('direction', 'inbound')
-
-  const { count: outboundMessages } = await buildQuery(
-    supabase.from('sms_messages').select('*', { count: 'exact', head: true })
-  ).eq('direction', 'outbound')
-
-  // Messages this month (only if no date filter)
   let messagesThisMonth = 0
-  if (!startDate && !endDate) {
-    const startOfMonth = new Date()
-    startOfMonth.setDate(1)
-    startOfMonth.setHours(0, 0, 0, 0)
-    const { count } = await supabase
-      .from('sms_messages')
-      .select('*', { count: 'exact', head: true })
-      .in('user_id', userIds)
-      .gte('sent_at', startOfMonth.toISOString())
-    messagesThisMonth = count || 0
+  if (!startDate && !endDate && monthResults.length >= 1) {
+    messagesThisMonth = (monthResults[0] as any).count || 0
   }
 
   return {
@@ -270,27 +245,22 @@ async function getCreditsMetrics(supabase: ReturnType<typeof createClient>, user
 }
 
 async function getTimeSeries(supabase: ReturnType<typeof createClient>, userIds: string[], startDate: Date | null, endDate: Date | null) {
-  // Default to last 30 days if no date range specified
   const defaultStart = new Date()
   defaultStart.setDate(defaultStart.getDate() - 30)
 
   const queryStart = startDate || defaultStart
   const queryEnd = endDate || new Date()
 
-  // Calls per day
-  let callsQuery = supabase
-    .from('call_records')
-    .select('started_at')
-    .in('user_id', userIds)
-    .gte('started_at', queryStart.toISOString())
+  let callsQuery = supabase.from('call_records').select('started_at').in('user_id', userIds).gte('started_at', queryStart.toISOString())
+  let messagesQuery = supabase.from('sms_messages').select('sent_at').in('user_id', userIds).gte('sent_at', queryStart.toISOString())
 
   if (endDate) {
     callsQuery = callsQuery.lte('started_at', queryEnd.toISOString())
+    messagesQuery = messagesQuery.lte('sent_at', queryEnd.toISOString())
   }
 
-  const { data: calls } = await callsQuery
+  const [{ data: calls }, { data: messages }] = await Promise.all([callsQuery, messagesQuery])
 
-  // Group by date
   const callsByDate = new Map<string, number>()
   for (const call of calls || []) {
     const date = call.started_at.split('T')[0]
@@ -299,19 +269,6 @@ async function getTimeSeries(supabase: ReturnType<typeof createClient>, userIds:
   const callsPerDay = Array.from(callsByDate.entries())
     .map(([date, count]) => ({ date, count }))
     .sort((a, b) => a.date.localeCompare(b.date))
-
-  // Messages per day
-  let messagesQuery = supabase
-    .from('sms_messages')
-    .select('sent_at')
-    .in('user_id', userIds)
-    .gte('sent_at', queryStart.toISOString())
-
-  if (endDate) {
-    messagesQuery = messagesQuery.lte('sent_at', queryEnd.toISOString())
-  }
-
-  const { data: messages } = await messagesQuery
 
   const messagesByDate = new Map<string, number>()
   for (const msg of messages || []) {
@@ -322,10 +279,7 @@ async function getTimeSeries(supabase: ReturnType<typeof createClient>, userIds:
     .map(([date, count]) => ({ date, count }))
     .sort((a, b) => a.date.localeCompare(b.date))
 
-  return {
-    calls: callsPerDay,
-    messages: messagesPerDay
-  }
+  return { calls: callsPerDay, messages: messagesPerDay }
 }
 
 async function getTransactions(supabase: ReturnType<typeof createClient>, userIds: string[], startDate: Date | null, endDate: Date | null) {
@@ -659,27 +613,20 @@ async function getCallRecordsOnly(supabase: ReturnType<typeof createClient>, use
     return []
   }
 
-  // Get unique agent IDs and fetch agent names separately
+  // Fetch agent names and costs in parallel
   const agentIds = [...new Set(records.map(r => r.agent_id).filter(Boolean))]
-  let agentMap: Record<string, string> = {}
 
-  if (agentIds.length > 0) {
-    const { data: agents } = await supabase
-      .from('agent_configs')
-      .select('id, name')
-      .in('id', agentIds)
+  const [agentResult, { data: transactions }] = await Promise.all([
+    agentIds.length > 0
+      ? supabase.from('agent_configs').select('id, name').in('id', agentIds)
+      : Promise.resolve({ data: [] }),
+    supabase.from('credit_transactions').select('reference_id, amount').in('user_id', userIds).eq('reference_type', 'call')
+  ])
 
-    if (agents) {
-      agentMap = Object.fromEntries(agents.map(a => [a.id, a.name]))
-    }
+  const agentMap: Record<string, string> = {}
+  if (agentResult.data) {
+    agentResult.data.forEach((a: any) => { agentMap[a.id] = a.name })
   }
-
-  // Get costs from credit_transactions
-  const { data: transactions } = await supabase
-    .from('credit_transactions')
-    .select('reference_id, amount')
-    .in('user_id', userIds)
-    .eq('reference_type', 'call')
 
   const costMap: Record<string, number> = {}
   if (transactions) {
