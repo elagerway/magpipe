@@ -104,40 +104,35 @@ export default class AgentDetailPage {
       this.agent = agent;
     }
 
-    // Load cloned voices
-    const { data: clonedVoices } = await supabase
-      .from('voices')
-      .select('voice_id, voice_name')
-      .eq('user_id', user.id)
-      .eq('is_cloned', true)
-      .order('created_at', { ascending: false });
-
-    this.clonedVoices = clonedVoices || [];
-
-    // Load knowledge sources for this user
-    const { data: knowledgeSources } = await supabase
-      .from('knowledge_sources')
-      .select('id, title, url, sync_status, chunk_count, crawl_mode')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false });
-
-    this.knowledgeSources = knowledgeSources || [];
-
-    // Load service numbers for deployment tab (both regular and external SIP)
-    const [serviceNumbersResult, externalSipResult] = await Promise.all([
-      supabase
-        .from('service_numbers')
-        .select('id, phone_number, friendly_name, agent_id, termination_uri')
-        .eq('user_id', user.id)
-        .eq('is_active', true)
-        .order('created_at', { ascending: true }),
-      supabase
-        .from('external_sip_numbers')
-        .select('id, phone_number, friendly_name, agent_id, trunk_id, external_sip_trunks(name)')
-        .eq('user_id', user.id)
-        .eq('is_active', true)
-        .order('created_at', { ascending: true })
+    // Load all data in parallel
+    const [
+      clonedVoicesResult,
+      knowledgeSourcesResult,
+      serviceNumbersResult,
+      externalSipResult,
+      userDataResult,
+      chatWidgetResult,
+      customFunctionsResult,
+      semanticActionsResult,
+      connectedAppsResult,
+      gmailProviderResult,
+      emailConfigResult,
+    ] = await Promise.all([
+      supabase.from('voices').select('voice_id, voice_name').eq('user_id', user.id).eq('is_cloned', true).order('created_at', { ascending: false }),
+      supabase.from('knowledge_sources').select('id, title, url, sync_status, chunk_count, crawl_mode').eq('user_id', user.id).order('created_at', { ascending: false }),
+      supabase.from('service_numbers').select('id, phone_number, friendly_name, agent_id, termination_uri').eq('user_id', user.id).eq('is_active', true).order('created_at', { ascending: true }),
+      supabase.from('external_sip_numbers').select('id, phone_number, friendly_name, agent_id, trunk_id, external_sip_trunks(name)').eq('user_id', user.id).eq('is_active', true).order('created_at', { ascending: true }),
+      supabase.from('users').select('cal_com_access_token').eq('id', user.id).single(),
+      ChatWidget.getByAgentId(this.agent.id),
+      CustomFunction.listByAgent(this.agent.id),
+      SemanticMatchAction.listByAgent(this.agent.id),
+      supabase.from('user_integrations').select('provider_id, status, integration_providers(slug, name, icon_url)').eq('user_id', user.id).eq('status', 'connected'),
+      supabase.from('integration_providers').select('id').eq('slug', 'google_email').single(),
+      supabase.from('agent_email_configs').select('*').eq('agent_id', this.agentId).single(),
     ]);
+
+    this.clonedVoices = clonedVoicesResult.data || [];
+    this.knowledgeSources = knowledgeSourcesResult.data || [];
 
     const regularNumbers = (serviceNumbersResult.data || []).map(n => ({ ...n, isSipTrunk: false }));
     const sipNumbers = (externalSipResult.data || []).map(n => ({
@@ -147,33 +142,11 @@ export default class AgentDetailPage {
     }));
     this.serviceNumbers = [...regularNumbers, ...sipNumbers];
 
-    // Check Cal.com connection status
-    const { data: userData } = await supabase
-      .from('users')
-      .select('cal_com_access_token')
-      .eq('id', user.id)
-      .single();
-    this.isCalComConnected = !!userData?.cal_com_access_token;
-
-    // Load chat widget for this agent
-    const { widget } = await ChatWidget.getByAgentId(this.agent.id);
-    this.chatWidget = widget;
-
-    // Load custom functions for this agent
-    const { functions: customFunctions } = await CustomFunction.listByAgent(this.agent.id);
-    this.customFunctions = customFunctions || [];
-
-    // Load semantic match actions for this agent
-    const { actions: semanticActions } = await SemanticMatchAction.listByAgent(this.agent.id);
-    this.semanticActions = semanticActions || [];
-
-    // Load connected integration apps for App Functions section
-    const { data: connectedApps } = await supabase
-      .from('user_integrations')
-      .select('provider_id, status, integration_providers(slug, name, icon_url)')
-      .eq('user_id', user.id)
-      .eq('status', 'connected');
-    this.connectedApps = (connectedApps || [])
+    this.isCalComConnected = !!userDataResult.data?.cal_com_access_token;
+    this.chatWidget = chatWidgetResult.widget;
+    this.customFunctions = customFunctionsResult.functions || [];
+    this.semanticActions = semanticActionsResult.actions || [];
+    this.connectedApps = (connectedAppsResult.data || [])
       .filter(a => a.integration_providers?.slug)
       .map(a => ({
         slug: a.integration_providers.slug,
@@ -181,31 +154,19 @@ export default class AgentDetailPage {
         icon_url: a.integration_providers.icon_url,
       }));
 
-    // Load Gmail integration status for this user
-    const { data: gmailProvider } = await supabase
-      .from('integration_providers')
-      .select('id')
-      .eq('slug', 'google_email')
-      .single();
-
-    if (gmailProvider) {
+    // Load Gmail integration (depends on provider lookup)
+    if (gmailProviderResult.data) {
       const { data: gmailIntegration } = await supabase
         .from('user_integrations')
         .select('id, status, config, external_user_id')
         .eq('user_id', user.id)
-        .eq('provider_id', gmailProvider.id)
+        .eq('provider_id', gmailProviderResult.data.id)
         .eq('status', 'connected')
         .single();
       this.gmailIntegration = gmailIntegration;
     }
 
-    // Load agent email config
-    const { data: emailConfig } = await supabase
-      .from('agent_email_configs')
-      .select('*')
-      .eq('agent_id', this.agentId)
-      .single();
-    this.emailConfig = emailConfig;
+    this.emailConfig = emailConfigResult.data;
 
     // Add styles
     this.addStyles();
@@ -247,7 +208,6 @@ export default class AgentDetailPage {
                 <span class="agent-id" onclick="navigator.clipboard.writeText('${this.agent.agent_id}'); this.textContent='Copied!'; setTimeout(() => this.textContent='ID: ${this.agent.agent_id?.substring(0, 8)}...', 1500);">
                   ID: ${this.agent.agent_id?.substring(0, 8)}...
                 </span>
-                ${this.agent.is_default ? '<span class="default-badge">DEFAULT</span>' : ''}
               </div>
             </div>
           </div>
