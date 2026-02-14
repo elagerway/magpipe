@@ -832,9 +832,9 @@ async function mirrorConversationToSlack(
       const channelsResult = await channelsResponse.json();
 
       if (channelsResult.ok && channelsResult.channels?.length > 0) {
-        const patChannel = channelsResult.channels.find((c: any) => c.name === 'pat-notifications');
+        const magpipeChannel = channelsResult.channels.find((c: any) => c.name === 'magpipe-notifications');
         const generalChannel = channelsResult.channels.find((c: any) => c.name === 'general');
-        channelId = patChannel?.id || generalChannel?.id || channelsResult.channels[0].id;
+        channelId = magpipeChannel?.id || generalChannel?.id || channelsResult.channels[0].id;
       }
     }
 

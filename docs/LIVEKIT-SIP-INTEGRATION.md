@@ -90,7 +90,7 @@ STT (Deepgram) → LLM (OpenAI) → TTS (ElevenLabs)
 
 **Location:** `agents/livekit-voice-agent/agent.py`
 **Deployment:** Render.com (auto-deploy from git push)
-**Service:** https://pat-livekit-agent.onrender.com
+**Service:** https://magpipe-livekit-agent.onrender.com
 **Health Check:** HTTP server on port 10000
 
 **Agent Registration (line 411):**

@@ -63,8 +63,8 @@ This guide explains how to configure Google, Apple, and Microsoft OAuth provider
 1. Click "Identifiers" > "+" button
 2. Select "Services IDs" > Continue
 3. Fill in details:
-   - Description: "Pat SSO"
-   - Identifier: `com.pat.sso` (or your domain)
+   - Description: "Magpipe SSO"
+   - Identifier: `com.magpipe.sso` (or your domain)
 4. Enable "Sign in with Apple"
 5. Configure domains and return URLs:
    - Domains: `mtxbiyilvgwhbdptysex.supabase.co`

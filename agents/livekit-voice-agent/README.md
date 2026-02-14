@@ -76,7 +76,7 @@ python agent.py dev
 3. Connect your GitHub repository
 4. Select the `agents/livekit-voice-agent` directory as the root
 5. Configure:
-   - **Name**: `pat-livekit-agent`
+   - **Name**: `magpipe-livekit-agent`
    - **Environment**: Python 3
    - **Build Command**: `pip install -r requirements.txt`
    - **Start Command**: `python agent.py start`
