@@ -187,6 +187,12 @@ Deno.serve(async (req) => {
       // Still return success since the email was sent
     }
 
+    // Deduct email credits (fire and forget)
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    deductEmailCredits(supabaseUrl, supabaseKey, user.id, 1)
+      .catch(err => console.error('Email credit deduction error:', err))
+
     return new Response(JSON.stringify({
       success: true,
       message_id: gmailResult.id,
@@ -205,6 +211,24 @@ Deno.serve(async (req) => {
     })
   }
 })
+
+async function deductEmailCredits(supabaseUrl: string, supabaseKey: string, userId: string, messageCount: number) {
+  try {
+    const response = await fetch(`${supabaseUrl}/functions/v1/deduct-credits`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseKey}` },
+      body: JSON.stringify({ userId, type: 'email', messageCount, referenceType: 'email' })
+    })
+    const result = await response.json()
+    if (result.success) {
+      console.log(`Deducted $${result.cost} for ${messageCount} email(s), balance: $${result.balanceAfter}`)
+    } else {
+      console.error('Failed to deduct email credits:', result.error)
+    }
+  } catch (err) {
+    console.error('Error deducting email credits:', err)
+  }
+}
 
 async function getGmailAccessToken(supabase: any, userId: string, integrationId?: string | null): Promise<string | null> {
   let integration: any = null

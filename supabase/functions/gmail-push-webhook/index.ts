@@ -209,6 +209,8 @@ Deno.serve(async (req) => {
           newInboundMessages.push({ ...parsed, sentiment })
           autoEnrichEmailContact(config.user_id, parsed.from_email, parsed.from_name, supabase)
             .catch(err => console.error('Email contact enrichment error:', err))
+          deductEmailCredits(supabaseUrl, supabaseKey, config.user_id, 1)
+            .catch(err => console.error('Email credit deduction error:', err))
         }
       }
 
@@ -282,6 +284,24 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: error.message }, 200)
   }
 })
+
+async function deductEmailCredits(supabaseUrl: string, supabaseKey: string, userId: string, messageCount: number) {
+  try {
+    const response = await fetch(`${supabaseUrl}/functions/v1/deduct-credits`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseKey}` },
+      body: JSON.stringify({ userId, type: 'email', messageCount, referenceType: 'email' })
+    })
+    const result = await response.json()
+    if (result.success) {
+      console.log(`Deducted $${result.cost} for ${messageCount} email(s), balance: $${result.balanceAfter}`)
+    } else {
+      console.error('Failed to deduct email credits:', result.error)
+    }
+  } catch (err) {
+    console.error('Error deducting email credits:', err)
+  }
+}
 
 function jsonResponse(data: any, status = 200) {
   return new Response(JSON.stringify(data), {

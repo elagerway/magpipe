@@ -25,6 +25,7 @@ const LLM_RATES: Record<string, number> = {
 const TELEPHONY_RATE = 0.015  // Per minute
 const SMS_RATE = 0.01         // Per message
 const SMS_AI_RATE = 0.005     // Per AI-generated SMS reply
+const EMAIL_RATE = 0.01       // Per email message
 
 // Per-minute add-on surcharges (when feature is enabled on the agent)
 const ADDON_RATES: Record<string, number> = {
@@ -42,7 +43,7 @@ const BATCH_CALL_FEE = 0.005   // Per batch/campaign dial
 
 interface DeductRequest {
   userId: string
-  type: 'voice' | 'sms'
+  type: 'voice' | 'sms' | 'email'
   // For voice calls
   durationSeconds?: number
   voiceId?: string
@@ -548,8 +549,13 @@ Deno.serve(async (req) => {
       cost = smsCost
       description = `SMS - ${count} message${count > 1 ? 's' : ''}${aiGenerated ? ' (AI reply)' : ''}`
       metadata = smsMetadata
+    } else if (type === 'email') {
+      const count = messageCount || 1
+      cost = Math.round(count * EMAIL_RATE * 10000) / 10000
+      description = `Email - ${count} message${count > 1 ? 's' : ''}`
+      metadata = { type: 'email', count, rate: EMAIL_RATE }
     } else {
-      return new Response(JSON.stringify({ error: 'Invalid type. Must be "voice" or "sms"' }), {
+      return new Response(JSON.stringify({ error: 'Invalid type. Must be "voice", "sms", or "email"' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
