@@ -303,6 +303,8 @@ export default class AnalyticsPage {
           border-radius: 4px;
           font-size: 0.75rem;
           font-weight: 500;
+          width: 3.5rem;
+          text-align: center;
         }
 
         .type-badge.phone {
@@ -315,9 +317,15 @@ export default class AnalyticsPage {
           color: var(--success-color);
         }
 
-        .type-badge.web {
-          background: rgba(245, 158, 11, 0.1);
-          color: #f59e0b;
+        .type-badge.chat {
+          background: rgba(168, 85, 247, 0.12);
+          color: #7c3aed;
+        }
+
+        .type-badge.email {
+          background: #f3f4f6;
+          color: #7d8491;
+          border: 1px solid #e5e7eb;
         }
 
         .pagination-container {
@@ -823,11 +831,12 @@ export default class AnalyticsPage {
 
     return pageRecords.map(record => {
       const typeLower = (record.type || 'phone').toLowerCase();
-      const typeClass = typeLower === 'web chat' ? 'web' : typeLower;
+      const typeClass = typeLower === 'web chat' ? 'chat' : typeLower;
+      const typeLabel = typeLower === 'web chat' ? 'Chat' : (record.type || 'Phone');
       const durationDisplay = record.duration === '-' ? '-' : `${record.duration} min`;
       return `
         <tr>
-          <td><span class="type-badge ${typeClass}">${record.type || 'Phone'}</span></td>
+          <td><span class="type-badge ${typeClass}">${typeLabel}</span></td>
           <td>${new Date(record.time).toLocaleString()}</td>
           <td>${record.from || '-'}</td>
           <td>${record.to || '-'}</td>

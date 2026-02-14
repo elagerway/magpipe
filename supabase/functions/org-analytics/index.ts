@@ -351,14 +351,15 @@ async function getTransactions(supabase: ReturnType<typeof createClient>, userId
 
 async function getAllSessions(supabase: ReturnType<typeof createClient>, userIds: string[], startDate: Date | null, endDate: Date | null) {
   // Fetch all session types in parallel
-  const [callSessions, smsSessions, chatSessions] = await Promise.all([
+  const [callSessions, smsSessions, emailSessions, chatSessions] = await Promise.all([
     getCallSessions(supabase, userIds, startDate, endDate),
     getSmsSessions(supabase, userIds, startDate, endDate),
+    getEmailSessions(supabase, userIds, startDate, endDate),
     getChatSessions(supabase, userIds, startDate, endDate)
   ])
 
   // Combine and sort by start time descending
-  const allSessions = [...callSessions, ...smsSessions, ...chatSessions]
+  const allSessions = [...callSessions, ...smsSessions, ...emailSessions, ...chatSessions]
   allSessions.sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime())
 
   return allSessions
@@ -503,6 +504,50 @@ async function getSmsSessions(supabase: ReturnType<typeof createClient>, userIds
   }))
 }
 
+async function getEmailSessions(supabase: ReturnType<typeof createClient>, userIds: string[], startDate: Date | null, endDate: Date | null) {
+  let query = supabase
+    .from('email_messages')
+    .select('id, sent_at, from_email, from_name, to_email, subject, direction, status, sentiment, agent_id')
+    .in('user_id', userIds)
+    .order('sent_at', { ascending: false })
+
+  if (startDate) query = query.gte('sent_at', startDate.toISOString())
+  if (endDate) query = query.lte('sent_at', endDate.toISOString())
+  query = query.limit(1000)
+
+  const { data: emails } = await query
+  if (!emails || emails.length === 0) return []
+
+  const agentIds = [...new Set(emails.map(e => e.agent_id).filter(Boolean))]
+  let agentMap: Record<string, { name: string, id: string }> = {}
+  if (agentIds.length > 0) {
+    const { data: agents } = await supabase.from('agent_configs').select('id, name').in('id', agentIds)
+    if (agents) agentMap = Object.fromEntries(agents.map(a => [a.id, { name: a.name, id: a.id }]))
+  }
+
+  return emails.map(e => ({
+    sessionType: 'Email',
+    fromNumber: e.from_email || e.from_name || '',
+    startTime: e.sent_at,
+    agentName: agentMap[e.agent_id]?.name || 'Unknown',
+    agentId: e.agent_id || '',
+    durationMinutes: 'Nil',
+    sessionId: `email_${e.id.substring(0, 24)}`,
+    callToVmail: 'Nil',
+    callSuccessful: 'Nil',
+    summary: e.subject || '',
+    extractedCustomerName: e.from_name || 'Nil',
+    extractedCustomerAddress: 'Nil',
+    extractedCustomerCallReason: 'Nil',
+    extractedCustomerEmail: e.from_email || 'Nil',
+    disconnectionReason: 'Nil',
+    endTime: 'Nil',
+    recordingsUrl: '',
+    sentiment: e.sentiment || 'Neutral',
+    uniqueId: e.id
+  }))
+}
+
 async function getChatSessions(supabase: ReturnType<typeof createClient>, userIds: string[], startDate: Date | null, endDate: Date | null) {
   let query = supabase
     .from('chat_sessions')
@@ -558,15 +603,16 @@ async function getChatSessions(supabase: ReturnType<typeof createClient>, userId
 }
 
 async function getCallRecords(supabase: ReturnType<typeof createClient>, userIds: string[], startDate: Date | null, endDate: Date | null) {
-  // Fetch calls, SMS, and chat sessions in parallel
-  const [callRecords, smsRecords, chatRecords] = await Promise.all([
+  // Fetch calls, SMS, emails, and chat sessions in parallel
+  const [callRecords, smsRecords, emailRecords, chatRecords] = await Promise.all([
     getCallRecordsOnly(supabase, userIds, startDate, endDate),
     getSmsRecords(supabase, userIds, startDate, endDate),
+    getEmailRecords(supabase, userIds, startDate, endDate),
     getChatRecordsForTable(supabase, userIds, startDate, endDate)
   ])
 
   // Merge and sort by time descending
-  const allRecords = [...callRecords, ...smsRecords, ...chatRecords]
+  const allRecords = [...callRecords, ...smsRecords, ...emailRecords, ...chatRecords]
   allRecords.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
 
   return allRecords
@@ -707,6 +753,44 @@ async function getSmsRecords(supabase: ReturnType<typeof createClient>, userIds:
       type: 'SMS'
     }
   })
+}
+
+async function getEmailRecords(supabase: ReturnType<typeof createClient>, userIds: string[], startDate: Date | null, endDate: Date | null) {
+  let query = supabase
+    .from('email_messages')
+    .select('id, sent_at, from_email, from_name, to_email, subject, direction, status, sentiment, agent_id')
+    .in('user_id', userIds)
+    .order('sent_at', { ascending: false })
+
+  if (startDate) query = query.gte('sent_at', startDate.toISOString())
+  if (endDate) query = query.lte('sent_at', endDate.toISOString())
+  query = query.limit(startDate || endDate ? 1000 : 500)
+
+  const { data: emails, error } = await query
+  if (error || !emails || emails.length === 0) return []
+
+  const agentIds = [...new Set(emails.map(e => e.agent_id).filter(Boolean))]
+  let agentMap: Record<string, string> = {}
+  if (agentIds.length > 0) {
+    const { data: agents } = await supabase.from('agent_configs').select('id, name').in('id', agentIds)
+    if (agents) agentMap = Object.fromEntries(agents.map(a => [a.id, a.name]))
+  }
+
+  return emails.map(e => ({
+    id: e.id,
+    time: e.sent_at,
+    from: e.from_email || e.from_name || 'Unknown',
+    to: e.to_email || 'Unknown',
+    direction: e.direction || 'inbound',
+    assistant: agentMap[e.agent_id] || 'Unknown',
+    duration: '-',
+    sessionId: e.id,
+    end: e.status || 'sent',
+    status: e.status || 'sent',
+    sentiment: e.sentiment || 'Neutral',
+    cost: '0.0000',
+    type: 'Email'
+  }))
 }
 
 async function getChatRecordsForTable(supabase: ReturnType<typeof createClient>, userIds: string[], startDate: Date | null, endDate: Date | null) {
