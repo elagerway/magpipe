@@ -571,7 +571,7 @@ function generateNavHtml(currentPath) {
             </svg>
             <span>Contact Us</span>
           </button>
-          <button class="nav-modal-item" onclick="window.open('https://magpipe.ai/chat', '_blank'); closeUserModal();">
+          <button class="nav-modal-item" onclick="openChatWidget()">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
             </svg>
@@ -936,7 +936,7 @@ export function renderBottomNav(currentPath = '/inbox') {
             </svg>
             <span>Contact Us</span>
           </button>
-          <button class="nav-modal-item" onclick="window.open('https://magpipe.ai/chat', '_blank'); closeUserModal();">
+          <button class="nav-modal-item" onclick="openChatWidget()">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
             </svg>
@@ -1183,6 +1183,15 @@ window.handleLogout = async function() {
 };
 
 // Contact modal functions
+window.openChatWidget = function() {
+  closeUserModal();
+  setTimeout(function() {
+    var container = document.getElementById('magpipe-chat-container');
+    if (container) container.style.display = '';
+    if (window.MagpipeChat) window.MagpipeChat('open');
+  }, 150);
+};
+
 window.openContactModal = function() {
   closeUserModal();
   const overlay = document.getElementById('contact-modal-overlay');
