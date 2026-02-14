@@ -259,7 +259,7 @@ export default class HomePage {
               </div>
               <div class="pricing-highlight">
                 <span class="highlight-price">$0.01</span>
-                <span class="highlight-label">per SMS or email</span>
+                <span class="highlight-label">per SMS message</span>
               </div>
               <div class="pricing-highlight">
                 <span class="highlight-price">$20</span>

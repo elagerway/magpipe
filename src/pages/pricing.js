@@ -21,17 +21,9 @@ export default class PricingPage {
         ${renderPublicHeader({ activePage: 'pricing' })}
 
         <!-- Hero Section -->
-        <section class="pricing-hero">
-          <!-- Decorative elements -->
-          <div class="hero-decoration">
-            <div class="hero-gradient-orb hero-orb-1"></div>
-            <div class="hero-gradient-orb hero-orb-2"></div>
-            <div class="hero-grid"></div>
-          </div>
-          <div class="hero-content">
-            <h1>Transparent Pricing</h1>
-            <p>Pay only for what you use. No hidden fees, no surprises.</p>
-          </div>
+        <section class="pricing-hero-text">
+          <h1>Transparent Pricing</h1>
+          <p>Pay only for what you use. No hidden fees, no surprises.</p>
         </section>
 
         <!-- Pricing Cards -->
@@ -47,6 +39,9 @@ export default class PricingPage {
                   <span class="price-suffix">to start</span>
                 </div>
                 <p class="pricing-tier-desc">Start instantly, scale as you grow</p>
+                <button class="btn btn-primary btn-full" onclick="navigateTo('/signup')" style="margin-top: 1.25rem;">
+                  Get Started Free
+                </button>
               </div>
 
               <div class="pricing-card-body">
@@ -62,12 +57,6 @@ export default class PricingPage {
                       <polyline points="20 6 9 17 4 12"></polyline>
                     </svg>
                     <span><strong>$0.01</strong> per SMS message</span>
-                  </li>
-                  <li>
-                    <svg class="feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <polyline points="20 6 9 17 4 12"></polyline>
-                    </svg>
-                    <span><strong>$0.01</strong> per email</span>
                   </li>
                   <li>
                     <svg class="feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -96,11 +85,6 @@ export default class PricingPage {
                 </ul>
               </div>
 
-              <div class="pricing-card-footer">
-                <button class="btn btn-primary btn-full" onclick="navigateTo('/signup')">
-                  Get Started Free
-                </button>
-              </div>
             </div>
 
             <!-- Custom Plan -->
@@ -113,6 +97,9 @@ export default class PricingPage {
                   <span class="price-custom">Custom pricing</span>
                 </div>
                 <p class="pricing-tier-desc">For teams with 50+ concurrent calls</p>
+                <button class="btn btn-primary btn-full" onclick="navigateTo('/custom-plan')" style="margin-top: 1.25rem;">
+                  Contact Sales
+                </button>
               </div>
 
               <div class="pricing-card-body">
@@ -156,11 +143,6 @@ export default class PricingPage {
                 </ul>
               </div>
 
-              <div class="pricing-card-footer">
-                <button class="btn btn-primary btn-full" onclick="navigateTo('/custom-plan')">
-                  Contact Sales
-                </button>
-              </div>
             </div>
           </div>
         </section>
@@ -430,14 +412,6 @@ export default class PricingPage {
                         <td>Outbound SMS</td>
                         <td>$0.01/message</td>
                       </tr>
-                      <tr>
-                        <td>Inbound Email</td>
-                        <td>$0.01/email</td>
-                      </tr>
-                      <tr>
-                        <td>Outbound Email</td>
-                        <td>$0.01/email</td>
-                      </tr>
                     </tbody>
                   </table>
                 </div>
@@ -483,12 +457,12 @@ export default class PricingPage {
                         <td>$0.10/outbound call</td>
                       </tr>
                       <tr>
-                        <td>Advanced Denoising</td>
-                        <td>$0.005/min</td>
-                      </tr>
-                      <tr>
                         <td>PII Removal</td>
                         <td>$0.01/min</td>
+                      </tr>
+                      <tr>
+                        <td>Email AI (inbound + outbound)</td>
+                        <td>$0.01/email</td>
                       </tr>
                     </tbody>
                   </table>
@@ -567,7 +541,7 @@ export default class PricingPage {
                   <polyline points="22,6 12,13 2,6"/>
                 </svg>
               </div>
-              <h3>Email</h3>
+              <h3>Email AI</h3>
               <div class="breakdown-price">$0.01<span>/email</span></div>
               <p>AI-powered email replies with knowledge base context and sentiment analysis.</p>
             </div>
@@ -579,9 +553,72 @@ export default class PricingPage {
                   <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
                 </svg>
               </div>
-              <h3>Knowledge Bases</h3>
-              <div class="breakdown-price">$5<span>/month each</span></div>
-              <p>First 20 included free. Additional knowledge bases for expanded AI context.</p>
+              <h3>Knowledge Base</h3>
+              <div class="breakdown-price">$0.005<span>/minute</span></div>
+              <p>Train your agent with custom documents and data. First 20 sources included free.</p>
+            </div>
+
+            <div class="breakdown-card">
+              <div class="breakdown-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+                  <line x1="9" y1="9" x2="9.01" y2="9"/>
+                  <line x1="15" y1="9" x2="15.01" y2="9"/>
+                </svg>
+              </div>
+              <h3>Memory</h3>
+              <div class="breakdown-price">$0.005<span>/minute</span></div>
+              <p>Agent remembers past interactions and caller preferences across conversations.</p>
+            </div>
+
+            <div class="breakdown-card">
+              <div class="breakdown-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="11" cy="11" r="8"/>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+              </div>
+              <h3>Semantic Memory</h3>
+              <div class="breakdown-price">$0.005<span>/minute</span></div>
+              <p>Deep contextual recall using vector search over past conversation history.</p>
+            </div>
+
+            <div class="breakdown-card">
+              <div class="breakdown-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72"/>
+                  <path d="M15 2h6v6"/>
+                  <line x1="21" y1="2" x2="14" y2="9"/>
+                </svg>
+              </div>
+              <h3>Batch Calling</h3>
+              <div class="breakdown-price">$0.005<span>/dial</span></div>
+              <p>Automated outbound call campaigns to reach contacts at scale.</p>
+            </div>
+
+            <div class="breakdown-card">
+              <div class="breakdown-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                  <circle cx="12" cy="7" r="4"/>
+                </svg>
+              </div>
+              <h3>Branded Caller ID</h3>
+              <div class="breakdown-price">$0.10<span>/outbound call</span></div>
+              <p>Display your business name on outbound calls with CNAM branding.</p>
+            </div>
+
+            <div class="breakdown-card">
+              <div class="breakdown-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+              </div>
+              <h3>PII Removal</h3>
+              <div class="breakdown-price">$0.01<span>/minute</span></div>
+              <p>Automatically redact sensitive personal information from transcripts and logs.</p>
             </div>
           </div>
         </section>
@@ -612,11 +649,6 @@ export default class PricingPage {
                 <tr>
                   <td>SMS rate</td>
                   <td>$0.01/msg</td>
-                  <td>Volume discount</td>
-                </tr>
-                <tr>
-                  <td>Email rate</td>
-                  <td>$0.01/email</td>
                   <td>Volume discount</td>
                 </tr>
                 <tr>
@@ -722,69 +754,29 @@ export default class PricingPage {
         ${getPublicHeaderStyles()}
 
         /* Hero */
-        .pricing-hero {
-          position: relative;
+        .pricing-hero-text {
           text-align: center;
-          padding: 6rem 1.5rem;
-          margin-bottom: 20px;
-          background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
-          overflow: hidden;
+          padding: 50px 1.5rem;
+          max-width: 800px;
+          margin-left: auto;
+          margin-right: auto;
         }
 
-        .hero-decoration {
-          position: absolute;
-          inset: 0;
-          pointer-events: none;
-        }
-
-        .hero-gradient-orb {
-          position: absolute;
-          border-radius: 50%;
-          filter: blur(80px);
-          opacity: 0.5;
-        }
-
-        .hero-orb-1 {
-          width: 400px;
-          height: 400px;
-          background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-          top: -150px;
-          left: -100px;
-        }
-
-        .hero-orb-2 {
-          width: 300px;
-          height: 300px;
-          background: linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%);
-          bottom: -100px;
-          right: -50px;
-        }
-
-        .hero-grid {
-          position: absolute;
-          inset: 0;
-          background-image:
-            linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
-          background-size: 60px 60px;
-        }
-
-        .hero-content {
-          position: relative;
-          z-index: 1;
-        }
-
-        .pricing-hero h1 {
+        .pricing-hero-text h1 {
           font-size: 3rem;
           font-weight: 700;
           margin-bottom: 1rem;
-          color: #ffffff;
-          letter-spacing: -0.02em;
+          color: var(--text-primary);
+          letter-spacing: -0.03em;
+          background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #06b6d4 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
         }
 
-        .pricing-hero p {
+        .pricing-hero-text p {
           font-size: 1.25rem;
-          color: rgba(255, 255, 255, 0.7);
+          color: var(--text-secondary);
           max-width: 600px;
           margin: 0 auto;
         }
@@ -923,11 +915,6 @@ export default class PricingPage {
           color: var(--success-color);
           flex-shrink: 0;
           margin-top: 2px;
-        }
-
-        .pricing-card-footer {
-          padding: 1.5rem;
-          border-top: 1px solid var(--border-color);
         }
 
         /* Calculator */
@@ -1667,26 +1654,16 @@ export default class PricingPage {
 
         /* Mobile Responsive */
         @media (max-width: 768px) {
-          .pricing-hero {
-            padding: 4rem 1.5rem;
+          .pricing-hero-text {
+            padding: 4rem 1.5rem 1.5rem;
           }
 
-          .pricing-hero h1 {
+          .pricing-hero-text h1 {
             font-size: 2rem;
           }
 
-          .pricing-hero p {
+          .pricing-hero-text p {
             font-size: 1rem;
-          }
-
-          .hero-orb-1 {
-            width: 250px;
-            height: 250px;
-          }
-
-          .hero-orb-2 {
-            width: 200px;
-            height: 200px;
           }
 
           .pricing-cta h2 {
@@ -1778,11 +1755,11 @@ export default class PricingPage {
         }
 
         @media (max-width: 480px) {
-          .pricing-hero {
-            padding: 3rem 1rem;
+          .pricing-hero-text {
+            padding: 3rem 1rem 1rem;
           }
 
-          .pricing-hero h1 {
+          .pricing-hero-text h1 {
             font-size: 1.75rem;
           }
 
