@@ -4,33 +4,18 @@ Magpipe is a a conversational platform that manages SMS/Text messsges, Phone Cal
 
 ## Features
 
-### Inbound Call Handling
-- **AI-Powered Call Screening**: AI agent answers, vets callers, and determines intent
-- **Smart Transfer**: Transfer calls to configured numbers with optional passcodes
-- **Contact Recognition**: Whitelist trusted contacts for priority handling
-- **Call Recording**: Automatic recording with transcripts
-
-### Outbound Calling
-- **AI-Assisted Outbound**: Agent makes calls on your behalf with configurable prompts
-- **Callback Mode**: Server calls your phone first, then bridges to destination
-- **Call Templates**: Reusable templates with purpose and goal for consistent outbound calls
-- **Call Recording**: All calls recorded via SignalWire conference bridge
-
-### SMS Management
-- **Automated Responses**: AI-powered contextual SMS replies
-- **Conversation History**: Full message thread tracking per contact
-- **Scheduled Messages**: Schedule SMS to be sent at specific times
-
-### Agent Chat Interface
-- **Conversational Admin**: Natural language interface to manage your assistant
-- **Voice Mode**: Speak to your agent using browser microphone
-- **Action Execution**: Agent can make calls, send SMS, add contacts on your behalf
-
-### Customization
-- **Custom Prompts**: Separate inbound and outbound system prompts
-- **Voice Selection**: Choose from ElevenLabs or OpenAI voices
-- **Transfer Numbers**: Configure multiple transfer destinations with passcodes
-- **Outbound Templates**: Create reusable call purpose/goal templates
+- **Smart Call Handling** — AI answers calls, screens unknown callers, takes messages, and transfers important calls to you
+- **Intelligent SMS** — Context-aware text responses that understand conversation history and respond appropriately
+- **Email AI** — Automatically respond to emails with context-aware AI replies, drafts for review, or fully autonomous mode
+- **24/7 Availability** — Your assistant never sleeps. Handle calls and messages around the clock
+- **Contact Management** — Whitelist VIPs, block spam, and set custom rules for different callers
+- **Knowledge Base** — Train your assistant with custom information to answer questions accurately
+- **Privacy First** — Your data is encrypted and secure. Full control over what information is shared
+- **Analytics & Insights** — Real-time dashboards with call volume, sentiment analysis, and conversation trends
+- **Real-Time Translation** — Automatic translation across 30+ languages during live calls
+- **Conversation Memory** — Your agent remembers past interactions, caller preferences, and context across every conversation
+- **Integrations** — Connect with HubSpot, Google Workspace, Zapier, and more. Sync contacts, log calls, and automate workflows
+- **Warm Transfer** — Seamlessly hand off live calls to you or your team when the AI detects a conversation needs a human touch
 
 ## Tech Stack
 
