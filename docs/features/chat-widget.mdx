@@ -52,11 +52,11 @@ Add this snippet to your website:
 ```html
 <script>
   (function(w,d,s,o,f,js,fjs){
-    w['PatWidget']=o;w[o]=w[o]||function(){(w[o].q=w[o].q||[]).push(arguments)};
+    w['MagpipeWidget']=o;w[o]=w[o]||function(){(w[o].q=w[o].q||[]).push(arguments)};
     js=d.createElement(s);fjs=d.getElementsByTagName(s)[0];
     js.id=o;js.src=f;js.async=1;fjs.parentNode.insertBefore(js,fjs);
-  }(window,document,'script','PatChat','https://magpipe.ai/widget/pat-chat.js'));
-  PatChat('init', { widgetKey: 'YOUR_WIDGET_KEY' });
+  }(window,document,'script','MagpipeChat','https://magpipe.ai/widget/magpipe-chat.js'));
+  MagpipeChat('init', { widgetKey: 'YOUR_WIDGET_KEY' });
 </script>
 ```
 
@@ -223,25 +223,25 @@ Control the widget programmatically:
 
 ```javascript
 // Open the chat widget
-PatChat('open');
+MagpipeChat('open');
 
 // Close the chat widget
-PatChat('close');
+MagpipeChat('close');
 
 // Toggle the widget
-PatChat('toggle');
+MagpipeChat('toggle');
 
 // Send a message programmatically
-PatChat('sendMessage', 'Hello, I have a question about pricing');
+MagpipeChat('sendMessage', 'Hello, I have a question about pricing');
 
 // Set visitor info
-PatChat('setVisitor', {
+MagpipeChat('setVisitor', {
   name: 'John Doe',
   email: 'john@example.com'
 });
 
 // Destroy the widget (remove from page)
-PatChat('destroy');
+MagpipeChat('destroy');
 ```
 
 ### Event Callbacks
@@ -249,7 +249,7 @@ PatChat('destroy');
 Listen for widget events:
 
 ```javascript
-PatChat('init', {
+MagpipeChat('init', {
   widgetKey: 'YOUR_WIDGET_KEY',
   onOpen: function() {
     console.log('Chat opened');
@@ -269,7 +269,7 @@ Start a conversation with context:
 
 ```javascript
 // Link on your page
-<a href="#" onclick="PatChat('open'); PatChat('sendMessage', 'I want to learn about your enterprise plan');">
+<a href="#" onclick="MagpipeChat('open'); MagpipeChat('sendMessage', 'I want to learn about your enterprise plan');">
   Contact Sales
 </a>
 ```
@@ -314,13 +314,13 @@ The widget creates an iframe, but you can style the launcher button:
 
 ```css
 /* Custom bubble position */
-#pat-chat-widget {
+#magpipe-chat-widget {
   bottom: 100px !important;
   right: 20px !important;
 }
 
 /* Hide on specific pages */
-.no-chat #pat-chat-widget {
+.no-chat #magpipe-chat-widget {
   display: none;
 }
 ```
@@ -345,7 +345,7 @@ Track in the dashboard:
 Track widget events in GA:
 
 ```javascript
-PatChat('init', {
+MagpipeChat('init', {
   widgetKey: 'YOUR_WIDGET_KEY',
   onOpen: function() {
     gtag('event', 'chat_opened', { event_category: 'engagement' });

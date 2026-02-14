@@ -85,7 +85,7 @@ export function extractCallerMessages(transcript: string): string {
   const callerMessages: string[] = []
 
   // Common patterns for identifying speakers
-  const agentPatterns = /^(agent|assistant|ai|pat|bot):/i
+  const agentPatterns = /^(agent|assistant|ai|magpipe|bot):/i
   const callerPatterns = /^(user|caller|customer|human|client):/i
 
   for (const line of lines) {

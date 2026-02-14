@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: pat-livekit-agent
+    name: magpipe-livekit-agent
     env: python
     region: oregon
     plan: starter

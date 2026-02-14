@@ -445,7 +445,7 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 
 ## Service Worker (`public/sw.js`)
 
-- Cache name: `pat-v19`
+- Cache name: `magpipe-v1`
 - Caches: `/`, `/index.html`, `/manifest.json`, `/styles/main.css`, `/src/main.js`, `/src/router.js`
 - CSS: Network-first, fallback to cache
 - Other assets: Cache-first with background update
