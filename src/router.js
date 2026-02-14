@@ -60,6 +60,10 @@ export class Router {
 
     // Chat widget settings
     this.addDynamicRoute('/chat-widget/:id', () => import('./pages/chat-widget-settings.js'), true);
+
+    // Marketing landing pages (public)
+    this.addDynamicRoute('/industries/:slug', () => import('./pages/landing/LandingPage.js'), false);
+    this.addDynamicRoute('/use-cases/:slug', () => import('./pages/landing/LandingPage.js'), false);
   }
 
   addRoute(path, loader, requiresAuth = false, requiredRoles = null) {
