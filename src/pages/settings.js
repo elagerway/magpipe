@@ -2243,6 +2243,8 @@ export default class SettingsPage {
       pushEnabled.disabled = true;
     } else if (subscribed) {
       pushStatus.textContent = 'Push notifications are active on this device.';
+      pushEnabled.checked = true;
+      pushOptions.style.display = 'block';
     } else if (permission === 'granted') {
       pushStatus.textContent = 'Push notifications are available. Enable above to receive alerts.';
     } else {
