@@ -186,40 +186,41 @@ pat/
 
 ## Architecture
 
-### Inbound Call Flow
+### Smart Call Handling
+Inbound calls hit a SignalWire number, which triggers a LiveKit room. The AI agent joins, screens the caller, and decides whether to transfer, take a message, or handle the conversation. All calls are recorded with transcripts stored automatically.
 
-1. Inbound call hits SignalWire phone number
-2. SignalWire webhook triggers LiveKit room creation
-3. LiveKit agent joins room, answers call
-4. Agent vets caller (name, purpose) based on system prompt
-5. Decision: transfer, take message, or handle conversation
-6. Call recorded, transcript stored, context updated
+### Intelligent SMS
+Inbound SMS triggers a webhook that retrieves conversation context (with vector embeddings), generates a context-aware AI response, and sends it via SignalWire. Full conversation history is maintained per contact.
 
-### Outbound Call Flow
+### Email AI
+Gmail integration via OAuth and Pub/Sub push notifications. The agent can operate in draft mode (generates replies for review) or auto mode (sends replies autonomously). Emails are threaded and visible in the unified inbox.
 
-1. User initiates call from Phone page or Agent chat
-2. Template modal captures purpose/goal (or uses saved template)
-3. Edge Function creates call record with context
-4. **With Agent**: SignalWire creates bridged conference, LiveKit agent joins
-5. **Without Agent**: SignalWire calls user's phone, then bridges to destination
-6. Agent uses purpose/goal from template in conversation
-7. Call recorded via SignalWire conference
+### Warm Transfer
+During a live call, the AI can seamlessly hand off to a human. SignalWire bridges the caller to your phone while the agent briefs you, then drops off the line.
 
-### Agent Chat Flow
+### Knowledge Base
+Upload documents or URLs to train your agent. Content is crawled (via Firecrawl), chunked, and embedded with OpenAI into pgvector for RAG-powered retrieval during calls and messages.
 
-1. User sends message or speaks to Agent
-2. OpenAI processes with function calling
-3. Agent can execute: make calls, send SMS, add contacts, search
-4. Actions require user confirmation before execution
-5. Results displayed in chat interface
+### Conversation Memory
+Every interaction is summarized and stored with vector embeddings. The agent retrieves relevant past context at the start of each new conversation for continuity across calls, SMS, and email.
 
-### SMS Flow
+### Real-Time Translation
+The voice agent supports automatic translation across 30+ languages during live calls, allowing callers and agents to speak in different languages.
 
-1. Inbound SMS triggers webhook
-2. Conversation context retrieved (with embeddings)
-3. AI generates contextual response
-4. SMS sent via SignalWire
-5. Context updated with new messages
+### Analytics & Insights
+Real-time dashboards display call volume, sentiment analysis, and conversation trends. Organization-wide analytics are available for teams.
+
+### Integrations
+HubSpot (CRM), Google Workspace (Calendar, Gmail), Cal.com (booking), Apollo.io (contact enrichment), and Slack (notifications). Native tool execution via the agent chat interface.
+
+### Contact Management
+Contacts can be whitelisted for priority handling, blocked, or given custom call rules. CSV import, Apollo.io enrichment, and automatic contact creation from calls/SMS.
+
+### Privacy & Security
+All data is encrypted in transit and at rest via Supabase. Access codes, phone verification, and role-based permissions control who can access what.
+
+### 24/7 Availability
+The LiveKit voice agent runs on Render and connects to LiveKit Cloud, handling calls and messages around the clock without downtime.
 
 ## Database Schema
 
