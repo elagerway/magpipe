@@ -114,7 +114,7 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
         </div>
 
         <!-- Add/Edit Contact Modal (uses contact-modal pattern) -->
-        <div class="contact-modal-overlay" id="contact-modal-overlay" style="display: none;" onclick="document.getElementById('contact-modal-overlay').style.display='none'">
+        <div class="contact-modal-overlay" id="edit-contact-modal-overlay" style="display: none;" onclick="document.getElementById('edit-contact-modal-overlay').style.display='none'">
           <div class="contact-modal" onclick="event.stopPropagation()">
             <div class="contact-modal-header">
               <h3 id="modal-title">Add Contact</h3>
@@ -412,7 +412,7 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
   attachEventListeners() {
     const addContactBtn = document.getElementById('add-contact-btn');
     const importContactsBtn = document.getElementById('import-contacts-btn');
-    const contactOverlay = document.getElementById('contact-modal-overlay');
+    const contactOverlay = document.getElementById('edit-contact-modal-overlay');
     const contactForm = document.getElementById('contact-form');
     const closeModalBtn = document.getElementById('close-modal-btn');
     const cancelModalBtn = document.getElementById('cancel-modal-btn');
@@ -522,7 +522,7 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
   }
 
   attachContactListeners() {
-    const contactOverlay = document.getElementById('contact-modal-overlay');
+    const contactOverlay = document.getElementById('edit-contact-modal-overlay');
 
     // Edit buttons
     // Card click → open edit modal
