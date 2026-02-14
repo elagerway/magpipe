@@ -179,8 +179,8 @@ export class Router {
     // Store current params for page access
     this.currentParams = params;
 
-    // Redirect authenticated users from public home to inbox
-    if (path === '/' && !route.requiresAuth) {
+    // Redirect authenticated users from login page to inbox
+    if (path === '/login' && !route.requiresAuth) {
       const { user } = await getCurrentUser();
       if (user) {
         this.navigate('/inbox', true);
