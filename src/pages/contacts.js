@@ -115,7 +115,7 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
 
         <!-- Add/Edit Contact Modal (uses contact-modal pattern) -->
         <div class="contact-modal-overlay" id="contact-modal-overlay" style="display: none;" onclick="document.getElementById('contact-modal-overlay').style.display='none'">
-          <div class="contact-modal" style="max-width: 700px;" onclick="event.stopPropagation()">
+          <div class="contact-modal" onclick="event.stopPropagation()">
             <div class="contact-modal-header">
               <h3 id="modal-title">Add Contact</h3>
               <button class="close-modal-btn" id="close-modal-btn">&times;</button>
@@ -124,20 +124,9 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
               <div class="contact-modal-body scrollable">
                 <!-- Avatar Upload -->
                 <div class="form-group">
-                  <label>Avatar</label>
-                  <div style="display: flex; align-items: center; gap: 1rem;">
-                    <div id="avatar-preview" style="
-                      width: 64px;
-                      height: 64px;
-                      border-radius: 50%;
-                      background: var(--border-color);
-                      display: flex;
-                      align-items: center;
-                      justify-content: center;
-                      overflow: hidden;
-                      flex-shrink: 0;
-                    ">
-                      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <div class="contact-avatar-upload">
+                    <div id="avatar-preview" class="avatar-circle">
+                      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
                         <circle cx="12" cy="7" r="4"></circle>
                       </svg>
@@ -149,16 +138,20 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
                         accept="image/*"
                         style="display: none;"
                       />
-                      <button type="button" id="upload-avatar-btn" class="btn btn-secondary btn-sm" style="margin-bottom: 0.25rem;">
-                        Choose Photo
-                      </button>
-                      <button type="button" id="remove-avatar-btn" class="btn btn-secondary btn-sm" style="display: none; margin-bottom: 0.25rem;">
-                        Remove
-                      </button>
-                      <p style="margin: 0; font-size: 0.75rem; color: var(--text-secondary);">JPG, PNG, or GIF (max 2MB)</p>
+                      <div style="display: flex; gap: 0.5rem; margin-bottom: 0.25rem;">
+                        <button type="button" id="upload-avatar-btn" class="btn btn-secondary btn-sm">
+                          Choose Photo
+                        </button>
+                        <button type="button" id="remove-avatar-btn" class="btn btn-secondary btn-sm" style="display: none;">
+                          Remove
+                        </button>
+                      </div>
+                      <p style="margin: 0; font-size: 0.7rem; color: var(--text-secondary);">JPG, PNG, or GIF (max 2MB)</p>
                     </div>
                   </div>
                 </div>
+
+                <div class="form-divider"></div>
 
                 <div class="form-row">
                   <div class="form-group">
@@ -190,15 +183,15 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
                       required
                       style="flex: 1;"
                     />
-                    <button type="button" id="lookup-contact-btn" class="btn btn-secondary btn-sm" style="white-space: nowrap;" title="Look up contact info">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;">
+                    <button type="button" id="lookup-contact-btn" class="btn-lookup" title="Look up contact info">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <circle cx="11" cy="11" r="8"></circle>
                         <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                       </svg>
                       Lookup
                     </button>
                   </div>
-                  <p style="margin: 0.25rem 0 0; font-size: 0.75rem; color: var(--text-secondary);">E.164 format (e.g., +14155551234)</p>
+                  <p style="margin: 0.25rem 0 0; font-size: 0.7rem; color: var(--text-secondary);">E.164 format (e.g., +14155551234)</p>
                 </div>
 
                 <div class="form-group">
@@ -218,6 +211,8 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
                     rows="2"
                   ></textarea>
                 </div>
+
+                <div class="form-divider"></div>
 
                 <div class="form-row">
                   <div class="form-group">
@@ -268,12 +263,19 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
                   ></textarea>
                 </div>
 
+                <div class="form-divider"></div>
+
                 <div class="form-group" style="margin-bottom: 0;">
-                  <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                    <input type="checkbox" id="contact-whitelisted" checked />
-                    <span>Whitelist this contact</span>
-                  </label>
-                  <p style="margin: 0.25rem 0 0; font-size: 0.75rem; color: var(--text-secondary);">Whitelisted contacts bypass vetting</p>
+                  <div class="toggle-row">
+                    <div class="toggle-label-group">
+                      <span class="toggle-title">Whitelist this contact</span>
+                      <span class="toggle-desc">Whitelisted contacts bypass vetting</span>
+                    </div>
+                    <label class="toggle-switch">
+                      <input type="checkbox" id="contact-whitelisted" checked />
+                      <span class="toggle-slider"></span>
+                    </label>
+                  </div>
                 </div>
               </div>
               <div class="contact-modal-footer">
@@ -511,7 +513,7 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
     const preview = document.getElementById('avatar-preview');
     const removeBtn = document.getElementById('remove-avatar-btn');
     preview.innerHTML = `
-      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
         <circle cx="12" cy="7" r="4"></circle>
       </svg>
