@@ -325,6 +325,8 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 | `admin-send-notification` | Service role | `admin_notification_config` | SignalWire, Postmark, Slack | internal |
 | `admin-list-agents` | JWT (admin) | `agent_configs`, `users` | None | admin page |
 | `admin-blog-api` | JWT (admin) | `blog_posts` | None | admin page |
+| `admin-social-listening-api` | JWT (admin) | `social_listening_results`, `social_listening_keywords` | None | admin page |
+| `process-social-listening` | **No JWT** (cron) | `social_listening_results`, `social_listening_keywords`, `admin_notification_config` | Reddit, HN Algolia, Google, Postmark | cron (6h) / admin |
 | `blog-rss` | Public (no JWT) | `blog_posts` | None | RSS readers |
 
 ### Email
@@ -386,6 +388,9 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 
 ### Security
 `phone_verifications`, `sms_opt_outs`, `access_code_attempts`, `sms_confirmations`, `oauth_states`, `api_keys`
+
+### Social Listening
+`social_listening_keywords`, `social_listening_results`
 
 ### Content
 `blog_posts`

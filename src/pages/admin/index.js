@@ -18,6 +18,8 @@ import { chatTabMethods } from './chat-tab.js';
 import { blogTabMethods } from './blog-tab.js';
 import { directoriesTabMethods } from './directories-tab.js';
 import { reviewsTabMethods } from './reviews-tab.js';
+import { monitorTabMethods } from './monitor-tab.js';
+import { marketingTabMethods } from './marketing-tab.js';
 import { stylesMethods } from './styles.js';
 
 class AdminPage {
@@ -71,15 +73,10 @@ class AdminPage {
       role: profile.role,
       tabs: [
         { id: 'support', label: 'Support', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 7L2 7"/></svg>' },
-        { id: 'users', label: 'Users', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>' },
         { id: 'analytics', label: 'Analytics', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>' },
         { id: 'kpi', label: 'KPIs', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>' },
-        { id: 'global-agent', label: 'Global Agent', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>' },
-        { id: 'chat', label: 'Chat', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' },
         { id: 'notifications', label: 'Notifications', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>' },
-        { id: 'blog', label: 'Blog', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>' },
-        { id: 'directories', label: 'Directories', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>' },
-        { id: 'reviews', label: 'Reviews', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>' },
+        { id: 'marketing', label: 'Marketing', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>' },
       ],
       activeTab: 'support',
       onTabChange: (tabId) => this.switchTab(tabId),
@@ -108,8 +105,20 @@ class AdminPage {
     // Check URL params for tab auto-switch (e.g. post-OAuth redirect)
     const urlParams = new URLSearchParams(window.location.search);
     const tabParam = urlParams.get('tab');
-    const validTabs = ['analytics', 'users', 'global-agent', 'kpi', 'chat', 'support', 'notifications', 'blog', 'directories', 'reviews'];
-    const initialTab = validTabs.includes(tabParam) ? tabParam : 'support';
+    const validTabs = ['analytics', 'kpi', 'support', 'notifications', 'marketing'];
+    // Redirect old bookmarks (blog/directories/reviews/monitor → marketing subtab)
+    // Redirect old bookmarks to their new parent tabs
+    const legacyMarketingSubtabs = { blog: 'blog', directories: 'directories', reviews: 'reviews', monitor: 'monitor' };
+    let initialTab;
+    if (legacyMarketingSubtabs[tabParam]) {
+      initialTab = 'marketing';
+      urlParams.set('subtab', tabParam);
+    } else if (tabParam === 'users' || tabParam === 'global-agent' || tabParam === 'chat') {
+      initialTab = 'support';
+      this.supportSubTab = tabParam;
+    } else {
+      initialTab = validTabs.includes(tabParam) ? tabParam : 'support';
+    }
 
     if (urlParams.get('integration_connected') === 'google_email') {
       showToast('Gmail connected successfully!', 'success');
@@ -117,6 +126,12 @@ class AdminPage {
       const cleanUrl = new URL(window.location.href);
       cleanUrl.searchParams.delete('integration_connected');
       window.history.replaceState({}, '', cleanUrl.toString());
+    }
+
+    // Restore marketing sub-tab from URL before switchTab
+    const subtabParam = urlParams.get('subtab');
+    if (initialTab === 'marketing' && subtabParam) {
+      this.activeMarketingSubtab = subtabParam;
     }
 
     if (initialTab !== 'analytics') {
@@ -190,15 +205,18 @@ class AdminPage {
 
   async switchTab(tabName) {
     this.activeTab = tabName;
-    this.updateUrl({ tab: tabName });
+    // Marketing tab manages its own URL via switchMarketingSubtab
+    if (tabName !== 'marketing') {
+      this.updateUrl({ tab: tabName });
+    }
 
     // Update tab button active states
     document.querySelectorAll('.admin-tab').forEach(tab => {
       tab.classList.toggle('active', tab.dataset.tab === tabName);
     });
 
-    // Destroy previous omniChat if switching away
-    if (tabName !== 'chat' && this.omniChat) {
+    // Destroy previous omniChat if switching away from support (chat lives inside support)
+    if (tabName !== 'support' && this.omniChat) {
       this.omniChat.destroy();
       this.omniChat = null;
     }
@@ -206,24 +224,14 @@ class AdminPage {
     // Render appropriate content
     if (tabName === 'analytics') {
       await this.renderAnalyticsTab();
-    } else if (tabName === 'users') {
-      await this.renderUsersTab();
-    } else if (tabName === 'global-agent') {
-      await this.renderGlobalAgentTab();
     } else if (tabName === 'kpi') {
       await this.renderKpiTab();
-    } else if (tabName === 'chat') {
-      await this.renderChatTab();
     } else if (tabName === 'support') {
       await this.renderSupportTab();
     } else if (tabName === 'notifications') {
       await this.renderNotificationsTab();
-    } else if (tabName === 'blog') {
-      await this.renderBlogTab();
-    } else if (tabName === 'directories') {
-      await this.renderDirectoriesTab();
-    } else if (tabName === 'reviews') {
-      await this.renderReviewsTab();
+    } else if (tabName === 'marketing') {
+      await this.renderMarketingTab();
     }
   }
 }
@@ -239,6 +247,8 @@ Object.assign(AdminPage.prototype,
   blogTabMethods,
   directoriesTabMethods,
   reviewsTabMethods,
+  monitorTabMethods,
+  marketingTabMethods,
   stylesMethods,
 );
 

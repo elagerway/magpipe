@@ -33,7 +33,7 @@ export const supportTabMethods = {
       this.supportFilter = this.supportFilter || 'open';
       this.supportThreadView = null;
 
-      this.renderSupportContent();
+      await this.renderSupportContent();
     } catch (error) {
       console.error('Error loading support config:', error);
       const container = document.querySelector('.support-tab');
@@ -48,7 +48,7 @@ export const supportTabMethods = {
     }
   },
 
-  renderSupportContent() {
+  async renderSupportContent() {
     const container = document.querySelector('.support-tab');
     if (!container) return;
     if (!this.supportSubTab) this.supportSubTab = 'tickets';
@@ -57,6 +57,9 @@ export const supportTabMethods = {
       <!-- Sub-tab navigation -->
       <div class="support-subtabs">
         <button class="support-subtab ${this.supportSubTab === 'tickets' ? 'active' : ''}" data-support-subtab="tickets">Tickets</button>
+        <button class="support-subtab ${this.supportSubTab === 'users' ? 'active' : ''}" data-support-subtab="users">Users</button>
+        <button class="support-subtab ${this.supportSubTab === 'global-agent' ? 'active' : ''}" data-support-subtab="global-agent">Global Agent</button>
+        <button class="support-subtab ${this.supportSubTab === 'chat' ? 'active' : ''}" data-support-subtab="chat">Chat</button>
         <button class="support-subtab ${this.supportSubTab === 'settings' ? 'active' : ''}" data-support-subtab="settings">Settings</button>
       </div>
 
@@ -88,6 +91,21 @@ export const supportTabMethods = {
             <div class="loading-spinner">Loading tickets...</div>
           </div>
         </div>
+      </div>
+
+      <!-- Users sub-tab -->
+      <div id="support-subtab-users" class="support-subtab-content" style="display: ${this.supportSubTab === 'users' ? 'block' : 'none'};">
+        <div class="loading-spinner">Loading users...</div>
+      </div>
+
+      <!-- Global Agent sub-tab -->
+      <div id="support-subtab-global-agent" class="support-subtab-content" style="display: ${this.supportSubTab === 'global-agent' ? 'block' : 'none'};">
+        <div class="loading-spinner">Loading...</div>
+      </div>
+
+      <!-- Chat sub-tab -->
+      <div id="support-subtab-chat" class="support-subtab-content" style="display: ${this.supportSubTab === 'chat' ? 'block' : 'none'};">
+        <div class="loading-spinner">Loading...</div>
       </div>
 
       <!-- Settings sub-tab -->
@@ -166,19 +184,69 @@ export const supportTabMethods = {
     `;
 
     // Sub-tab switching
+    this._supportLazyLoaded = {};
+    const allSupportPanes = ['tickets', 'users', 'global-agent', 'chat', 'settings'];
     container.querySelectorAll('.support-subtab').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async () => {
         this.supportSubTab = btn.dataset.supportSubtab;
         container.querySelectorAll('.support-subtab').forEach(b =>
           b.classList.toggle('active', b.dataset.supportSubtab === this.supportSubTab)
         );
-        document.getElementById('support-subtab-tickets').style.display = this.supportSubTab === 'tickets' ? 'block' : 'none';
-        document.getElementById('support-subtab-settings').style.display = this.supportSubTab === 'settings' ? 'block' : 'none';
+        // Hide all, show active
+        allSupportPanes.forEach(p => {
+          const el = document.getElementById(`support-subtab-${p}`);
+          if (el) el.style.display = p === this.supportSubTab ? 'block' : 'none';
+        });
+
+        // Destroy omniChat when leaving chat sub-tab
+        if (this.supportSubTab !== 'chat' && this.omniChat) {
+          this.omniChat.destroy();
+          this.omniChat = null;
+        }
+
+        // Lazy-load on first visit
+        await this._loadSupportSubtab(this.supportSubTab);
       });
     });
 
     this.attachSupportListeners();
     this.loadSupportTickets();
+
+    // Lazy-load initial sub-tab if not tickets/settings
+    if (this.supportSubTab && this.supportSubTab !== 'tickets' && this.supportSubTab !== 'settings') {
+      await this._loadSupportSubtab(this.supportSubTab);
+    }
+  },
+
+  async _loadSupportSubtab(subtab) {
+    // Tickets and settings are rendered inline — no lazy load needed
+    if (subtab === 'tickets' || subtab === 'settings') return;
+    if (this._supportLazyLoaded[subtab]) return;
+    this._supportLazyLoaded[subtab] = true;
+
+    const pane = document.getElementById(`support-subtab-${subtab}`);
+    if (!pane) return;
+
+    // ID swap: let existing render methods write into the pane
+    const outer = document.getElementById('admin-tab-content');
+    outer.id = '_admin-tab-content-outer';
+    pane.id = 'admin-tab-content';
+
+    try {
+      if (subtab === 'users') {
+        await this.renderUsersTab();
+      } else if (subtab === 'global-agent') {
+        await this.renderGlobalAgentTab();
+      } else if (subtab === 'chat') {
+        await this.renderChatTab();
+      }
+    } finally {
+      // Restore IDs
+      const inner = document.getElementById('admin-tab-content');
+      if (inner) inner.id = `support-subtab-${subtab}`;
+      const outerEl = document.getElementById('_admin-tab-content-outer');
+      if (outerEl) outerEl.id = 'admin-tab-content';
+    }
   },
 
   _supportSaveAgentSettings() {
