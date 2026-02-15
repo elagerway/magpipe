@@ -22,7 +22,7 @@ export default class BlogPage {
     const persistentNav = document.getElementById('persistent-nav');
     if (persistentNav) persistentNav.style.display = 'none';
 
-    // Show loading
+    // Show loading (include styles immediately to prevent FOUC)
     appElement.innerHTML = `
       <div class="blog-page">
         ${renderPublicHeader({ activePage: 'blog' })}
@@ -30,6 +30,7 @@ export default class BlogPage {
           <div class="loading-spinner">Loading article...</div>
         </div>
       </div>
+      <style>${getBlogStyles()}</style>
     `;
 
     // Fetch post by slug

@@ -2,8 +2,13 @@
  * Blog page styles
  */
 
+import { getPublicHeaderStyles } from '../../components/PublicHeader.js';
+import { getPublicFooterStyles } from '../../components/PublicFooter.js';
+
 export function getBlogStyles() {
   return `
+    ${getPublicHeaderStyles()}
+    ${getPublicFooterStyles()}
     /* ── Blog List Page ── */
     .blog-page {
       background: #ffffff;

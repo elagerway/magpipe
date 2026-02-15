@@ -41,6 +41,8 @@ Deno.serve(async (req) => {
         return await handleUpdatePost(supabase, body)
       case 'delete_post':
         return await handleDeletePost(supabase, body)
+      case 'check_twitter':
+        return await handleCheckTwitter(supabase)
       default:
         return errorResponse(`Unknown action: ${action}`)
     }
@@ -64,7 +66,7 @@ function slugify(text: string): string {
 async function handleListPosts(supabase: any) {
   const { data, error } = await supabase
     .from('blog_posts')
-    .select('id, slug, title, status, author_name, published_at, scheduled_at, updated_at, tags, excerpt')
+    .select('id, slug, title, status, author_name, published_at, scheduled_at, updated_at, tags, excerpt, tweeted_at, tweet_id')
     .order('updated_at', { ascending: false })
 
   if (error) return errorResponse('Failed to list posts: ' + error.message, 500)
@@ -132,6 +134,12 @@ async function handleCreatePost(supabase: any, body: any) {
     .single()
 
   if (error) return errorResponse('Failed to create post: ' + error.message, 500)
+
+  // Fire-and-forget: tweet if published
+  if (data.status === 'published') {
+    fireTweet(data.id)
+  }
+
   return successResponse({ post: data })
 }
 
@@ -186,7 +194,45 @@ async function handleUpdatePost(supabase: any, body: any) {
     .single()
 
   if (error) return errorResponse('Failed to update post: ' + error.message, 500)
+
+  // Fire-and-forget: tweet if just published (not already tweeted)
+  if (updates.status === 'published' && !data.tweeted_at) {
+    fireTweet(data.id)
+  }
+
   return successResponse({ post: data })
+}
+
+async function handleCheckTwitter(supabase: any) {
+  const { data, error } = await supabase
+    .from('twitter_oauth_tokens')
+    .select('id, expires_at')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error || !data) {
+    return successResponse({ connected: false })
+  }
+
+  return successResponse({ connected: true })
+}
+
+/**
+ * Fire-and-forget call to publish-blog-to-twitter for a single post
+ */
+function fireTweet(postId: string) {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+
+  fetch(`${supabaseUrl}/functions/v1/publish-blog-to-twitter`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${serviceKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ mode: 'single', post_id: postId }),
+  }).catch(err => console.error('Fire-and-forget tweet failed:', err))
 }
 
 async function handleDeletePost(supabase: any, body: any) {
