@@ -32,6 +32,12 @@
 | `/impersonate` | `impersonate.js` | Admin impersonation entry | `admin-consume-impersonation` |
 | `/privacy` | `privacy.js` | Privacy policy (static) | None |
 | `/terms` | `terms.js` | Terms of service (static) | None |
+| `/blog` | `blog/BlogListPage.js` | Blog post listing (card grid) | `blog_posts` (published) |
+| `/blog/:slug` | `blog/BlogPage.js` | Single blog post (article) | `blog_posts` (published) |
+| `/compare/:slug` | `compare/ComparePage.js` | Competitor comparison page | None (static data) |
+| `/best/:slug` | `best/BestPage.js` | "Best AI for X" listicle page | None (static data) |
+| `/industries/:slug` | `landing/LandingPage.js` | Industry landing page | None (static data) |
+| `/use-cases/:slug` | `landing/LandingPage.js` | Use case landing page | None (static data) |
 
 ### Protected (auth required)
 
@@ -63,7 +69,7 @@
 
 | Route | File | Purpose |
 |-------|------|---------|
-| `/admin` | `admin/index.js` | Admin portal — split into tab modules. Tabs: Support (default), Users, Analytics, KPIs, Global Agent, Chat, Notifications |
+| `/admin` | `admin/index.js` | Admin portal — split into tab modules. Tabs: Support (default), Users, Analytics, KPIs, Global Agent, Chat, Notifications, Blog |
 
 Admin tab modules in `src/pages/admin/`:
 - `support-tab.js` — Support ticket management, Gmail integration, AI agent settings, ticket creation toggle
@@ -73,9 +79,10 @@ Admin tab modules in `src/pages/admin/`:
 - `global-agent-tab.js` — Global agent configuration
 - `chat-tab.js` — Admin omni-chat interface
 - `notifications-tab.js` — Notification channel settings (SMS, email, Slack)
+- `blog-tab.js` — Blog post CRUD with Quill.js WYSIWYG editor
 - `styles.js` — Centralized admin CSS
 
-Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-update-user`, `admin-impersonate`, `admin-manage-numbers`, `admin-analytics`, `admin-status`, `admin-agent-chat`, `admin-notifications-api`, `support-tickets-api`, etc.
+Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-update-user`, `admin-impersonate`, `admin-manage-numbers`, `admin-analytics`, `admin-status`, `admin-agent-chat`, `admin-notifications-api`, `admin-blog-api`, `support-tickets-api`, etc.
 
 ---
 
@@ -317,6 +324,8 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 | `admin-notifications-api` | JWT (admin) | `admin_notification_config`, `service_numbers` | SignalWire, Postmark, Slack | admin page |
 | `admin-send-notification` | Service role | `admin_notification_config` | SignalWire, Postmark, Slack | internal |
 | `admin-list-agents` | JWT (admin) | `agent_configs`, `users` | None | admin page |
+| `admin-blog-api` | JWT (admin) | `blog_posts` | None | admin page |
+| `blog-rss` | Public (no JWT) | `blog_posts` | None | RSS readers |
 
 ### Email
 
@@ -377,6 +386,9 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 
 ### Security
 `phone_verifications`, `sms_opt_outs`, `access_code_attempts`, `sms_confirmations`, `oauth_states`, `api_keys`
+
+### Content
+`blog_posts`
 
 ### Other
 `notification_preferences`, `push_subscriptions`, `webhook_logs`, `scheduled_actions`, `sms_templates`, `voices`, `temp_state`, `call_state_logs`, `collected_call_data`, `transfer_numbers`, `outbound_call_templates`, `cloned_voices`
