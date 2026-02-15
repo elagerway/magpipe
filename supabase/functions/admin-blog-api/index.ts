@@ -43,6 +43,8 @@ Deno.serve(async (req) => {
         return await handleDeletePost(supabase, body)
       case 'check_twitter':
         return await handleCheckTwitter(supabase)
+      case 'disconnect_twitter':
+        return await handleDisconnectTwitter(supabase)
       default:
         return errorResponse(`Unknown action: ${action}`)
     }
@@ -201,6 +203,16 @@ async function handleUpdatePost(supabase: any, body: any) {
   }
 
   return successResponse({ post: data })
+}
+
+async function handleDisconnectTwitter(supabase: any) {
+  const { error } = await supabase
+    .from('twitter_oauth_tokens')
+    .delete()
+    .neq('id', '00000000-0000-0000-0000-000000000000')
+
+  if (error) return errorResponse('Failed to disconnect: ' + error.message, 500)
+  return successResponse({ success: true })
 }
 
 async function handleCheckTwitter(supabase: any) {

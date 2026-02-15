@@ -282,8 +282,8 @@ export const blogTabMethods = {
           <h3>Blog Posts</h3>
           <div style="display: flex; gap: 0.5rem; align-items: center;">
             ${this.blogTwitterConnected
-              ? `<button class="btn-twitter" style="opacity: 0.6; cursor: default;" disabled>
-                  ${this.blogXLogoSvg()} Connected
+              ? `<button class="btn-twitter btn-twitter-disconnect" onclick="window.adminPage.blogDisconnectTwitter()">
+                  ${this.blogXLogoSvg()} Disconnect X
                 </button>`
               : `<button class="btn-twitter" onclick="window.adminPage.blogConnectTwitter()">
                   ${this.blogXLogoSvg()} Connect to X
@@ -711,6 +711,27 @@ export const blogTabMethods = {
         btn.innerHTML = `${this.blogXLogoSvg()} Re-post to X`;
       }
     }
+  },
+
+  async blogDisconnectTwitter() {
+    showConfirmModal(
+      'Disconnect X',
+      'Are you sure you want to disconnect your X account? Auto-posting to X will stop.',
+      {
+        confirmText: 'Disconnect',
+        confirmClass: 'btn-danger',
+        onConfirm: async () => {
+          try {
+            await this.blogApiCall('disconnect_twitter');
+            this.blogTwitterConnected = false;
+            showToast('Disconnected from X', 'success');
+            this.blogRenderList();
+          } catch (error) {
+            showToast('Failed to disconnect: ' + error.message, 'error');
+          }
+        },
+      }
+    );
   },
 
   async blogConnectTwitter() {
