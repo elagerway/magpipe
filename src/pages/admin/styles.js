@@ -2502,6 +2502,61 @@ export const stylesMethods = {
         max-width: 1100px;
       }
 
+      /* Blog Admin Table */
+      .admin-table-wrapper {
+        overflow-x: auto;
+      }
+
+      .admin-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.875rem;
+      }
+
+      .admin-table th {
+        text-align: left;
+        padding: 0.625rem 0.75rem;
+        font-weight: 600;
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        border-bottom: 2px solid var(--border-color);
+      }
+
+      .admin-table td {
+        padding: 0.625rem 0.75rem;
+        border-bottom: 1px solid var(--border-color);
+        vertical-align: middle;
+      }
+
+      .admin-table tbody tr:hover {
+        background: var(--bg-secondary, #f8fafc);
+      }
+
+      .admin-badge {
+        display: inline-block;
+        padding: 0.15rem 0.5rem;
+        border-radius: 999px;
+        font-size: 0.7rem;
+        font-weight: 600;
+      }
+
+      .badge-success {
+        background: #dcfce7;
+        color: #166534;
+      }
+
+      .badge-warning {
+        background: #fef9c3;
+        color: #854d0e;
+      }
+
+      .badge-info {
+        background: #dbeafe;
+        color: #1e40af;
+      }
+
       .blog-list-header {
         display: flex;
         align-items: center;
@@ -2742,6 +2797,14 @@ export const stylesMethods = {
       .btn-twitter:disabled {
         opacity: 0.5;
         cursor: not-allowed;
+      }
+
+      .btn-twitter-disconnect {
+        background: #dc2626;
+      }
+
+      .btn-twitter-disconnect:hover {
+        background: #b91c1c;
       }
 
       .btn-twitter svg {
