@@ -16,6 +16,7 @@ import { supportTabMethods } from './support-tab.js';
 import { notificationsTabMethods } from './notifications-tab.js';
 import { chatTabMethods } from './chat-tab.js';
 import { blogTabMethods } from './blog-tab.js';
+import { directoriesTabMethods } from './directories-tab.js';
 import { stylesMethods } from './styles.js';
 
 class AdminPage {
@@ -76,6 +77,7 @@ class AdminPage {
         { id: 'chat', label: 'Chat', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' },
         { id: 'notifications', label: 'Notifications', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>' },
         { id: 'blog', label: 'Blog', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>' },
+        { id: 'directories', label: 'Directories', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>' },
       ],
       activeTab: 'support',
       onTabChange: (tabId) => this.switchTab(tabId),
@@ -104,7 +106,7 @@ class AdminPage {
     // Check URL params for tab auto-switch (e.g. post-OAuth redirect)
     const urlParams = new URLSearchParams(window.location.search);
     const tabParam = urlParams.get('tab');
-    const validTabs = ['analytics', 'users', 'global-agent', 'kpi', 'chat', 'support', 'notifications', 'blog'];
+    const validTabs = ['analytics', 'users', 'global-agent', 'kpi', 'chat', 'support', 'notifications', 'blog', 'directories'];
     const initialTab = validTabs.includes(tabParam) ? tabParam : 'support';
 
     if (urlParams.get('integration_connected') === 'google_email') {
@@ -216,6 +218,8 @@ class AdminPage {
       await this.renderNotificationsTab();
     } else if (tabName === 'blog') {
       await this.renderBlogTab();
+    } else if (tabName === 'directories') {
+      await this.renderDirectoriesTab();
     }
   }
 }
@@ -229,6 +233,7 @@ Object.assign(AdminPage.prototype,
   notificationsTabMethods,
   chatTabMethods,
   blogTabMethods,
+  directoriesTabMethods,
   stylesMethods,
 );
 
