@@ -3161,6 +3161,40 @@ export const stylesMethods = {
         font-size: 0.8rem;
       }
 
+      /* Review Stats */
+      .review-stats-grid {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+      }
+
+      .review-stat-card {
+        background: var(--bg-primary);
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        padding: 1rem;
+        text-align: center;
+      }
+
+      .review-stat-value {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--text-primary);
+      }
+
+      .review-stat-label {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        margin-top: 0.25rem;
+      }
+
+      @media (max-width: 768px) {
+        .review-stats-grid {
+          grid-template-columns: repeat(3, 1fr);
+        }
+      }
+
       @media (max-width: 768px) {
         .dir-table {
           font-size: 0.8rem;
