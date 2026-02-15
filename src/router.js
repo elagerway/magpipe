@@ -65,6 +65,7 @@ export class Router {
     this.addDynamicRoute('/industries/:slug', () => import('./pages/landing/LandingPage.js'), false);
     this.addDynamicRoute('/use-cases/:slug', () => import('./pages/landing/LandingPage.js'), false);
     this.addDynamicRoute('/compare/:slug', () => import('./pages/compare/ComparePage.js'), false);
+    this.addDynamicRoute('/best/:slug', () => import('./pages/best/BestPage.js'), false);
   }
 
   addRoute(path, loader, requiresAuth = false, requiredRoles = null) {

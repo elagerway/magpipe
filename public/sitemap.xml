@@ -112,6 +112,53 @@
     <priority>0.8</priority>
   </url>
 
+  <!-- Best AI for Industry Pages -->
+  <url>
+    <loc>https://magpipe.ai/best/ai-phone-agent-for-healthcare</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://magpipe.ai/best/ai-phone-agent-for-insurance</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://magpipe.ai/best/ai-phone-agent-for-financial-services</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://magpipe.ai/best/ai-phone-agent-for-logistics</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://magpipe.ai/best/ai-phone-agent-for-home-services</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://magpipe.ai/best/ai-phone-agent-for-retail</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://magpipe.ai/best/ai-phone-agent-for-hospitality</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://magpipe.ai/best/ai-phone-agent-for-debt-collection</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://magpipe.ai/best/ai-phone-agent-for-real-estate</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
   <!-- Legal -->
   <url>
     <loc>https://magpipe.ai/privacy</loc>
