@@ -85,6 +85,33 @@
     <priority>0.8</priority>
   </url>
 
+  <!-- Comparison Pages -->
+  <url>
+    <loc>https://magpipe.ai/compare/magpipe-vs-bland-ai</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://magpipe.ai/compare/magpipe-vs-synthflow</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://magpipe.ai/compare/magpipe-vs-vapi</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://magpipe.ai/compare/magpipe-vs-retell-ai</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://magpipe.ai/compare/magpipe-vs-goodcall</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
   <!-- Legal -->
   <url>
     <loc>https://magpipe.ai/privacy</loc>
