@@ -4,6 +4,7 @@
 
 import { renderPublicFooter, getPublicFooterStyles } from '../components/PublicFooter.js';
 import { renderPublicHeader, getPublicHeaderStyles } from '../components/PublicHeader.js';
+import { injectSEO, cleanupSEO, buildOrganizationSchema, buildProductSchema } from '../lib/seo.js';
 
 // Store the install prompt for later use
 let deferredPrompt = null;
@@ -42,6 +43,16 @@ window._installApp = async () => {
 export default class HomePage {
   async render() {
     const appElement = document.getElementById('app');
+
+    injectSEO({
+      title: 'Magpipe — AI Voice, Email & SMS for Business',
+      description: 'AI-powered communications platform that handles calls, texts, and emails 24/7. Smart call handling, intelligent SMS, email AI, and more.',
+      url: 'https://magpipe.ai',
+      jsonLd: [
+        buildOrganizationSchema(),
+        buildProductSchema(),
+      ],
+    });
 
     // Check if running as installed PWA
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches
@@ -991,6 +1002,10 @@ export default class HomePage {
     `;
 
     this.attachEventListeners();
+  }
+
+  cleanup() {
+    cleanupSEO();
   }
 
   attachEventListeners() {
