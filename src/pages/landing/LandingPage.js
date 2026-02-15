@@ -7,6 +7,7 @@ import { renderPublicHeader } from '../../components/PublicHeader.js';
 import { renderPublicFooter } from '../../components/PublicFooter.js';
 import { getLandingStyles } from './landing-styles.js';
 import { landingPages, getPageFeatures } from './landing-data.js';
+import { injectSEO, cleanupSEO, buildOrganizationSchema, buildProductSchema, buildFAQSchema, buildBreadcrumbSchema } from '../../lib/seo.js';
 
 export default class LandingPage {
   constructor(params) {
@@ -39,21 +40,31 @@ export default class LandingPage {
     const data = this.pageData;
     const pageFeatures = getPageFeatures(this.slug);
 
-    // Set page title for SEO
-    if (data.meta?.title) {
-      document.title = data.meta.title;
-    }
+    // Build canonical URL
+    const pathPrefix = data.type === 'industry' ? 'industries' : 'use-cases';
+    const canonicalUrl = `https://magpipe.ai/${pathPrefix}/${this.slug}`;
 
-    // Set meta description
-    if (data.meta?.description) {
-      let metaDesc = document.querySelector('meta[name="description"]');
-      if (!metaDesc) {
-        metaDesc = document.createElement('meta');
-        metaDesc.name = 'description';
-        document.head.appendChild(metaDesc);
-      }
-      metaDesc.content = data.meta.description;
-    }
+    // Build breadcrumb trail
+    const categoryLabel = data.type === 'industry' ? 'Industries' : 'Use Cases';
+    const pageLabel = data.meta?.title?.split(' | ')[0] || this.slug;
+    const breadcrumbs = buildBreadcrumbSchema([
+      { name: 'Home', url: 'https://magpipe.ai/' },
+      { name: categoryLabel, url: `https://magpipe.ai/${pathPrefix}` },
+      { name: pageLabel, url: canonicalUrl },
+    ]);
+
+    // Inject all SEO tags, OG, Twitter Cards, and JSON-LD
+    injectSEO({
+      title: data.meta?.title || `${this.slug} | Magpipe`,
+      description: data.meta?.description || '',
+      url: canonicalUrl,
+      jsonLd: [
+        buildOrganizationSchema(),
+        buildProductSchema(),
+        buildFAQSchema(data.faq),
+        breadcrumbs,
+      ],
+    });
 
     appElement.innerHTML = `
       <div class="landing-page">
@@ -208,6 +219,10 @@ export default class LandingPage {
 
       <style>${getLandingStyles()}</style>
     `;
+  }
+
+  cleanup() {
+    cleanupSEO();
   }
 
   getIndustryLabel() {
