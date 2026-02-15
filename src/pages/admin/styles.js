@@ -3213,6 +3213,39 @@ export const stylesMethods = {
           grid-template-columns: 1fr;
         }
       }
+
+      /* Monitor / Social Listening Tab */
+      .monitor-platform-badge {
+        display: inline-block;
+        padding: 0.15rem 0.5rem;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+
+      .monitor-filters {
+        padding: 0 0.25rem;
+      }
+
+      .monitor-toggle-label {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        cursor: pointer;
+      }
+
+      .monitor-toggle-label input[type="checkbox"] {
+        width: 16px;
+        height: 16px;
+        cursor: pointer;
+      }
+
+      @media (max-width: 768px) {
+        .monitor-tab .review-stats-grid {
+          grid-template-columns: repeat(3, 1fr) !important;
+        }
+      }
     `;
     document.head.appendChild(style);
   }

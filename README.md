@@ -242,6 +242,8 @@ The LiveKit voice agent runs on Render and connects to LiveKit Cloud, handling c
 - `knowledge_sources` / `knowledge_chunks` - RAG knowledge base (pgvector)
 - `chat_widgets` / `chat_sessions` / `chat_messages` - Embeddable chat widget
 - `referral_rewards` - Referral tracking and bonus payouts
+- `social_listening_keywords` - Tracked keywords for social monitoring
+- `social_listening_results` - Reddit/HackerNews/Google mention results
 
 ## Deployment
 
