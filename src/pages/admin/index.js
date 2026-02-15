@@ -15,6 +15,7 @@ import { globalAgentTabMethods } from './global-agent-tab.js';
 import { supportTabMethods } from './support-tab.js';
 import { notificationsTabMethods } from './notifications-tab.js';
 import { chatTabMethods } from './chat-tab.js';
+import { blogTabMethods } from './blog-tab.js';
 import { stylesMethods } from './styles.js';
 
 class AdminPage {
@@ -74,6 +75,7 @@ class AdminPage {
         { id: 'global-agent', label: 'Global Agent', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>' },
         { id: 'chat', label: 'Chat', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' },
         { id: 'notifications', label: 'Notifications', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>' },
+        { id: 'blog', label: 'Blog', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>' },
       ],
       activeTab: 'support',
       onTabChange: (tabId) => this.switchTab(tabId),
@@ -102,7 +104,7 @@ class AdminPage {
     // Check URL params for tab auto-switch (e.g. post-OAuth redirect)
     const urlParams = new URLSearchParams(window.location.search);
     const tabParam = urlParams.get('tab');
-    const validTabs = ['analytics', 'users', 'global-agent', 'kpi', 'chat', 'support', 'notifications'];
+    const validTabs = ['analytics', 'users', 'global-agent', 'kpi', 'chat', 'support', 'notifications', 'blog'];
     const initialTab = validTabs.includes(tabParam) ? tabParam : 'support';
 
     if (urlParams.get('integration_connected') === 'google_email') {
@@ -212,6 +214,8 @@ class AdminPage {
       await this.renderSupportTab();
     } else if (tabName === 'notifications') {
       await this.renderNotificationsTab();
+    } else if (tabName === 'blog') {
+      await this.renderBlogTab();
     }
   }
 }
@@ -224,6 +228,7 @@ Object.assign(AdminPage.prototype,
   supportTabMethods,
   notificationsTabMethods,
   chatTabMethods,
+  blogTabMethods,
   stylesMethods,
 );
 

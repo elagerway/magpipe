@@ -2475,6 +2475,235 @@ export const stylesMethods = {
           align-self: flex-end;
         }
       }
+
+      /* ── Blog Tab ── */
+      .blog-tab {
+        max-width: 1100px;
+      }
+
+      .blog-list-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 1rem;
+      }
+
+      .blog-list-header h3 {
+        margin: 0;
+      }
+
+      .blog-list-header .btn svg {
+        margin-right: 0.25rem;
+        vertical-align: -2px;
+      }
+
+      .blog-post-title-cell strong {
+        display: block;
+        font-size: 0.9rem;
+      }
+
+      .blog-tags-preview {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+      }
+
+      .blog-actions {
+        display: flex;
+        gap: 0.375rem;
+      }
+
+      .blog-editor-form {
+        margin-top: 1rem;
+      }
+
+      .blog-editor-grid {
+        display: grid;
+        grid-template-columns: 1fr 320px;
+        gap: 1.5rem;
+        align-items: start;
+      }
+
+      .blog-editor-main .form-group,
+      .blog-editor-sidebar .form-group {
+        margin-bottom: 1rem;
+      }
+
+      .blog-editor-main label,
+      .blog-editor-sidebar label {
+        display: block;
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        margin-bottom: 0.375rem;
+      }
+
+      #blog-quill-editor {
+        min-height: 400px;
+        background: var(--bg-primary);
+        border: 1px solid var(--border-color);
+        border-top: none;
+        border-radius: 0 0 8px 8px;
+        font-size: 0.95rem;
+      }
+
+      #blog-quill-editor .ql-editor {
+        min-height: 400px;
+      }
+
+      .blog-status-toggle {
+        display: flex;
+        gap: 0;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 0.25rem;
+      }
+
+      .blog-status-btn {
+        flex: 1;
+        padding: 0.5rem 0.75rem;
+        border: none;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--text-muted);
+        font-size: 0.85rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+
+      .blog-status-btn:hover {
+        color: var(--text-primary);
+      }
+
+      .blog-status-btn.active {
+        background: var(--primary-color);
+        color: white;
+      }
+
+      .form-hint {
+        display: block;
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        margin-top: 0.25rem;
+      }
+
+      .blog-editor-sidebar {
+        background: var(--bg-primary);
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        padding: 1.25rem;
+        position: sticky;
+        top: 1rem;
+      }
+
+      .blog-editor-actions {
+        margin-top: 1.25rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      .btn-block {
+        display: block;
+        width: 100%;
+      }
+
+      /* Quill image resize overlay */
+      .ql-img-overlay {
+        position: absolute;
+        border: 2px solid var(--primary-color, #4f46e5);
+        pointer-events: none;
+        z-index: 10;
+      }
+
+      .ql-img-resize-actions {
+        pointer-events: all;
+        position: absolute;
+        top: -36px;
+        left: 0;
+        display: flex;
+        gap: 2px;
+        background: var(--bg-primary, #fff);
+        border: 1px solid var(--border-color, #e2e8f0);
+        border-radius: 6px;
+        padding: 3px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+        white-space: nowrap;
+      }
+
+      .ql-img-resize-actions button {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 4px 8px;
+        border: none;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--text-primary, #1e293b);
+        font-size: 0.7rem;
+        font-weight: 600;
+        cursor: pointer;
+        min-width: 28px;
+        height: 26px;
+        transition: background 0.15s;
+      }
+
+      .ql-img-resize-actions button:hover {
+        background: var(--bg-secondary, #f1f5f9);
+      }
+
+      .ql-img-handle-se {
+        pointer-events: all;
+        position: absolute;
+        right: -5px;
+        bottom: -5px;
+        width: 10px;
+        height: 10px;
+        background: var(--primary-color, #4f46e5);
+        border: 2px solid white;
+        border-radius: 2px;
+        cursor: se-resize;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+      }
+
+      /* Quill editor images should be resizable */
+      #blog-quill-editor .ql-editor img {
+        cursor: pointer;
+        max-width: 100%;
+        height: auto;
+      }
+
+      /* Wider toolbar for more controls */
+      .blog-editor-main .ql-toolbar {
+        border-radius: 8px 8px 0 0;
+        background: var(--bg-secondary, #f8fafc);
+        flex-wrap: wrap;
+      }
+
+      .blog-editor-main .ql-container {
+        border-radius: 0 0 8px 8px;
+      }
+
+      @media (max-width: 900px) {
+        .blog-editor-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .blog-editor-sidebar {
+          position: static;
+        }
+
+        #blog-quill-editor {
+          min-height: 300px;
+        }
+
+        #blog-quill-editor .ql-editor {
+          min-height: 300px;
+        }
+      }
     `;
     document.head.appendChild(style);
   }

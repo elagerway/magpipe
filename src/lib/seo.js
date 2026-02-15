@@ -190,6 +190,52 @@ export function buildBreadcrumbSchema(items) {
 }
 
 /**
+ * Build BlogPosting schema for a blog post.
+ * @param {Object} post - Blog post data
+ * @param {string} post.title
+ * @param {string} post.meta_description
+ * @param {string} post.published_at
+ * @param {string} post.updated_at
+ * @param {string} post.author_name
+ * @param {string} post.slug
+ * @param {string} [post.featured_image_url]
+ */
+export function buildBlogPostingSchema(post) {
+  const schema = {
+    '@context': 'https://schema.org',
+    '@type': 'BlogPosting',
+    headline: post.title,
+    description: post.meta_description || '',
+    url: `${SITE_URL}/blog/${post.slug}`,
+    datePublished: post.published_at,
+    dateModified: post.updated_at || post.published_at,
+    author: {
+      '@type': 'Person',
+      name: post.author_name || 'Magpipe Team',
+    },
+    publisher: {
+      '@type': 'Organization',
+      name: 'Magpipe',
+      url: SITE_URL,
+      logo: {
+        '@type': 'ImageObject',
+        url: `${SITE_URL}/magpipe-bird.png`,
+      },
+    },
+    mainEntityOfPage: {
+      '@type': 'WebPage',
+      '@id': `${SITE_URL}/blog/${post.slug}`,
+    },
+  };
+
+  if (post.featured_image_url) {
+    schema.image = post.featured_image_url;
+  }
+
+  return schema;
+}
+
+/**
  * Build ItemList schema for ranked listicle pages.
  * Strong signal for LLMs — ordered list of tools/products.
  * @param {Array<{name: string, url: string, position: number}>} items
