@@ -4,6 +4,7 @@
 
 import { renderPublicFooter, getPublicFooterStyles } from '../components/PublicFooter.js';
 import { renderPublicHeader, getPublicHeaderStyles } from '../components/PublicHeader.js';
+import { injectSEO, cleanupSEO, buildOrganizationSchema, buildProductSchema, buildFAQSchema } from '../lib/seo.js';
 
 export default class PricingPage {
   constructor() {
@@ -11,10 +12,43 @@ export default class PricingPage {
     this.messageRate = 0.01; // per message
     this.freeCredits = 20; // $20/month free
     this.expandedFaqs = new Set();
+    this.faqItems = [
+      {
+        question: 'How does billing work?',
+        answer: "You're billed monthly based on actual usage. Voice calls are $0.07/minute, SMS messages are $0.01 each, and emails are $0.01 each. Your first $20 of usage each month is free."
+      },
+      {
+        question: 'What counts as a minute?',
+        answer: 'Voice minutes are billed per minute of call duration, rounded up to the nearest minute.'
+      },
+      {
+        question: 'Can I upgrade or downgrade?',
+        answer: 'You can switch between plans at any time. Contact us to discuss Custom plan options for high-volume usage.'
+      },
+      {
+        question: 'Is there a free trial?',
+        answer: "Yes! Every account gets $20 in free credits on signup. Credit card and phone verification required."
+      },
+      {
+        question: 'What payment methods do you accept?',
+        answer: 'We accept all major credit cards through Stripe, including Visa, Mastercard, American Express, and Discover.'
+      }
+    ];
   }
 
   async render() {
     const appElement = document.getElementById('app');
+
+    injectSEO({
+      title: 'Pricing — Magpipe',
+      description: 'Transparent, pay-as-you-go pricing for AI voice, SMS, and email. $0.07/min voice, $0.01/SMS. Start with $20 in free credits.',
+      url: 'https://magpipe.ai/pricing',
+      jsonLd: [
+        buildOrganizationSchema(),
+        buildProductSchema(),
+        buildFAQSchema(this.faqItems),
+      ],
+    });
 
     appElement.innerHTML = `
       <div class="pricing-page">
@@ -1813,31 +1847,12 @@ export default class PricingPage {
     this.attachEventListeners();
   }
 
-  renderFaqItems() {
-    const faqs = [
-      {
-        question: 'How does billing work?',
-        answer: "You're billed monthly based on actual usage. Voice calls are $0.07/minute, SMS messages are $0.01 each, and emails are $0.01 each. Your first $20 of usage each month is free."
-      },
-      {
-        question: 'What counts as a minute?',
-        answer: 'Voice minutes are billed per minute of call duration, rounded up to the nearest minute.'
-      },
-      {
-        question: 'Can I upgrade or downgrade?',
-        answer: 'You can switch between plans at any time. Contact us to discuss Custom plan options for high-volume usage.'
-      },
-      {
-        question: 'Is there a free trial?',
-        answer: "Yes! Every account gets $20 in free credits on signup. Credit card and phone verification required."
-      },
-      {
-        question: 'What payment methods do you accept?',
-        answer: 'We accept all major credit cards through Stripe, including Visa, Mastercard, American Express, and Discover.'
-      }
-    ];
+  cleanup() {
+    cleanupSEO();
+  }
 
-    return faqs.map((faq, index) => `
+  renderFaqItems() {
+    return this.faqItems.map((faq, index) => `
       <div class="faq-item" data-faq-index="${index}">
         <div class="faq-question">
           <h3>${faq.question}</h3>
