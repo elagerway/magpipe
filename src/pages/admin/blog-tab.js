@@ -157,6 +157,26 @@ export const blogTabMethods = {
     this.blogPosts = [];
     this.blogEditingPost = null;
 
+    // Check for Twitter OAuth callback params
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('twitter_connected') === 'true') {
+      showToast('Connected to X successfully!', 'success');
+      // Clean up URL
+      urlParams.delete('twitter_connected');
+      const cleanUrl = urlParams.toString()
+        ? `${window.location.pathname}?${urlParams}`
+        : window.location.pathname;
+      window.history.replaceState({}, '', cleanUrl);
+    }
+    if (urlParams.get('error')) {
+      showToast('X connection failed: ' + urlParams.get('error'), 'error');
+      urlParams.delete('error');
+      const cleanUrl = urlParams.toString()
+        ? `${window.location.pathname}?${urlParams}`
+        : window.location.pathname;
+      window.history.replaceState({}, '', cleanUrl);
+    }
+
     const content = document.getElementById('admin-tab-content');
     content.innerHTML = `
       <div class="support-tab blog-tab">
@@ -165,7 +185,10 @@ export const blogTabMethods = {
     `;
 
     try {
-      await this.blogLoadPosts();
+      await Promise.all([
+        this.blogLoadPosts(),
+        this.blogCheckTwitterConnection(),
+      ]);
       this.blogRenderList();
     } catch (error) {
       console.error('Error loading blog posts:', error);
@@ -205,6 +228,15 @@ export const blogTabMethods = {
     this.blogPosts = data.posts || [];
   },
 
+  async blogCheckTwitterConnection() {
+    try {
+      const data = await this.blogApiCall('check_twitter');
+      this.blogTwitterConnected = !!data.connected;
+    } catch {
+      this.blogTwitterConnected = false;
+    }
+  },
+
   blogRenderList() {
     const container = document.querySelector('.blog-tab');
     if (!container) return;
@@ -220,12 +252,15 @@ export const blogTabMethods = {
           ? new Date(post.published_at).toLocaleDateString()
           : new Date(post.updated_at).toLocaleDateString();
       const tags = (post.tags || []).join(', ');
+      const tweetBadge = post.tweeted_at
+        ? `<span class="badge-twitter-posted" title="Posted to X on ${new Date(post.tweeted_at).toLocaleString()}">${this.blogXLogoSvg(10)} Posted</span>`
+        : '';
 
       return `
         <tr>
           <td>
             <div class="blog-post-title-cell">
-              <strong>${this.blogEscape(post.title)}</strong>
+              <strong>${this.blogEscape(post.title)}${tweetBadge}</strong>
               ${tags ? `<span class="blog-tags-preview">${this.blogEscape(tags)}</span>` : ''}
             </div>
           </td>
@@ -245,10 +280,20 @@ export const blogTabMethods = {
       <div class="support-section">
         <div class="blog-list-header">
           <h3>Blog Posts</h3>
-          <button class="btn btn-primary" onclick="window.adminPage.blogShowEditor()">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
-            New Post
-          </button>
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            ${this.blogTwitterConnected
+              ? `<button class="btn-twitter" style="opacity: 0.6; cursor: default;" disabled>
+                  ${this.blogXLogoSvg()} Connected
+                </button>`
+              : `<button class="btn-twitter" onclick="window.adminPage.blogConnectTwitter()">
+                  ${this.blogXLogoSvg()} Connect to X
+                </button>`
+            }
+            <button class="btn btn-primary" onclick="window.adminPage.blogShowEditor()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+              New Post
+            </button>
+          </div>
         </div>
         ${this.blogPosts.length === 0 ? `
           <div class="detail-placeholder">
@@ -373,6 +418,12 @@ export const blogTabMethods = {
                 <label for="blog-featured-image">Featured Image URL</label>
                 <input type="url" id="blog-featured-image" class="form-input" placeholder="https://..." value="${this.blogEscape(featuredImage)}">
               </div>
+
+              ${isEdit && post.status === 'published' ? `
+                <div class="blog-twitter-section">
+                  ${this.blogTwitterSectionHtml(post)}
+                </div>
+              ` : ''}
 
               <div class="blog-editor-actions">
                 <button type="submit" class="btn btn-primary btn-block">
@@ -608,5 +659,99 @@ export const blogTabMethods = {
     const div = document.createElement('div');
     div.textContent = str;
     return div.innerHTML;
+  },
+
+  blogXLogoSvg(size = 14) {
+    return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>`;
+  },
+
+  async blogPostToTwitter(postId) {
+    try {
+      const btn = document.getElementById('blog-tweet-btn');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `${this.blogXLogoSvg()} Posting...`;
+      }
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/publish-blog-to-twitter`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ mode: 'single', post_id: postId }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'Failed to post to X');
+      }
+
+      showToast('Posted to X successfully!', 'success');
+
+      // Refresh post data in editor
+      if (this.blogEditingPost?.id === postId) {
+        const postData = await this.blogApiCall('get_post', { id: postId });
+        this.blogEditingPost = postData.post;
+        // Update the twitter section in the sidebar
+        const twitterSection = document.querySelector('.blog-twitter-section');
+        if (twitterSection) {
+          twitterSection.innerHTML = this.blogTwitterSectionHtml(postData.post);
+        }
+      }
+    } catch (error) {
+      showToast('Failed to post to X: ' + error.message, 'error');
+      const btn = document.getElementById('blog-tweet-btn');
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = `${this.blogXLogoSvg()} Re-post to X`;
+      }
+    }
+  },
+
+  async blogConnectTwitter() {
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/twitter-oauth-callback?action=init`,
+        {
+          headers: {
+            'Authorization': `Bearer ${this.session.access_token}`,
+          },
+        }
+      );
+
+      const data = await response.json();
+      if (!response.ok || !data.auth_url) {
+        throw new Error(data.error || 'Failed to start OAuth flow');
+      }
+
+      // Redirect to X authorization page
+      window.location.href = data.auth_url;
+    } catch (error) {
+      showToast('Failed to connect to X: ' + error.message, 'error');
+    }
+  },
+
+  blogTwitterSectionHtml(post) {
+    if (post.status !== 'published') return '';
+
+    const hasBeenTweeted = !!post.tweeted_at;
+    const label = hasBeenTweeted ? 'Re-post to X' : 'Post to X';
+    const tweetedInfo = hasBeenTweeted
+      ? `<div class="blog-twitter-info">Last posted: ${new Date(post.tweeted_at).toLocaleString()}</div>`
+      : '';
+
+    return `
+      <label>Twitter / X</label>
+      <button type="button" class="btn-twitter" id="blog-tweet-btn"
+        onclick="window.adminPage.blogPostToTwitter('${post.id}')">
+        ${this.blogXLogoSvg()} ${label}
+      </button>
+      ${tweetedInfo}
+    `;
   },
 };
