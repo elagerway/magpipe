@@ -2476,6 +2476,27 @@ export const stylesMethods = {
         }
       }
 
+      /* ── Blog Badges ── */
+      .admin-badge {
+        display: inline-block;
+        padding: 0.15rem 0.5rem;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 500;
+      }
+      .badge-success {
+        background: #dcfce7;
+        color: #16a34a;
+      }
+      .badge-warning {
+        background: #fef3c7;
+        color: #d97706;
+      }
+      .badge-info {
+        background: #dbeafe;
+        color: #2563eb;
+      }
+
       /* ── Blog Tab ── */
       .blog-tab {
         max-width: 1100px;
@@ -2597,6 +2618,17 @@ export const stylesMethods = {
         padding: 1.25rem;
         position: sticky;
         top: 1rem;
+      }
+
+      .blog-schedule-group {
+        padding: 0.75rem;
+        background: #eef2ff;
+        border: 1px solid #c7d2fe;
+        border-radius: 8px;
+      }
+
+      .blog-schedule-group label {
+        color: #4338ca !important;
       }
 
       .blog-editor-actions {
