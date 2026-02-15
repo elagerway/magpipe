@@ -61,7 +61,7 @@ export default class HomePage {
           </div>
           <div class="hero-content">
             <p class="hero-byline">AI-Powered Communications Platform</p>
-            <h1>Every Conversation<br>Answered.</h1>
+            <h1>Every Conversation<br>Handled.</h1>
             <p class="hero-subtitle">Intelligent conversation handling that works 24/7.</p>
             <div class="hero-cta">
               <button class="btn btn-cta-primary btn-lg" onclick="navigateTo('/signup')">
