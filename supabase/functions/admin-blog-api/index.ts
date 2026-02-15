@@ -64,7 +64,7 @@ function slugify(text: string): string {
 async function handleListPosts(supabase: any) {
   const { data, error } = await supabase
     .from('blog_posts')
-    .select('id, slug, title, status, author_name, published_at, updated_at, tags, excerpt')
+    .select('id, slug, title, status, author_name, published_at, scheduled_at, updated_at, tags, excerpt')
     .order('updated_at', { ascending: false })
 
   if (error) return errorResponse('Failed to list posts: ' + error.message, 500)
@@ -86,7 +86,7 @@ async function handleGetPost(supabase: any, body: any) {
 }
 
 async function handleCreatePost(supabase: any, body: any) {
-  const { title, content, meta_description, excerpt, author_name, status, tags, featured_image_url } = body
+  const { title, content, meta_description, excerpt, author_name, status, tags, featured_image_url, scheduled_at } = body
 
   if (!title || !content) return errorResponse('Title and content are required')
 
@@ -103,6 +103,11 @@ async function handleCreatePost(supabase: any, body: any) {
     slug = `${slug}-${Date.now().toString(36)}`
   }
 
+  // Validate scheduled status
+  if (status === 'scheduled' && !scheduled_at) {
+    return errorResponse('scheduled_at is required when status is scheduled')
+  }
+
   const postData: Record<string, any> = {
     slug,
     title,
@@ -113,6 +118,7 @@ async function handleCreatePost(supabase: any, body: any) {
     status: status || 'draft',
     tags: tags || [],
     featured_image_url: featured_image_url || null,
+    scheduled_at: status === 'scheduled' ? scheduled_at : null,
   }
 
   if (postData.status === 'published') {
@@ -140,13 +146,23 @@ async function handleUpdatePost(supabase: any, body: any) {
 
   const allowedFields = [
     'title', 'slug', 'content', 'meta_description', 'excerpt',
-    'author_name', 'status', 'tags', 'featured_image_url',
+    'author_name', 'status', 'tags', 'featured_image_url', 'scheduled_at',
   ]
 
   for (const field of allowedFields) {
     if (fields[field] !== undefined) {
       updates[field] = fields[field]
     }
+  }
+
+  // Validate scheduled status
+  if (updates.status === 'scheduled' && !updates.scheduled_at) {
+    return errorResponse('scheduled_at is required when status is scheduled')
+  }
+
+  // Clear scheduled_at when not in scheduled status
+  if (updates.status && updates.status !== 'scheduled') {
+    updates.scheduled_at = null
   }
 
   // Auto-set published_at when publishing for first time

@@ -210,11 +210,15 @@ export const blogTabMethods = {
     if (!container) return;
 
     const rows = this.blogPosts.map(post => {
-      const statusClass = post.status === 'published' ? 'badge-success' : 'badge-warning';
-      const statusLabel = post.status === 'published' ? 'Published' : 'Draft';
-      const date = post.published_at
-        ? new Date(post.published_at).toLocaleDateString()
-        : new Date(post.updated_at).toLocaleDateString();
+      const statusClass = post.status === 'published' ? 'badge-success'
+        : post.status === 'scheduled' ? 'badge-info' : 'badge-warning';
+      const statusLabel = post.status === 'published' ? 'Published'
+        : post.status === 'scheduled' ? 'Scheduled' : 'Draft';
+      const date = post.status === 'scheduled' && post.scheduled_at
+        ? new Date(post.scheduled_at).toLocaleDateString() + ' ' + new Date(post.scheduled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : post.published_at
+          ? new Date(post.published_at).toLocaleDateString()
+          : new Date(post.updated_at).toLocaleDateString();
       const tags = (post.tags || []).join(', ');
 
       return `
@@ -294,6 +298,7 @@ export const blogTabMethods = {
     const tags = (post?.tags || []).join(', ');
     const status = post?.status || 'draft';
     const featuredImage = post?.featured_image_url || '';
+    const scheduledAt = post?.scheduled_at || '';
 
     container.innerHTML = `
       <div class="support-section blog-editor-section">
@@ -330,9 +335,16 @@ export const blogTabMethods = {
                 <label>Status</label>
                 <div class="blog-status-toggle">
                   <button type="button" class="blog-status-btn ${status === 'draft' ? 'active' : ''}" data-status="draft">Draft</button>
+                  <button type="button" class="blog-status-btn ${status === 'scheduled' ? 'active' : ''}" data-status="scheduled">Scheduled</button>
                   <button type="button" class="blog-status-btn ${status === 'published' ? 'active' : ''}" data-status="published">Published</button>
                 </div>
                 <input type="hidden" id="blog-status" value="${status}">
+              </div>
+
+              <div class="form-group blog-schedule-group" id="blog-schedule-group" style="display: ${status === 'scheduled' ? 'block' : 'none'};">
+                <label for="blog-scheduled-at">Publish Date & Time</label>
+                <input type="datetime-local" id="blog-scheduled-at" class="form-input" value="${scheduledAt ? new Date(new Date(scheduledAt).getTime() - new Date(scheduledAt).getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ''}">
+                <span class="form-hint" id="blog-schedule-hint">${scheduledAt ? 'Scheduled for ' + new Date(scheduledAt).toLocaleString() : 'Post will auto-publish at this time'}</span>
               </div>
 
               <div class="form-group">
@@ -402,8 +414,35 @@ export const blogTabMethods = {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.blog-status-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        document.getElementById('blog-status').value = btn.dataset.status;
+        const newStatus = btn.dataset.status;
+        document.getElementById('blog-status').value = newStatus;
+
+        // Show/hide schedule picker
+        const scheduleGroup = document.getElementById('blog-schedule-group');
+        scheduleGroup.style.display = newStatus === 'scheduled' ? 'block' : 'none';
+
+        // Set default schedule to tomorrow 9 AM if empty
+        if (newStatus === 'scheduled') {
+          const input = document.getElementById('blog-scheduled-at');
+          if (!input.value) {
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            tomorrow.setHours(9, 0, 0, 0);
+            input.value = tomorrow.toISOString().slice(0, 16);
+          }
+        }
       });
+    });
+
+    // Schedule datetime hint updater
+    const schedInput = document.getElementById('blog-scheduled-at');
+    const schedHint = document.getElementById('blog-schedule-hint');
+    schedInput.addEventListener('change', () => {
+      if (schedInput.value) {
+        schedHint.textContent = 'Scheduled for ' + new Date(schedInput.value).toLocaleString();
+      } else {
+        schedHint.textContent = 'Post will auto-publish at this time';
+      }
     });
 
     // Load Quill editor
@@ -486,6 +525,18 @@ export const blogTabMethods = {
     }
 
     const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(Boolean) : [];
+    const scheduledAtVal = document.getElementById('blog-scheduled-at').value;
+
+    // Validate scheduled
+    if (status === 'scheduled' && !scheduledAtVal) {
+      showToast('Please set a publish date & time for scheduled posts', 'error');
+      return;
+    }
+
+    if (status === 'scheduled' && new Date(scheduledAtVal) <= new Date()) {
+      showToast('Schedule time must be in the future', 'error');
+      return;
+    }
 
     const postData = {
       title,
@@ -497,6 +548,7 @@ export const blogTabMethods = {
       status,
       tags,
       featured_image_url: featuredImage || null,
+      scheduled_at: status === 'scheduled' ? new Date(scheduledAtVal).toISOString() : null,
     };
 
     try {

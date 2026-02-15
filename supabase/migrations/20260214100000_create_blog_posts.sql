@@ -7,8 +7,9 @@ CREATE TABLE blog_posts (
   content TEXT NOT NULL,
   excerpt TEXT,
   author_name VARCHAR(200) DEFAULT 'Magpipe Team',
-  status VARCHAR(20) DEFAULT 'draft',
+  status VARCHAR(20) DEFAULT 'draft',  -- draft | published | scheduled
   published_at TIMESTAMPTZ,
+  scheduled_at TIMESTAMPTZ,
   featured_image_url TEXT,
   tags TEXT[],
   created_at TIMESTAMPTZ DEFAULT now(),
@@ -19,6 +20,13 @@ CREATE TABLE blog_posts (
 CREATE INDEX idx_blog_posts_slug ON blog_posts (slug);
 CREATE INDEX idx_blog_posts_status ON blog_posts (status);
 CREATE INDEX idx_blog_posts_published_at ON blog_posts (published_at DESC);
+CREATE INDEX idx_blog_posts_scheduled ON blog_posts (scheduled_at) WHERE status = 'scheduled';
+
+-- pg_cron: auto-publish scheduled posts every 5 minutes
+SELECT cron.schedule('publish-scheduled-blog-posts', '*/5 * * * *',
+  $$UPDATE blog_posts SET status = 'published', published_at = COALESCE(published_at, now()), updated_at = now()
+    WHERE status = 'scheduled' AND scheduled_at <= now()$$
+);
 
 -- RLS
 ALTER TABLE blog_posts ENABLE ROW LEVEL SECURITY;
