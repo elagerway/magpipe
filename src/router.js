@@ -64,6 +64,7 @@ export class Router {
     // Marketing landing pages (public)
     this.addDynamicRoute('/industries/:slug', () => import('./pages/landing/LandingPage.js'), false);
     this.addDynamicRoute('/use-cases/:slug', () => import('./pages/landing/LandingPage.js'), false);
+    this.addDynamicRoute('/compare/:slug', () => import('./pages/compare/ComparePage.js'), false);
   }
 
   addRoute(path, loader, requiresAuth = false, requiredRoles = null) {
