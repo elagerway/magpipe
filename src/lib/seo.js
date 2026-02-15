@@ -188,3 +188,23 @@ export function buildBreadcrumbSchema(items) {
     })),
   };
 }
+
+/**
+ * Build ItemList schema for ranked listicle pages.
+ * Strong signal for LLMs — ordered list of tools/products.
+ * @param {Array<{name: string, url: string, position: number}>} items
+ */
+export function buildItemListSchema(items) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    itemListOrder: 'https://schema.org/ItemListOrderDescending',
+    numberOfItems: items.length,
+    itemListElement: items.map(item => ({
+      '@type': 'ListItem',
+      position: item.position,
+      name: item.name,
+      url: item.url,
+    })),
+  };
+}
