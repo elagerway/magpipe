@@ -1746,6 +1746,71 @@ export const stylesMethods = {
         color: #065f46;
       }
 
+      /* GitHub Badges */
+      .gh-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        border-radius: 4px;
+        cursor: pointer;
+        border: none;
+        padding: 0;
+        text-decoration: none;
+      }
+      .gh-badge-linked {
+        background: #dbeafe;
+        color: #1d4ed8;
+      }
+      .gh-badge-create {
+        background: #f3f4f6;
+        color: #9ca3af;
+      }
+      .gh-badge-create:hover {
+        background: #e5e7eb;
+        color: #6b7280;
+      }
+
+      /* GitHub Pills (thread topbar) */
+      .gh-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.3rem 0.75rem;
+        border-radius: 999px;
+        font-size: 0.78rem;
+        font-weight: 500;
+        border: none;
+        cursor: pointer;
+        text-decoration: none;
+        white-space: nowrap;
+        line-height: 1.2;
+      }
+      .gh-pill-create {
+        background: #f3f4f6;
+        color: #374151;
+        border: 1px solid #d1d5db;
+      }
+      .gh-pill-create:hover {
+        background: #e5e7eb;
+        border-color: #9ca3af;
+      }
+      .gh-pill-linked {
+        background: #dbeafe;
+        color: #1d4ed8;
+        border: 1px solid #bfdbfe;
+      }
+      .gh-pill-linked:hover {
+        background: #bfdbfe;
+      }
+
+      /* GitHub pills inside ticket list badges row — slightly smaller */
+      .tl-item-badges .gh-pill {
+        font-size: 0.7rem;
+        padding: 0.15rem 0.5rem;
+      }
+
       /* Priority Badges */
       .priority-badge {
         display: inline-block;
