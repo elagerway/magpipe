@@ -338,7 +338,7 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 | Function | Auth | Tables | External APIs | Called By |
 |----------|------|--------|---------------|----------|
 | `send-email` | JWT | `email_messages`, `user_integrations` | Gmail API (OAuth) | inbox page |
-| `poll-gmail-inbox` | Cron (30m) | `agent_email_configs`, `email_messages`, `user_integrations`, `contacts` | Gmail API, OpenAI | cron job (fallback) |
+| `poll-gmail-inbox` | Cron (30m) | `agent_email_configs`, `email_messages`, `user_integrations`, `contacts`, `support-attachments` (storage) | Gmail API (messages + attachments), OpenAI | cron job (fallback) |
 | `gmail-push-webhook` | Pub/Sub secret | `agent_email_configs`, `email_messages`, `user_integrations`, `contacts`, `support_tickets`, `support_email_config`, `support-attachments` (storage) | Gmail API (messages + attachments), OpenAI | Google Cloud Pub/Sub |
 | `gmail-watch-renew` | Service role | `agent_email_configs`, `user_integrations` | Gmail API (watch) | cron job (daily) |
 

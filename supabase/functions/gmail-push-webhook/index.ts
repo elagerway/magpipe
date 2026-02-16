@@ -179,10 +179,18 @@ Deno.serve(async (req) => {
           }
         }
 
+        // Extract image attachments
+        let attachments: any[] = []
+        const attachmentMetas = extractImageAttachments(msg.payload)
+        if (attachmentMetas.length > 0) {
+          attachments = await downloadAndUploadAttachments(
+            accessToken, parsed.gmail_message_id, parsed.thread_id, attachmentMetas, supabase, supabaseUrl
+          )
+          console.log(`email_messages: uploaded ${attachments.length} attachment(s) for msg ${parsed.gmail_message_id}`)
+        }
+
         // Insert
-        const { error: insertError } = await supabase
-          .from('email_messages')
-          .insert({
+        const insertData: Record<string, any> = {
             user_id: config.user_id,
             agent_id: config.agent_id,
             gmail_message_id: parsed.gmail_message_id,
@@ -198,7 +206,13 @@ Deno.serve(async (req) => {
             is_read: parsed.direction === 'outbound',
             sentiment,
             sent_at: parsed.received_at,
-          })
+        }
+        if (attachments.length > 0) {
+          insertData.attachments = attachments
+        }
+        const { error: insertError } = await supabase
+          .from('email_messages')
+          .insert(insertData)
 
         if (insertError) {
           console.error('Failed to insert email:', insertError)

@@ -145,10 +145,18 @@ Deno.serve(async (req) => {
           }
         }
 
+        // Extract image attachments
+        let attachments: any[] = []
+        const attachmentMetas = extractImageAttachments(msg.payload)
+        if (attachmentMetas.length > 0) {
+          attachments = await downloadAndUploadAttachments(
+            accessToken, parsed.gmail_message_id, parsed.thread_id, attachmentMetas, supabase, supabaseUrl
+          )
+          console.log(`email_messages: uploaded ${attachments.length} attachment(s) for msg ${parsed.gmail_message_id}`)
+        }
+
         // Insert into email_messages
-        const { error: insertError } = await supabase
-          .from('email_messages')
-          .insert({
+        const insertData: Record<string, any> = {
             user_id: config.user_id,
             agent_id: config.agent_id,
             gmail_message_id: parsed.gmail_message_id,
@@ -164,7 +172,13 @@ Deno.serve(async (req) => {
             is_read: parsed.direction === 'outbound',
             sentiment,
             sent_at: parsed.received_at,
-          })
+        }
+        if (attachments.length > 0) {
+          insertData.attachments = attachments
+        }
+        const { error: insertError } = await supabase
+          .from('email_messages')
+          .insert(insertData)
 
         if (insertError) {
           console.error('Failed to insert email:', insertError)
@@ -872,4 +886,94 @@ async function autoEnrichEmailContact(
     is_whitelisted: false,
   })
   console.log('Created enriched email contact for', normalizedEmail, '- company:', contact.company)
+}
+
+
+/**
+ * Walk the MIME tree and collect image attachment metadata (max 10, max 5MB each).
+ */
+function extractImageAttachments(payload: any): { attachmentId: string; filename: string; mimeType: string; size: number }[] {
+  const results: { attachmentId: string; filename: string; mimeType: string; size: number }[] = []
+  const MAX_ATTACHMENTS = 10
+  const MAX_SIZE = 5 * 1024 * 1024
+
+  function walk(part: any) {
+    if (results.length >= MAX_ATTACHMENTS) return
+    if (part.body?.attachmentId && part.mimeType?.startsWith('image/')) {
+      const size = part.body.size || 0
+      if (size <= MAX_SIZE) {
+        results.push({
+          attachmentId: part.body.attachmentId,
+          filename: part.filename || `image-${results.length + 1}.${part.mimeType.split('/')[1] || 'png'}`,
+          mimeType: part.mimeType,
+          size,
+        })
+      }
+    }
+    if (part.parts) {
+      for (const child of part.parts) walk(child)
+    }
+  }
+
+  if (payload) walk(payload)
+  return results
+}
+
+
+/**
+ * Download attachments from Gmail API, upload to Supabase Storage.
+ */
+async function downloadAndUploadAttachments(
+  accessToken: string,
+  messageId: string,
+  threadId: string,
+  metas: { attachmentId: string; filename: string; mimeType: string; size: number }[],
+  supabase: any,
+  supabaseUrl: string
+): Promise<{ filename: string; url: string; mime_type: string; size_bytes: number }[]> {
+  const results: { filename: string; url: string; mime_type: string; size_bytes: number }[] = []
+
+  for (const meta of metas) {
+    try {
+      const resp = await fetch(
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${meta.attachmentId}`,
+        { headers: { 'Authorization': `Bearer ${accessToken}` } }
+      )
+      if (!resp.ok) continue
+
+      const attachData = await resp.json()
+      if (!attachData.data) continue
+
+      const base64 = attachData.data.replace(/-/g, '+').replace(/_/g, '/')
+      const binaryString = atob(base64)
+      const bytes = new Uint8Array(binaryString.length)
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i)
+      }
+
+      const timestamp = Date.now()
+      const safeName = meta.filename.replace(/[^a-zA-Z0-9._-]/g, '_')
+      const storagePath = `${threadId}/${timestamp}-${safeName}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('support-attachments')
+        .upload(storagePath, bytes, { contentType: meta.mimeType, upsert: false })
+
+      if (uploadError) {
+        console.error(`Failed to upload ${meta.filename}:`, uploadError.message)
+        continue
+      }
+
+      results.push({
+        filename: meta.filename,
+        url: `https://api.magpipe.ai/storage/v1/object/public/support-attachments/${storagePath}`,
+        mime_type: meta.mimeType,
+        size_bytes: meta.size,
+      })
+    } catch (e) {
+      console.error(`Error processing attachment ${meta.filename}:`, e)
+    }
+  }
+
+  return results
 }
