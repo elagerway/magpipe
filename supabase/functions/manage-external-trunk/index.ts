@@ -10,12 +10,12 @@ import { SipClient } from 'npm:livekit-server-sdk@2.14.0'
 import { corsHeaders, handleCors } from '../_shared/cors.ts'
 
 // LiveKit SIP domain for this project
-const LIVEKIT_SIP_DOMAIN = '378ads1njtd.sip.livekit.cloud'
+const LIVEKIT_SIP_DOMAIN = Deno.env.get('LIVEKIT_SIP_DOMAIN')!
 
 interface CreateTrunkRequest {
   action: 'create'
   name: string
-  provider?: string
+  provider?: 'twilio' | 'signalwire' | 'other'
   auth_type: 'ip' | 'registration'
   allowed_source_ips?: string[]
   auth_username?: string
@@ -24,13 +24,14 @@ interface CreateTrunkRequest {
   outbound_transport?: 'udp' | 'tcp' | 'tls'
   api_account_sid?: string
   api_auth_token?: string
+  provider_space_url?: string
 }
 
 interface UpdateTrunkRequest {
   action: 'update'
   trunk_id: string
   name?: string
-  provider?: string
+  provider?: 'twilio' | 'signalwire' | 'other'
   auth_type?: 'ip' | 'registration'
   allowed_source_ips?: string[] | null
   auth_username?: string | null
@@ -40,6 +41,7 @@ interface UpdateTrunkRequest {
   is_active?: boolean
   api_account_sid?: string | null
   api_auth_token?: string | null
+  provider_space_url?: string | null
 }
 
 interface DeleteTrunkRequest {
@@ -125,7 +127,13 @@ async function handleCreate(
   userId: string,
   request: CreateTrunkRequest
 ) {
-  const { name, provider, auth_type, allowed_source_ips, auth_username, auth_password, outbound_address, outbound_transport, api_account_sid, api_auth_token } = request
+  const { name, provider, auth_type, allowed_source_ips, auth_username, auth_password, outbound_address, outbound_transport, api_account_sid, api_auth_token, provider_space_url } = request
+
+  // Validate provider enum
+  const validProviders = ['twilio', 'signalwire', 'other']
+  if (provider && !validProviders.includes(provider)) {
+    throw new Error(`Invalid provider: ${provider}. Must be one of: ${validProviders.join(', ')}`)
+  }
 
   // Validate auth type specific fields
   if (auth_type === 'ip' && (!allowed_source_ips || allowed_source_ips.length === 0)) {
@@ -155,6 +163,7 @@ async function handleCreate(
     outbound_transport: outbound_transport || 'udp',
     api_account_sid: api_account_sid || null,
     api_auth_token_encrypted: api_auth_token || null, // TODO: Encrypt
+    provider_space_url: provider_space_url || null,
     livekit_inbound_trunk_id: null, // Created when first number is added
     livekit_dispatch_rule_id: null, // Created when first number is added
     status: 'pending', // Will become 'active' when LiveKit trunk is created
@@ -192,7 +201,13 @@ async function handleUpdate(
   userId: string,
   request: UpdateTrunkRequest
 ) {
-  const { trunk_id, name, provider, auth_type, allowed_source_ips, auth_username, auth_password, outbound_address, outbound_transport, is_active, api_account_sid, api_auth_token } = request
+  const { trunk_id, name, provider, auth_type, allowed_source_ips, auth_username, auth_password, outbound_address, outbound_transport, is_active, api_account_sid, api_auth_token, provider_space_url } = request
+
+  // Validate provider enum
+  const validProviders = ['twilio', 'signalwire', 'other']
+  if (provider && !validProviders.includes(provider)) {
+    throw new Error(`Invalid provider: ${provider}. Must be one of: ${validProviders.join(', ')}`)
+  }
 
   // Verify ownership
   const { data: trunk, error: fetchError } = await supabase
@@ -219,6 +234,7 @@ async function handleUpdate(
   if (is_active !== undefined) updates.is_active = is_active
   if (api_account_sid !== undefined) updates.api_account_sid = api_account_sid
   if (api_auth_token !== undefined) updates.api_auth_token_encrypted = api_auth_token
+  if (provider_space_url !== undefined) updates.provider_space_url = provider_space_url
 
   // Update LiveKit trunk if IP addresses changed
   if (allowed_source_ips && trunk.livekit_inbound_trunk_id) {
