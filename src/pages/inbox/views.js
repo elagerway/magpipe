@@ -3,6 +3,36 @@ import { setPhoneNavActive } from '../../components/BottomNav.js';
 import { User, ChatSession } from '../../models/index.js';
 import { isVoiceSupported } from './voice-loader.js';
 
+// Image lightbox for attachment thumbnails
+window.openImageLightbox = function(url, filename) {
+  // Remove existing lightbox if any
+  const existing = document.getElementById('image-lightbox-overlay');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'image-lightbox-overlay';
+  overlay.className = 'contact-modal-overlay';
+  overlay.style.display = 'flex';
+  overlay.onclick = () => overlay.remove();
+  overlay.innerHTML = `
+    <div class="image-lightbox" onclick="event.stopPropagation()">
+      <div class="image-lightbox-header">
+        <span class="image-lightbox-filename">${filename}</span>
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <a href="${url}" target="_blank" rel="noopener" class="image-lightbox-open" title="Open in new tab">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          </a>
+          <button class="close-modal-btn" onclick="document.getElementById('image-lightbox-overlay').remove()">&times;</button>
+        </div>
+      </div>
+      <div class="image-lightbox-body">
+        <img src="${url}" alt="${filename}">
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+};
+
 export const viewsMethods = {
   renderConversationList() {
     // Filter out hidden conversations
@@ -1584,6 +1614,16 @@ export const viewsMethods = {
     return `
       <div class="message-bubble ${isInbound ? 'inbound' : 'outbound'} ${isAI ? 'ai-message' : ''} ${isHuman ? 'human-message' : ''}" data-message-id="${msg.id}">
         <div class="message-content">${content}</div>
+        ${msg.attachments && msg.attachments.length > 0 ? `
+          <div class="tv-msg-attachments">
+            ${msg.attachments.map(a => `
+              <div class="tv-attachment-thumb" onclick="window.openImageLightbox('${a.url.replace(/'/g, "\\'")}', '${(a.filename || 'image').replace(/'/g, "\\'")}')">
+                <img src="${a.url}" loading="lazy" alt="${a.filename || 'attachment'}">
+                <span>${a.filename || 'image'}</span>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
         <div class="message-time">
           ${this.formatTime(timestamp)}
           ${deliveryStatus}
