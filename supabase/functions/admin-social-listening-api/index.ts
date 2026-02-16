@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
       case 'update_result':  return await handleUpdateResult(supabase, body)
       case 'delete_result':  return await handleDeleteResult(supabase, body)
       case 'get_stats':      return await handleGetStats(supabase)
-      case 'run_scan':       return await handleRunScan()
+      case 'run_scan':       return await handleRunScan(body)
       case 'list_keywords':  return await handleListKeywords(supabase)
       case 'add_keyword':    return await handleAddKeyword(supabase, body)
       case 'update_keyword': return await handleUpdateKeyword(supabase, body)
@@ -54,7 +54,7 @@ async function handleListResults(supabase: any, body: any) {
   let query = supabase
     .from('social_listening_results')
     .select('*', { count: 'exact' })
-    .order('found_at', { ascending: false })
+    .order('published_at', { ascending: false, nullsFirst: false })
     .range(offset, offset + limit - 1)
 
   if (platform) query = query.eq('platform', platform)
@@ -150,9 +150,14 @@ async function handleGetStats(supabase: any) {
 }
 
 
-async function handleRunScan() {
+async function handleRunScan(body: any) {
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!
   const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+
+  const scanBody: Record<string, any> = {}
+  if (body.platforms && Array.isArray(body.platforms)) {
+    scanBody.platforms = body.platforms
+  }
 
   const resp = await fetch(`${supabaseUrl}/functions/v1/process-social-listening`, {
     method: 'POST',
@@ -160,7 +165,7 @@ async function handleRunScan() {
       'Authorization': `Bearer ${supabaseKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({}),
+    body: JSON.stringify(scanBody),
   })
 
   const result = await resp.json()

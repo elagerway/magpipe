@@ -32,8 +32,15 @@ export const monitorTabMethods = {
         <div class="blog-list-header">
           <h2 style="margin:0;">Social Listening</h2>
           <div style="display:flex;gap:0.5rem;">
-            <button class="btn btn-secondary btn-sm" id="monitor-toggle-keywords-btn">Hide Keywords</button>
-            <button class="btn btn-primary btn-sm" id="monitor-scan-btn">Run Scan Now</button>
+            <button class="btn btn-secondary btn-sm" id="monitor-toggle-favs-btn">Favs</button>
+            <button class="btn btn-secondary btn-sm" id="monitor-toggle-keywords-btn">Keywords</button>
+            <select id="monitor-scan-platform" class="dir-status-select" style="font-size:0.8rem;">
+              <option value="all">All Platforms</option>
+              <option value="hackernews">HackerNews</option>
+              <option value="google">Google</option>
+              <option value="reddit">Reddit</option>
+            </select>
+            <button class="btn btn-primary btn-sm" id="monitor-scan-btn">Scan</button>
           </div>
         </div>
 
@@ -43,7 +50,8 @@ export const monitorTabMethods = {
         </div>
 
         <!-- Filters -->
-        <div id="monitor-filters" class="monitor-filters" style="display:flex;gap:0.75rem;margin-bottom:1rem;flex-wrap:wrap;">
+        <div id="monitor-filters" class="monitor-filters" style="display:flex;gap:0.75rem;margin-bottom:1rem;flex-wrap:wrap;align-items:center;">
+          <input type="text" id="monitor-search" class="form-input" placeholder="Search titles..." style="flex:1;min-width:160px;max-width:280px;padding:0.35rem 0.75rem;font-size:0.85rem;">
           <select id="monitor-filter-platform" class="dir-status-select" style="min-width:120px;">
             <option value="">All Platforms</option>
             <option value="reddit">Reddit</option>
@@ -68,7 +76,7 @@ export const monitorTabMethods = {
         </div>
 
         <!-- Keywords Section (collapsible) -->
-        <div id="monitor-keywords-section" style="margin-top:2rem;">
+        <div id="monitor-keywords-section" style="margin-top:2rem;display:none;">
           <div class="blog-list-header" style="margin-bottom:1rem;">
             <h3 style="margin:0;">Tracked Keywords</h3>
             <button class="btn btn-primary btn-sm" id="monitor-add-keyword-btn">+ Add Keyword</button>
@@ -83,11 +91,26 @@ export const monitorTabMethods = {
     // Attach event listeners
     document.getElementById('monitor-scan-btn').addEventListener('click', () => this.runMonitorScan());
     document.getElementById('monitor-toggle-keywords-btn').addEventListener('click', () => this.toggleKeywordsSection());
+    document.getElementById('monitor-toggle-favs-btn').addEventListener('click', () => this.toggleMonitorFavsView());
     document.getElementById('monitor-add-keyword-btn').addEventListener('click', () => this.showAddKeywordInput());
+    this._monitorShowFavsOnly = false;
+    this._monitorPage = 1;
+    this._monitorPerPage = 25;
+    this._monitorSearch = '';
 
-    document.getElementById('monitor-filter-platform').addEventListener('change', () => this.loadMonitorResults());
-    document.getElementById('monitor-filter-status').addEventListener('change', () => this.loadMonitorResults());
-    document.getElementById('monitor-filter-keyword').addEventListener('change', () => this.loadMonitorResults());
+    document.getElementById('monitor-filter-platform').addEventListener('change', () => { this._monitorPage = 1; this.loadMonitorResults(); });
+    document.getElementById('monitor-filter-status').addEventListener('change', () => { this._monitorPage = 1; this.loadMonitorResults(); });
+    document.getElementById('monitor-filter-keyword').addEventListener('change', () => { this._monitorPage = 1; this.loadMonitorResults(); });
+
+    let searchDebounce = null;
+    document.getElementById('monitor-search').addEventListener('input', (e) => {
+      clearTimeout(searchDebounce);
+      searchDebounce = setTimeout(() => {
+        this._monitorSearch = e.target.value.trim().toLowerCase();
+        this._monitorPage = 1;
+        this.renderMonitorResults();
+      }, 300);
+    });
 
     // Load data
     await Promise.all([
@@ -173,7 +196,7 @@ export const monitorTabMethods = {
       const status = document.getElementById('monitor-filter-status')?.value || '';
       const keyword = document.getElementById('monitor-filter-keyword')?.value || '';
 
-      const params = {};
+      const params = { limit: 500 };
       if (platform) params.platform = platform;
       if (status) params.status = status;
       if (keyword) params.keyword = keyword;
@@ -191,6 +214,32 @@ export const monitorTabMethods = {
     }
   },
 
+  /** Round-robin interleave results across platforms so they mix instead of clustering */
+  _interleaveByPlatform(results) {
+    if (!results || results.length === 0) return results;
+    const buckets = {};
+    for (const r of results) {
+      if (!buckets[r.platform]) buckets[r.platform] = [];
+      buckets[r.platform].push(r);
+    }
+    const platforms = Object.keys(buckets);
+    if (platforms.length <= 1) return results;
+    const interleaved = [];
+    let i = 0;
+    let added = true;
+    while (added) {
+      added = false;
+      for (const p of platforms) {
+        if (i < buckets[p].length) {
+          interleaved.push(buckets[p][i]);
+          added = true;
+        }
+      }
+      i++;
+    }
+    return interleaved;
+  },
+
   renderMonitorResults() {
     const container = document.getElementById('monitor-results-container');
     if (!this.monitorResults || this.monitorResults.length === 0) {
@@ -198,26 +247,110 @@ export const monitorTabMethods = {
       return;
     }
 
+    let displayResults = this.monitorResults;
+
+    // Favorites filter
+    if (this._monitorShowFavsOnly) {
+      const favs = this._getMonitorFavorites();
+      displayResults = displayResults.filter(r => favs.has(r.id));
+      if (displayResults.length === 0) {
+        container.innerHTML = `<div class="tl-empty"><p>No favorites yet. Click the star icon on a result to favorite it.</p></div>`;
+        return;
+      }
+    }
+
+    // Search filter
+    if (this._monitorSearch) {
+      const q = this._monitorSearch;
+      displayResults = displayResults.filter(r =>
+        (r.title && r.title.toLowerCase().includes(q)) ||
+        (r.keyword_matched && r.keyword_matched.toLowerCase().includes(q)) ||
+        (r.snippet && r.snippet.toLowerCase().includes(q)) ||
+        (r.subreddit && r.subreddit.toLowerCase().includes(q)) ||
+        (r.author && r.author.toLowerCase().includes(q))
+      );
+    }
+
+    // Pagination
+    const totalFiltered = displayResults.length;
+    const perPage = this._monitorPerPage || 25;
+    const totalPages = Math.max(1, Math.ceil(totalFiltered / perPage));
+    if (this._monitorPage > totalPages) this._monitorPage = totalPages;
+    const page = this._monitorPage || 1;
+    const startIdx = (page - 1) * perPage;
+    const pageResults = displayResults.slice(startIdx, startIdx + perPage);
+
+    if (totalFiltered === 0) {
+      container.innerHTML = `<div class="tl-empty"><p>No results match your search.</p></div>`;
+      return;
+    }
+
+    // Build page number buttons (show up to 7 pages with ellipsis)
+    let pageNums = '';
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) {
+        pageNums += `<button class="btn btn-sm monitor-page-btn" data-page="${i}" style="padding:0.2rem 0.5rem;min-width:30px;${i === page ? 'background:var(--primary-color);color:#fff;border-color:var(--primary-color);' : ''}">${i}</button>`;
+      }
+    } else {
+      const pages = [1];
+      if (page > 3) pages.push(-1); // ellipsis
+      for (let i = Math.max(2, page - 1); i <= Math.min(totalPages - 1, page + 1); i++) pages.push(i);
+      if (page < totalPages - 2) pages.push(-1); // ellipsis
+      pages.push(totalPages);
+      for (const p of pages) {
+        if (p === -1) {
+          pageNums += `<span style="color:var(--text-muted);padding:0 2px;">&hellip;</span>`;
+        } else {
+          pageNums += `<button class="btn btn-sm monitor-page-btn" data-page="${p}" style="padding:0.2rem 0.5rem;min-width:30px;${p === page ? 'background:var(--primary-color);color:#fff;border-color:var(--primary-color);' : ''}">${p}</button>`;
+        }
+      }
+    }
+
+    const paginationHtml = totalPages > 1 ? `
+      <div class="monitor-pagination" style="display:flex;align-items:center;justify-content:space-between;margin-top:0.75rem;font-size:0.85rem;">
+        <span style="color:var(--text-muted);">${totalFiltered} result${totalFiltered !== 1 ? 's' : ''}${this._monitorSearch ? ' matching' : ''}</span>
+        <div style="display:flex;align-items:center;gap:0.25rem;">
+          <button class="btn btn-secondary btn-sm monitor-page-btn" data-page="${page - 1}" ${page <= 1 ? 'disabled' : ''} style="padding:0.25rem 0.5rem;">&laquo;</button>
+          ${pageNums}
+          <button class="btn btn-secondary btn-sm monitor-page-btn" data-page="${page + 1}" ${page >= totalPages ? 'disabled' : ''} style="padding:0.25rem 0.5rem;">&raquo;</button>
+        </div>
+      </div>
+    ` : `<div style="margin-top:0.5rem;font-size:0.85rem;color:var(--text-muted);">${totalFiltered} result${totalFiltered !== 1 ? 's' : ''}</div>`;
+
     container.innerHTML = `
+      ${paginationHtml}
       <div class="admin-table-wrapper">
         <table class="admin-table dir-table">
           <thead>
             <tr>
+              <th style="width:30px;"></th>
               <th>Date</th>
               <th>Platform</th>
               <th>Title</th>
               <th>Keyword</th>
-              <th>Score</th>
+              <th>Sub</th>
+              <th title="Upvotes / Likes">Likes</th>
+              <th>Comments</th>
               <th>Status</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
-            ${this.monitorResults.map(r => this.renderMonitorRow(r)).join('')}
+            ${pageResults.map(r => this.renderMonitorRow(r)).join('')}
           </tbody>
         </table>
       </div>
+      ${paginationHtml}
     `;
+
+    // Attach pagination listeners
+    container.querySelectorAll('.monitor-page-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this._monitorPage = parseInt(btn.dataset.page);
+        this.renderMonitorResults();
+        document.getElementById('admin-tab-content')?.scrollTo(0, 0);
+      });
+    });
 
     // Attach status change listeners
     container.querySelectorAll('.monitor-status-select').forEach(select => {
@@ -234,6 +367,18 @@ export const monitorTabMethods = {
       });
     });
 
+    // Attach favorite listeners
+    container.querySelectorAll('.monitor-fav-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.id;
+        this._toggleMonitorFavorite(id);
+        const isFav = this._getMonitorFavorites().has(id);
+        btn.innerHTML = isFav ? '&#9733;' : '&#9734;';
+        btn.style.color = isFav ? '#f59e0b' : '#d1d5db';
+        btn.title = isFav ? 'Unfavorite' : 'Favorite';
+      });
+    });
+
     // Attach delete listeners
     container.querySelectorAll('.monitor-delete-btn').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -245,12 +390,18 @@ export const monitorTabMethods = {
   },
 
   renderMonitorRow(r) {
-    const date = new Date(r.found_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const date = new Date(r.published_at || r.found_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     const pColor = PLATFORM_COLORS[r.platform] || { bg: '#f3f4f6', color: '#6b7280' };
     const pLabel = PLATFORM_LABELS[r.platform] || r.platform;
+    const isFav = this._getMonitorFavorites().has(r.id);
 
     return `
       <tr>
+        <td style="text-align:center;padding:0;">
+          <button class="monitor-fav-btn" data-id="${r.id}" style="background:none;border:none;cursor:pointer;padding:4px;font-size:1rem;line-height:1;color:${isFav ? '#f59e0b' : '#d1d5db'};" title="${isFav ? 'Unfavorite' : 'Favorite'}">
+            ${isFav ? '&#9733;' : '&#9734;'}
+          </button>
+        </td>
         <td style="white-space:nowrap;font-size:0.8rem;color:var(--text-muted);">${date}</td>
         <td>
           <span class="monitor-platform-badge" style="background:${pColor.bg};color:${pColor.color};">
@@ -261,13 +412,11 @@ export const monitorTabMethods = {
           <a href="${this.escapeHtmlAttr(r.url)}" target="_blank" rel="noopener" style="color:var(--primary-color);text-decoration:none;font-weight:500;font-size:0.85rem;">
             ${this.escapeHtml(r.title.length > 80 ? r.title.substring(0, 80) + '...' : r.title)}
           </a>
-          ${r.subreddit ? `<div style="font-size:0.75rem;color:var(--text-muted);">${this.escapeHtml(r.subreddit)}</div>` : ''}
         </td>
         <td><span class="tag-pill">${this.escapeHtml(r.keyword_matched)}</span></td>
-        <td style="text-align:center;font-size:0.85rem;">
-          ${r.score !== null ? r.score : '-'}
-          ${r.comment_count !== null ? `<span style="color:var(--text-muted);font-size:0.75rem;"> / ${r.comment_count}c</span>` : ''}
-        </td>
+        <td style="font-size:0.8rem;color:var(--text-muted);white-space:nowrap;">${r.subreddit ? this.escapeHtml(r.subreddit) : '-'}</td>
+        <td style="text-align:center;font-size:0.85rem;">${r.score != null ? r.score : '-'}</td>
+        <td style="text-align:center;font-size:0.85rem;">${r.comment_count != null ? r.comment_count : '-'}</td>
         <td>
           <select class="dir-status-select monitor-status-select" data-id="${r.id}">
             ${STATUS_OPTIONS.map(s => `<option value="${s}" ${r.status === s ? 'selected' : ''}>${s}</option>`).join('')}
@@ -306,21 +455,28 @@ export const monitorTabMethods = {
 
   async runMonitorScan() {
     const btn = document.getElementById('monitor-scan-btn');
+    const platformSelect = document.getElementById('monitor-scan-platform');
     if (!btn) return;
 
     btn.disabled = true;
     btn.textContent = 'Scanning...';
 
     try {
-      const result = await this.monitorApiCall('run_scan');
+      const selected = platformSelect?.value || 'all';
+      const params = {};
+      if (selected !== 'all') {
+        params.platforms = [selected];
+      }
+      const result = await this.monitorApiCall('run_scan', params);
       const scan = result.scan_result || {};
-      showToast(`Scan complete: ${scan.new_results || 0} new results found`, 'success');
+      const platformLabel = selected === 'all' ? '' : ` (${selected})`;
+      showToast(`Scan complete${platformLabel}: ${scan.new_results || 0} new results`, 'success');
       await Promise.all([this.loadMonitorStats(), this.loadMonitorResults()]);
     } catch (err) {
       showToast('Scan failed: ' + err.message, 'error');
     } finally {
       btn.disabled = false;
-      btn.textContent = 'Run Scan Now';
+      btn.textContent = 'Scan';
     }
   },
 
@@ -588,6 +744,32 @@ export const monitorTabMethods = {
         },
       }
     );
+  },
+
+  // --- Favorites ---
+
+  _getMonitorFavorites() {
+    try {
+      return new Set(JSON.parse(localStorage.getItem('monitor-favorites') || '[]'));
+    } catch { return new Set(); }
+  },
+
+  _toggleMonitorFavorite(id) {
+    const favs = this._getMonitorFavorites();
+    if (favs.has(id)) { favs.delete(id); } else { favs.add(id); }
+    localStorage.setItem('monitor-favorites', JSON.stringify([...favs]));
+  },
+
+  toggleMonitorFavsView() {
+    this._monitorShowFavsOnly = !this._monitorShowFavsOnly;
+    this._monitorPage = 1;
+    const btn = document.getElementById('monitor-toggle-favs-btn');
+    if (btn) {
+      btn.textContent = this._monitorShowFavsOnly ? 'All Results' : 'Favs';
+      btn.classList.toggle('btn-primary', this._monitorShowFavsOnly);
+      btn.classList.toggle('btn-secondary', !this._monitorShowFavsOnly);
+    }
+    this.renderMonitorResults();
   },
 
   // --- Helpers ---
