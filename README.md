@@ -238,8 +238,10 @@ The LiveKit voice agent runs on Render and connects to LiveKit Cloud, handling c
 - `agent_email_configs` - Per-agent email channel config (gmail_address, agent_mode: off/draft/auto, watch_expiration, last_history_id)
 - `conversation_contexts` - Conversation memory with embeddings
 - `service_numbers` - User's phone numbers from SignalWire
-- `support_tickets` - Support ticket threads (Gmail integration)
+- `support_tickets` - Support ticket threads (Gmail integration, `attachments` JSONB for image metadata)
+- `support_ticket_notes` - Internal notes on support threads
 - `support_email_config` - Gmail connection, AI agent settings, ticket creation toggle
+- `support-attachments` (storage bucket) - Image attachments uploaded from Gmail or admin UI
 - `credit_transactions` - Billing and credit history
 - `knowledge_sources` / `knowledge_chunks` - RAG knowledge base (pgvector)
 - `chat_widgets` / `chat_sessions` / `chat_messages` - Embeddable chat widget

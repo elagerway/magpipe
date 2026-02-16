@@ -346,8 +346,8 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 
 | Function | Auth | Tables | External APIs | Called By |
 |----------|------|--------|---------------|----------|
-| `support-tickets-api` | JWT | `support_tickets`, `support_email_config` | Gmail API, Postmark | admin page |
-| `poll-gmail-tickets` | Cron (5m) | `support_tickets`, `support_email_config`, `user_integrations` | Gmail API, OpenAI, Postmark | cron job |
+| `support-tickets-api` | JWT | `support_tickets`, `support_email_config`, `support-attachments` (storage) | Gmail API, Postmark, GitHub API | admin page |
+| `poll-gmail-tickets` | Cron (5m) | `support_tickets`, `support_email_config`, `user_integrations`, `support-attachments` (storage) | Gmail API (messages + attachments), OpenAI, Postmark | cron job |
 
 ### Referrals & Balance
 
@@ -385,7 +385,10 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 `admin_conversations`, `admin_messages`, `admin_impersonation_tokens`, `admin_audit_log`, `admin_action_logs`, `admin_notification_config`
 
 ### Support
-`support_tickets`, `support_email_config`
+`support_tickets` (includes `attachments` JSONB column), `support_ticket_notes`, `support_email_config`
+
+### Storage Buckets
+`support-attachments` — public read, 5MB limit, image MIME types (jpeg, png, gif, webp, svg)
 
 ### Referrals
 `referral_rewards`
