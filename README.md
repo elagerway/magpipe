@@ -16,6 +16,7 @@ Magpipe is a a conversational platform that manages SMS/Text messsges, Phone Cal
 - **Conversation Memory** — Your agent remembers past interactions, caller preferences, and context across every conversation
 - **Integrations** — Connect with HubSpot, Google Workspace, Zapier, and more. Sync contacts, log calls, and automate workflows
 - **Warm Transfer** — Seamlessly hand off live calls to you or your team when the AI detects a conversation needs a human touch
+- **Social Listening** — Automated monitoring of Reddit, HackerNews, and Google for keyword mentions. Email digests, admin dashboard with favorites, search, and status tracking
 
 ## Tech Stack
 
@@ -26,6 +27,7 @@ Magpipe is a a conversational platform that manages SMS/Text messsges, Phone Cal
 - **Payments**: Stripe (credits, subscriptions)
 - **Email**: Postmark (transactional), Gmail API (support tickets, inbox email send/receive)
 - **Enrichment**: Apollo.io (contact data)
+- **Social Listening**: Serper.dev (Google SERP + Reddit), HN Algolia API
 - **Vector DB**: pgvector (conversation context embeddings)
 
 ## Project Structure
