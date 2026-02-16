@@ -21,6 +21,7 @@ interface SearchResult {
   score?: number
   comment_count?: number
   keyword_matched: string
+  published_at?: string
 }
 
 Deno.serve(async (req) => {
@@ -39,6 +40,19 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     )
 
+    // Parse optional platforms filter from request body
+    let requestedPlatforms: string[] = []
+    try {
+      const body = await req.json()
+      if (body.platforms && Array.isArray(body.platforms)) {
+        requestedPlatforms = body.platforms
+      }
+    } catch { /* empty body is fine */ }
+
+    const scanReddit = requestedPlatforms.length === 0 || requestedPlatforms.includes('reddit')
+    const scanHN = requestedPlatforms.length === 0 || requestedPlatforms.includes('hackernews')
+    const scanGoogle = requestedPlatforms.length === 0 || requestedPlatforms.includes('google')
+
     // Load active keywords
     const { data: keywords, error: kwError } = await supabase
       .from('social_listening_keywords')
@@ -56,41 +70,49 @@ Deno.serve(async (req) => {
 
     const allResults: SearchResult[] = []
     const errors: string[] = []
+    const platformsScanned: string[] = []
 
-    // Search each keyword across all platforms
+    // Search each keyword across selected platforms
     for (const kw of keywords) {
       const keyword = kw.keyword
 
-      // Reddit
-      try {
-        const redditResults = await searchReddit(keyword)
-        allResults.push(...redditResults)
-      } catch (e: any) {
-        console.error(`Reddit error for "${keyword}":`, e.message)
-        errors.push(`Reddit/${keyword}: ${e.message}`)
+      // Reddit (via Serper site:reddit.com or Reddit OAuth)
+      if (scanReddit && (Deno.env.get('SERPER_API_KEY') || Deno.env.get('REDDIT_CLIENT_ID'))) {
+        if (!platformsScanned.includes('reddit')) platformsScanned.push('reddit')
+        try {
+          const redditResults = await searchReddit(keyword)
+          allResults.push(...redditResults)
+        } catch (e: any) {
+          console.error(`Reddit error for "${keyword}":`, e.message)
+          errors.push(`Reddit/${keyword}: ${e.message}`)
+        }
+        await sleep(500)
       }
-
-      // Rate limit pause
-      await sleep(500)
 
       // HackerNews
-      try {
-        const hnResults = await searchHackerNews(keyword)
-        allResults.push(...hnResults)
-      } catch (e: any) {
-        console.error(`HN error for "${keyword}":`, e.message)
-        errors.push(`HN/${keyword}: ${e.message}`)
+      if (scanHN) {
+        if (!platformsScanned.includes('hackernews')) platformsScanned.push('hackernews')
+        try {
+          const hnResults = await searchHackerNews(keyword)
+          allResults.push(...hnResults)
+        } catch (e: any) {
+          console.error(`HN error for "${keyword}":`, e.message)
+          errors.push(`HN/${keyword}: ${e.message}`)
+        }
+        await sleep(500)
       }
 
-      await sleep(500)
-
-      // Google
-      try {
-        const googleResults = await searchGoogle(keyword)
-        allResults.push(...googleResults)
-      } catch (e: any) {
-        console.error(`Google error for "${keyword}":`, e.message)
-        errors.push(`Google/${keyword}: ${e.message}`)
+      // Google (requires GOOGLE_SEARCH_API_KEY + GOOGLE_SEARCH_ENGINE_ID)
+      if (scanGoogle && Deno.env.get('SERPER_API_KEY')) {
+        if (!platformsScanned.includes('google')) platformsScanned.push('google')
+        try {
+          const googleResults = await searchGoogle(keyword)
+          allResults.push(...googleResults)
+        } catch (e: any) {
+          console.error(`Google error for "${keyword}":`, e.message)
+          errors.push(`Google/${keyword}: ${e.message}`)
+        }
+        await sleep(500)
       }
 
       // Pause between keyword groups
@@ -114,13 +136,22 @@ Deno.serve(async (req) => {
       }
     }
 
-    console.log(`${newResults.length} new results after dedup`)
+    // Deduplicate within batch (same result can match multiple keywords)
+    const seen = new Set<string>()
+    const uniqueResults = newResults.filter(r => {
+      const key = `${r.platform}:${r.external_id}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+
+    console.log(`${uniqueResults.length} unique new results after dedup`)
 
     // Insert new results
-    if (newResults.length > 0) {
+    if (uniqueResults.length > 0) {
       const { error: insertError } = await supabase
         .from('social_listening_results')
-        .insert(newResults.map(r => ({
+        .upsert(uniqueResults.map(r => ({
           platform: r.platform,
           external_id: r.external_id,
           url: r.url,
@@ -131,9 +162,10 @@ Deno.serve(async (req) => {
           score: r.score || null,
           comment_count: r.comment_count || null,
           keyword_matched: r.keyword_matched,
+          published_at: r.published_at || null,
           status: 'new',
           found_at: new Date().toISOString(),
-        })))
+        })), { onConflict: 'platform,external_id', ignoreDuplicates: true })
 
       if (insertError) {
         console.error('Insert error:', insertError)
@@ -142,7 +174,7 @@ Deno.serve(async (req) => {
 
       // Send email digest
       try {
-        await sendEmailDigest(newResults)
+        await sendEmailDigest(uniqueResults)
       } catch (e: any) {
         console.error('Email digest error:', e.message)
         errors.push(`Email: ${e.message}`)
@@ -150,7 +182,7 @@ Deno.serve(async (req) => {
 
       // Ping admin notification
       try {
-        await sendAdminPing(newResults.length)
+        await sendAdminPing(uniqueResults.length)
       } catch (e: any) {
         console.error('Admin notification error:', e.message)
         errors.push(`Notification: ${e.message}`)
@@ -160,7 +192,8 @@ Deno.serve(async (req) => {
     return jsonResponse({
       success: true,
       total_found: allResults.length,
-      new_results: newResults.length,
+      new_results: uniqueResults.length,
+      platforms_scanned: platformsScanned,
       errors: errors.length > 0 ? errors : undefined,
     })
   } catch (error: any) {
@@ -173,33 +206,43 @@ Deno.serve(async (req) => {
 // --- Platform Search Functions ---
 
 async function searchReddit(keyword: string): Promise<SearchResult[]> {
-  const url = `https://www.reddit.com/search.json?q=${encodeURIComponent(keyword)}&sort=new&limit=10&t=week`
-  const resp = await fetch(url, {
-    headers: { 'User-Agent': USER_AGENT },
+  const apiKey = Deno.env.get('SERPER_API_KEY')
+  if (!apiKey) {
+    console.log('Reddit: SERPER_API_KEY not configured, skipping')
+    return []
+  }
+
+  const resp = await fetch('https://google.serper.dev/search', {
+    method: 'POST',
+    headers: { 'X-API-KEY': apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      q: `${keyword} site:reddit.com`,
+      num: 10,
+      tbs: 'qdr:w',
+    }),
   })
 
   if (!resp.ok) {
-    throw new Error(`Reddit HTTP ${resp.status}`)
+    const text = await resp.text()
+    throw new Error(`Serper/Reddit HTTP ${resp.status}: ${text.substring(0, 200)}`)
   }
 
   const data = await resp.json()
-  const posts = data?.data?.children || []
-
-  return posts.map((child: any) => {
-    const post = child.data
-    return {
-      platform: 'reddit' as const,
-      external_id: post.id,
-      url: `https://reddit.com${post.permalink}`,
-      title: post.title,
-      snippet: (post.selftext || '').substring(0, 500),
-      subreddit: post.subreddit_name_prefixed,
-      author: post.author,
-      score: post.score,
-      comment_count: post.num_comments,
-      keyword_matched: keyword,
-    }
-  })
+  return (data?.organic || [])
+    .filter((item: any) => item.link?.includes('reddit.com'))
+    .map((item: any) => {
+      const subMatch = item.link.match(/reddit\.com\/r\/([^/]+)/)
+      return {
+        platform: 'reddit' as const,
+        external_id: `reddit-${btoa(item.link).substring(0, 40)}`,
+        url: item.link,
+        title: item.title || 'Untitled',
+        snippet: (item.snippet || '').substring(0, 500),
+        subreddit: subMatch ? `r/${subMatch[1]}` : undefined,
+        keyword_matched: keyword,
+        published_at: parseRelativeDate(item.date),
+      }
+    })
 }
 
 
@@ -218,80 +261,101 @@ async function searchHackerNews(keyword: string): Promise<SearchResult[]> {
   return hits.map((hit: any) => ({
     platform: 'hackernews' as const,
     external_id: hit.objectID,
-    url: hit.url || `https://news.ycombinator.com/item?id=${hit.objectID}`,
+    url: `https://news.ycombinator.com/item?id=${hit.objectID}`,
     title: hit.title || 'Untitled',
     snippet: (hit.story_text || '').substring(0, 500),
     author: hit.author,
     score: hit.points,
     comment_count: hit.num_comments,
     keyword_matched: keyword,
+    published_at: hit.created_at_i ? new Date(hit.created_at_i * 1000).toISOString() : undefined,
   }))
 }
 
 
 async function searchGoogle(keyword: string): Promise<SearchResult[]> {
-  try {
-    // Search for recent results (past day)
-    const url = `https://www.google.com/search?q=${encodeURIComponent(keyword)}&tbs=qdr:d&num=5`
-    const resp = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml',
-        'Accept-Language': 'en-US,en;q=0.9',
-      },
-    })
+  const apiKey = Deno.env.get('SERPER_API_KEY')
 
-    if (!resp.ok) {
-      throw new Error(`Google HTTP ${resp.status}`)
-    }
-
-    const html = await resp.text()
-    return parseGoogleResults(html, keyword)
-  } catch (e: any) {
-    // Google blocking is expected — gracefully skip
-    console.log(`Google search skipped for "${keyword}": ${e.message}`)
+  if (!apiKey) {
+    console.log('Google: SERPER_API_KEY not configured, skipping')
     return []
   }
-}
 
-
-function parseGoogleResults(html: string, keyword: string): SearchResult[] {
   const results: SearchResult[] = []
 
-  // Extract result blocks - look for <a href="/url?q=..." pattern
-  const linkRegex = /<a[^>]+href="\/url\?q=([^&"]+)[^"]*"[^>]*>([\s\S]*?)<\/a>/gi
-  let match
-  let index = 0
+  // Web search
+  const resp = await fetch('https://google.serper.dev/search', {
+    method: 'POST',
+    headers: { 'X-API-KEY': apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ q: keyword, num: 10, tbs: 'qdr:w' }),
+  })
 
-  while ((match = linkRegex.exec(html)) !== null && index < 5) {
-    const url = decodeURIComponent(match[1])
-    // Skip Google's own URLs
-    if (url.includes('google.com') || url.includes('accounts.google') || url.startsWith('/')) continue
+  if (!resp.ok) {
+    const text = await resp.text()
+    throw new Error(`Serper API HTTP ${resp.status}: ${text.substring(0, 200)}`)
+  }
 
-    // Extract title (strip HTML tags)
-    const title = match[2].replace(/<[^>]*>/g, '').trim()
-    if (!title || title.length < 5) continue
-
-    // Try to extract a snippet from nearby text
-    const snippetStart = match.index + match[0].length
-    const snippetBlock = html.substring(snippetStart, snippetStart + 500)
-    const snippetMatch = snippetBlock.match(/<span[^>]*>([\s\S]*?)<\/span>/i)
-    const snippet = snippetMatch
-      ? snippetMatch[1].replace(/<[^>]*>/g, '').trim().substring(0, 300)
-      : ''
-
+  const data = await resp.json()
+  for (const item of (data?.organic || [])) {
+    const meta = parseUrlMeta(item.link)
     results.push({
-      platform: 'google',
-      external_id: `google-${Buffer.from(url).toString('base64').substring(0, 40)}`,
-      url,
-      title,
-      snippet,
+      platform: 'google' as const,
+      external_id: `google-${btoa(item.link).substring(0, 40)}`,
+      url: item.link,
+      title: item.title || 'Untitled',
+      snippet: (item.snippet || '').substring(0, 500),
+      subreddit: meta.subreddit,
+      author: meta.author,
       keyword_matched: keyword,
+      published_at: parseRelativeDate(item.date),
     })
-    index++
+  }
+
+  // Video search (YouTube, etc.)
+  try {
+    const vResp = await fetch('https://google.serper.dev/videos', {
+      method: 'POST',
+      headers: { 'X-API-KEY': apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ q: keyword, num: 5, tbs: 'qdr:w' }),
+    })
+    if (vResp.ok) {
+      const vData = await vResp.json()
+      for (const v of (vData?.videos || [])) {
+        results.push({
+          platform: 'google' as const,
+          external_id: `google-${btoa(v.link).substring(0, 40)}`,
+          url: v.link,
+          title: v.title || 'Untitled',
+          snippet: [v.channel, v.duration, v.source].filter(Boolean).join(' · '),
+          author: v.channel || undefined,
+          keyword_matched: keyword,
+          published_at: parseRelativeDate(v.date),
+        })
+      }
+    }
+  } catch (e: any) {
+    console.error('Serper videos error:', e.message)
   }
 
   return results
+}
+
+/** Extract subreddit, author, or channel from known URL patterns */
+function parseUrlMeta(url: string): { subreddit?: string; author?: string } {
+  try {
+    const u = new URL(url)
+    // Reddit: extract subreddit
+    const redditMatch = u.pathname.match(/^\/r\/([^/]+)/)
+    if (u.hostname.includes('reddit.com') && redditMatch) {
+      return { subreddit: `r/${redditMatch[1]}` }
+    }
+    // YouTube: extract channel from URL if present
+    const ytChannel = u.pathname.match(/^\/@([^/]+)/) || u.pathname.match(/^\/channel\/([^/]+)/)
+    if (u.hostname.includes('youtube.com') && ytChannel) {
+      return { author: ytChannel[1] }
+    }
+  } catch { /* ignore */ }
+  return {}
 }
 
 
@@ -423,6 +487,28 @@ async function sendAdminPing(count: number) {
 
 
 // --- Helpers ---
+
+/** Parse Serper relative dates like "4 days ago", "1 hour ago", "Feb 12, 2026" */
+function parseRelativeDate(dateStr?: string): string | undefined {
+  if (!dateStr) return undefined
+  // Try relative format: "X days/hours/minutes ago"
+  const relMatch = dateStr.match(/(\d+)\s+(minute|hour|day|week|month)s?\s+ago/i)
+  if (relMatch) {
+    const n = parseInt(relMatch[1])
+    const unit = relMatch[2].toLowerCase()
+    const now = new Date()
+    if (unit === 'minute') now.setMinutes(now.getMinutes() - n)
+    else if (unit === 'hour') now.setHours(now.getHours() - n)
+    else if (unit === 'day') now.setDate(now.getDate() - n)
+    else if (unit === 'week') now.setDate(now.getDate() - n * 7)
+    else if (unit === 'month') now.setMonth(now.getMonth() - n)
+    return now.toISOString()
+  }
+  // Try absolute date
+  const parsed = new Date(dateStr)
+  if (!isNaN(parsed.getTime())) return parsed.toISOString()
+  return undefined
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))

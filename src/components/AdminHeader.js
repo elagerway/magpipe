@@ -556,7 +556,7 @@ export default class AdminHeader {
 
       .admin-tab-content {
         flex: 1;
-        overflow: hidden;
+        overflow-y: auto;
         display: flex;
         flex-direction: column;
       }
