@@ -102,7 +102,7 @@ pat/
 │   │   ├── admin-status/
 │   │   ├── contact-lookup/       # Apollo.io enrichment
 │   │   ├── initiate-bridged-call/
-│   │   ├── gmail-push-webhook/   # Gmail Pub/Sub push notifications
+│   │   ├── gmail-push-webhook/   # Gmail Pub/Sub push notifications + support ticket mirroring
 │   │   ├── gmail-watch-renew/    # Daily Gmail watch renewal
 │   │   ├── poll-gmail-inbox/     # Fallback email polling (30m)
 │   │   ├── poll-gmail-tickets/

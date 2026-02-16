@@ -72,7 +72,7 @@
 | `/admin` | `admin/index.js` | Admin portal — split into tab modules. Tabs: Support (default), Analytics, KPIs, Notifications, Marketing |
 
 Admin tab modules in `src/pages/admin/`:
-- `support-tab.js` — Support tickets, Users, Global Agent, Chat, Settings (sub-tabs)
+- `support-tab.js` — Support tickets (real-time thread updates via Supabase subscriptions), Users, Global Agent, Chat, Settings (sub-tabs)
 - `analytics-tab.js` — Usage analytics dashboard
 - `kpi-tab.js` — KPI/metrics display
 - `notifications-tab.js` — Notification channel settings (SMS, email, Slack)
@@ -339,7 +339,7 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 |----------|------|--------|---------------|----------|
 | `send-email` | JWT | `email_messages`, `user_integrations` | Gmail API (OAuth) | inbox page |
 | `poll-gmail-inbox` | Cron (30m) | `agent_email_configs`, `email_messages`, `user_integrations`, `contacts` | Gmail API, OpenAI | cron job (fallback) |
-| `gmail-push-webhook` | Pub/Sub secret | `agent_email_configs`, `email_messages`, `user_integrations`, `contacts` | Gmail API, OpenAI | Google Cloud Pub/Sub |
+| `gmail-push-webhook` | Pub/Sub secret | `agent_email_configs`, `email_messages`, `user_integrations`, `contacts`, `support_tickets`, `support_email_config`, `support-attachments` (storage) | Gmail API (messages + attachments), OpenAI | Google Cloud Pub/Sub |
 | `gmail-watch-renew` | Service role | `agent_email_configs`, `user_integrations` | Gmail API (watch) | cron job (daily) |
 
 ### Support & Ticketing
