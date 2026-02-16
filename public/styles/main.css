@@ -1822,60 +1822,6 @@ p {
   cursor: pointer;
 }
 
-/* Image lightbox modal */
-.image-lightbox {
-  background: var(--bg-primary, #fff);
-  border-radius: 12px;
-  max-width: 90vw;
-  max-height: 90vh;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-}
-
-.image-lightbox-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid var(--border-color, #e5e7eb);
-}
-
-.image-lightbox-filename {
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 60vw;
-}
-
-.image-lightbox-open {
-  color: var(--text-muted);
-  display: flex;
-  align-items: center;
-  transition: color 0.15s;
-}
-
-.image-lightbox-open:hover {
-  color: var(--primary-color);
-}
-
-.image-lightbox-body {
-  padding: 1rem;
-  overflow: auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.image-lightbox-body img {
-  max-width: 85vw;
-  max-height: 75vh;
-  object-fit: contain;
-  border-radius: 4px;
-}
 
 .message-time {
   font-size: 0.6875rem;

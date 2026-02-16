@@ -15,18 +15,16 @@ window.openImageLightbox = function(url, filename) {
   overlay.style.display = 'flex';
   overlay.onclick = () => overlay.remove();
   overlay.innerHTML = `
-    <div class="image-lightbox" onclick="event.stopPropagation()">
-      <div class="image-lightbox-header">
-        <span class="image-lightbox-filename">${filename}</span>
-        <div style="display: flex; align-items: center; gap: 0.5rem;">
-          <a href="${url}" target="_blank" rel="noopener" class="image-lightbox-open" title="Open in new tab">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-          </a>
-          <button class="close-modal-btn" onclick="document.getElementById('image-lightbox-overlay').remove()">&times;</button>
-        </div>
+    <div class="contact-modal" onclick="event.stopPropagation()" style="width: fit-content; min-width: 300px; max-width: 90vw;">
+      <div class="contact-modal-header">
+        <h3 style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${filename}</h3>
+        <button class="close-modal-btn" onclick="document.getElementById('image-lightbox-overlay').remove()">&times;</button>
       </div>
-      <div class="image-lightbox-body">
-        <img src="${url}" alt="${filename}">
+      <div class="contact-modal-body" style="display: flex; align-items: center; justify-content: center; padding: 1rem;">
+        <img src="${url}" alt="${filename}" style="max-width: 85vw; max-height: 70vh; object-fit: contain; border-radius: 4px;">
+      </div>
+      <div class="contact-modal-footer">
+        <a href="${url}" target="_blank" rel="noopener" class="btn btn-primary" style="text-decoration: none;">Open in new tab</a>
       </div>
     </div>
   `;
