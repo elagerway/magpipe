@@ -1,13 +1,20 @@
 /**
  * External SIP Trunk Settings Component
  *
- * Allows users to configure external SIP trunks from providers like Orange, Twilio, etc.
+ * Allows users to configure external SIP trunks from providers like Twilio, SignalWire, etc.
  */
 
 import { supabase } from '../lib/supabase.js';
 import { showToast } from '../lib/toast.js';
+import { showConfirmModal } from './ConfirmModal.js';
 
-const LIVEKIT_SIP_DOMAIN = '378ads1njtd.sip.livekit.cloud';
+const LIVEKIT_SIP_DOMAIN = import.meta.env.VITE_LIVEKIT_SIP_DOMAIN;
+
+const PROVIDER_LABELS = {
+  twilio: 'Twilio',
+  signalwire: 'SignalWire',
+  other: 'Generic SIP'
+};
 
 export function addExternalTrunkSettingsStyles() {
   if (document.getElementById('external-trunk-settings-styles')) return;
@@ -188,42 +195,6 @@ export function addExternalTrunkSettingsStyles() {
       flex: 1;
     }
 
-    /* Add Trunk Modal */
-    .add-trunk-modal {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0, 0, 0, 0.5);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 1000;
-    }
-
-    .add-trunk-modal-content {
-      background: var(--bg-primary);
-      border-radius: var(--radius-lg);
-      padding: 1.5rem;
-      width: 90%;
-      max-width: 500px;
-      max-height: 90vh;
-      overflow-y: auto;
-    }
-
-    .add-trunk-modal-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 1rem;
-    }
-
-    .add-trunk-modal-title {
-      font-size: 1.25rem;
-      font-weight: 600;
-    }
-
     .auth-type-selector {
       display: flex;
       gap: 0.5rem;
@@ -251,10 +222,6 @@ export function addExternalTrunkSettingsStyles() {
       border-color: var(--primary-color);
     }
 
-    .auth-fields {
-      margin-bottom: 1rem;
-    }
-
     .ip-list-input {
       min-height: 80px;
       resize: vertical;
@@ -273,7 +240,7 @@ export function createExternalTrunkSettings(containerId) {
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
         <div>
           <h2 style="margin: 0;">External SIP Trunks</h2>
-          <p class="text-muted" style="margin: 0.25rem 0 0 0; font-size: 0.875rem;">Connect your own SIP providers (Orange, Twilio, etc.)</p>
+          <p class="text-muted" style="margin: 0.25rem 0 0 0; font-size: 0.875rem;">Connect your own SIP providers (Twilio, SignalWire, etc.)</p>
         </div>
         <button class="btn btn-primary" id="add-external-trunk-btn">
           Add Trunk
@@ -350,14 +317,14 @@ async function loadTrunks() {
 
 function renderTrunkCard(trunk) {
   const numbers = trunk.external_sip_numbers || [];
-  const activeNumbers = numbers.filter(n => n.is_active);
+  const providerLabel = PROVIDER_LABELS[trunk.provider] || trunk.provider || 'Generic SIP';
 
   return `
     <div class="external-trunk-card ${trunk.is_active ? '' : 'inactive'}" data-trunk-id="${trunk.id}">
       <div class="trunk-header">
         <div>
           <div class="trunk-title">${trunk.name}</div>
-          ${trunk.provider ? `<div class="trunk-provider">Provider: ${trunk.provider}</div>` : ''}
+          <div class="trunk-provider">Provider: ${providerLabel}</div>
         </div>
         <span class="trunk-status ${trunk.status}">${trunk.status}</span>
       </div>
@@ -424,7 +391,7 @@ function renderTrunkCard(trunk) {
             </div>
             <div style="display: flex; align-items: center; gap: 0.5rem;">
               ${num.is_active ? '<span style="color: var(--success-color); font-size: 0.75rem;">Active</span>' : '<span style="color: var(--text-secondary); font-size: 0.75rem;">Inactive</span>'}
-              <button class="btn btn-sm btn-secondary" onclick="removeNumber('${num.id}', '${trunk.id}')">Remove</button>
+              <button class="btn btn-sm btn-secondary remove-number-btn" data-number-id="${num.id}" data-trunk-id="${trunk.id}">Remove</button>
             </div>
           </div>
         `).join('') : '<p class="text-muted" style="font-size: 0.875rem;">No numbers added yet</p>'}
@@ -535,6 +502,48 @@ function attachTrunkEventListeners(trunk) {
     });
   }
 
+  // Remove number buttons
+  const trunkCard = document.querySelector(`[data-trunk-id="${trunk.id}"]`);
+  if (trunkCard) {
+    trunkCard.querySelectorAll('.remove-number-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const numberId = btn.dataset.numberId;
+        const confirmed = await showConfirmModal({
+          title: 'Remove Number',
+          message: 'Are you sure you want to remove this number from the trunk?',
+          confirmText: 'Remove',
+          confirmStyle: 'danger'
+        });
+        if (!confirmed) return;
+
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session) throw new Error('Not authenticated');
+
+          const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-external-numbers`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              action: 'remove',
+              number_id: numberId
+            })
+          });
+
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || 'Failed to remove number');
+
+          loadTrunks();
+        } catch (error) {
+          console.error('Error removing number:', error);
+          showToast(`Failed to remove number: ${error.message}`, 'error');
+        }
+      });
+    });
+  }
+
   // Toggle trunk
   const toggleTrunkBtn = document.getElementById(`toggle-trunk-${trunk.id}`);
   if (toggleTrunkBtn) {
@@ -584,9 +593,13 @@ function attachTrunkEventListeners(trunk) {
   const deleteTrunkBtn = document.getElementById(`delete-trunk-${trunk.id}`);
   if (deleteTrunkBtn) {
     deleteTrunkBtn.addEventListener('click', async () => {
-      if (!confirm(`Are you sure you want to delete the trunk "${trunk.name}"? This will also remove all associated phone numbers.`)) {
-        return;
-      }
+      const confirmed = await showConfirmModal({
+        title: 'Delete Trunk',
+        message: `Are you sure you want to delete the trunk "${trunk.name}"? This will also remove all associated phone numbers.`,
+        confirmText: 'Delete',
+        confirmStyle: 'danger'
+      });
+      if (!confirmed) return;
 
       deleteTrunkBtn.disabled = true;
       deleteTrunkBtn.textContent = 'Deleting...';
@@ -621,180 +634,283 @@ function attachTrunkEventListeners(trunk) {
   }
 }
 
-// Global function for removing numbers (called from onclick)
-window.removeNumber = async function(numberId, trunkId) {
-  if (!confirm('Are you sure you want to remove this number?')) {
-    return;
+// Helper: get provider-specific fields HTML for add/edit modals
+function getProviderFieldsHTML(provider, values = {}) {
+  const isEdit = Object.keys(values).length > 0;
+  const passwordPlaceholder = isEdit ? 'Leave blank to keep existing' : '';
+
+  if (provider === 'twilio') {
+    return `
+      <div class="form-group">
+        <label for="trunk-account-sid">Account SID *</label>
+        <input type="text" id="trunk-account-sid" class="form-input" placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" value="${values.api_account_sid || values.auth_username || ''}" />
+      </div>
+      <div class="form-group">
+        <label for="trunk-auth-token">Auth Token *</label>
+        <input type="password" id="trunk-auth-token" class="form-input" placeholder="${passwordPlaceholder || 'Your Twilio Auth Token'}" value="" />
+        ${isEdit ? '<small class="text-muted">Leave blank to keep the current token</small>' : ''}
+      </div>
+    `;
   }
 
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) throw new Error('Not authenticated');
-
-    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-external-numbers`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${session.access_token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        action: 'remove',
-        number_id: numberId
-      })
-    });
-
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Failed to remove number');
-
-    loadTrunks();
-  } catch (error) {
-    console.error('Error removing number:', error);
-    showToast(`Failed to remove number: ${error.message}`, 'error');
+  if (provider === 'signalwire') {
+    return `
+      <div class="form-group">
+        <label for="trunk-space-url">Space URL *</label>
+        <input type="text" id="trunk-space-url" class="form-input" placeholder="yourspace.signalwire.com" value="${values.provider_space_url || ''}" />
+        <small class="text-muted">Your SignalWire space URL (e.g., yourspace.signalwire.com)</small>
+      </div>
+      <div class="form-group">
+        <label for="trunk-project-id">Project ID *</label>
+        <input type="text" id="trunk-project-id" class="form-input" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" value="${values.api_account_sid || values.auth_username || ''}" />
+      </div>
+      <div class="form-group">
+        <label for="trunk-api-token">API Token *</label>
+        <input type="password" id="trunk-api-token" class="form-input" placeholder="${passwordPlaceholder || 'Your SignalWire API Token'}" value="" />
+        ${isEdit ? '<small class="text-muted">Leave blank to keep the current token</small>' : ''}
+      </div>
+    `;
   }
-};
 
-function showAddTrunkModal() {
-  // Remove existing modal if any
-  const existingModal = document.getElementById('add-trunk-modal');
-  if (existingModal) existingModal.remove();
-
-  const modal = document.createElement('div');
-  modal.id = 'add-trunk-modal';
-  modal.className = 'add-trunk-modal';
-  modal.innerHTML = `
-    <div class="add-trunk-modal-content">
-      <div class="add-trunk-modal-header">
-        <h2 class="add-trunk-modal-title">Add External SIP Trunk</h2>
-        <button class="btn btn-sm btn-secondary" id="close-add-trunk-modal">&times;</button>
-      </div>
-
-      <div class="form-group">
-        <label for="trunk-name">Trunk Name *</label>
-        <input type="text" id="trunk-name" class="form-input" placeholder="e.g., Orange West Africa" required />
-      </div>
-
-      <div class="form-group">
-        <label for="trunk-provider">Provider (optional)</label>
-        <input type="text" id="trunk-provider" class="form-input" placeholder="e.g., Orange" />
-      </div>
-
-      <div class="form-group">
-        <label>Authentication Type *</label>
-        <div class="auth-type-selector">
-          <button type="button" class="auth-type-btn selected" data-auth-type="ip">
-            <strong>IP Whitelist</strong><br>
-            <small>Authenticate by source IP</small>
-          </button>
-          <button type="button" class="auth-type-btn" data-auth-type="registration">
-            <strong>Registration</strong><br>
-            <small>Username & password</small>
-          </button>
-        </div>
-      </div>
-
-      <div class="auth-fields" id="ip-auth-fields">
-        <div class="form-group">
-          <label for="allowed-ips">Allowed IP Addresses *</label>
-          <textarea id="allowed-ips" class="form-input ip-list-input" placeholder="Enter IP addresses (one per line)&#10;e.g., 192.168.1.100&#10;10.0.0.0/24"></textarea>
-          <small class="text-muted">Enter IP addresses or CIDR ranges, one per line</small>
-        </div>
-      </div>
-
-      <div class="auth-fields" id="registration-auth-fields" style="display: none;">
-        <div class="form-group">
-          <label for="auth-username">Username *</label>
-          <input type="text" id="auth-username" class="form-input" placeholder="SIP username" />
-        </div>
-        <div class="form-group">
-          <label for="auth-password">Password *</label>
-          <input type="password" id="auth-password" class="form-input" placeholder="SIP password" />
-        </div>
-      </div>
-
-      <div class="form-group">
-        <label for="outbound-address">Outbound SIP Server (optional)</label>
-        <input type="text" id="outbound-address" class="form-input" placeholder="e.g., sip.orange.cm:5060" />
-        <small class="text-muted">Required if you want to make outbound calls via this trunk</small>
-      </div>
-
-      <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1.5rem;">
-        <button class="btn btn-secondary" id="cancel-add-trunk">Cancel</button>
-        <button class="btn btn-primary" id="save-add-trunk">Create Trunk</button>
+  // 'other' — generic SIP: show existing auth type toggle, IP/registration fields, outbound server
+  const authType = values.auth_type || 'ip';
+  const isIpAuth = authType === 'ip';
+  return `
+    <div class="form-group">
+      <label>Authentication Type *</label>
+      <div class="auth-type-selector">
+        <button type="button" class="auth-type-btn ${isIpAuth ? 'selected' : ''}" data-auth-type="ip">
+          <strong>IP Whitelist</strong><br>
+          <small>Authenticate by source IP</small>
+        </button>
+        <button type="button" class="auth-type-btn ${!isIpAuth ? 'selected' : ''}" data-auth-type="registration">
+          <strong>Registration</strong><br>
+          <small>Username & password</small>
+        </button>
       </div>
     </div>
+
+    <div class="auth-fields" id="modal-ip-auth-fields" style="display: ${isIpAuth ? 'block' : 'none'};">
+      <div class="form-group">
+        <label for="modal-allowed-ips">Allowed IP Addresses *</label>
+        <textarea id="modal-allowed-ips" class="form-input ip-list-input" placeholder="Enter IP addresses (one per line)&#10;e.g., 192.168.1.100&#10;10.0.0.0/24">${(values.allowed_source_ips || []).join('\n')}</textarea>
+        <small class="text-muted">Enter IP addresses or CIDR ranges, one per line</small>
+      </div>
+    </div>
+
+    <div class="auth-fields" id="modal-registration-auth-fields" style="display: ${!isIpAuth ? 'block' : 'none'};">
+      <div class="form-group">
+        <label for="modal-auth-username">Username *</label>
+        <input type="text" id="modal-auth-username" class="form-input" placeholder="SIP username" value="${values.auth_username || ''}" />
+      </div>
+      <div class="form-group">
+        <label for="modal-auth-password">Password *</label>
+        <input type="password" id="modal-auth-password" class="form-input" placeholder="${passwordPlaceholder || 'SIP password'}" value="" />
+        ${isEdit ? '<small class="text-muted">Leave blank to keep the current password</small>' : ''}
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label for="modal-outbound-address">Outbound SIP Server (optional)</label>
+      <input type="text" id="modal-outbound-address" class="form-input" placeholder="e.g., sip.provider.com:5060" value="${values.outbound_address || ''}" />
+      <small class="text-muted">Required if you want to make outbound calls via this trunk</small>
+    </div>
   `;
+}
 
-  document.body.appendChild(modal);
+// Attach auth-type toggle listeners for 'other' provider fields
+function attachOtherProviderListeners(modalEl) {
+  const authTypeBtns = modalEl.querySelectorAll('.auth-type-btn');
+  const ipFields = modalEl.querySelector('#modal-ip-auth-fields');
+  const regFields = modalEl.querySelector('#modal-registration-auth-fields');
 
-  // Auth type selector
-  const authTypeBtns = modal.querySelectorAll('.auth-type-btn');
-  const ipAuthFields = document.getElementById('ip-auth-fields');
-  const registrationAuthFields = document.getElementById('registration-auth-fields');
+  if (!authTypeBtns.length || !ipFields || !regFields) return;
 
   authTypeBtns.forEach(btn => {
     btn.addEventListener('click', () => {
       authTypeBtns.forEach(b => b.classList.remove('selected'));
       btn.classList.add('selected');
-
-      const authType = btn.dataset.authType;
-      if (authType === 'ip') {
-        ipAuthFields.style.display = 'block';
-        registrationAuthFields.style.display = 'none';
+      if (btn.dataset.authType === 'ip') {
+        ipFields.style.display = 'block';
+        regFields.style.display = 'none';
       } else {
-        ipAuthFields.style.display = 'none';
-        registrationAuthFields.style.display = 'block';
+        ipFields.style.display = 'none';
+        regFields.style.display = 'block';
       }
     });
   });
+}
 
-  // Close modal
-  const closeModal = () => modal.remove();
-  document.getElementById('close-add-trunk-modal').addEventListener('click', closeModal);
-  document.getElementById('cancel-add-trunk').addEventListener('click', closeModal);
-  modal.addEventListener('click', (e) => {
-    if (e.target === modal) closeModal();
+// Collect form data based on provider
+function collectProviderFormData(provider, modalEl) {
+  const requestBody = {};
+
+  if (provider === 'twilio') {
+    const accountSid = document.getElementById('trunk-account-sid')?.value.trim();
+    const authToken = document.getElementById('trunk-auth-token')?.value;
+    if (!accountSid) {
+      showToast('Please enter your Twilio Account SID', 'warning');
+      return null;
+    }
+    requestBody.auth_type = 'registration';
+    requestBody.auth_username = accountSid;
+    if (authToken) requestBody.auth_password = authToken;
+    requestBody.api_account_sid = accountSid;
+    if (authToken) requestBody.api_auth_token = authToken;
+    requestBody.outbound_address = 'us1.pstn.twilio.com';
+    requestBody.outbound_transport = 'tls';
+  } else if (provider === 'signalwire') {
+    const spaceUrl = document.getElementById('trunk-space-url')?.value.trim();
+    const projectId = document.getElementById('trunk-project-id')?.value.trim();
+    const apiToken = document.getElementById('trunk-api-token')?.value;
+    if (!spaceUrl || !projectId) {
+      showToast('Please enter your SignalWire Space URL and Project ID', 'warning');
+      return null;
+    }
+    // Extract domain from space URL (remove protocol if present)
+    const spaceDomain = spaceUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    requestBody.auth_type = 'registration';
+    requestBody.auth_username = projectId;
+    if (apiToken) requestBody.auth_password = apiToken;
+    requestBody.api_account_sid = projectId;
+    if (apiToken) requestBody.api_auth_token = apiToken;
+    requestBody.provider_space_url = spaceDomain;
+    requestBody.outbound_address = spaceDomain;
+    requestBody.outbound_transport = 'tls';
+  } else {
+    // 'other' — generic SIP
+    const selectedAuthBtn = modalEl.querySelector('.auth-type-btn.selected');
+    const authType = selectedAuthBtn?.dataset.authType || 'ip';
+    requestBody.auth_type = authType;
+
+    if (authType === 'ip') {
+      const ipsText = document.getElementById('modal-allowed-ips')?.value.trim();
+      if (!ipsText) {
+        showToast('Please enter at least one allowed IP address', 'warning');
+        return null;
+      }
+      requestBody.allowed_source_ips = ipsText.split('\n').map(ip => ip.trim()).filter(ip => ip);
+      requestBody.auth_username = null;
+      requestBody.auth_password = null;
+    } else {
+      const username = document.getElementById('modal-auth-username')?.value.trim();
+      const password = document.getElementById('modal-auth-password')?.value;
+      if (!username) {
+        showToast('Please enter a username', 'warning');
+        return null;
+      }
+      requestBody.auth_username = username;
+      if (password) requestBody.auth_password = password;
+      requestBody.allowed_source_ips = null;
+    }
+
+    const outboundAddress = document.getElementById('modal-outbound-address')?.value.trim();
+    requestBody.outbound_address = outboundAddress || null;
+  }
+
+  return requestBody;
+}
+
+function showAddTrunkModal() {
+  // Remove existing modal if any
+  const existingModal = document.getElementById('add-trunk-modal-overlay');
+  if (existingModal) existingModal.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'add-trunk-modal-overlay';
+  overlay.className = 'contact-modal-overlay';
+  overlay.style.display = 'flex';
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) overlay.remove();
   });
 
+  overlay.innerHTML = `
+    <div class="contact-modal" style="max-width: 550px;" onclick="event.stopPropagation()">
+      <div class="contact-modal-header">
+        <h3>Add External SIP Trunk</h3>
+        <button class="close-modal-btn" id="close-add-trunk-modal">&times;</button>
+      </div>
+      <form id="add-trunk-form">
+        <div class="contact-modal-body scrollable">
+          <div class="form-group">
+            <label for="trunk-name">Trunk Name *</label>
+            <input type="text" id="trunk-name" class="form-input" placeholder="e.g., My Twilio Trunk" required />
+          </div>
+
+          <div class="form-group">
+            <label for="trunk-provider">Provider *</label>
+            <select id="trunk-provider" class="form-input">
+              <option value="twilio">Twilio</option>
+              <option value="signalwire">SignalWire</option>
+              <option value="other">Other / Generic SIP</option>
+            </select>
+          </div>
+
+          <div id="provider-fields">
+            ${getProviderFieldsHTML('twilio')}
+          </div>
+        </div>
+        <div class="contact-modal-footer">
+          <button type="button" class="btn btn-secondary" id="cancel-add-trunk">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="save-add-trunk">Create Trunk</button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  // Provider dropdown change handler
+  const providerSelect = document.getElementById('trunk-provider');
+  const providerFieldsContainer = document.getElementById('provider-fields');
+
+  providerSelect.addEventListener('change', () => {
+    providerFieldsContainer.innerHTML = getProviderFieldsHTML(providerSelect.value);
+    if (providerSelect.value === 'other') {
+      attachOtherProviderListeners(overlay);
+    }
+  });
+
+  // Close modal
+  const closeModal = () => overlay.remove();
+  document.getElementById('close-add-trunk-modal').addEventListener('click', closeModal);
+  document.getElementById('cancel-add-trunk').addEventListener('click', closeModal);
+
   // Save trunk
-  document.getElementById('save-add-trunk').addEventListener('click', async () => {
+  document.getElementById('add-trunk-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
     const saveBtn = document.getElementById('save-add-trunk');
     const name = document.getElementById('trunk-name').value.trim();
-    const provider = document.getElementById('trunk-provider').value.trim();
-    const authType = modal.querySelector('.auth-type-btn.selected').dataset.authType;
-    const outboundAddress = document.getElementById('outbound-address').value.trim();
+    const provider = providerSelect.value;
 
-    // Validate
     if (!name) {
       showToast('Please enter a trunk name', 'warning');
       return;
     }
 
-    let requestBody = {
+    const providerData = collectProviderFormData(provider, overlay);
+    if (!providerData) return; // validation failed
+
+    // For create, twilio/signalwire require the token
+    if (provider === 'twilio' && !providerData.auth_password) {
+      showToast('Please enter your Twilio Auth Token', 'warning');
+      return;
+    }
+    if (provider === 'signalwire' && !providerData.auth_password) {
+      showToast('Please enter your SignalWire API Token', 'warning');
+      return;
+    }
+    if (provider === 'other' && providerData.auth_type === 'registration' && !providerData.auth_password) {
+      showToast('Please enter a password', 'warning');
+      return;
+    }
+
+    const requestBody = {
       action: 'create',
       name,
-      provider: provider || null,
-      auth_type: authType,
-      outbound_address: outboundAddress || null
+      provider,
+      ...providerData
     };
-
-    if (authType === 'ip') {
-      const ipsText = document.getElementById('allowed-ips').value.trim();
-      if (!ipsText) {
-        showToast('Please enter at least one allowed IP address', 'warning');
-        return;
-      }
-      const ips = ipsText.split('\n').map(ip => ip.trim()).filter(ip => ip);
-      requestBody.allowed_source_ips = ips;
-    } else {
-      const username = document.getElementById('auth-username').value.trim();
-      const password = document.getElementById('auth-password').value;
-      if (!username || !password) {
-        showToast('Please enter both username and password', 'warning');
-        return;
-      }
-      requestBody.auth_username = username;
-      requestBody.auth_password = password;
-    }
 
     saveBtn.disabled = true;
     saveBtn.textContent = 'Creating...';
@@ -817,9 +933,7 @@ function showAddTrunkModal() {
 
       closeModal();
       loadTrunks();
-
-      // Show success message with SIP info
-      showToast(`Trunk "${name}" created successfully! Configure your SIP provider to send calls to: ${LIVEKIT_SIP_DOMAIN}:5060 (UDP/TCP) or ${LIVEKIT_SIP_DOMAIN}:5061 (TLS)`, 'success');
+      showToast(`Trunk "${name}" created successfully!`, 'success');
     } catch (error) {
       console.error('Error creating trunk:', error);
       showToast(`Failed to create trunk: ${error.message}`, 'error');
@@ -831,158 +945,104 @@ function showAddTrunkModal() {
 
 function showEditTrunkModal(trunk) {
   // Remove existing modal if any
-  const existingModal = document.getElementById('edit-trunk-modal');
+  const existingModal = document.getElementById('edit-trunk-modal-overlay');
   if (existingModal) existingModal.remove();
 
-  const isIpAuth = trunk.auth_type === 'ip';
+  const overlay = document.createElement('div');
+  overlay.id = 'edit-trunk-modal-overlay';
+  overlay.className = 'contact-modal-overlay';
+  overlay.style.display = 'flex';
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
 
-  const modal = document.createElement('div');
-  modal.id = 'edit-trunk-modal';
-  modal.className = 'add-trunk-modal';
-  modal.innerHTML = `
-    <div class="add-trunk-modal-content">
-      <div class="add-trunk-modal-header">
-        <h2 class="add-trunk-modal-title">Edit SIP Trunk</h2>
-        <button class="btn btn-sm btn-secondary" id="close-edit-trunk-modal">&times;</button>
+  const provider = trunk.provider || 'other';
+
+  overlay.innerHTML = `
+    <div class="contact-modal" style="max-width: 550px;" onclick="event.stopPropagation()">
+      <div class="contact-modal-header">
+        <h3>Edit SIP Trunk</h3>
+        <button class="close-modal-btn" id="close-edit-trunk-modal">&times;</button>
       </div>
+      <form id="edit-trunk-form">
+        <div class="contact-modal-body scrollable">
+          <div class="form-group">
+            <label for="edit-trunk-name">Trunk Name *</label>
+            <input type="text" id="edit-trunk-name" class="form-input" value="${trunk.name || ''}" required />
+          </div>
 
-      <div class="form-group">
-        <label for="edit-trunk-name">Trunk Name *</label>
-        <input type="text" id="edit-trunk-name" class="form-input" value="${trunk.name || ''}" required />
-      </div>
+          <div class="form-group">
+            <label for="edit-trunk-provider">Provider *</label>
+            <select id="edit-trunk-provider" class="form-input">
+              <option value="twilio" ${provider === 'twilio' ? 'selected' : ''}>Twilio</option>
+              <option value="signalwire" ${provider === 'signalwire' ? 'selected' : ''}>SignalWire</option>
+              <option value="other" ${provider === 'other' ? 'selected' : ''}>Other / Generic SIP</option>
+            </select>
+          </div>
 
-      <div class="form-group">
-        <label for="edit-trunk-provider">Provider (optional)</label>
-        <input type="text" id="edit-trunk-provider" class="form-input" value="${trunk.provider || ''}" />
-      </div>
-
-      <div class="form-group">
-        <label>Authentication Type *</label>
-        <div class="auth-type-selector">
-          <button type="button" class="auth-type-btn ${isIpAuth ? 'selected' : ''}" data-auth-type="ip">
-            <strong>IP Whitelist</strong><br>
-            <small>Authenticate by source IP</small>
-          </button>
-          <button type="button" class="auth-type-btn ${!isIpAuth ? 'selected' : ''}" data-auth-type="registration">
-            <strong>Registration</strong><br>
-            <small>Username & password</small>
-          </button>
+          <div id="edit-provider-fields">
+            ${getProviderFieldsHTML(provider, trunk)}
+          </div>
         </div>
-      </div>
-
-      <div class="auth-fields" id="edit-ip-auth-fields" style="display: ${isIpAuth ? 'block' : 'none'};">
-        <div class="form-group">
-          <label for="edit-allowed-ips">Allowed IP Addresses *</label>
-          <textarea id="edit-allowed-ips" class="form-input ip-list-input" placeholder="Enter IP addresses (one per line)&#10;e.g., 192.168.1.100&#10;10.0.0.0/24">${(trunk.allowed_source_ips || []).join('\n')}</textarea>
-          <small class="text-muted">Enter IP addresses or CIDR ranges, one per line</small>
+        <div class="contact-modal-footer">
+          <button type="button" class="btn btn-secondary" id="cancel-edit-trunk">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="save-edit-trunk">Save Changes</button>
         </div>
-      </div>
-
-      <div class="auth-fields" id="edit-registration-auth-fields" style="display: ${!isIpAuth ? 'block' : 'none'};">
-        <div class="form-group">
-          <label for="edit-auth-username">Username *</label>
-          <input type="text" id="edit-auth-username" class="form-input" value="${trunk.auth_username || ''}" placeholder="SIP username" />
-        </div>
-        <div class="form-group">
-          <label for="edit-auth-password">Password</label>
-          <input type="password" id="edit-auth-password" class="form-input" placeholder="Leave blank to keep existing" />
-          <small class="text-muted">Leave blank to keep the current password</small>
-        </div>
-      </div>
-
-      <div class="form-group">
-        <label for="edit-outbound-address">Outbound SIP Server (optional)</label>
-        <input type="text" id="edit-outbound-address" class="form-input" value="${trunk.outbound_address || ''}" placeholder="e.g., sip.orange.cm:5060" />
-        <small class="text-muted">Required if you want to make outbound calls via this trunk</small>
-      </div>
-
-      <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1.5rem;">
-        <button class="btn btn-secondary" id="cancel-edit-trunk">Cancel</button>
-        <button class="btn btn-primary" id="save-edit-trunk">Save Changes</button>
-      </div>
+      </form>
     </div>
   `;
 
-  document.body.appendChild(modal);
+  document.body.appendChild(overlay);
 
-  // Auth type selector
-  const authTypeBtns = modal.querySelectorAll('.auth-type-btn');
-  const ipAuthFields = document.getElementById('edit-ip-auth-fields');
-  const registrationAuthFields = document.getElementById('edit-registration-auth-fields');
+  // Attach auth type listeners if 'other'
+  if (provider === 'other') {
+    attachOtherProviderListeners(overlay);
+  }
 
-  authTypeBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      authTypeBtns.forEach(b => b.classList.remove('selected'));
-      btn.classList.add('selected');
+  // Provider dropdown change handler
+  const providerSelect = document.getElementById('edit-trunk-provider');
+  const providerFieldsContainer = document.getElementById('edit-provider-fields');
 
-      const authType = btn.dataset.authType;
-      if (authType === 'ip') {
-        ipAuthFields.style.display = 'block';
-        registrationAuthFields.style.display = 'none';
-      } else {
-        ipAuthFields.style.display = 'none';
-        registrationAuthFields.style.display = 'block';
-      }
-    });
+  providerSelect.addEventListener('change', () => {
+    // When switching provider, reset fields (don't carry over values for different provider)
+    const newProvider = providerSelect.value;
+    const values = newProvider === trunk.provider ? trunk : {};
+    providerFieldsContainer.innerHTML = getProviderFieldsHTML(newProvider, values);
+    if (newProvider === 'other') {
+      attachOtherProviderListeners(overlay);
+    }
   });
 
   // Close modal
-  const closeModal = () => modal.remove();
+  const closeModal = () => overlay.remove();
   document.getElementById('close-edit-trunk-modal').addEventListener('click', closeModal);
   document.getElementById('cancel-edit-trunk').addEventListener('click', closeModal);
-  modal.addEventListener('click', (e) => {
-    if (e.target === modal) closeModal();
-  });
 
   // Save trunk changes
-  document.getElementById('save-edit-trunk').addEventListener('click', async () => {
+  document.getElementById('edit-trunk-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
     const saveBtn = document.getElementById('save-edit-trunk');
     const name = document.getElementById('edit-trunk-name').value.trim();
-    const provider = document.getElementById('edit-trunk-provider').value.trim();
-    const authType = modal.querySelector('.auth-type-btn.selected').dataset.authType;
-    const outboundAddress = document.getElementById('edit-outbound-address').value.trim();
+    const newProvider = providerSelect.value;
 
-    // Validate
     if (!name) {
       showToast('Please enter a trunk name', 'warning');
       return;
     }
 
-    let requestBody = {
+    const providerData = collectProviderFormData(newProvider, overlay);
+    if (!providerData) return; // validation failed
+
+    // For edit, password/token is optional (leave blank to keep existing)
+    // But for 'other' with registration, username is still required (handled in collectProviderFormData)
+
+    const requestBody = {
       action: 'update',
       trunk_id: trunk.id,
       name,
-      provider: provider || null,
-      auth_type: authType,
-      outbound_address: outboundAddress || null
+      provider: newProvider,
+      ...providerData
     };
-
-    if (authType === 'ip') {
-      const ipsText = document.getElementById('edit-allowed-ips').value.trim();
-      if (!ipsText) {
-        showToast('Please enter at least one allowed IP address', 'warning');
-        return;
-      }
-      const ips = ipsText.split('\n').map(ip => ip.trim()).filter(ip => ip);
-      requestBody.allowed_source_ips = ips;
-      // Clear registration fields
-      requestBody.auth_username = null;
-      requestBody.auth_password = null;
-    } else {
-      const username = document.getElementById('edit-auth-username').value.trim();
-      const password = document.getElementById('edit-auth-password').value;
-      if (!username) {
-        showToast('Please enter a username', 'warning');
-        return;
-      }
-      requestBody.auth_username = username;
-      // Only include password if it was changed
-      if (password) {
-        requestBody.auth_password = password;
-      }
-      // Clear IP fields
-      requestBody.allowed_source_ips = null;
-    }
 
     saveBtn.disabled = true;
     saveBtn.textContent = 'Saving...';
