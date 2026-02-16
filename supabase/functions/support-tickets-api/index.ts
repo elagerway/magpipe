@@ -73,30 +73,48 @@ Deno.serve(async (req) => {
 
 
 async function handleList(supabase: any, body: any) {
-  const { status = 'open', page = 1, limit = 50, priority, assigned_to, has_github_issue } = body
+  const { status = 'open', page = 1, limit = 25, priority, assigned_to, has_github_issue } = body
   const offset = (page - 1) * limit
 
-  // Get distinct threads with their latest message
-  let query = supabase
+  // Pass 1: Get all matching thread_ids (lightweight) to deduplicate & paginate correctly
+  let threadIdQuery = supabase
     .from('support_tickets')
-    .select('*', { count: 'exact' })
-
-  if (status !== 'all') {
-    query = query.eq('status', status)
-  }
-  if (priority) {
-    query = query.eq('priority', priority)
-  }
-  if (assigned_to) {
-    query = query.eq('assigned_to', assigned_to)
-  }
-  if (has_github_issue) {
-    query = query.not('github_issue_url', 'is', null)
-  }
-
-  const { data: tickets, error, count } = await query
+    .select('thread_id, received_at')
     .order('received_at', { ascending: false })
-    .range(offset, offset + limit - 1)
+    .limit(10000)
+
+  if (status !== 'all') threadIdQuery = threadIdQuery.eq('status', status)
+  if (priority) threadIdQuery = threadIdQuery.eq('priority', priority)
+  if (assigned_to) threadIdQuery = threadIdQuery.eq('assigned_to', assigned_to)
+  if (has_github_issue) threadIdQuery = threadIdQuery.not('github_issue_url', 'is', null)
+
+  const { data: allRows, error: threadError } = await threadIdQuery
+  if (threadError) return errorResponse('Failed to fetch threads: ' + threadError.message)
+
+  // Deduplicate thread_ids preserving received_at order (most recent first)
+  const seen = new Set<string>()
+  const uniqueThreadIds: string[] = []
+  for (const row of (allRows || [])) {
+    const tid = row.thread_id || row.id
+    if (!seen.has(tid)) {
+      seen.add(tid)
+      uniqueThreadIds.push(tid)
+    }
+  }
+
+  const totalThreads = uniqueThreadIds.length
+  const pageThreadIds = uniqueThreadIds.slice(offset, offset + limit)
+
+  if (pageThreadIds.length === 0) {
+    return successResponse({ tickets: [], total: totalThreads, page, limit })
+  }
+
+  // Pass 2: Get full data for this page's threads
+  const { data: tickets, error } = await supabase
+    .from('support_tickets')
+    .select('id, thread_id, ticket_ref, subject, from_email, from_name, status, priority, assigned_to, tags, due_date, received_at, direction, ai_draft_status, github_issue_url')
+    .in('thread_id', pageThreadIds)
+    .order('received_at', { ascending: false })
 
   if (error) return errorResponse('Failed to fetch tickets: ' + error.message)
 
@@ -134,7 +152,6 @@ async function handleList(supabase: any, body: any) {
       existing.message_count++
       if (t.ai_draft_status === 'pending') existing.has_pending_draft = true
       if (t.ai_draft_status === 'sent') existing.ai_responded = true
-      // Keep the latest message's info
       if (new Date(t.received_at) > new Date(existing.received_at)) {
         existing.subject = t.subject || existing.subject
         existing.from_email = t.from_email
@@ -145,9 +162,14 @@ async function handleList(supabase: any, body: any) {
     }
   }
 
+  // Sort by the order of pageThreadIds (preserves received_at DESC from pass 1)
+  const sorted = pageThreadIds
+    .map(tid => threadMap.get(tid))
+    .filter(Boolean)
+
   return successResponse({
-    tickets: Array.from(threadMap.values()),
-    total: count || 0,
+    tickets: sorted,
+    total: totalThreads,
     page,
     limit,
   })
@@ -309,16 +331,16 @@ async function handleListAssignees(supabase: any) {
 
 
 async function handleCreateTicket(supabase: any, body: any) {
-  const { subject, description, priority, tags, assigned_to, due_date, from_email, from_name } = body
+  const { subject, description, priority, tags, assigned_to, due_date, from_email, from_name, thread_id: clientThreadId, attachments } = body
   if (!subject) return errorResponse('Missing subject')
 
-  const threadId = `manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  const threadId = clientThreadId || `manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
   // Generate ticket reference number
   const { data: seqVal } = await supabase.rpc('nextval_ticket_ref')
   const ticketRef = seqVal ? `TKT-${String(seqVal).padStart(6, '0')}` : null
 
-  const { error } = await supabase.from('support_tickets').insert({
+  const insertData: Record<string, any> = {
     thread_id: threadId,
     ticket_ref: ticketRef,
     subject,
@@ -332,7 +354,12 @@ async function handleCreateTicket(supabase: any, body: any) {
     from_email: from_email || null,
     from_name: from_name || null,
     received_at: new Date().toISOString(),
-  })
+  }
+  if (attachments && Array.isArray(attachments) && attachments.length > 0) {
+    insertData.attachments = attachments
+  }
+
+  const { error } = await supabase.from('support_tickets').insert(insertData)
 
   if (error) return errorResponse('Failed to create ticket: ' + error.message)
 
@@ -610,19 +637,29 @@ async function handleDisconnectGmail(supabase: any) {
 
 
 async function handleGetConfig(supabase: any) {
-  const { data: config } = await supabase
-    .from('support_email_config')
-    .select('*')
-    .eq('id', CONFIG_ID)
-    .single()
+  // Run independent queries in parallel
+  const [configResult, providerResult, agentsResult] = await Promise.all([
+    supabase
+      .from('support_email_config')
+      .select('*')
+      .eq('id', CONFIG_ID)
+      .single(),
+    supabase
+      .from('integration_providers')
+      .select('id')
+      .eq('slug', 'google_email')
+      .single(),
+    supabase
+      .from('agent_configs')
+      .select('id, name, agent_name')
+      .order('name', { ascending: true }),
+  ])
 
-  // Check if Gmail is connected
-  const { data: provider } = await supabase
-    .from('integration_providers')
-    .select('id')
-    .eq('slug', 'google_email')
-    .single()
+  const config = configResult.data
+  const provider = providerResult.data
+  const agents = agentsResult.data
 
+  // Check Gmail connection (depends on provider ID)
   let gmailConnected = false
   if (provider) {
     const { data: integration } = await supabase
@@ -635,12 +672,6 @@ async function handleGetConfig(supabase: any) {
 
     gmailConnected = !!integration
   }
-
-  // Fetch available agents for the selector
-  const { data: agents } = await supabase
-    .from('agent_configs')
-    .select('id, name, agent_name')
-    .order('name', { ascending: true })
 
   return successResponse({
     config: config || {},
