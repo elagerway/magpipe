@@ -657,6 +657,12 @@ export const supportTabMethods = {
     const threadView = document.getElementById('support-thread-view');
     if (!threadView) return;
 
+    // Clean up previous real-time subscription
+    if (this._supportThreadSub) {
+      supabase.removeChannel(this._supportThreadSub);
+      this._supportThreadSub = null;
+    }
+
     // Update URL with thread ID
     this.updateUrl({ tab: 'support', thread: threadId });
 
@@ -874,6 +880,11 @@ export const supportTabMethods = {
 
       // Back button (preserves current page)
       threadView.querySelector('.thread-back-btn').addEventListener('click', () => {
+        // Unsubscribe from real-time updates
+        if (this._supportThreadSub) {
+          supabase.removeChannel(this._supportThreadSub);
+          this._supportThreadSub = null;
+        }
         threadView.style.display = 'none';
         document.querySelector('.support-subtabs').style.display = '';
         document.getElementById('support-subtab-tickets').style.display = 'block';
@@ -1112,6 +1123,27 @@ export const supportTabMethods = {
           showToast('Error: ' + e.message, 'error');
         }
       });
+
+      // Real-time subscription for new/updated messages in this thread
+      this._supportThreadSub = supabase
+        .channel(`support-thread-${threadId}`)
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'support_tickets',
+          filter: `thread_id=eq.${threadId}`,
+        }, () => {
+          this.openSupportThread(threadId, currentStatus);
+        })
+        .on('postgres_changes', {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'support_tickets',
+          filter: `thread_id=eq.${threadId}`,
+        }, () => {
+          this.openSupportThread(threadId, currentStatus);
+        })
+        .subscribe();
 
     } catch (error) {
       threadView.innerHTML = `<p style="color: var(--error-color); padding: 1rem;">Error: ${error.message}</p>`;
@@ -1370,13 +1402,9 @@ export const supportTabMethods = {
               continue;
             }
 
-            const { data: urlData } = supabase.storage
-              .from('support-attachments')
-              .getPublicUrl(storagePath);
-
             attachments.push({
               filename: file.name,
-              url: urlData.publicUrl,
+              url: `https://api.magpipe.ai/storage/v1/object/public/support-attachments/${storagePath}`,
               mime_type: file.type,
               size_bytes: file.size,
             });

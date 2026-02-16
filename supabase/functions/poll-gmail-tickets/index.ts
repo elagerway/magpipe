@@ -863,7 +863,7 @@ async function downloadAndUploadAttachments(
         continue
       }
 
-      const publicUrl = `${supabaseUrl}/storage/v1/object/public/support-attachments/${storagePath}`
+      const publicUrl = `https://api.magpipe.ai/storage/v1/object/public/support-attachments/${storagePath}`
 
       results.push({
         filename: meta.filename,

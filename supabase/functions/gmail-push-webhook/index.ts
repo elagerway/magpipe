@@ -205,6 +205,9 @@ Deno.serve(async (req) => {
           continue
         }
 
+        // Cross-write to support_tickets if this thread exists there
+        await mirrorToSupportTickets(supabase, supabaseUrl, accessToken, parsed, msg)
+
         if (parsed.direction === 'inbound') {
           newInboundMessages.push({ ...parsed, sentiment })
           autoEnrichEmailContact(config.user_id, parsed.from_email, parsed.from_name, supabase)
@@ -223,6 +226,16 @@ Deno.serve(async (req) => {
           updated_at: new Date().toISOString(),
         })
         .eq('id', config.id)
+
+      // Also keep support_email_config history_id in sync so the poller stays current
+      await supabase
+        .from('support_email_config')
+        .update({
+          last_history_id: latestHistoryId,
+          last_polled_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', '00000000-0000-0000-0000-000000000001')
 
       // Generate AI replies for new inbound messages
       let agent: any = null
@@ -302,6 +315,163 @@ async function deductEmailCredits(supabaseUrl: string, supabaseKey: string, user
     console.error('Error deducting email credits:', err)
   }
 }
+
+/**
+ * If this Gmail thread already exists in support_tickets, mirror the new message there too.
+ * This keeps support tickets in sync when the push webhook processes messages.
+ */
+async function mirrorToSupportTickets(supabase: any, supabaseUrl: string, accessToken: string, parsed: any, rawMsg: any) {
+  try {
+    // Check if this thread exists in support_tickets
+    const { data: existingTicket } = await supabase
+      .from('support_tickets')
+      .select('id, thread_id, status')
+      .eq('thread_id', parsed.thread_id)
+      .limit(1)
+      .single()
+
+    if (!existingTicket) return // Not a support ticket thread
+
+    // Check dedup — already in support_tickets?
+    const { data: existingMsg } = await supabase
+      .from('support_tickets')
+      .select('id')
+      .eq('gmail_message_id', parsed.gmail_message_id)
+      .single()
+
+    if (existingMsg) return // Already mirrored
+
+    // Extract and upload image attachments
+    let attachments: any[] = []
+    const attachmentMetas = extractImageAttachments(rawMsg?.payload)
+    console.log(`mirrorToSupportTickets: found ${attachmentMetas.length} image attachment(s) for msg ${parsed.gmail_message_id}, rawMsg has payload: ${!!rawMsg?.payload}`)
+    if (attachmentMetas.length > 0) {
+      attachments = await downloadAndUploadAttachments(
+        accessToken, parsed.gmail_message_id, parsed.thread_id, attachmentMetas, supabase, supabaseUrl
+      )
+      console.log(`mirrorToSupportTickets: uploaded ${attachments.length} of ${attachmentMetas.length} attachment(s)`)
+    }
+
+    // Insert into support_tickets
+    const insertData: Record<string, any> = {
+      gmail_message_id: parsed.gmail_message_id,
+      thread_id: parsed.thread_id,
+      from_email: parsed.from_email,
+      from_name: parsed.from_name,
+      to_email: parsed.to_email,
+      subject: parsed.subject,
+      body_text: parsed.body_text,
+      body_html: parsed.body_html,
+      direction: parsed.direction,
+      status: existingTicket.status || 'open',
+      received_at: parsed.received_at,
+    }
+    if (attachments.length > 0) {
+      insertData.attachments = attachments
+    }
+
+    const { error } = await supabase.from('support_tickets').insert(insertData)
+    if (error) {
+      console.error('Failed to mirror to support_tickets:', error.message)
+    } else {
+      console.log(`Mirrored ${parsed.direction} message to support ticket thread ${parsed.thread_id}`)
+    }
+  } catch (e) {
+    // Non-fatal — don't break email processing
+    console.error('mirrorToSupportTickets error:', e)
+  }
+}
+
+
+/**
+ * Walk the MIME tree and collect image attachment metadata (max 10, max 5MB each).
+ */
+function extractImageAttachments(payload: any): { attachmentId: string; filename: string; mimeType: string; size: number }[] {
+  const results: { attachmentId: string; filename: string; mimeType: string; size: number }[] = []
+  const MAX_ATTACHMENTS = 10
+  const MAX_SIZE = 5 * 1024 * 1024
+
+  function walk(part: any) {
+    if (results.length >= MAX_ATTACHMENTS) return
+    if (part.body?.attachmentId && part.mimeType?.startsWith('image/')) {
+      const size = part.body.size || 0
+      if (size <= MAX_SIZE) {
+        results.push({
+          attachmentId: part.body.attachmentId,
+          filename: part.filename || `image-${results.length + 1}.${part.mimeType.split('/')[1] || 'png'}`,
+          mimeType: part.mimeType,
+          size,
+        })
+      }
+    }
+    if (part.parts) {
+      for (const child of part.parts) walk(child)
+    }
+  }
+
+  if (payload) walk(payload)
+  return results
+}
+
+
+/**
+ * Download attachments from Gmail API, upload to Supabase Storage.
+ */
+async function downloadAndUploadAttachments(
+  accessToken: string,
+  messageId: string,
+  threadId: string,
+  metas: { attachmentId: string; filename: string; mimeType: string; size: number }[],
+  supabase: any,
+  supabaseUrl: string
+): Promise<{ filename: string; url: string; mime_type: string; size_bytes: number }[]> {
+  const results: { filename: string; url: string; mime_type: string; size_bytes: number }[] = []
+
+  for (const meta of metas) {
+    try {
+      const resp = await fetch(
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${meta.attachmentId}`,
+        { headers: { 'Authorization': `Bearer ${accessToken}` } }
+      )
+      if (!resp.ok) continue
+
+      const attachData = await resp.json()
+      if (!attachData.data) continue
+
+      const base64 = attachData.data.replace(/-/g, '+').replace(/_/g, '/')
+      const binaryString = atob(base64)
+      const bytes = new Uint8Array(binaryString.length)
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i)
+      }
+
+      const timestamp = Date.now()
+      const safeName = meta.filename.replace(/[^a-zA-Z0-9._-]/g, '_')
+      const storagePath = `${threadId}/${timestamp}-${safeName}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('support-attachments')
+        .upload(storagePath, bytes, { contentType: meta.mimeType, upsert: false })
+
+      if (uploadError) {
+        console.error(`Failed to upload ${meta.filename}:`, uploadError.message)
+        continue
+      }
+
+      results.push({
+        filename: meta.filename,
+        url: `https://api.magpipe.ai/storage/v1/object/public/support-attachments/${storagePath}`,
+        mime_type: meta.mimeType,
+        size_bytes: meta.size,
+      })
+    } catch (e) {
+      console.error(`Error processing attachment ${meta.filename}:`, e)
+    }
+  }
+
+  return results
+}
+
 
 function jsonResponse(data: any, status = 200) {
   return new Response(JSON.stringify(data), {
