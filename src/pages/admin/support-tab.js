@@ -1,46 +1,103 @@
 import { showToast } from '../../lib/toast.js';
 import { showConfirmModal } from '../../components/ConfirmModal.js';
+import { supabase } from '../../lib/supabase.js';
 
 export const supportTabMethods = {
+  // Config cache (60s TTL)
+  _supportConfigCache: null,
+  _supportConfigCacheTime: 0,
+
+  async _fetchSupportConfig() {
+    const now = Date.now();
+    if (this._supportConfigCache && (now - this._supportConfigCacheTime) < 60000) {
+      return this._supportConfigCache;
+    }
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/support-tickets-api`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ action: 'get_config' }),
+      }
+    );
+    if (!response.ok) throw new Error('Failed to load support config');
+    const data = await response.json();
+    this._supportConfigCache = data;
+    this._supportConfigCacheTime = now;
+    return data;
+  },
+
   async renderSupportTab() {
     const content = document.getElementById('admin-tab-content');
     content.innerHTML = `
       <div class="support-tab">
         <div class="support-loading">
-          <div class="loading-spinner">Loading support config...</div>
+          <div class="loading-spinner">Loading support...</div>
         </div>
       </div>
     `;
 
+    this.supportFilter = this.supportFilter || 'open';
+    if (!this.supportPage) this.supportPage = 1;
+    if (!this.supportPerPage) this.supportPerPage = parseInt(localStorage.getItem('support-per-page') || '25');
+    this.supportThreadView = null;
+
     try {
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/support-tickets-api`,
-        {
+      // Fire config, tickets, and assignees in parallel
+      const isGithubFilter = this.supportFilter === 'github';
+      const ticketPayload = { action: 'list', status: isGithubFilter ? 'all' : this.supportFilter, page: this.supportPage, limit: this.supportPerPage };
+      if (isGithubFilter) ticketPayload.has_github_issue = true;
+      if (this.supportPriorityFilter) ticketPayload.priority = this.supportPriorityFilter;
+      if (this.supportAssigneeFilter) ticketPayload.assigned_to = this.supportAssigneeFilter;
+
+      const [configData, ticketsResponse, assigneesResponse] = await Promise.all([
+        this._fetchSupportConfig(),
+        fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/support-tickets-api`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${this.session.access_token}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ action: 'get_config' }),
-        }
-      );
+          body: JSON.stringify(ticketPayload),
+        }),
+        fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/support-tickets-api`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ action: 'list_assignees' }),
+        }),
+      ]);
 
-      if (!response.ok) throw new Error('Failed to load support config');
-      const data = await response.json();
-      this.supportConfig = data.config || {};
-      this.supportGmailConnected = data.gmailConnected;
-      this.supportAgents = data.agents || [];
-      this.supportFilter = this.supportFilter || 'open';
-      this.supportThreadView = null;
+      // Process config
+      this.supportConfig = configData.config || {};
+      this.supportGmailConnected = configData.gmailConnected;
+      this.supportAgents = configData.agents || [];
+
+      // Process tickets
+      if (ticketsResponse.ok) {
+        const ticketsData = await ticketsResponse.json();
+        this._supportTicketsData = ticketsData;
+      }
+
+      // Process assignees
+      if (assigneesResponse.ok) {
+        const assigneesData = await assigneesResponse.json();
+        this.supportAssignees = assigneesData.assignees || [];
+      }
 
       await this.renderSupportContent();
     } catch (error) {
-      console.error('Error loading support config:', error);
+      console.error('Error loading support tab:', error);
       const container = document.querySelector('.support-tab');
       if (container) {
         container.innerHTML = `
           <div class="detail-placeholder">
-            <p style="color: var(--error-color);">Failed to load support config: ${error.message}</p>
+            <p style="color: var(--error-color);">Failed to load support: ${error.message}</p>
             <button class="btn btn-primary" onclick="window.adminPage.renderSupportTab()">Retry</button>
           </div>
         `;
@@ -214,7 +271,26 @@ export const supportTabMethods = {
     });
 
     this.attachSupportListeners();
-    this.loadSupportTickets();
+
+    // Render pre-fetched tickets if available, otherwise load fresh
+    if (this._supportTicketsData) {
+      this.renderSupportTicketsList(this._supportTicketsData);
+      this._supportTicketsData = null;
+    } else {
+      this.loadSupportTickets();
+    }
+
+    // Populate assignee filter dropdown with pre-fetched data
+    if (this.supportAssignees) {
+      const filterSelect = document.getElementById('support-assignee-filter');
+      if (filterSelect) {
+        const currentVal = this.supportAssigneeFilter || '';
+        filterSelect.innerHTML = '<option value="">All Assignees</option>' +
+          this.supportAssignees.map(a =>
+            `<option value="${a.id}" ${currentVal === a.id ? 'selected' : ''}>${this.escapeHtml(a.name)}</option>`
+          ).join('');
+      }
+    }
 
     // Lazy-load initial sub-tab if not tickets/settings
     if (this.supportSubTab && this.supportSubTab !== 'tickets' && this.supportSubTab !== 'settings') {
@@ -329,10 +405,11 @@ export const supportTabMethods = {
       this._supportSaveTicketCreation(enabled);
     });
 
-    // Ticket filters
+    // Ticket filters (reset page to 1 on filter change)
     document.querySelectorAll('[data-support-filter]').forEach(btn => {
       btn.addEventListener('click', () => {
         this.supportFilter = btn.dataset.supportFilter;
+        this.supportPage = 1;
         document.querySelectorAll('[data-support-filter]').forEach(b =>
           b.classList.toggle('active', b.dataset.supportFilter === this.supportFilter)
         );
@@ -343,17 +420,16 @@ export const supportTabMethods = {
     // Priority filter
     document.getElementById('support-priority-filter')?.addEventListener('change', (e) => {
       this.supportPriorityFilter = e.target.value;
+      this.supportPage = 1;
       this.loadSupportTickets();
     });
 
     // Assignee filter
     document.getElementById('support-assignee-filter')?.addEventListener('change', (e) => {
       this.supportAssigneeFilter = e.target.value;
+      this.supportPage = 1;
       this.loadSupportTickets();
     });
-
-    // Load assignees for the filter dropdown
-    this.loadAssignees();
 
     // New Ticket button
     document.getElementById('new-ticket-btn')?.addEventListener('click', () => {
@@ -368,7 +444,7 @@ export const supportTabMethods = {
 
     try {
       const isGithubFilter = this.supportFilter === 'github';
-      const payload = { action: 'list', status: isGithubFilter ? 'all' : this.supportFilter };
+      const payload = { action: 'list', status: isGithubFilter ? 'all' : this.supportFilter, page: this.supportPage || 1, limit: this.supportPerPage || 25 };
       if (isGithubFilter) payload.has_github_issue = true;
       if (this.supportPriorityFilter) payload.priority = this.supportPriorityFilter;
       if (this.supportAssigneeFilter) payload.assigned_to = this.supportAssigneeFilter;
@@ -387,121 +463,194 @@ export const supportTabMethods = {
 
       if (!response.ok) throw new Error('Failed to load tickets');
       const data = await response.json();
-      const tickets = data.tickets || [];
-
-      if (tickets.length === 0) {
-        listContainer.innerHTML = `
-          <div class="tl-empty">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
-            <p>No tickets found.</p>
-          </div>`;
-        return;
-      }
-
-      const priorityColors = { low: 'priority-low', medium: 'priority-medium', high: 'priority-high', urgent: 'priority-urgent' };
-      const timeAgo = (d) => {
-        const diff = Date.now() - new Date(d).getTime();
-        const mins = Math.floor(diff / 60000);
-        if (mins < 60) return `${mins}m ago`;
-        const hrs = Math.floor(mins / 60);
-        if (hrs < 24) return `${hrs}h ago`;
-        const days = Math.floor(hrs / 24);
-        if (days < 30) return `${days}d ago`;
-        return new Date(d).toLocaleDateString();
-      };
-
-      const viewedTickets = JSON.parse(localStorage.getItem('viewed-tickets') || '[]');
-
-      listContainer.innerHTML = `
-        <div class="tl-list">
-          ${tickets.map(t => {
-            const ticketId = t.ticket_ref || (t.thread_id || t.id || '').substring(0, 8).toUpperCase();
-            const priority = t.priority || 'medium';
-            const threadKey = t.thread_id || t.id;
-            const isNew = !viewedTickets.includes(threadKey);
-            return `
-              <div class="tl-item ${isNew ? 'tl-item-new' : ''}" data-thread-id="${threadKey}" data-ticket-status="${t.status}">
-                <div class="tl-item-left">
-                  <span class="priority-badge ${priorityColors[priority] || 'priority-medium'}">${priority}</span>
-                  <span class="tl-item-ref">#${this.escapeHtml(ticketId)}</span>
-                </div>
-                <div class="tl-item-main">
-                  <div class="tl-item-top">
-                    ${isNew ? '<span class="tl-new-badge">NEW</span>' : ''}
-                    <span class="tl-item-subject">${this.escapeHtml(t.subject || '(no subject)')}</span>
-                  </div>
-                  <div class="tl-item-bottom">
-                    <span class="tl-item-from">${this.escapeHtml(t.from_name || t.from_email || 'Unknown')}</span>
-                    ${t.assigned_name ? `<span class="tl-item-detail">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                      ${this.escapeHtml(t.assigned_name)}
-                    </span>` : ''}
-                    ${t.due_date ? `<span class="tl-item-detail">Due ${new Date(t.due_date).toLocaleDateString()}</span>` : ''}
-                  </div>
-                </div>
-                <div class="tl-item-right">
-                  <span class="tl-item-time">${timeAgo(t.received_at)}</span>
-                  <div class="tl-item-badges">
-                    ${t.github_issue_url
-                      ? `<a href="${this.escapeHtml(t.github_issue_url)}" target="_blank" rel="noopener" class="gh-pill gh-pill-linked" data-gh-link>
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
-                          Issue
-                        </a>`
-                      : `<button class="gh-pill gh-pill-create" data-gh-create data-ticket-ref="${this.escapeHtml(ticketId)}" data-ticket-subject="${this.escapeHtml(t.subject || '(no subject)')}">
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
-                          + Issue
-                        </button>`
-                    }
-                    ${t.has_pending_draft ? '<span class="ai-draft-indicator ai-draft-pending" title="Pending AI draft">AI</span>' : t.ai_responded ? '<span class="ai-draft-indicator ai-draft-sent" title="AI responded">AI</span>' : ''}
-                    <span class="ticket-status-badge ticket-status-${t.status}">${t.status}</span>
-                  </div>
-                </div>
-              </div>`;
-          }).join('')}
-        </div>
-      `;
-
-      // Attach row click handlers
-      listContainer.querySelectorAll('.tl-item').forEach(row => {
-        row.addEventListener('click', (e) => {
-          // Don't open thread if clicking a GitHub badge
-          if (e.target.closest('[data-gh-link]') || e.target.closest('[data-gh-create]')) return;
-          this.openSupportThread(row.dataset.threadId, row.dataset.ticketStatus);
-        });
-      });
-
-      // GitHub issue links — stop propagation so they open in new tab
-      listContainer.querySelectorAll('[data-gh-link]').forEach(link => {
-        link.addEventListener('click', (e) => e.stopPropagation());
-      });
-
-      // GitHub issue create buttons
-      listContainer.querySelectorAll('[data-gh-create]').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const row = btn.closest('.tl-item');
-          const tId = row.dataset.threadId;
-          const tRef = btn.dataset.ticketRef;
-          const tSubject = btn.dataset.ticketSubject;
-          this._createGithubIssueFromList(tId, tRef, tSubject, (data) => {
-            // Replace create pill with linked pill
-            const link = document.createElement('a');
-            link.href = data.issue_url;
-            link.target = '_blank';
-            link.rel = 'noopener';
-            link.className = 'gh-pill gh-pill-linked';
-            link.dataset.ghLink = '';
-            link.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg> Issue`;
-            link.addEventListener('click', (ev) => ev.stopPropagation());
-            btn.replaceWith(link);
-          });
-        });
-      });
-
+      this.renderSupportTicketsList(data);
     } catch (error) {
       console.error('Error loading tickets:', error);
-      listContainer.innerHTML = `<p style="color: var(--error-color); padding: 1rem;">Error: ${error.message}</p>`;
+      if (listContainer) {
+        listContainer.innerHTML = `<p style="color: var(--error-color); padding: 1rem;">Error: ${error.message}</p>`;
+      }
     }
+  },
+
+  renderSupportTicketsList(data) {
+    const listContainer = document.getElementById('support-tickets-list');
+    if (!listContainer) return;
+
+    const tickets = data.tickets || [];
+    const total = data.total || 0;
+    const page = data.page || 1;
+    const limit = data.limit || 25;
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+
+    // Sync current page state
+    this.supportPage = page;
+
+    if (tickets.length === 0) {
+      listContainer.innerHTML = `
+        <div class="tl-empty">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+          <p>No tickets found.</p>
+        </div>`;
+      return;
+    }
+
+    const priorityColors = { low: 'priority-low', medium: 'priority-medium', high: 'priority-high', urgent: 'priority-urgent' };
+    const timeAgo = (d) => {
+      const diff = Date.now() - new Date(d).getTime();
+      const mins = Math.floor(diff / 60000);
+      if (mins < 60) return `${mins}m ago`;
+      const hrs = Math.floor(mins / 60);
+      if (hrs < 24) return `${hrs}h ago`;
+      const days = Math.floor(hrs / 24);
+      if (days < 30) return `${days}d ago`;
+      return new Date(d).toLocaleDateString();
+    };
+
+    const viewedTickets = JSON.parse(localStorage.getItem('viewed-tickets') || '[]');
+
+    // Build pagination bar
+    let pageNums = '';
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) {
+        pageNums += `<button class="btn btn-sm support-page-btn" data-page="${i}" style="padding:0.2rem 0.5rem;min-width:30px;${i === page ? 'background:var(--primary-color);color:#fff;border-color:var(--primary-color);' : ''}">${i}</button>`;
+      }
+    } else {
+      const pages = [1];
+      if (page > 3) pages.push(-1);
+      for (let i = Math.max(2, page - 1); i <= Math.min(totalPages - 1, page + 1); i++) pages.push(i);
+      if (page < totalPages - 2) pages.push(-1);
+      pages.push(totalPages);
+      for (const p of pages) {
+        if (p === -1) {
+          pageNums += `<span style="color:var(--text-muted);padding:0 2px;">&hellip;</span>`;
+        } else {
+          pageNums += `<button class="btn btn-sm support-page-btn" data-page="${p}" style="padding:0.2rem 0.5rem;min-width:30px;${p === page ? 'background:var(--primary-color);color:#fff;border-color:var(--primary-color);' : ''}">${p}</button>`;
+        }
+      }
+    }
+
+    const perPageOptions = [10, 25, 50, 100];
+    const perPageSelect = `<select class="support-per-page-select" style="font-size:0.8rem;padding:0.15rem 0.3rem;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);cursor:pointer;">
+      ${perPageOptions.map(n => `<option value="${n}" ${n === limit ? 'selected' : ''}>${n}</option>`).join('')}
+    </select>`;
+
+    const paginationHtml = `
+      <div class="support-pagination" style="display:flex;align-items:center;justify-content:space-between;margin-top:0.75rem;font-size:0.85rem;">
+        <span style="color:var(--text-muted);">${total} ticket${total !== 1 ? 's' : ''} &middot; ${perPageSelect} per page</span>
+        ${totalPages > 1 ? `<div style="display:flex;align-items:center;gap:0.25rem;">
+          <button class="btn btn-secondary btn-sm support-page-btn" data-page="${page - 1}" ${page <= 1 ? 'disabled' : ''} style="padding:0.25rem 0.5rem;">&laquo;</button>
+          ${pageNums}
+          <button class="btn btn-secondary btn-sm support-page-btn" data-page="${page + 1}" ${page >= totalPages ? 'disabled' : ''} style="padding:0.25rem 0.5rem;">&raquo;</button>
+        </div>` : ''}
+      </div>
+    `;
+
+    listContainer.innerHTML = `
+      ${paginationHtml}
+      <div class="tl-list">
+        ${tickets.map(t => {
+          const ticketId = t.ticket_ref || (t.thread_id || t.id || '').substring(0, 8).toUpperCase();
+          const priority = t.priority || 'medium';
+          const threadKey = t.thread_id || t.id;
+          const isNew = !viewedTickets.includes(threadKey);
+          return `
+            <div class="tl-item ${isNew ? 'tl-item-new' : ''}" data-thread-id="${threadKey}" data-ticket-status="${t.status}">
+              <div class="tl-item-left">
+                <span class="priority-badge ${priorityColors[priority] || 'priority-medium'}">${priority}</span>
+                <span class="tl-item-ref">#${this.escapeHtml(ticketId)}</span>
+              </div>
+              <div class="tl-item-main">
+                <div class="tl-item-top">
+                  ${isNew ? '<span class="tl-new-badge">NEW</span>' : ''}
+                  <span class="tl-item-subject">${this.escapeHtml(t.subject || '(no subject)')}</span>
+                </div>
+                <div class="tl-item-bottom">
+                  <span class="tl-item-from">${this.escapeHtml(t.from_name || t.from_email || 'Unknown')}</span>
+                  ${t.assigned_name ? `<span class="tl-item-detail">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    ${this.escapeHtml(t.assigned_name)}
+                  </span>` : ''}
+                  ${t.due_date ? `<span class="tl-item-detail">Due ${new Date(t.due_date).toLocaleDateString()}</span>` : ''}
+                </div>
+              </div>
+              <div class="tl-item-right">
+                <span class="tl-item-time">${timeAgo(t.received_at)}</span>
+                <div class="tl-item-badges">
+                  ${t.github_issue_url
+                    ? `<a href="${this.escapeHtml(t.github_issue_url)}" target="_blank" rel="noopener" class="gh-pill gh-pill-linked" data-gh-link>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+                        Issue
+                      </a>`
+                    : `<button class="gh-pill gh-pill-create" data-gh-create data-ticket-ref="${this.escapeHtml(ticketId)}" data-ticket-subject="${this.escapeHtml(t.subject || '(no subject)')}">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+                        + Issue
+                      </button>`
+                  }
+                  ${t.has_pending_draft ? '<span class="ai-draft-indicator ai-draft-pending" title="Pending AI draft">AI</span>' : t.ai_responded ? '<span class="ai-draft-indicator ai-draft-sent" title="AI responded">AI</span>' : ''}
+                  <span class="ticket-status-badge ticket-status-${t.status}">${t.status}</span>
+                </div>
+              </div>
+            </div>`;
+        }).join('')}
+      </div>
+      ${paginationHtml}
+    `;
+
+    // Attach pagination listeners
+    listContainer.querySelectorAll('.support-page-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this.supportPage = parseInt(btn.dataset.page);
+        this.loadSupportTickets();
+        document.getElementById('support-tickets-list')?.scrollIntoView({ behavior: 'smooth' });
+      });
+    });
+
+    // Per-page selector
+    listContainer.querySelectorAll('.support-per-page-select').forEach(sel => {
+      sel.addEventListener('change', (e) => {
+        this.supportPerPage = parseInt(e.target.value);
+        this.supportPage = 1;
+        localStorage.setItem('support-per-page', String(this.supportPerPage));
+        this.loadSupportTickets();
+      });
+    });
+
+    // Attach row click handlers
+    listContainer.querySelectorAll('.tl-item').forEach(row => {
+      row.addEventListener('click', (e) => {
+        // Don't open thread if clicking a GitHub badge
+        if (e.target.closest('[data-gh-link]') || e.target.closest('[data-gh-create]')) return;
+        this.openSupportThread(row.dataset.threadId, row.dataset.ticketStatus);
+      });
+    });
+
+    // GitHub issue links — stop propagation so they open in new tab
+    listContainer.querySelectorAll('[data-gh-link]').forEach(link => {
+      link.addEventListener('click', (e) => e.stopPropagation());
+    });
+
+    // GitHub issue create buttons
+    listContainer.querySelectorAll('[data-gh-create]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const row = btn.closest('.tl-item');
+        const tId = row.dataset.threadId;
+        const tRef = btn.dataset.ticketRef;
+        const tSubject = btn.dataset.ticketSubject;
+        this._createGithubIssueFromList(tId, tRef, tSubject, (data) => {
+          // Replace create pill with linked pill
+          const link = document.createElement('a');
+          link.href = data.issue_url;
+          link.target = '_blank';
+          link.rel = 'noopener';
+          link.className = 'gh-pill gh-pill-linked';
+          link.dataset.ghLink = '';
+          link.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg> Issue`;
+          link.addEventListener('click', (ev) => ev.stopPropagation());
+          btn.replaceWith(link);
+        });
+      });
+    });
   },
 
   async openSupportThread(threadId, currentStatus) {
@@ -662,6 +811,16 @@ export const supportTabMethods = {
                   <span>${new Date(m.received_at).toLocaleString()}</span>
                 </div>
                 <div class="tv-msg-body">${this.escapeHtml(m.body_text || '').replace(/\n/g, '<br>')}</div>
+                ${m.attachments && m.attachments.length > 0 ? `
+                  <div class="tv-msg-attachments">
+                    ${m.attachments.map(a => `
+                      <a href="${this.escapeHtml(a.url)}" target="_blank" rel="noopener" class="tv-attachment-thumb">
+                        <img src="${this.escapeHtml(a.url)}" loading="lazy" alt="${this.escapeHtml(a.filename)}">
+                        <span>${this.escapeHtml(a.filename)}</span>
+                      </a>
+                    `).join('')}
+                  </div>
+                ` : ''}
               </div>
             </div>`;
           }).join('')}
@@ -713,14 +872,14 @@ export const supportTabMethods = {
         </div>
       `;
 
-      // Back button
+      // Back button (preserves current page)
       threadView.querySelector('.thread-back-btn').addEventListener('click', () => {
         threadView.style.display = 'none';
         document.querySelector('.support-subtabs').style.display = '';
         document.getElementById('support-subtab-tickets').style.display = 'block';
         this.supportSubTab = 'tickets';
         this.updateUrl({ tab: 'support' });
-        this.loadSupportTickets();
+        this.loadSupportTickets(); // supportPage is preserved
       });
 
       // Auto-save ticket detail fields
@@ -916,6 +1075,7 @@ export const supportTabMethods = {
       });
 
       // Create GitHub issue — show preview modal (uses shared method)
+      const threadAttachments = messages.flatMap(m => m.attachments || []);
       document.getElementById('create-github-issue-btn')?.addEventListener('click', () => {
         this._showGithubIssueModal(threadId, ticketRef, subject, notes, (data) => {
           // Replace pill with linked version
@@ -929,7 +1089,7 @@ export const supportTabMethods = {
             link.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg> View Issue`;
             createBtn.replaceWith(link);
           }
-        });
+        }, threadAttachments);
       });
 
       // Reject draft
@@ -1047,6 +1207,14 @@ export const supportTabMethods = {
         <div class="form-group" style="margin-bottom: 0.75rem;">
           <input type="text" id="new-ticket-tags" class="form-input" placeholder="Tags (comma separated)">
         </div>
+        <div class="new-ticket-images-area">
+          <input type="file" id="new-ticket-file-input" accept="image/*" multiple style="display: none;">
+          <button type="button" class="new-ticket-images-btn" id="new-ticket-add-images-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+            Add Images
+          </button>
+          <div class="new-ticket-image-previews" id="new-ticket-image-previews"></div>
+        </div>
         <div style="display: flex; gap: 0.5rem;">
           <button class="btn btn-primary" id="submit-new-ticket-btn">Create Ticket</button>
           <button class="btn btn-secondary" id="cancel-new-ticket-btn">Cancel</button>
@@ -1056,6 +1224,31 @@ export const supportTabMethods = {
 
     document.getElementById('cancel-new-ticket-btn')?.addEventListener('click', () => {
       container.style.display = 'none';
+    });
+
+    // Image upload handling
+    this._newTicketImages = [];
+    const fileInput = document.getElementById('new-ticket-file-input');
+    const addImagesBtn = document.getElementById('new-ticket-add-images-btn');
+    const previewsContainer = document.getElementById('new-ticket-image-previews');
+
+    addImagesBtn?.addEventListener('click', () => fileInput?.click());
+
+    fileInput?.addEventListener('change', () => {
+      for (const file of fileInput.files) {
+        if (!file.type.startsWith('image/')) continue;
+        if (file.size > 5 * 1024 * 1024) {
+          showToast(`${file.name} exceeds 5MB limit`, 'error');
+          continue;
+        }
+        if (this._newTicketImages.length >= 10) {
+          showToast('Maximum 10 images', 'error');
+          break;
+        }
+        this._newTicketImages.push(file);
+      }
+      fileInput.value = '';
+      this._renderNewTicketImagePreviews();
     });
 
     // On Behalf Of - smart user search
@@ -1156,6 +1349,47 @@ export const supportTabMethods = {
       btn.textContent = 'Creating...';
 
       try {
+        // Generate thread_id client-side so we can upload images to the right path
+        const threadId = `manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+        // Upload images if any
+        let attachments = [];
+        if (this._newTicketImages && this._newTicketImages.length > 0) {
+          btn.textContent = 'Uploading images...';
+          for (const file of this._newTicketImages) {
+            const timestamp = Date.now();
+            const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const storagePath = `${threadId}/${timestamp}-${safeName}`;
+
+            const { error: uploadErr } = await supabase.storage
+              .from('support-attachments')
+              .upload(storagePath, file, { contentType: file.type, upsert: false });
+
+            if (uploadErr) {
+              console.error('Image upload failed:', uploadErr);
+              continue;
+            }
+
+            const { data: urlData } = supabase.storage
+              .from('support-attachments')
+              .getPublicUrl(storagePath);
+
+            attachments.push({
+              filename: file.name,
+              url: urlData.publicUrl,
+              mime_type: file.type,
+              size_bytes: file.size,
+            });
+          }
+          btn.textContent = 'Creating...';
+        }
+
+        const payload = {
+          action: 'create_ticket', subject, description, priority, tags,
+          assigned_to, due_date, from_email, from_name, thread_id: threadId,
+        };
+        if (attachments.length > 0) payload.attachments = attachments;
+
         const res = await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/support-tickets-api`,
           {
@@ -1164,7 +1398,7 @@ export const supportTabMethods = {
               'Authorization': `Bearer ${this.session.access_token}`,
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ action: 'create_ticket', subject, description, priority, tags, assigned_to, due_date, from_email, from_name }),
+            body: JSON.stringify(payload),
           }
         );
 
@@ -1173,6 +1407,7 @@ export const supportTabMethods = {
           throw new Error(err.error || 'Failed to create ticket');
         }
 
+        this._newTicketImages = [];
         showToast('Ticket created', 'success');
         container.style.display = 'none';
         this.loadSupportTickets();
@@ -1191,8 +1426,9 @@ export const supportTabMethods = {
    * @param {string} subject
    * @param {Array} notes - enriched notes with author_name, content, created_at
    * @param {Function} [onCreated] - callback({ issue_url, issue_number })
+   * @param {Array} [attachments] - image attachments from thread messages
    */
-  _showGithubIssueModal(threadId, ticketRef, subject, notes, onCreated) {
+  _showGithubIssueModal(threadId, ticketRef, subject, notes, onCreated, attachments) {
     const previewTitle = `[${ticketRef}] ${subject}`;
     const ticketLink = `https://magpipe.ai/admin?tab=support&thread=${threadId}`;
     let previewBody = `**Support Ticket**: [#${ticketRef}](${ticketLink})\n\n---\n`;
@@ -1226,6 +1462,21 @@ export const supportTabMethods = {
                 <label class="form-label" style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em;">Body (Markdown)</label>
                 <textarea id="gh-issue-body" class="form-input" rows="14" style="font-family: monospace; font-size: 0.85rem;">${this.escapeHtml(previewBody)}</textarea>
               </div>
+              ${attachments && attachments.length > 0 ? `
+                <div class="form-group" style="margin-top: 0.75rem;">
+                  <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.85rem;">
+                    <input type="checkbox" id="gh-issue-include-images" checked>
+                    Include ${attachments.length} image${attachments.length > 1 ? 's' : ''}
+                  </label>
+                  <div style="display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.4rem;">
+                    ${attachments.map(a => `
+                      <a href="${this.escapeHtml(a.url)}" target="_blank" style="display:block; border:1px solid var(--border-color); border-radius:4px; overflow:hidden;">
+                        <img src="${this.escapeHtml(a.url)}" style="width:60px; height:45px; object-fit:cover; display:block;" alt="${this.escapeHtml(a.filename)}">
+                      </a>
+                    `).join('')}
+                  </div>
+                </div>
+              ` : ''}
             </div>
             <div class="contact-modal-footer">
               <button type="button" class="btn btn-secondary" onclick="document.getElementById('github-issue-modal-overlay').style.display='none'">Cancel</button>
@@ -1244,7 +1495,17 @@ export const supportTabMethods = {
       submitBtn.disabled = true;
       submitBtn.textContent = 'Creating...';
       const editedTitle = document.getElementById('gh-issue-title').value.trim();
-      const editedBody = document.getElementById('gh-issue-body').value.trim();
+      let editedBody = document.getElementById('gh-issue-body').value.trim();
+
+      // Append image attachments if checkbox is checked
+      const includeImages = document.getElementById('gh-issue-include-images')?.checked;
+      if (includeImages && attachments && attachments.length > 0) {
+        editedBody += '\n\n## Attachments\n\n';
+        for (const a of attachments) {
+          editedBody += `![${a.filename}](${a.url})\n\n`;
+        }
+      }
+
       try {
         const res = await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/support-tickets-api`,
@@ -1279,23 +1540,61 @@ export const supportTabMethods = {
    */
   async _createGithubIssueFromList(threadId, ticketRef, subject, onCreated) {
     try {
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/support-tickets-api`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${this.session.access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ action: 'get_notes', threadId }),
-        }
-      );
-      if (!res.ok) throw new Error('Failed to load notes');
-      const data = await res.json();
-      this._showGithubIssueModal(threadId, ticketRef, subject, data.notes || [], onCreated);
+      // Fetch notes and thread messages in parallel
+      const [notesRes, threadRes] = await Promise.all([
+        fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/support-tickets-api`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${this.session.access_token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ action: 'get_notes', threadId }),
+          }
+        ),
+        fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/support-tickets-api`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${this.session.access_token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ action: 'thread', threadId }),
+          }
+        ),
+      ]);
+      if (!notesRes.ok) throw new Error('Failed to load notes');
+      const notesData = await notesRes.json();
+      const threadData = threadRes.ok ? await threadRes.json() : {};
+      const allAttachments = (threadData.messages || []).flatMap(m => m.attachments || []);
+      this._showGithubIssueModal(threadId, ticketRef, subject, notesData.notes || [], onCreated, allAttachments);
     } catch (err) {
       showToast('Error: ' + err.message, 'error');
     }
+  },
+
+  _renderNewTicketImagePreviews() {
+    const container = document.getElementById('new-ticket-image-previews');
+    if (!container) return;
+    container.innerHTML = this._newTicketImages.map((file, i) => {
+      const url = URL.createObjectURL(file);
+      return `
+        <div class="new-ticket-image-preview" data-idx="${i}">
+          <img src="${url}" alt="${this.escapeHtml(file.name)}">
+          <button type="button" class="new-ticket-image-remove" data-remove-idx="${i}">&times;</button>
+        </div>
+      `;
+    }).join('');
+
+    container.querySelectorAll('.new-ticket-image-remove').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const idx = parseInt(e.target.dataset.removeIdx);
+        this._newTicketImages.splice(idx, 1);
+        this._renderNewTicketImagePreviews();
+      });
+    });
   },
 
   escapeHtml(text) {

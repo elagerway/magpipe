@@ -111,6 +111,17 @@ Deno.serve(async (req) => {
 
       if (existing) continue // Already have this message
 
+      // Extract and upload image attachments
+      const attachmentMetas = extractImageAttachments(msg.payload)
+      if (attachmentMetas.length > 0) {
+        const uploaded = await downloadAndUploadAttachments(
+          accessToken, parsed.gmail_message_id, parsed.thread_id || msg.threadId, attachmentMetas, supabase
+        )
+        if (uploaded.length > 0) {
+          parsed.attachments = uploaded
+        }
+      }
+
       // Check subject for ticket ref tag to match existing threads (e.g. Postmark replies)
       const refMatch = parsed.subject?.match(/\[TKT-(\d+)\]/)
       if (refMatch) {
@@ -760,6 +771,116 @@ async function sendGmailReply(accessToken: string, fromAddress: string, original
 
   return await response.json()
 }
+
+/**
+ * Walk the MIME tree and collect image attachment metadata.
+ * Returns up to 10 image parts that are <= 5MB.
+ */
+function extractImageAttachments(payload: any): { attachmentId: string; filename: string; mimeType: string; size: number }[] {
+  const results: { attachmentId: string; filename: string; mimeType: string; size: number }[] = []
+  const MAX_ATTACHMENTS = 10
+  const MAX_SIZE = 5 * 1024 * 1024 // 5MB
+
+  function walk(part: any) {
+    if (results.length >= MAX_ATTACHMENTS) return
+
+    if (part.body?.attachmentId && part.mimeType?.startsWith('image/')) {
+      const size = part.body.size || 0
+      if (size <= MAX_SIZE) {
+        results.push({
+          attachmentId: part.body.attachmentId,
+          filename: part.filename || `image-${results.length + 1}.${part.mimeType.split('/')[1] || 'png'}`,
+          mimeType: part.mimeType,
+          size,
+        })
+      }
+    }
+
+    if (part.parts) {
+      for (const child of part.parts) {
+        walk(child)
+      }
+    }
+  }
+
+  if (payload) walk(payload)
+  return results
+}
+
+
+/**
+ * Download attachments from Gmail API, upload to Supabase Storage,
+ * return array of {filename, url, mime_type, size_bytes}.
+ */
+async function downloadAndUploadAttachments(
+  accessToken: string,
+  messageId: string,
+  threadId: string,
+  metas: { attachmentId: string; filename: string; mimeType: string; size: number }[],
+  supabase: any
+): Promise<{ filename: string; url: string; mime_type: string; size_bytes: number }[]> {
+  const results: { filename: string; url: string; mime_type: string; size_bytes: number }[] = []
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+
+  for (const meta of metas) {
+    try {
+      // Fetch attachment data from Gmail
+      const resp = await fetch(
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${meta.attachmentId}`,
+        { headers: { 'Authorization': `Bearer ${accessToken}` } }
+      )
+
+      if (!resp.ok) {
+        console.error(`Failed to download attachment ${meta.filename}:`, resp.status)
+        continue
+      }
+
+      const attachData = await resp.json()
+      if (!attachData.data) continue
+
+      // Decode base64url to binary
+      const base64 = attachData.data.replace(/-/g, '+').replace(/_/g, '/')
+      const binaryString = atob(base64)
+      const bytes = new Uint8Array(binaryString.length)
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i)
+      }
+
+      // Upload to storage
+      const timestamp = Date.now()
+      const safeName = meta.filename.replace(/[^a-zA-Z0-9._-]/g, '_')
+      const storagePath = `${threadId}/${timestamp}-${safeName}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('support-attachments')
+        .upload(storagePath, bytes, {
+          contentType: meta.mimeType,
+          upsert: false,
+        })
+
+      if (uploadError) {
+        console.error(`Failed to upload ${meta.filename}:`, uploadError.message)
+        continue
+      }
+
+      const publicUrl = `${supabaseUrl}/storage/v1/object/public/support-attachments/${storagePath}`
+
+      results.push({
+        filename: meta.filename,
+        url: publicUrl,
+        mime_type: meta.mimeType,
+        size_bytes: meta.size,
+      })
+
+      console.log(`Uploaded attachment: ${meta.filename} (${meta.size} bytes)`)
+    } catch (e) {
+      console.error(`Error processing attachment ${meta.filename}:`, e)
+    }
+  }
+
+  return results
+}
+
 
 async function autoEnrichEmailContact(
   userId: string,
