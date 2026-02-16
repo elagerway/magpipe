@@ -71,6 +71,10 @@ export const supportTabMethods = {
               <button class="kpi-filter-btn ${this.supportFilter === 'open' ? 'active' : ''}" data-support-filter="open">Open</button>
               <button class="kpi-filter-btn ${this.supportFilter === 'closed' ? 'active' : ''}" data-support-filter="closed">Closed</button>
               <button class="kpi-filter-btn ${this.supportFilter === 'all' ? 'active' : ''}" data-support-filter="all">All</button>
+              <button class="kpi-filter-btn ${this.supportFilter === 'github' ? 'active' : ''}" data-support-filter="github" style="display: inline-flex; align-items: center; gap: 0.3rem;">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+                GitHub
+              </button>
             </div>
             <div class="tl-filter-selects">
               <select id="support-priority-filter" class="form-input form-select tl-filter-select">
@@ -363,7 +367,9 @@ export const supportTabMethods = {
     listContainer.innerHTML = '<div class="loading-spinner">Loading tickets...</div>';
 
     try {
-      const payload = { action: 'list', status: this.supportFilter };
+      const isGithubFilter = this.supportFilter === 'github';
+      const payload = { action: 'list', status: isGithubFilter ? 'all' : this.supportFilter };
+      if (isGithubFilter) payload.has_github_issue = true;
       if (this.supportPriorityFilter) payload.priority = this.supportPriorityFilter;
       if (this.supportAssigneeFilter) payload.assigned_to = this.supportAssigneeFilter;
 
@@ -436,6 +442,16 @@ export const supportTabMethods = {
                 <div class="tl-item-right">
                   <span class="tl-item-time">${timeAgo(t.received_at)}</span>
                   <div class="tl-item-badges">
+                    ${t.github_issue_url
+                      ? `<a href="${this.escapeHtml(t.github_issue_url)}" target="_blank" rel="noopener" class="gh-pill gh-pill-linked" data-gh-link>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+                          Issue
+                        </a>`
+                      : `<button class="gh-pill gh-pill-create" data-gh-create data-ticket-ref="${this.escapeHtml(ticketId)}" data-ticket-subject="${this.escapeHtml(t.subject || '(no subject)')}">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+                          + Issue
+                        </button>`
+                    }
                     ${t.has_pending_draft ? '<span class="ai-draft-indicator ai-draft-pending" title="Pending AI draft">AI</span>' : t.ai_responded ? '<span class="ai-draft-indicator ai-draft-sent" title="AI responded">AI</span>' : ''}
                     <span class="ticket-status-badge ticket-status-${t.status}">${t.status}</span>
                   </div>
@@ -447,8 +463,38 @@ export const supportTabMethods = {
 
       // Attach row click handlers
       listContainer.querySelectorAll('.tl-item').forEach(row => {
-        row.addEventListener('click', () => {
+        row.addEventListener('click', (e) => {
+          // Don't open thread if clicking a GitHub badge
+          if (e.target.closest('[data-gh-link]') || e.target.closest('[data-gh-create]')) return;
           this.openSupportThread(row.dataset.threadId, row.dataset.ticketStatus);
+        });
+      });
+
+      // GitHub issue links — stop propagation so they open in new tab
+      listContainer.querySelectorAll('[data-gh-link]').forEach(link => {
+        link.addEventListener('click', (e) => e.stopPropagation());
+      });
+
+      // GitHub issue create buttons
+      listContainer.querySelectorAll('[data-gh-create]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const row = btn.closest('.tl-item');
+          const tId = row.dataset.threadId;
+          const tRef = btn.dataset.ticketRef;
+          const tSubject = btn.dataset.ticketSubject;
+          this._createGithubIssueFromList(tId, tRef, tSubject, (data) => {
+            // Replace create pill with linked pill
+            const link = document.createElement('a');
+            link.href = data.issue_url;
+            link.target = '_blank';
+            link.rel = 'noopener';
+            link.className = 'gh-pill gh-pill-linked';
+            link.dataset.ghLink = '';
+            link.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg> Issue`;
+            link.addEventListener('click', (ev) => ev.stopPropagation());
+            btn.replaceWith(link);
+          });
         });
       });
 
@@ -530,6 +576,7 @@ export const supportTabMethods = {
       const ticketRef = firstMsg.ticket_ref || (threadId || '').substring(0, 8).toUpperCase();
 
       const statusBadgeClass = currentStatus === 'open' ? 'ticket-status-open' : 'ticket-status-closed';
+      const githubIssueUrl = firstMsg.github_issue_url || null;
 
       threadView.innerHTML = `
         <div class="tv-topbar">
@@ -538,6 +585,16 @@ export const supportTabMethods = {
             Back
           </button>
           <div class="tv-topbar-right">
+            ${githubIssueUrl
+              ? `<a href="${this.escapeHtml(githubIssueUrl)}" target="_blank" rel="noopener" class="gh-pill gh-pill-linked">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+                  View Issue
+                </a>`
+              : `<button class="gh-pill gh-pill-create" id="create-github-issue-btn">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+                  + GitHub Issue
+                </button>`
+            }
             <button class="btn ${currentStatus === 'open' ? 'btn-secondary' : 'btn-primary'}" id="toggle-status-btn" style="font-size: 0.8rem; padding: 0.35rem 0.75rem;">
               ${currentStatus === 'open' ? 'Close Ticket' : 'Reopen Ticket'}
             </button>
@@ -858,6 +915,23 @@ export const supportTabMethods = {
         }
       });
 
+      // Create GitHub issue — show preview modal (uses shared method)
+      document.getElementById('create-github-issue-btn')?.addEventListener('click', () => {
+        this._showGithubIssueModal(threadId, ticketRef, subject, notes, (data) => {
+          // Replace pill with linked version
+          const createBtn = document.getElementById('create-github-issue-btn');
+          if (createBtn) {
+            const link = document.createElement('a');
+            link.href = data.issue_url;
+            link.target = '_blank';
+            link.rel = 'noopener';
+            link.className = 'gh-pill gh-pill-linked';
+            link.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg> View Issue`;
+            createBtn.replaceWith(link);
+          }
+        });
+      });
+
       // Reject draft
       document.getElementById('reject-draft-btn')?.addEventListener('click', async (e) => {
         const ticketId = e.target.dataset.ticketId;
@@ -1108,6 +1182,120 @@ export const supportTabMethods = {
         btn.textContent = 'Create Ticket';
       }
     });
+  },
+
+  /**
+   * Show the GitHub Issue creation modal.
+   * @param {string} threadId
+   * @param {string} ticketRef - e.g. "TKT-000123"
+   * @param {string} subject
+   * @param {Array} notes - enriched notes with author_name, content, created_at
+   * @param {Function} [onCreated] - callback({ issue_url, issue_number })
+   */
+  _showGithubIssueModal(threadId, ticketRef, subject, notes, onCreated) {
+    const previewTitle = `[${ticketRef}] ${subject}`;
+    const ticketLink = `https://magpipe.ai/admin?tab=support&thread=${threadId}`;
+    let previewBody = `**Support Ticket**: [#${ticketRef}](${ticketLink})\n\n---\n`;
+    if (notes && notes.length > 0) {
+      previewBody += `\n## Internal Notes\n\n`;
+      for (const n of notes) {
+        const date = new Date(n.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+        previewBody += `**${n.author_name || 'Unknown'}** (${date}):\n${n.content}\n\n---\n\n`;
+      }
+    } else {
+      previewBody += `\n*No internal notes yet.*\n`;
+    }
+
+    document.getElementById('github-issue-modal-overlay')?.remove();
+
+    const modalHtml = `
+      <div class="contact-modal-overlay" id="github-issue-modal-overlay"
+           onclick="document.getElementById('github-issue-modal-overlay').style.display='none'">
+        <div class="contact-modal" onclick="event.stopPropagation()" style="max-width: 650px;">
+          <div class="contact-modal-header">
+            <h3>Create GitHub Issue</h3>
+            <button class="close-modal-btn" onclick="document.getElementById('github-issue-modal-overlay').style.display='none'">&times;</button>
+          </div>
+          <form id="github-issue-form">
+            <div class="contact-modal-body scrollable">
+              <div class="form-group" style="margin-bottom: 1rem;">
+                <label class="form-label" style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em;">Title</label>
+                <input type="text" id="gh-issue-title" class="form-input" value="${this.escapeHtml(previewTitle)}">
+              </div>
+              <div class="form-group">
+                <label class="form-label" style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em;">Body (Markdown)</label>
+                <textarea id="gh-issue-body" class="form-input" rows="14" style="font-family: monospace; font-size: 0.85rem;">${this.escapeHtml(previewBody)}</textarea>
+              </div>
+            </div>
+            <div class="contact-modal-footer">
+              <button type="button" class="btn btn-secondary" onclick="document.getElementById('github-issue-modal-overlay').style.display='none'">Cancel</button>
+              <button type="submit" class="btn btn-primary" id="gh-issue-submit-btn">Create Issue</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    document.getElementById('github-issue-modal-overlay').style.display = 'flex';
+
+    document.getElementById('github-issue-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const submitBtn = document.getElementById('gh-issue-submit-btn');
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Creating...';
+      const editedTitle = document.getElementById('gh-issue-title').value.trim();
+      const editedBody = document.getElementById('gh-issue-body').value.trim();
+      try {
+        const res = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/support-tickets-api`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${this.session.access_token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ action: 'create_github_issue', thread_id: threadId, title: editedTitle, body: editedBody }),
+          }
+        );
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Failed to create issue');
+        }
+        const data = await res.json();
+        document.getElementById('github-issue-modal-overlay')?.remove();
+        showToast(`GitHub issue #${data.issue_number} created`, 'success');
+        if (onCreated) onCreated(data);
+      } catch (err) {
+        showToast('Error: ' + err.message, 'error');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Create Issue';
+      }
+    });
+  },
+
+  /**
+   * Fetch notes for a thread and show the GitHub issue creation modal.
+   * Used from the ticket list where notes aren't loaded yet.
+   */
+  async _createGithubIssueFromList(threadId, ticketRef, subject, onCreated) {
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/support-tickets-api`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ action: 'get_notes', threadId }),
+        }
+      );
+      if (!res.ok) throw new Error('Failed to load notes');
+      const data = await res.json();
+      this._showGithubIssueModal(threadId, ticketRef, subject, data.notes || [], onCreated);
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error');
+    }
   },
 
   escapeHtml(text) {

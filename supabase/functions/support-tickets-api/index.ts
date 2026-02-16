@@ -50,6 +50,8 @@ Deno.serve(async (req) => {
         return await handleApproveDraft(supabase, body)
       case 'reject_draft':
         return await handleRejectDraft(supabase, body)
+      case 'create_github_issue':
+        return await handleCreateGithubIssue(supabase, body)
       case 'disconnect_gmail':
         return await handleDisconnectGmail(supabase)
       case 'get_config':
@@ -71,7 +73,7 @@ Deno.serve(async (req) => {
 
 
 async function handleList(supabase: any, body: any) {
-  const { status = 'open', page = 1, limit = 50, priority, assigned_to } = body
+  const { status = 'open', page = 1, limit = 50, priority, assigned_to, has_github_issue } = body
   const offset = (page - 1) * limit
 
   // Get distinct threads with their latest message
@@ -87,6 +89,9 @@ async function handleList(supabase: any, body: any) {
   }
   if (assigned_to) {
     query = query.eq('assigned_to', assigned_to)
+  }
+  if (has_github_issue) {
+    query = query.not('github_issue_url', 'is', null)
   }
 
   const { data: tickets, error, count } = await query
@@ -665,6 +670,126 @@ async function handleUpdateConfig(supabase: any, body: any) {
   if (error) return errorResponse('Failed to update config: ' + error.message)
 
   return successResponse({ success: true })
+}
+
+
+async function handleCreateGithubIssue(supabase: any, body: any) {
+  const { thread_id, title: customTitle, body: customBody } = body
+  if (!thread_id) return errorResponse('Missing thread_id')
+
+  // Check if issue already exists
+  const { data: existing } = await supabase
+    .from('support_tickets')
+    .select('github_issue_url')
+    .eq('thread_id', thread_id)
+    .not('github_issue_url', 'is', null)
+    .limit(1)
+    .single()
+
+  if (existing?.github_issue_url) {
+    return errorResponse('GitHub issue already exists for this ticket')
+  }
+
+  // Get first inbound message for subject and ticket ref
+  const { data: firstMsg } = await supabase
+    .from('support_tickets')
+    .select('subject, ticket_ref')
+    .eq('thread_id', thread_id)
+    .eq('direction', 'inbound')
+    .order('received_at', { ascending: true })
+    .limit(1)
+    .single()
+
+  if (!firstMsg) return errorResponse('No inbound message found for this thread')
+
+  const subject = firstMsg.subject || '(no subject)'
+  const ticketRef = firstMsg.ticket_ref || thread_id.substring(0, 8).toUpperCase()
+
+  // Fetch all internal notes
+  const { data: notes } = await supabase
+    .from('support_ticket_notes')
+    .select('id, content, created_at, author_id')
+    .eq('thread_id', thread_id)
+    .order('created_at', { ascending: true })
+
+  // Resolve author names
+  const authorIds = new Set<string>()
+  for (const n of (notes || [])) {
+    if (n.author_id) authorIds.add(n.author_id)
+  }
+  const authorMap: Record<string, string> = {}
+  if (authorIds.size > 0) {
+    const { data: authors } = await supabase
+      .from('users')
+      .select('id, name, email')
+      .in('id', Array.from(authorIds))
+    for (const a of (authors || [])) {
+      authorMap[a.id] = a.name || a.email
+    }
+  }
+
+  // Use client-provided title/body if edited, otherwise build from data
+  let issueTitle: string
+  let issueBody: string
+
+  if (customTitle && customBody) {
+    issueTitle = customTitle
+    issueBody = customBody
+  } else {
+    issueTitle = `[${ticketRef}] ${subject}`
+
+    const ticketLink = `https://magpipe.ai/admin?tab=support&thread=${thread_id}`
+    issueBody = `**Support Ticket**: [#${ticketRef}](${ticketLink})\n\n---\n`
+
+    if (notes && notes.length > 0) {
+      issueBody += `\n## Internal Notes\n\n`
+      for (const n of notes) {
+        const authorName = n.author_id ? (authorMap[n.author_id] || 'Unknown') : 'Unknown'
+        const date = new Date(n.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+        issueBody += `**${authorName}** (${date}):\n${n.content}\n\n---\n\n`
+      }
+    } else {
+      issueBody += `\n*No internal notes yet.*\n`
+    }
+  }
+
+  // Create GitHub issue
+  const githubPat = Deno.env.get('GITHUB_PAT')
+  if (!githubPat) return errorResponse('GITHUB_PAT not configured')
+
+  const ghResp = await fetch('https://api.github.com/repos/Snapsonic/magpipe/issues', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${githubPat}`,
+      'Accept': 'application/vnd.github+json',
+      'Content-Type': 'application/json',
+      'X-GitHub-Api-Version': '2022-11-28',
+    },
+    body: JSON.stringify({
+      title: issueTitle,
+      body: issueBody,
+    }),
+  })
+
+  if (!ghResp.ok) {
+    const errText = await ghResp.text()
+    console.error('GitHub API error:', errText)
+    return errorResponse('Failed to create GitHub issue: ' + ghResp.status)
+  }
+
+  const issue = await ghResp.json()
+
+  // Store issue URL on all thread rows
+  const { error: updateErr } = await supabase
+    .from('support_tickets')
+    .update({ github_issue_url: issue.html_url })
+    .eq('thread_id', thread_id)
+
+  if (updateErr) {
+    console.error('Failed to save issue URL:', updateErr)
+  }
+
+  return successResponse({ issue_url: issue.html_url, issue_number: issue.number })
 }
 
 
