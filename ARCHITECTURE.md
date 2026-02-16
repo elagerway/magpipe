@@ -69,17 +69,21 @@
 
 | Route | File | Purpose |
 |-------|------|---------|
-| `/admin` | `admin/index.js` | Admin portal — split into tab modules. Tabs: Support (default), Users, Analytics, KPIs, Global Agent, Chat, Notifications, Blog |
+| `/admin` | `admin/index.js` | Admin portal — split into tab modules. Tabs: Support (default), Analytics, KPIs, Notifications, Marketing |
 
 Admin tab modules in `src/pages/admin/`:
-- `support-tab.js` — Support ticket management, Gmail integration, AI agent settings, ticket creation toggle
-- `users-tab.js` — User management, impersonation, number assignment
+- `support-tab.js` — Support tickets, Users, Global Agent, Chat, Settings (sub-tabs)
 - `analytics-tab.js` — Usage analytics dashboard
 - `kpi-tab.js` — KPI/metrics display
+- `notifications-tab.js` — Notification channel settings (SMS, email, Slack)
+- `marketing-tab.js` — Blog, Directories, Reviews, Monitor (sub-tabs)
+- `blog-tab.js` — Blog post CRUD with Quill.js WYSIWYG editor
+- `directories-tab.js` — Directory submission tracking
+- `reviews-tab.js` — Review collection automation (G2, Capterra, Product Hunt)
+- `monitor-tab.js` — Social listening: keyword monitoring across Reddit, HackerNews, Google (via Serper.dev). Favorites, search, pagination, status tracking
+- `users-tab.js` — User management, impersonation, number assignment
 - `global-agent-tab.js` — Global agent configuration
 - `chat-tab.js` — Admin omni-chat interface
-- `notifications-tab.js` — Notification channel settings (SMS, email, Slack)
-- `blog-tab.js` — Blog post CRUD with Quill.js WYSIWYG editor
 - `styles.js` — Centralized admin CSS
 
 Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-update-user`, `admin-impersonate`, `admin-manage-numbers`, `admin-analytics`, `admin-status`, `admin-agent-chat`, `admin-notifications-api`, `admin-blog-api`, `support-tickets-api`, etc.
@@ -326,7 +330,7 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 | `admin-list-agents` | JWT (admin) | `agent_configs`, `users` | None | admin page |
 | `admin-blog-api` | JWT (admin) | `blog_posts` | None | admin page |
 | `admin-social-listening-api` | JWT (admin) | `social_listening_results`, `social_listening_keywords` | None | admin page |
-| `process-social-listening` | **No JWT** (cron) | `social_listening_results`, `social_listening_keywords`, `admin_notification_config` | Reddit, HN Algolia, Google, Postmark | cron (6h) / admin |
+| `process-social-listening` | **No JWT** (cron) | `social_listening_results`, `social_listening_keywords`, `admin_notification_config` | Serper.dev (Google+Reddit), HN Algolia, Postmark | cron (6h) / admin |
 | `blog-rss` | Public (no JWT) | `blog_posts` | None | RSS readers |
 
 ### Email
