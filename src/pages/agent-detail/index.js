@@ -49,6 +49,7 @@ export default class AgentDetailPage {
     this.customFunctions = []; // Custom webhook functions for this agent
     this.semanticActions = []; // Semantic match alert actions
     this.connectedApps = []; // Connected integration apps (slack, hubspot, etc.)
+    this.allAgents = []; // All user's agents (for shared memory picker)
     // Voice cloning state
     this.mediaRecorder = null;
     this.audioChunks = [];
@@ -72,7 +73,7 @@ export default class AgentDetailPage {
     if (this.agentId === 'new') {
       const { config: newAgent, error } = await AgentConfig.createAgent(user.id, {
         name: 'New Agent',
-        agent_type: 'inbound',
+        agent_type: 'inbound_voice',
       });
 
       if (error) {
@@ -117,6 +118,7 @@ export default class AgentDetailPage {
       connectedAppsResult,
       gmailProviderResult,
       emailConfigResult,
+      allAgentsResult,
     ] = await Promise.all([
       supabase.from('voices').select('voice_id, voice_name').eq('user_id', user.id).eq('is_cloned', true).order('created_at', { ascending: false }),
       supabase.from('knowledge_sources').select('id, title, url, sync_status, chunk_count, crawl_mode').eq('user_id', user.id).order('created_at', { ascending: false }),
@@ -129,6 +131,7 @@ export default class AgentDetailPage {
       supabase.from('user_integrations').select('provider_id, status, integration_providers(slug, name, icon_url)').eq('user_id', user.id).eq('status', 'connected'),
       supabase.from('integration_providers').select('id').eq('slug', 'google_email').single(),
       supabase.from('agent_email_configs').select('*').eq('agent_id', this.agentId).single(),
+      AgentConfig.getAllByUserId(user.id),
     ]);
 
     this.clonedVoices = clonedVoicesResult.data || [];
@@ -167,6 +170,7 @@ export default class AgentDetailPage {
     }
 
     this.emailConfig = emailConfigResult.data;
+    this.allAgents = (allAgentsResult.configs || []).filter(a => a.id !== this.agentId);
 
     // Add styles
     this.addStyles();

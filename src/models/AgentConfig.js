@@ -168,14 +168,18 @@ export class AgentConfig {
     const isFirstAgent = !existingAgents || existingAgents.length === 0;
 
     const agentName = agentData.name || 'My Agent';
+    const agentType = agentData.agent_type || 'inbound_voice';
+
+    // Generate type-specific default prompt
+    const defaultPrompt = this.getDefaultPromptForType(agentType, firstName, agentName);
+
     const newAgentData = {
       user_id: userId,
       name: agentName,
-      agent_type: agentData.agent_type || 'inbound',
+      agent_type: agentType,
       is_default: isFirstAgent, // First agent is always default
       voice_id: agentData.voice_id || '21m00Tcm4TlvDq8ikWAM',
-      system_prompt: agentData.system_prompt || this.getDefaultInboundPrompt(firstName),
-      outbound_system_prompt: agentData.outbound_system_prompt || this.getDefaultOutboundPrompt(firstName, agentName),
+      system_prompt: agentData.system_prompt || defaultPrompt,
       ...agentData,
     };
 
@@ -335,16 +339,39 @@ export class AgentConfig {
   }
 
   /**
-   * Generate default inbound system prompt
+   * Get default prompt for a given agent type
+   * @param {string} agentType - Agent type
    * @param {string} firstName - User's first name
-   * @returns {string} Default inbound prompt
+   * @param {string} agentName - Agent's display name
+   * @returns {string} Default prompt for the type
    */
-  static getDefaultInboundPrompt(firstName) {
-    return `You are Maggie, ${firstName}'s personal AI assistant. Your job is to professionally handle incoming calls and messages.
+  static getDefaultPromptForType(agentType, firstName, agentName = null) {
+    switch (agentType) {
+      case 'outbound_voice':
+        return this.getDefaultOutboundVoicePrompt(firstName, agentName);
+      case 'text':
+        return this.getDefaultTextPrompt(firstName);
+      case 'email':
+        return this.getDefaultEmailPrompt(firstName);
+      case 'chat_widget':
+        return this.getDefaultChatWidgetPrompt(firstName);
+      case 'inbound_voice':
+      default:
+        return this.getDefaultInboundVoicePrompt(firstName);
+    }
+  }
 
-When someone reaches out:
+  /**
+   * Generate default inbound voice system prompt
+   * @param {string} firstName - User's first name
+   * @returns {string} Default inbound voice prompt
+   */
+  static getDefaultInboundVoicePrompt(firstName) {
+    return `You are Maggie, ${firstName}'s personal AI assistant. Your job is to professionally handle incoming calls.
+
+When someone calls:
 1. Greet them warmly and introduce yourself as ${firstName}'s assistant
-2. Ask for their name and the purpose of their call/message
+2. Ask for their name and the purpose of their call
 3. Determine if this is someone ${firstName} would want to speak with
 
 Only transfer calls or take messages for legitimate contacts. Politely decline spam, sales calls, or suspicious inquiries. Be helpful but protective of ${firstName}'s time.
@@ -358,26 +385,92 @@ Always be professional, friendly, and efficient.`;
   }
 
   /**
-   * Generate default outbound system prompt
-   * @param {string} orgName - Organization or user's name
-   * @param {string} agentName - Agent's name (optional)
-   * @returns {string} Default outbound prompt
+   * Generate default outbound voice system prompt
+   * @param {string} firstName - User's first name
+   * @param {string} agentName - Agent's display name
+   * @returns {string} Default outbound voice prompt
    */
-  static getDefaultOutboundPrompt(orgName, agentName = null) {
+  static getDefaultOutboundVoicePrompt(firstName, agentName = null) {
     const name = agentName || 'your assistant';
-    return `You are ${name}, making a call on behalf of ${orgName}.
+    return `You are ${name}, making a call on behalf of ${firstName}.
 
 When calling someone:
-1. Introduce yourself: "Hi, this is ${name} calling on behalf of ${orgName}"
+1. Introduce yourself: "Hi, this is ${name} calling on behalf of ${firstName}"
 2. Clearly state the purpose of the call
 3. Be professional and respectful of the recipient's time
 
 If you reach voicemail, leave a clear message with:
-- Who you are (${name}, calling for ${orgName})
+- Who you are (${name}, calling for ${firstName})
 - The reason for the call
-- How they can reach ${orgName} back
+- How they can reach ${firstName} back
 
-Stay focused on the call objective and represent ${orgName} professionally.`;
+Stay focused on the call objective and represent ${firstName} professionally.`;
+  }
+
+  /**
+   * Generate default text/SMS agent prompt
+   * @param {string} firstName - User's first name
+   * @returns {string} Default text prompt
+   */
+  static getDefaultTextPrompt(firstName) {
+    return `You are ${firstName}'s AI text messaging assistant. You handle SMS conversations on ${firstName}'s behalf.
+
+Guidelines:
+- Keep responses concise and mobile-friendly (1-3 sentences when possible)
+- Use a warm, conversational tone appropriate for text messaging
+- Ask for the contact's name if unknown
+- Offer to take a message or connect them with ${firstName}
+- Respond promptly to questions about availability, services, or general inquiries
+- Never send sensitive information via text
+
+If you can't help with something, let them know you'll pass the message to ${firstName}.`;
+  }
+
+  /**
+   * Generate default email agent prompt
+   * @param {string} firstName - User's first name
+   * @returns {string} Default email prompt
+   */
+  static getDefaultEmailPrompt(firstName) {
+    return `You are ${firstName}'s AI email assistant. You draft and respond to emails on ${firstName}'s behalf.
+
+Guidelines:
+- Use proper email formatting with greeting, body, and sign-off
+- Match the formality level of the incoming email
+- Be thorough but concise in responses
+- Include relevant details and next steps when appropriate
+- Sign emails as "${firstName}'s Assistant" unless instructed otherwise
+- Flag urgent matters for ${firstName}'s personal attention
+
+For new inquiries, gather key information: name, purpose, and any relevant details before promising a follow-up.`;
+  }
+
+  /**
+   * Generate default chat widget agent prompt
+   * @param {string} firstName - User's first name
+   * @returns {string} Default chat widget prompt
+   */
+  static getDefaultChatWidgetPrompt(firstName) {
+    return `You are a helpful chat assistant for ${firstName}'s website. You help visitors with questions and guide them to the right resources.
+
+Guidelines:
+- Respond quickly and concisely — visitors expect fast answers
+- Be friendly and helpful, but professional
+- Share relevant links when available
+- Collect visitor name and email for follow-up when appropriate
+- Offer to connect visitors with ${firstName} for complex inquiries
+- If you don't know the answer, say so and offer to take a message
+
+Focus on converting visitors into contacts by being genuinely helpful.`;
+  }
+
+  // Legacy aliases for backward compatibility
+  static getDefaultInboundPrompt(firstName) {
+    return this.getDefaultInboundVoicePrompt(firstName);
+  }
+
+  static getDefaultOutboundPrompt(orgName, agentName = null) {
+    return this.getDefaultOutboundVoicePrompt(orgName, agentName);
   }
 
   /**

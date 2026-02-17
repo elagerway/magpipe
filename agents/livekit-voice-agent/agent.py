@@ -2429,12 +2429,12 @@ async def entrypoint(ctx: JobContext):
         # OUTBOUND: Agent is calling someone on behalf of the owner
         greeting = ""  # Don't greet - wait for destination to answer
 
-        # Use outbound_system_prompt if configured, otherwise use a default
-        outbound_prompt = user_config.get("outbound_system_prompt")
+        # Use system_prompt (new single-prompt architecture) with fallback to outbound_system_prompt (legacy)
+        outbound_prompt = user_config.get("system_prompt") or user_config.get("outbound_system_prompt")
 
         if outbound_prompt:
             system_prompt = outbound_prompt
-            logger.info("🔄 Outbound call - Using user's configured outbound prompt")
+            logger.info("🔄 Outbound call - Using configured system prompt")
         else:
             # Default outbound prompt when user hasn't configured one
             agent_name = user_config.get("agent_name", "Maggie")
@@ -2706,6 +2706,41 @@ AFTER-HOURS CONTEXT:
                     ))
         else:
             logger.info(f"🔮 Semantic memory enabled but no existing caller context to search from")
+
+    # Inject shared memory from other agents if configured
+    shared_agent_ids = user_config.get("shared_memory_agent_ids") or []
+    if shared_agent_ids and current_contact_id:
+        try:
+            # Batch query: get memories from shared agents for the same contact
+            shared_response = supabase.table("conversation_contexts").select(
+                "summary, key_topics, agent_id"
+            ).eq("contact_id", current_contact_id).in_("agent_id", shared_agent_ids).execute()
+
+            if shared_response.data:
+                # Look up agent names for context
+                agent_names = {}
+                for shared_id in shared_agent_ids:
+                    agent_lookup = supabase.table("agent_configs").select("name").eq("id", shared_id).limit(1).execute()
+                    if agent_lookup.data:
+                        agent_names[shared_id] = agent_lookup.data[0].get("name", "Unknown Agent")
+
+                shared_sections = []
+                for entry in shared_response.data:
+                    agent_name_label = agent_names.get(entry["agent_id"], "Another Agent")
+                    summary = entry.get("summary", "")
+                    topics = entry.get("key_topics") or []
+                    if summary:
+                        section = f"## SHARED MEMORY (from {agent_name_label})\n{summary}"
+                        if topics:
+                            section += f"\nTopics: {', '.join(topics)}"
+                        shared_sections.append(section)
+
+                if shared_sections:
+                    shared_context = "\n\n".join(shared_sections)
+                    system_prompt = f"{system_prompt}\n\n{shared_context}"
+                    logger.info(f"🔗 Shared memory injected from {len(shared_sections)} agent(s)")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to load shared memory: {e}")
 
     # Already connected earlier to get service number, don't connect again in session.start
 

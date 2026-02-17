@@ -144,6 +144,28 @@ export const memoryTabMethods = {
 
       </div>
 
+      ${this.allAgents && this.allAgents.length > 0 ? `
+      <div class="config-section">
+        <h3>Shared Memory</h3>
+        <p class="section-desc">Allow this agent to access memories from other agents. Useful when multiple agents serve the same contacts.</p>
+
+        <div class="shared-memory-agents">
+          ${this.allAgents.map(a => {
+            const isChecked = (this.agent.shared_memory_agent_ids || []).includes(a.id);
+            return `
+              <label class="shared-memory-agent-item">
+                <input type="checkbox" class="shared-memory-checkbox" data-agent-id="${a.id}" ${isChecked ? 'checked' : ''} />
+                <div class="shared-memory-agent-info">
+                  <span class="shared-memory-agent-name">${a.name || 'Unnamed Agent'}</span>
+                  <span class="shared-memory-agent-type">${a.agent_type?.replace('_', ' ') || 'unknown'}</span>
+                </div>
+              </label>
+            `;
+          }).join('')}
+        </div>
+      </div>
+      ` : ''}
+
       <div class="config-section" id="memory-list-section">
         <div class="memory-section-header">
           <h3>Agent Memory <span id="memory-count-badge" class="memory-count-badge">${this.memoryCount}</span></h3>
@@ -367,6 +389,18 @@ export const memoryTabMethods = {
         );
       });
     }
+
+    // Shared memory checkboxes
+    document.querySelectorAll('.shared-memory-checkbox').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const selectedIds = [];
+        document.querySelectorAll('.shared-memory-checkbox:checked').forEach(checked => {
+          selectedIds.push(checked.dataset.agentId);
+        });
+        this.agent.shared_memory_agent_ids = selectedIds;
+        this.scheduleAutoSave({ shared_memory_agent_ids: selectedIds });
+      });
+    });
 
     // Semantic Memory toggle
     const semanticToggleBtn = document.getElementById('semantic-toggle-btn');

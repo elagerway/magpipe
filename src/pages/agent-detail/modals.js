@@ -111,126 +111,136 @@ export const modalsMethods = {
   },
 
   /**
-   * Generate inbound prompt from identity fields
+   * Generate prompt from identity fields based on agent type
    */
-  generateInboundPrompt() {
+  generatePromptForType(agentType) {
     const agentName = this.agent.name || 'Assistant';
     const organization = this.agent.organization_name || '';
     const owner = this.agent.owner_name || '';
     const role = this.agent.agent_role || '';
 
-    let prompt = '';
-
-    // Start with the role if defined
+    // Build the identity prefix
+    let identityPrefix = '';
     if (role) {
-      prompt = role + '\n\n';
+      identityPrefix = role + '\n\n';
     } else {
-      // Default role based on identity
-      prompt = `You are ${agentName}`;
+      identityPrefix = `You are ${agentName}`;
       if (organization) {
-        prompt += `, a professional AI assistant for ${organization}`;
+        identityPrefix += `, a professional AI assistant for ${organization}`;
       }
       if (owner) {
-        prompt += `. You work on behalf of ${owner}`;
+        identityPrefix += `. You work on behalf of ${owner}`;
       }
-      prompt += '.\n\n';
+      identityPrefix += '.\n\n';
     }
 
-    // Add inbound-specific instructions
-    prompt += `When someone calls:\n`;
-    prompt += `1. Greet them warmly and introduce yourself as ${agentName}`;
-    if (organization) {
-      prompt += ` from ${organization}`;
-    }
-    prompt += `\n`;
-    prompt += `2. Ask for their name and the purpose of their call\n`;
-    prompt += `3. Be helpful, professional, and courteous\n`;
+    switch (agentType) {
+      case 'inbound_voice': {
+        let prompt = identityPrefix;
+        prompt += `When someone calls:\n`;
+        prompt += `1. Greet them warmly and introduce yourself as ${agentName}`;
+        if (organization) prompt += ` from ${organization}`;
+        prompt += `\n`;
+        prompt += `2. Ask for their name and the purpose of their call\n`;
+        prompt += `3. Be helpful, professional, and courteous\n`;
+        if (owner) {
+          prompt += `\nYou are answering calls on behalf of ${owner}. `;
+          prompt += `Offer to take a message, transfer the call, or schedule a callback as appropriate.`;
+        }
+        return prompt;
+      }
 
-    if (owner) {
-      prompt += `\nYou are answering calls on behalf of ${owner}. `;
-      prompt += `Offer to take a message, transfer the call, or schedule a callback as appropriate.`;
-    }
+      case 'outbound_voice': {
+        let prompt = '';
+        if (role) {
+          prompt = role + '\n\n';
+        } else {
+          prompt = `You are ${agentName}`;
+          if (organization) prompt += `, a professional AI assistant for ${organization}`;
+          if (owner) prompt += `, making calls on behalf of ${owner}`;
+          prompt += '.\n\n';
+        }
+        prompt += `THIS IS AN OUTBOUND CALL - you called them, they did not call you.\n\n`;
+        prompt += `When the call is answered:\n`;
+        prompt += `1. Introduce yourself: "Hi, this is ${agentName}`;
+        if (organization) prompt += ` from ${organization}`;
+        if (owner) prompt += ` calling on behalf of ${owner}`;
+        prompt += `"\n`;
+        prompt += `2. Clearly state the purpose of your call\n`;
+        prompt += `3. Be respectful of their time\n\n`;
+        prompt += `If you reach voicemail, leave a clear message with who you are and how to reach back.`;
+        return prompt;
+      }
 
-    return prompt;
+      case 'text': {
+        let prompt = identityPrefix;
+        prompt += `You handle SMS and text message conversations.\n\n`;
+        prompt += `Guidelines:\n`;
+        prompt += `- Keep responses concise and mobile-friendly (1-3 sentences)\n`;
+        prompt += `- Use a warm, conversational tone\n`;
+        prompt += `- Ask for the contact's name if unknown\n`;
+        if (owner) prompt += `- Offer to connect them with ${owner} for complex matters\n`;
+        prompt += `- Never send sensitive information via text`;
+        return prompt;
+      }
+
+      case 'email': {
+        let prompt = identityPrefix;
+        prompt += `You draft and respond to emails.\n\n`;
+        prompt += `Guidelines:\n`;
+        prompt += `- Use proper email formatting with greeting, body, and sign-off\n`;
+        prompt += `- Match the formality level of the incoming email\n`;
+        prompt += `- Be thorough but concise\n`;
+        prompt += `- Include relevant details and next steps\n`;
+        if (owner) prompt += `- Sign emails as "${owner}'s Assistant" unless instructed otherwise\n`;
+        prompt += `- Flag urgent matters for personal attention`;
+        return prompt;
+      }
+
+      case 'chat_widget': {
+        let prompt = identityPrefix;
+        prompt += `You help website visitors with questions and guide them to the right resources.\n\n`;
+        prompt += `Guidelines:\n`;
+        prompt += `- Respond quickly and concisely\n`;
+        prompt += `- Be friendly and professional\n`;
+        prompt += `- Share relevant links when available\n`;
+        prompt += `- Collect visitor name and email for follow-up\n`;
+        if (owner) prompt += `- Offer to connect visitors with ${owner} for complex inquiries\n`;
+        prompt += `- Focus on being genuinely helpful`;
+        return prompt;
+      }
+
+      default:
+        return identityPrefix;
+    }
   },
 
   /**
-   * Generate outbound prompt from identity fields
-   */
-  generateOutboundPrompt() {
-    const agentName = this.agent.name || 'Assistant';
-    const organization = this.agent.organization_name || '';
-    const owner = this.agent.owner_name || '';
-    const role = this.agent.agent_role || '';
-
-    let prompt = '';
-
-    // Start with the role if defined
-    if (role) {
-      prompt = role + '\n\n';
-    } else {
-      // Default role based on identity
-      prompt = `You are ${agentName}`;
-      if (organization) {
-        prompt += `, a professional AI assistant for ${organization}`;
-      }
-      if (owner) {
-        prompt += `, making calls on behalf of ${owner}`;
-      }
-      prompt += '.\n\n';
-    }
-
-    // Add outbound-specific instructions
-    prompt += `THIS IS AN OUTBOUND CALL - you called them, they did not call you.\n\n`;
-    prompt += `When the call is answered:\n`;
-    prompt += `1. Introduce yourself: "Hi, this is ${agentName}`;
-    if (organization) {
-      prompt += ` from ${organization}`;
-    }
-    if (owner) {
-      prompt += ` calling on behalf of ${owner}`;
-    }
-    prompt += `"\n`;
-    prompt += `2. Clearly state the purpose of your call\n`;
-    prompt += `3. Be respectful of their time\n\n`;
-    prompt += `If you reach voicemail, leave a clear message with who you are and how to reach back.`;
-
-    return prompt;
-  },
-
-  /**
-   * Regenerate both prompts from identity fields
+   * Regenerate prompt from identity fields (single prompt)
    */
   regeneratePrompts() {
-    const inboundPrompt = this.generateInboundPrompt();
-    const outboundPrompt = this.generateOutboundPrompt();
+    const prompt = this.generatePromptForType(this.agent.agent_type || 'inbound_voice');
 
     // Update local state
-    this.agent.system_prompt = inboundPrompt;
-    this.agent.outbound_system_prompt = outboundPrompt;
+    this.agent.system_prompt = prompt;
 
     // Update UI if on prompt tab
     const systemPromptEl = document.getElementById('system-prompt');
-    const outboundPromptEl = document.getElementById('outbound-prompt');
-    if (systemPromptEl) systemPromptEl.value = inboundPrompt;
-    if (outboundPromptEl) outboundPromptEl.value = outboundPrompt;
+    if (systemPromptEl) systemPromptEl.value = prompt;
 
     // Save to database
-    this.scheduleAutoSave({
-      system_prompt: inboundPrompt,
-      outbound_system_prompt: outboundPrompt
-    });
+    this.scheduleAutoSave({ system_prompt: prompt });
   },
 
   /**
-   * Called when identity fields change - optionally auto-regenerate prompts
+   * Called when identity fields change - optionally auto-regenerate prompt
    */
   onIdentityFieldChange(field, value) {
     // Update local state and save
     this.agent[field] = value;
     this.scheduleAutoSave({ [field]: value });
 
-    // If prompts are empty or user hasn't customized them much, auto-regenerate
+    // If prompt is empty or user hasn't customized it much, auto-regenerate
     const hasCustomPrompt = this.agent.system_prompt && this.agent.system_prompt.length > 100;
     if (!hasCustomPrompt) {
       this.regeneratePrompts();

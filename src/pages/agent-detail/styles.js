@@ -1661,6 +1661,53 @@ export const stylesMethods = {
         background: #fef2f2;
       }
 
+      /* Shared memory picker */
+      .shared-memory-agents {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      .shared-memory-agent-item {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.75rem;
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-md);
+        cursor: pointer;
+        transition: border-color 0.15s;
+      }
+
+      .shared-memory-agent-item:hover {
+        border-color: var(--primary-color);
+      }
+
+      .shared-memory-agent-item input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        flex-shrink: 0;
+        accent-color: var(--primary-color);
+      }
+
+      .shared-memory-agent-info {
+        display: flex;
+        flex-direction: column;
+        gap: 0.1rem;
+      }
+
+      .shared-memory-agent-name {
+        font-weight: 500;
+        font-size: 0.9rem;
+        color: var(--text-primary);
+      }
+
+      .shared-memory-agent-type {
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+        text-transform: capitalize;
+      }
+
       .memory-empty-state {
         text-align: center;
         padding: 2.5rem 1rem;
