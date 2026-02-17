@@ -26,7 +26,7 @@ Deno.serve(async (req) => {
     }
 
     // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? 'https://api.magpipe.ai'
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
       auth: {
@@ -174,7 +174,7 @@ ${expiryNote}
         'X-Postmark-Server-Token': postmarkApiKey,
       },
       body: JSON.stringify({
-        From: 'notifications@snapsonic.com',
+        From: Deno.env.get('NOTIFICATION_EMAIL') || 'notifications@snapsonic.com',
         To: email,
         Subject: emailSubject,
         HtmlBody: emailHtml,

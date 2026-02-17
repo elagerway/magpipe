@@ -215,7 +215,7 @@ async function sendTestEmail(to: string, subject: string, body: string) {
       'X-Postmark-Server-Token': postmarkApiKey,
     },
     body: JSON.stringify({
-      From: 'notifications@snapsonic.com',
+      From: Deno.env.get('NOTIFICATION_EMAIL') || 'notifications@snapsonic.com',
       To: to,
       Subject: `[Admin Alert] ${subject}`,
       TextBody: body,

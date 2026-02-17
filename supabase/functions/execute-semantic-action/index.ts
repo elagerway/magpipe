@@ -451,7 +451,7 @@ ${escHtml(call.transcript)}
       'X-Postmark-Server-Token': postmarkApiKey
     },
     body: JSON.stringify({
-      From: 'notifications@snapsonic.com',
+      From: Deno.env.get('NOTIFICATION_EMAIL') || 'notifications@snapsonic.com',
       To: email,
       Subject: subject,
       HtmlBody: htmlBody,
