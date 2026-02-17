@@ -231,7 +231,7 @@ The LiveKit voice agent runs on Render and connects to LiveKit Cloud, handling c
 - `users` - User profiles, SIP credentials, preferences, credit balance
 - `organizations` - Multi-user org management
 - `contacts` - Contact information with enrichment fields
-- `agent_configs` - AI agent configuration (prompts, voice, settings, functions)
+- `agent_configs` - AI agent configuration (5 types: inbound_voice, outbound_voice, text, email, chat_widget; single system_prompt with type-specific defaults; shared_memory_agent_ids for cross-agent memory sharing; voice settings, functions)
 - `call_records` - Call history with purpose, goal, transcripts
 - `sms_messages` - SMS message history
 - `email_messages` - Email threads for inbox (id, user_id, agent_id, contact_id, thread_id, gmail_message_id, from/to/cc/bcc, subject, body_text, body_html, direction, status, is_ai_generated, is_read, sent_at, `attachments` JSONB for image metadata)

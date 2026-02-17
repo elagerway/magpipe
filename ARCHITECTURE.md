@@ -47,7 +47,7 @@
 |-------|------|---------|-----------|----------------|
 | `/inbox` | `inbox/index.js` | Main messaging UI — SMS, calls, chat, email. Email filter pill, email threads grouped by thread_id, email thread view with reply, compose with WYSIWYG toolbar, Email/Agent Email options in new message dropdown. Real-time subscriptions. Split into `call-interface.js`, `listeners.js`, `messaging.js`, `views.js`, `voice-loader.js` | `sms_messages`, `call_records`, `chat_sessions`, `contacts`, `service_numbers`, `agent_configs`, `email_messages` | `send-email` (real-time subs) |
 | `/agent` | `agent.js` | Admin chat interface for AI agent | `sms_messages` | None |
-| `/agents` | `agents.js` | Multi-agent list | `agent_configs`, `service_numbers` | None |
+| `/agents` | `agents.js` | Multi-agent list with type-selection creation modal (5 types: inbound_voice, outbound_voice, text, email, chat_widget) | `agent_configs`, `service_numbers` | None |
 | `/agents/:id` | `agent-detail/index.js` | Agent config detail. Split into `configure-tab.js`, `prompt-tab.js`, `functions-tab.js`, `knowledge-tab.js`, `memory-tab.js`, `analytics-tab.js`, `deployment-tab.js`, `schedule-tab.js`, `modals.js`, `styles.js` | `agent_configs`, `service_numbers`, `knowledge_sources`, `dynamic_variables`, `custom_functions`, `transfer_numbers` | `preview-voice`, `clone-voice`, `fetch-agent-avatar` |
 | `/phone` | `phone/index.js` | Phone number management. Split into `call-handler.js`, `dialpad.js`, `number-management.js` | `service_numbers`, `external_sip_numbers`, `agent_configs` | `cancel-number-deletion`, `submit-cnam-request`, `fix-number-capabilities`, `sync-external-capabilities` |
 | `/contacts` | `contacts.js` | Contact list with CSV import | `contacts` | `contact-lookup` |
@@ -98,7 +98,7 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 | `AdminChatInterface.js` | Admin AI chat (agent page) | Multiple tables + edge functions |
 | `OmniChatInterface.js` | Omni-channel chat | Multiple tables + edge functions |
 | `AdminHeader.js` | Admin portal header | None |
-| `AgentCard.js` | Agent card in grid | None |
+| `AgentCard.js` | Agent card in grid (type-specific color badges for 5 agent types) | None |
 | `PublicHeader.js` | Public page header | None |
 | `PublicFooter.js` | Public page footer | None |
 | `ConfirmModal.js` | Custom confirm dialog | None |
@@ -120,7 +120,7 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 | Model | Table(s) | Key Methods |
 |-------|----------|-------------|
 | `User.js` | `users`, `organizations` | getProfile, updateProfile, setServiceNumber, updatePassword |
-| `AgentConfig.js` | `agent_configs` | getAllByUserId, getById, createAgent, updateById, deleteAgent |
+| `AgentConfig.js` | `agent_configs` | getAllByUserId, getById, createAgent, updateById, deleteAgent, getDefaultPromptForType (5 type-specific prompt generators) |
 | `CallRecord.js` | `call_records` | getAll, getById, create, update, delete |
 | `Contact.js` | `contacts` | getAll, getById, create, update, delete, bulkCreate |
 | `SmsMessage.js` | `sms_messages` | getConversations, getThread, create, update |
@@ -361,7 +361,7 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 ## Database Tables (grouped)
 
 ### Core
-`users`, `organizations`, `organization_members`, `service_numbers`, `agent_configs`
+`users`, `organizations`, `organization_members`, `service_numbers`, `agent_configs` (5 types: inbound_voice, outbound_voice, text, email, chat_widget; single system_prompt; shared_memory_agent_ids UUID[])
 
 ### Communication
 `call_records`, `sms_messages`, `email_messages`, `chat_sessions`, `chat_messages`, `contacts`, `conversation_contexts`
@@ -430,9 +430,16 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 
 ### Agent Lifecycle
 1. Inbound call → SignalWire webhook → `webhook-inbound-call` → Creates LiveKit room → Agent dispatched
-2. Agent connects → Fetches config → Loads caller memory + semantic context → Builds system prompt
+2. Agent connects → Fetches config → Loads caller memory + semantic context + shared agent memories → Builds single system prompt
 3. During call → Function tools: transfer, warm transfer, SMS, calendar, data collection, custom webhooks
 4. Call ends → Summary → Update memory → Deduct credits → Check semantic actions → Delete room
+
+### Type-Specific Architecture
+- 5 agent types: `inbound_voice`, `outbound_voice`, `text`, `email`, `chat_widget`
+- Single `system_prompt` per agent (consolidated from separate inbound/outbound prompts)
+- Type-specific default prompt generators in AgentConfig model
+- Shared memory: agents can share conversation memory via `shared_memory_agent_ids` — memories from linked agents are injected into the system prompt for the same contact
+- Non-voice types (text, email, chat_widget) hide voice-specific settings in the Configure tab
 
 ### Function Tools Available to Agent
 - Blind transfer / warm transfer to configured numbers
