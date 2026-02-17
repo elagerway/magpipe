@@ -1,11 +1,14 @@
 const AGENT_TYPES = [
-  { value: 'inbound', label: 'Inbound', description: 'Handle incoming calls and messages' },
-  { value: 'outbound', label: 'Outbound', description: 'Make outbound calls on your behalf' },
-  { value: 'both', label: 'Both', description: 'Handle inbound and outbound communication' },
+  { value: 'inbound_voice', label: 'Inbound Voice', description: 'Answer incoming phone calls' },
+  { value: 'outbound_voice', label: 'Outbound Voice', description: 'Make calls on your behalf' },
+  { value: 'text', label: 'Text / SMS', description: 'Handle text message conversations' },
+  { value: 'email', label: 'Email', description: 'Draft and respond to emails' },
+  { value: 'chat_widget', label: 'Chat Widget', description: 'Live chat on your website' },
 ];
 
 export const configureTabMethods = {
   renderConfigureTab() {
+    const isVoice = ['inbound_voice', 'outbound_voice'].includes(this.agent.agent_type);
     return `
       <div class="config-section">
         <h3>Identity</h3>
@@ -50,6 +53,7 @@ export const configureTabMethods = {
           </div>
         </div>
 
+        ${isVoice ? `
         <div class="form-group">
           <label class="form-label">Voice</label>
           <div class="voice-selector" id="voice-selector">
@@ -163,6 +167,7 @@ export const configureTabMethods = {
             </div>
           </div>
         </div>
+        ` : ''}
 
         <div class="form-group">
           <label class="form-label">Response Style</label>
@@ -212,6 +217,7 @@ export const configureTabMethods = {
         </div>
       </div>
 
+      ${isVoice ? `
       <div class="config-section">
         <h3>Advanced Voice Settings</h3>
 
@@ -383,6 +389,7 @@ export const configureTabMethods = {
           <p class="form-help">How many times to prompt before ending call (0 = disabled)</p>
         </div>
       </div>
+      ` : ''}
 
       <div class="config-section">
         <h3>AI Settings</h3>
@@ -477,12 +484,37 @@ export const configureTabMethods = {
       });
     }
 
-    // Agent type radio buttons
+    // Agent type radio buttons (with warning on type change)
     document.querySelectorAll('input[name="agent_type"]').forEach(radio => {
       radio.addEventListener('change', (e) => {
-        document.querySelectorAll('.type-option').forEach(opt => opt.classList.remove('selected'));
-        e.target.closest('.type-option').classList.add('selected');
-        this.scheduleAutoSave({ agent_type: e.target.value });
+        const newType = e.target.value;
+        const oldType = this.agent.agent_type;
+
+        if (newType === oldType) return;
+
+        const applyChange = () => {
+          document.querySelectorAll('.type-option').forEach(opt => opt.classList.remove('selected'));
+          e.target.closest('.type-option').classList.add('selected');
+          this.agent.agent_type = newType;
+          this.scheduleAutoSave({ agent_type: newType });
+          // Re-render tab to show/hide voice settings
+          const tabContent = document.getElementById('tab-content');
+          if (tabContent) {
+            tabContent.innerHTML = this.renderConfigureTab();
+            this.attachConfigureTabListeners();
+          }
+        };
+
+        this.showConfirmModal({
+          title: 'Change Agent Type',
+          message: 'Changing agent type may require updating your prompt. Continue?',
+          confirmText: 'Change Type',
+          onConfirm: applyChange,
+        });
+
+        // Revert the radio selection until confirmed
+        e.target.checked = false;
+        document.querySelector(`input[name="agent_type"][value="${oldType}"]`).checked = true;
       });
     });
 

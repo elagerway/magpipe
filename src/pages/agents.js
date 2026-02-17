@@ -89,6 +89,66 @@ function addAgentsPageStyles() {
       padding: 1rem 1.25rem;
       overflow-y: auto;
     }
+
+    /* Agent type selection grid */
+    .agent-type-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+    }
+
+    @media (max-width: 480px) {
+      .agent-type-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .agent-type-card {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 1rem;
+      background: white;
+      border: 1.5px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      text-align: left;
+      width: 100%;
+    }
+
+    .agent-type-card:hover {
+      border-color: var(--primary-color);
+      box-shadow: var(--shadow-sm);
+      transform: translateY(-1px);
+    }
+
+    .agent-type-card-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .agent-type-card-info {
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+    }
+
+    .agent-type-card-title {
+      font-weight: 600;
+      font-size: 0.9rem;
+      color: var(--text-primary);
+    }
+
+    .agent-type-card-desc {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+    }
   `;
 
   document.head.appendChild(styles);
@@ -210,13 +270,13 @@ export default class AgentsPage {
     // Create agent button (header)
     const createBtn = document.getElementById('create-agent-btn');
     if (createBtn) {
-      createBtn.addEventListener('click', () => this.createNewAgent());
+      createBtn.addEventListener('click', () => this.showCreateAgentModal());
     }
 
     // Create first agent button (empty state)
     const createFirstBtn = document.getElementById('create-first-agent-btn');
     if (createFirstBtn) {
-      createFirstBtn.addEventListener('click', () => this.createNewAgent());
+      createFirstBtn.addEventListener('click', () => this.showCreateAgentModal());
     }
   }
 
@@ -224,11 +284,106 @@ export default class AgentsPage {
     navigateTo(`/agents/${agentId}`);
   }
 
-  async createNewAgent() {
+  showCreateAgentModal() {
+    const AGENT_TYPE_OPTIONS = [
+      {
+        type: 'inbound_voice',
+        title: 'Inbound Voice',
+        description: 'Answer incoming phone calls',
+        icon: '<svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/><polyline points="15 3 15 8 20 8" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>',
+        color: '#0369a1',
+        bg: '#e0f2fe',
+      },
+      {
+        type: 'outbound_voice',
+        title: 'Outbound Voice',
+        description: 'Make calls on your behalf',
+        icon: '<svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 3l4 4-4 4"/></svg>',
+        color: '#b45309',
+        bg: '#fef3c7',
+      },
+      {
+        type: 'text',
+        title: 'Text / SMS',
+        description: 'Handle text message conversations',
+        icon: '<svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>',
+        color: '#15803d',
+        bg: '#dcfce7',
+      },
+      {
+        type: 'email',
+        title: 'Email',
+        description: 'Draft and respond to emails',
+        icon: '<svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>',
+        color: '#9d174d',
+        bg: '#fce7f3',
+      },
+      {
+        type: 'chat_widget',
+        title: 'Chat Widget',
+        description: 'Live chat on your website',
+        icon: '<svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a2 2 0 01-2-2v-1M13 6V4a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l4-4h2a2 2 0 002-2V6z"/></svg>',
+        color: '#4338ca',
+        bg: '#e0e7ff',
+      },
+    ];
+
+    // Build and insert modal overlay
+    const overlay = document.createElement('div');
+    overlay.className = 'contact-modal-overlay';
+    overlay.id = 'create-agent-modal-overlay';
+    overlay.style.display = 'flex';
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.style.display = 'none'; };
+
+    overlay.innerHTML = `
+      <div class="contact-modal" style="max-width: 600px;" onclick="event.stopPropagation()">
+        <div class="contact-modal-header">
+          <h3>Create New Agent</h3>
+          <button class="close-modal-btn" id="close-create-agent-modal">&times;</button>
+        </div>
+        <div class="contact-modal-body">
+          <p style="margin: 0 0 1rem; color: var(--text-secondary); font-size: 0.9rem;">Choose the type of agent you want to create.</p>
+          <div class="agent-type-grid">
+            ${AGENT_TYPE_OPTIONS.map(opt => `
+              <button class="agent-type-card" data-agent-type="${opt.type}">
+                <div class="agent-type-card-icon" style="background: ${opt.bg}; color: ${opt.color};">
+                  ${opt.icon}
+                </div>
+                <div class="agent-type-card-info">
+                  <span class="agent-type-card-title">${opt.title}</span>
+                  <span class="agent-type-card-desc">${opt.description}</span>
+                </div>
+              </button>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    // Close button
+    overlay.querySelector('#close-create-agent-modal').addEventListener('click', () => {
+      overlay.style.display = 'none';
+      overlay.remove();
+    });
+
+    // Type card click handlers
+    overlay.querySelectorAll('.agent-type-card').forEach(card => {
+      card.addEventListener('click', async () => {
+        const type = card.dataset.agentType;
+        overlay.style.display = 'none';
+        overlay.remove();
+        await this.createAgentWithType(type);
+      });
+    });
+  }
+
+  async createAgentWithType(agentType) {
     try {
       const { config: newAgent, error } = await AgentConfig.createAgent(this.userId, {
         name: `Agent ${this.agents.length + 1}`,
-        agent_type: 'inbound',
+        agent_type: agentType,
       });
 
       if (error) {

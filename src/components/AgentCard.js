@@ -7,9 +7,15 @@ import { showToast } from '../lib/toast.js';
 
 // Agent type badge colors
 const TYPE_COLORS = {
-  inbound: { bg: '#e0f2fe', text: '#0369a1' },
-  outbound: { bg: '#fef3c7', text: '#b45309' },
-  both: { bg: '#e0e7ff', text: '#4338ca' },
+  inbound_voice:  { bg: '#e0f2fe', text: '#0369a1', label: 'Inbound Voice' },
+  outbound_voice: { bg: '#fef3c7', text: '#b45309', label: 'Outbound Voice' },
+  text:           { bg: '#dcfce7', text: '#15803d', label: 'Text' },
+  email:          { bg: '#fce7f3', text: '#9d174d', label: 'Email' },
+  chat_widget:    { bg: '#e0e7ff', text: '#4338ca', label: 'Chat Widget' },
+  // Legacy types (backward compat)
+  inbound:  { bg: '#e0f2fe', text: '#0369a1', label: 'Inbound Voice' },
+  outbound: { bg: '#fef3c7', text: '#b45309', label: 'Outbound Voice' },
+  both:     { bg: '#e0e7ff', text: '#4338ca', label: 'Inbound & Outbound' },
 };
 
 /**
@@ -80,7 +86,7 @@ export function createAgentCard(agent, { onOpen, onDelete, onToggleActive }) {
     <div class="agent-card-body">
       <h3 class="agent-name">${agent.name || 'Unnamed Agent'}</h3>
       <span class="agent-type-badge" style="background: ${typeColors.bg}; color: ${typeColors.text};">
-        ${agent.agent_type === 'both' ? 'Inbound & Outbound' : agent.agent_type.charAt(0).toUpperCase() + agent.agent_type.slice(1)}
+        ${typeColors.label}
       </span>
       ${lastEdited ? `<p class="agent-last-edited">Edited ${lastEdited}</p>` : ''}
     </div>
