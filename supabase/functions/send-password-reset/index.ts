@@ -7,13 +7,20 @@ Deno.serve(async (req) => {
   }
 
   try {
-    console.log('Password reset request received')
-    const { email } = await req.json()
-    console.log('Email:', email)
+    console.log('Password reset / magic link request received')
+    const { email, type = 'recovery' } = await req.json()
+    console.log('Email:', email, 'Type:', type)
 
     if (!email) {
       return new Response(
         JSON.stringify({ error: 'Email is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    if (!['recovery', 'magiclink'].includes(type)) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid type. Must be "recovery" or "magiclink"' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -28,9 +35,7 @@ Deno.serve(async (req) => {
       }
     })
 
-    // Just try to generate the reset link - Supabase will handle user lookup
-    // This is more efficient and secure
-    console.log('Attempting to generate reset link for:', email)
+    console.log('Attempting to generate link for:', email, 'type:', type)
 
     // Try to get user profile for name
     const { data: profile } = await supabase
@@ -42,29 +47,39 @@ Deno.serve(async (req) => {
 
     const userName = profile?.name || null
 
-    // Generate password reset token using Supabase Auth
-    const { data: resetData, error: resetError } = await supabase.auth.admin.generateLink({
-      type: 'recovery',
+    // Generate link using Supabase Auth
+    const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
+      type: type,
       email: email,
     })
 
-    if (resetError || !resetData) {
-      console.error('Error generating reset link:', resetError)
+    if (linkError || !linkData) {
+      console.error('Error generating link:', linkError)
       // For security, don't reveal if user exists or not
-      // Return success anyway (user might not exist)
       return new Response(
-        JSON.stringify({ success: true, message: 'If an account exists, a reset link has been sent' }),
+        JSON.stringify({ success: true, message: 'If an account exists, a link has been sent' }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    console.log('Reset link generated successfully')
-    // Extract the reset token from the link
-    const resetLink = resetData.properties.action_link
-    console.log('Reset link:', resetLink)
+    console.log('Link generated successfully')
+    const actionLink = linkData.properties.action_link
+    console.log('Action link:', actionLink)
 
     // Send email via Postmark
     const postmarkApiKey = Deno.env.get('POSTMARK_API_KEY')!
+
+    const isMagicLink = type === 'magiclink'
+
+    const emailTitle = isMagicLink ? 'Sign In to Magpipe' : 'Reset Your Password'
+    const emailSubject = isMagicLink ? 'Your Magpipe Magic Link' : 'Reset Your Magpipe Password'
+    const emailBody = isMagicLink
+      ? 'You requested a magic link to sign in to your Magpipe account. Click the button below to sign in instantly:'
+      : 'We received a request to reset your Magpipe password. Click the button below to create a new password:'
+    const buttonText = isMagicLink ? 'Sign In Now' : 'Reset Password'
+    const expiryNote = isMagicLink
+      ? 'If you didn\'t request this, you can safely ignore this email. This link will expire in 1 hour.'
+      : 'If you didn\'t request this, you can safely ignore this email. This link will expire in 1 hour.'
 
     const emailHtml = `
 <!DOCTYPE html>
@@ -81,7 +96,7 @@ Deno.serve(async (req) => {
           <!-- Header -->
           <tr>
             <td style="padding: 40px 40px 20px; text-align: center;">
-              <h1 style="margin: 0; font-size: 28px; font-weight: 700; color: #1f2937;">Reset Your Password</h1>
+              <h1 style="margin: 0; font-size: 28px; font-weight: 700; color: #1f2937;">${emailTitle}</h1>
             </td>
           </tr>
 
@@ -92,28 +107,28 @@ Deno.serve(async (req) => {
                 Hi${userName ? ' ' + userName : ''},
               </p>
               <p style="margin: 0 0 20px; font-size: 16px; line-height: 1.5; color: #6b7280;">
-                We received a request to reset your Maggie password. Click the button below to create a new password:
+                ${emailBody}
               </p>
 
               <!-- Button -->
               <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
                 <tr>
                   <td align="center" style="padding: 20px 0;">
-                    <a href="${resetLink}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">
-                      Reset Password
+                    <a href="${actionLink}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">
+                      ${buttonText}
                     </a>
                   </td>
                 </tr>
               </table>
 
               <p style="margin: 20px 0 0; font-size: 14px; line-height: 1.5; color: #9ca3af;">
-                If you didn't request this, you can safely ignore this email. This link will expire in 1 hour.
+                ${expiryNote}
               </p>
 
               <!-- Alternative Link -->
               <p style="margin: 30px 0 0; padding-top: 20px; border-top: 1px solid #e5e7eb; font-size: 13px; line-height: 1.5; color: #9ca3af;">
                 Button not working? Copy and paste this link into your browser:<br>
-                <a href="${resetLink}" style="color: #6366f1; word-break: break-all;">${resetLink}</a>
+                <a href="${actionLink}" style="color: #6366f1; word-break: break-all;">${actionLink}</a>
               </p>
             </td>
           </tr>
@@ -122,7 +137,7 @@ Deno.serve(async (req) => {
           <tr>
             <td style="padding: 20px 40px 40px; text-align: center; border-top: 1px solid #e5e7eb;">
               <p style="margin: 0; font-size: 13px; color: #9ca3af;">
-                © 2025 Magpipe Assistant. All rights reserved.
+                &copy; ${new Date().getFullYear()} Magpipe. All rights reserved.
               </p>
             </td>
           </tr>
@@ -135,19 +150,19 @@ Deno.serve(async (req) => {
     `
 
     const emailText = `
-Reset Your Password
+${emailTitle}
 
 Hi${userName ? ' ' + userName : ''},
 
-We received a request to reset your Maggie password.
+${emailBody}
 
-Click the link below to create a new password:
-${resetLink}
+Click the link below:
+${actionLink}
 
-If you didn't request this, you can safely ignore this email. This link will expire in 1 hour.
+${expiryNote}
 
 ---
-© 2025 Magpipe Assistant. All rights reserved.
+© ${new Date().getFullYear()} Magpipe. All rights reserved.
     `
 
     console.log('Sending email via Postmark to:', email)
@@ -161,7 +176,7 @@ If you didn't request this, you can safely ignore this email. This link will exp
       body: JSON.stringify({
         From: 'notifications@snapsonic.com',
         To: email,
-        Subject: 'Reset Your Maggie Password',
+        Subject: emailSubject,
         HtmlBody: emailHtml,
         TextBody: emailText,
         MessageStream: 'outbound',
@@ -176,12 +191,16 @@ If you didn't request this, you can safely ignore this email. This link will exp
     }
 
     const postmarkResult = await postmarkResponse.json()
-    console.log('Password reset email sent successfully:', postmarkResult)
+    console.log('Email sent successfully:', postmarkResult)
+
+    const successMessage = isMagicLink
+      ? 'Magic link sent! Check your email to sign in.'
+      : 'Password reset link sent! Check your email.'
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: 'Password reset link sent! Check your email.',
+        message: successMessage,
         messageId: postmarkResult.MessageID
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

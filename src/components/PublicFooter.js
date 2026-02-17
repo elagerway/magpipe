@@ -13,7 +13,7 @@ export function renderPublicFooter() {
       <div class="footer-content">
         <div class="footer-brand">
           <span class="footer-logo">MAGPIPE</span>
-          <p>AI-powered phone assistant for modern professionals.</p>
+          <p>AI Powered Communications Platform</p>
         </div>
         <div class="footer-links">
           <div class="footer-column">
