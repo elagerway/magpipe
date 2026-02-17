@@ -32,7 +32,7 @@ export default class ForgotPasswordPage {
           <div class="forgot-container">
             <div class="forgot-card">
               <h1>Reset Password</h1>
-              <p class="forgot-subtitle">Enter your email and we'll send you a reset link</p>
+              <p class="forgot-subtitle">Enter your email and we'll help you get back in</p>
 
               <form id="forgot-password-form">
                 <div class="form-group">
@@ -50,6 +50,15 @@ export default class ForgotPasswordPage {
                 <button type="submit" class="btn btn-primary btn-full" id="submit-btn">
                   Send Reset Link
                 </button>
+
+                <div class="forgot-divider">
+                  <span>or</span>
+                </div>
+
+                <button type="button" class="btn btn-secondary btn-full" id="magic-link-btn">
+                  Send Magic Link
+                </button>
+                <p class="magic-link-hint">Sign in instantly without a password</p>
               </form>
 
               <p class="forgot-footer-text">
@@ -218,6 +227,34 @@ export default class ForgotPasswordPage {
           text-decoration: underline;
         }
 
+        /* Divider */
+        .forgot-divider {
+          display: flex;
+          align-items: center;
+          margin: 1.25rem 0;
+        }
+
+        .forgot-divider::before,
+        .forgot-divider::after {
+          content: '';
+          flex: 1;
+          border-bottom: 1px solid var(--border-color);
+        }
+
+        .forgot-divider span {
+          padding: 0 0.75rem;
+          color: var(--text-muted);
+          font-size: 0.875rem;
+        }
+
+        .magic-link-hint {
+          text-align: center;
+          font-size: 0.8rem;
+          color: var(--text-muted);
+          margin-top: 0.5rem;
+          margin-bottom: 0;
+        }
+
         /* Legal Links */
         .legal-links {
           text-align: center;
@@ -264,7 +301,9 @@ export default class ForgotPasswordPage {
   attachEventListeners() {
     const form = document.getElementById('forgot-password-form');
     const submitBtn = document.getElementById('submit-btn');
+    const magicLinkBtn = document.getElementById('magic-link-btn');
 
+    // Password reset handler
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
 
@@ -277,7 +316,6 @@ export default class ForgotPasswordPage {
       try {
         console.log('Sending password reset email to:', email);
 
-        // Call custom Edge Function
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
         const { data: { session } } = await supabase.auth.getSession();
 
@@ -287,36 +325,73 @@ export default class ForgotPasswordPage {
             'Content-Type': 'application/json',
             'Authorization': session ? `Bearer ${session.access_token}` : '',
           },
-          body: JSON.stringify({ email }),
+          body: JSON.stringify({ email, type: 'recovery' }),
         });
 
         const result = await response.json();
-        console.log('Reset password response:', result);
-        console.log('Response status:', response.status);
-        console.log('Response ok:', response.ok);
 
         if (!response.ok) {
           console.error('Edge Function error:', result);
           throw new Error(result.error || 'Failed to send reset email');
         }
 
-        // Show success message
-        console.log('Password reset email sent successfully');
         showToast('Password reset link sent! Check your email.', 'success');
-
-        // Clear form
         form.reset();
 
-        // Re-enable button
         submitBtn.disabled = false;
         submitBtn.textContent = 'Send Reset Link';
       } catch (error) {
         console.error('Password reset error:', error);
         showToast(error.message || 'Failed to send reset link. Please try again.', 'error');
 
-        // Re-enable form
         submitBtn.disabled = false;
         submitBtn.textContent = 'Send Reset Link';
+      }
+    });
+
+    // Magic link handler
+    magicLinkBtn.addEventListener('click', async () => {
+      const email = document.getElementById('email').value;
+
+      if (!email) {
+        showToast('Please enter your email address first.', 'error');
+        return;
+      }
+
+      magicLinkBtn.disabled = true;
+      magicLinkBtn.textContent = 'Sending...';
+
+      try {
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        const { data: { session } } = await supabase.auth.getSession();
+
+        const response = await fetch(`${supabaseUrl}/functions/v1/send-password-reset`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': session ? `Bearer ${session.access_token}` : '',
+          },
+          body: JSON.stringify({ email, type: 'magiclink' }),
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          console.error('Edge Function error:', result);
+          throw new Error(result.error || 'Failed to send magic link');
+        }
+
+        showToast('Magic link sent! Check your email to sign in.', 'success');
+        form.reset();
+
+        magicLinkBtn.disabled = false;
+        magicLinkBtn.textContent = 'Send Magic Link';
+      } catch (error) {
+        console.error('Magic link error:', error);
+        showToast(error.message || 'Failed to send magic link. Please try again.', 'error');
+
+        magicLinkBtn.disabled = false;
+        magicLinkBtn.textContent = 'Send Magic Link';
       }
     });
   }
