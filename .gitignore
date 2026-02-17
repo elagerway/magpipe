@@ -51,4 +51,5 @@ test-bridged-call.sh
 # Screenshots
 *.png
 !docs/images/*.png
+!public/magpipe-logo.png
 tests/screenshots/
