@@ -164,7 +164,7 @@ Deno.serve(async (req) => {
     });
 
     // Build OAuth URL
-    const redirectUri = `https://api.magpipe.ai/functions/v1/integration-oauth-callback`;
+    const redirectUri = `${Deno.env.get('SUPABASE_URL')}/functions/v1/integration-oauth-callback`;
     const scopes = oauthConfig.scopes?.join(' ') || '';
 
     const oauthUrl = new URL(oauthConfig.auth_url);

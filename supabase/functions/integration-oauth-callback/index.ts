@@ -109,7 +109,7 @@ Deno.serve(async (req) => {
     }
 
     // Build token request
-    const redirectUri = `https://api.magpipe.ai/functions/v1/integration-oauth-callback`;
+    const redirectUri = `${Deno.env.get('SUPABASE_URL')}/functions/v1/integration-oauth-callback`;
 
     const tokenParams: Record<string, string> = {
       grant_type: 'authorization_code',

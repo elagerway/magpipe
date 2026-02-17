@@ -474,7 +474,7 @@ async function downloadAndUploadAttachments(
 
       results.push({
         filename: meta.filename,
-        url: `https://api.magpipe.ai/storage/v1/object/public/support-attachments/${storagePath}`,
+        url: `${Deno.env.get('SUPABASE_URL')}/storage/v1/object/public/support-attachments/${storagePath}`,
         mime_type: meta.mimeType,
         size_bytes: meta.size,
       })

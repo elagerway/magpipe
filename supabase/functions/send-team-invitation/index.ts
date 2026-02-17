@@ -125,7 +125,7 @@ Deno.serve(async (req) => {
           'X-Postmark-Server-Token': postmarkApiKey,
         },
         body: JSON.stringify({
-          From: 'MAGPIPE <notifications@snapsonic.com>',
+          From: `MAGPIPE <${Deno.env.get('NOTIFICATION_EMAIL') || 'notifications@snapsonic.com'}>`,
           To: email,
           Subject: `You've been invited to join ${organizationName}`,
           HtmlBody: htmlBody,
