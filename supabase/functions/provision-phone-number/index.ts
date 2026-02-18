@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { resolveUser } from '../_shared/api-auth.ts'
 import { corsHeaders, handleCors } from '../_shared/cors.ts'
+import { addNumberToSipTrunk } from '../_shared/livekit-sip.ts'
 
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
@@ -190,7 +191,13 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Step 4: If this is a Canadian number, auto-provision a US number for SMS to US contacts
+    // Step 4: Register number with LiveKit SIP trunk for inbound call routing
+    const sipRegistered = await addNumberToSipTrunk(phoneNumber)
+    if (!sipRegistered) {
+      console.warn('⚠️ Number provisioned but NOT added to LiveKit SIP trunk — inbound calls will fail until manually added')
+    }
+
+    // Step 5: If this is a Canadian number, auto-provision a US number for SMS to US contacts
     let usNumberProvisioned = null
     if (!isUS) {
       console.log('Canadian number detected - auto-provisioning US number for SMS to US contacts')
@@ -283,6 +290,9 @@ Deno.serve(async (req) => {
                   is_active: true, // Auto-activate for seamless SMS to US contacts
                   capabilities: usNormalizedCapabilities,
                 })
+
+              // Register US relay number with LiveKit SIP trunk too
+              await addNumberToSipTrunk(usNumber)
 
               usNumberProvisioned = usNumber
               console.log('✅ Auto-provisioned US number:', usNumber)

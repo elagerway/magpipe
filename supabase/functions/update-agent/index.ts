@@ -48,7 +48,12 @@ Deno.serve(async (req) => {
       "name", "greeting", "system_prompt", "voice_id", "llm_model",
       "language", "max_call_duration", "end_call_phrases",
       "transfer_number", "is_active", "organization_name", "owner_name",
-      "agent_role", "agent_type"
+      "agent_role", "agent_type", "temperature", "functions",
+      "agent_volume", "ambient_sound", "ambient_sound_volume",
+      "noise_suppression", "memory_enabled", "semantic_memory_enabled",
+      "translate_to", "pii_storage", "calls_schedule", "texts_schedule",
+      "schedule_timezone", "outbound_system_prompt", "knowledge_source_ids",
+      "vad_silence_duration", "vad_speech_duration", "vad_activation_threshold",
     ];
 
     const updateData: Record<string, unknown> = {};

@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { resolveUser } from '../_shared/api-auth.ts'
 import { corsHeaders, handleCors } from '../_shared/cors.ts'
+import { removeNumberFromSipTrunk } from '../_shared/livekit-sip.ts'
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -80,6 +81,9 @@ Deno.serve(async (req) => {
         // Continue with database deletion anyway
       }
     }
+
+    // Remove from LiveKit SIP trunk
+    await removeNumberFromSipTrunk(number.phone_number)
 
     // Delete from database
     const { error: deleteError } = await queryClient

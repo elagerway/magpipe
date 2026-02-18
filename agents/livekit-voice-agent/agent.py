@@ -2926,11 +2926,17 @@ AFTER-HOURS CONTEXT:
     # Initialize AgentSession with low-latency configuration
     # VAD tuning: instant response with background noise filtering
     try:
+        # VAD settings from agent config (with sensible defaults)
+        vad_silence = float(user_config.get("vad_silence_duration", 0.0) or 0.0)
+        vad_speech = float(user_config.get("vad_speech_duration", 0.15) or 0.15)
+        vad_threshold = float(user_config.get("vad_activation_threshold", 0.6) or 0.6)
+        logger.info(f"🎚️ VAD settings: silence={vad_silence}, speech={vad_speech}, threshold={vad_threshold}")
+
         session = AgentSession(
             vad=silero.VAD.load(
-                min_silence_duration=0.0,   # Respond immediately when speech stops
-                min_speech_duration=0.15,   # Require slightly longer speech to trigger
-                activation_threshold=0.6,   # Higher = less sensitive to background noise (default 0.5)
+                min_silence_duration=vad_silence,
+                min_speech_duration=vad_speech,
+                activation_threshold=vad_threshold,
             ),
             stt=deepgram.STT(
                 model=stt_model,
