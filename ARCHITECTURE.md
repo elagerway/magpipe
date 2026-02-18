@@ -202,7 +202,7 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 | `warm-transfer-callback` | **No JWT** | `call_records` | None | SignalWire webhook |
 | `warm-transfer-status` | **No JWT** | `call_records` | None | SignalWire webhook |
 | `warm-transfer-twiml` | **No JWT** | `call_records` | SignalWire | SignalWire webhook |
-| `terminate-call` | JWT | `call_records` | LiveKit | agent controls |
+| `terminate-call` | JWT / API key | `call_records` | LiveKit | agent controls, API |
 | `webhook-call-status` | **No JWT** | `call_records` | None | SignalWire webhook |
 | `sip-call-handler` | **No JWT** | `call_records` | SignalWire | SignalWire webhook |
 | `sip-call-status` | **No JWT** | `call_records` | None | SignalWire webhook |
@@ -242,11 +242,12 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 | Function | Auth | Tables | External APIs | Called By |
 |----------|------|--------|---------------|----------|
 | `get-agent` | JWT | `agent_configs`, `knowledge_sources` | None | agent-detail page |
-| `list-agents` | JWT | `agent_configs` | None | agents page |
+| `list-agents` | JWT / API key | `agent_configs` | None | agents page, API |
+| `create-agent` | JWT / API key | `agent_configs` | None | API |
 | `update-agent` | JWT | `agent_configs`, `service_numbers`, `knowledge_sources` | None | agent-detail page |
 | `delete-agent` | JWT | `agent_configs`, `service_numbers` | None | agent list |
 | `list-voices` | JWT | None | ElevenLabs | voice selection |
-| `clone-voice` | JWT | `cloned_voices` | ElevenLabs | voice cloning |
+| `clone-voice` | JWT / API key | `cloned_voices` | ElevenLabs | voice cloning, API |
 | `delete-voice` | JWT | `cloned_voices` | ElevenLabs | voice management |
 | `get-cloned-voices` | JWT | `cloned_voices` | None | voice selection |
 | `preview-voice` | JWT | None | ElevenLabs TTS | voice preview |
@@ -273,9 +274,9 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 
 | Function | Auth | Tables | External APIs | Called By |
 |----------|------|--------|---------------|----------|
-| `search-phone-numbers` | JWT | None | SignalWire | select-number page |
-| `provision-phone-number` | JWT | `service_numbers`, `users`, `monthly_billing_log` | SignalWire | select-number page |
-| `release-phone-number` | JWT | `service_numbers`, `numbers_to_delete` | None | number management |
+| `search-phone-numbers` | JWT / API key | None | SignalWire | select-number page, API |
+| `provision-phone-number` | JWT / API key | `service_numbers`, `users`, `monthly_billing_log` | SignalWire | select-number page, API |
+| `release-phone-number` | JWT / API key | `service_numbers`, `numbers_to_delete` | None | number management, API |
 | `queue-number-deletion` | JWT | `numbers_to_delete` | None | number release |
 | `cancel-number-deletion` | JWT | `numbers_to_delete` | None | deletion management |
 | `process-scheduled-deletions` | Cron | `numbers_to_delete`, `service_numbers` | SignalWire | cron job |
@@ -290,7 +291,7 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 | `deduct-credits` | Service role | `users`, `credit_transactions` | None | voice agent, SMS handler |
 | `stripe-webhook` | **No JWT** (Stripe sig) | `users`, `credit_transactions` | Stripe | Stripe webhook |
 | `stripe-create-checkout` | JWT | `users` | Stripe | credit purchase |
-| `stripe-add-credits` | JWT | `users`, `credit_transactions` | Stripe | credit purchase |
+| `stripe-add-credits` | JWT / API key | `users`, `credit_transactions` | Stripe | credit purchase, API |
 | `stripe-setup-payment` | JWT | `users` | Stripe | payment setup |
 | `stripe-create-portal` | JWT | `users` | Stripe | billing settings |
 | `process-monthly-fees` | Cron | `users`, `service_numbers`, `knowledge_sources`, `monthly_billing_log`, `credit_transactions` | None | cron job |
@@ -304,9 +305,9 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 | `integration-oauth-callback` | **No JWT** | `integration_providers`, `user_integrations` | OAuth token exchange | OAuth redirect |
 | `cal-com-oauth-start` | JWT | None | Cal.com | settings |
 | `cal-com-oauth-callback` | **No JWT** | None | Cal.com | OAuth redirect |
-| `cal-com-get-slots` | JWT | None | Cal.com | availability check |
-| `cal-com-create-booking` | JWT | None | Cal.com | booking |
-| `cal-com-cancel-booking` | JWT | None | Cal.com | cancel booking |
+| `cal-com-get-slots` | JWT / API key | None | Cal.com | availability check, API |
+| `cal-com-create-booking` | JWT / API key | None | Cal.com | booking, API |
+| `cal-com-cancel-booking` | JWT / API key | None | Cal.com | cancel booking, API |
 | `mcp-execute` | JWT/Service role | Many tables | OpenAI, various MCP servers | admin chat, agent |
 | `mcp-proxy` | JWT | None | MCP servers | MCP client |
 | `mcp-tools` | JWT | None | None | MCP client |
