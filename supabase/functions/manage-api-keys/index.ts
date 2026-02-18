@@ -16,6 +16,13 @@ function generateApiKey(): string {
   return `mgp_${hex}`
 }
 
+function generateWebhookSecret(): string {
+  const array = new Uint8Array(32) // 32 bytes = 64 hex chars
+  crypto.getRandomValues(array)
+  const hex = Array.from(array, b => b.toString(16).padStart(2, '0')).join('')
+  return `whsec_${hex}`
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return handleCors()
@@ -104,12 +111,13 @@ Deno.serve(async (req) => {
         }
         if (webhook_url) {
           insertData.webhook_url = webhook_url.trim()
+          insertData.webhook_secret = generateWebhookSecret()
         }
 
         const { data: keyRecord, error: insertError } = await serviceClient
           .from('api_keys')
           .insert(insertData)
-          .select('id, name, key_prefix, created_at, webhook_url')
+          .select('id, name, key_prefix, created_at, webhook_url, webhook_secret')
           .single()
 
         if (insertError) {
@@ -128,6 +136,7 @@ Deno.serve(async (req) => {
             name: keyRecord.name,
             key_prefix: keyRecord.key_prefix,
             created_at: keyRecord.created_at,
+            webhook_secret: keyRecord.webhook_secret || null,
           }),
           { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
@@ -136,7 +145,7 @@ Deno.serve(async (req) => {
       case 'list': {
         const { data: keys, error: listError } = await serviceClient
           .from('api_keys')
-          .select('id, name, key_prefix, created_at, last_used_at, is_active, webhook_url')
+          .select('id, name, key_prefix, created_at, last_used_at, is_active, webhook_url, webhook_secret')
           .eq('user_id', user.id)
           .order('created_at', { ascending: false })
 
@@ -208,12 +217,34 @@ Deno.serve(async (req) => {
           }
         }
 
+        // If setting a URL, check if key already has a secret; generate one if not
+        const updateData: Record<string, unknown> = {
+          webhook_url: updateWebhookUrl || null,
+        }
+
+        if (updateWebhookUrl) {
+          // Check if key already has a secret
+          const { data: existing } = await serviceClient
+            .from('api_keys')
+            .select('webhook_secret')
+            .eq('id', updateKeyId)
+            .eq('user_id', user.id)
+            .single()
+
+          if (!existing?.webhook_secret) {
+            updateData.webhook_secret = generateWebhookSecret()
+          }
+        } else {
+          // Clearing webhook URL also clears the secret
+          updateData.webhook_secret = null
+        }
+
         const { data: updatedKey, error: updateError } = await serviceClient
           .from('api_keys')
-          .update({ webhook_url: updateWebhookUrl || null })
+          .update(updateData)
           .eq('id', updateKeyId)
           .eq('user_id', user.id)
-          .select('id, webhook_url')
+          .select('id, webhook_url, webhook_secret')
           .single()
 
         if (updateError || !updatedKey) {
@@ -224,7 +255,7 @@ Deno.serve(async (req) => {
         }
 
         return new Response(
-          JSON.stringify({ success: true, webhook_url: updatedKey.webhook_url }),
+          JSON.stringify({ success: true, webhook_url: updatedKey.webhook_url, webhook_secret: updatedKey.webhook_secret }),
           { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
       }
