@@ -1601,7 +1601,7 @@ export const listenersMethods = {
 
     for (const line of lines) {
       // Match any speaker label at the start (up to 20 chars before colon)
-      const match = line.match(/^([^:]{1,20}):\s*(.+)$/);
+      const match = line.match(/^([^:]{1,60}):\s*(.+)$/);
       if (match) {
         const [, speaker, text] = match;
         const speakerLower = speaker.toLowerCase();
