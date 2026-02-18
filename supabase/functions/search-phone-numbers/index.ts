@@ -1,3 +1,5 @@
+import { createClient } from 'npm:@supabase/supabase-js@2'
+import { resolveUser } from '../_shared/api-auth.ts'
 import { corsHeaders, handleCors } from '../_shared/cors.ts'
 
 // Regional area code mappings for fallbacks
@@ -36,6 +38,20 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Authenticate user
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
+    )
+    const user = await resolveUser(req, supabaseClient)
+    if (!user) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     const { query } = await req.json()
 
     if (!query) {

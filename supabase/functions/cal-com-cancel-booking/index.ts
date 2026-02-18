@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { resolveUser } from '../_shared/api-auth.ts'
 import { corsHeaders, handleCors } from '../_shared/cors.ts'
 
 Deno.serve(async (req) => {
@@ -17,19 +18,23 @@ Deno.serve(async (req) => {
       }
     );
 
-    const authHeader = req.headers.get("Authorization")!;
-    const token = authHeader.replace("Bearer ", "");
-    const {
-      data: { user },
-      error: userError,
-    } = await supabaseClient.auth.getUser(token);
+    // Resolve user from JWT or API key
+    const user = await resolveUser(req, supabaseClient);
 
-    if (userError || !user) {
+    if (!user) {
       return new Response(
         JSON.stringify({ error: { code: "unauthorized", message: "Unauthorized" } }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    // Use service role client for API key auth (no RLS context), anon client for JWT
+    const queryClient = user.authMethod === "api_key"
+      ? createClient(
+          Deno.env.get("SUPABASE_URL") ?? "",
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+        )
+      : supabaseClient;
 
     const { booking_id, uid, reason } = await req.json();
 
@@ -41,7 +46,7 @@ Deno.serve(async (req) => {
     }
 
     // Get user's Cal.com integration
-    const { data: integration, error: integrationError } = await supabaseClient
+    const { data: integration, error: integrationError } = await queryClient
       .from("integrations")
       .select("access_token")
       .eq("user_id", user.id)
