@@ -221,6 +221,15 @@
         "api-reference/endpoints/list-scheduled-actions",
         "api-reference/endpoints/cancel-scheduled-action"
       ]
+    },
+    {
+      "group": "API Keys & Webhooks",
+      "pages": [
+        "api-reference/endpoints/create-api-key",
+        "api-reference/endpoints/list-api-keys",
+        "api-reference/endpoints/set-webhook",
+        "api-reference/endpoints/revoke-api-key"
+      ]
     }
   ],
   "footerSocials": {

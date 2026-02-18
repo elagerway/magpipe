@@ -1,0 +1,115 @@
+---
+title: "Set Webhook URL"
+api: "POST /manage-api-keys"
+description: "Set or update the webhook URL on an API key"
+---
+
+Set or update the webhook URL for an existing API key. When a webhook URL is set, Magpipe sends a `POST` request to that URL whenever a call completes. A signing secret is auto-generated on first use.
+
+See [Webhooks](/features/webhooks) for payload format and signature verification.
+
+## Request Body
+
+<ParamField body="action" type="string" required>
+  Must be `update`.
+</ParamField>
+
+<ParamField body="key_id" type="string" required>
+  The UUID of the API key to update.
+</ParamField>
+
+<ParamField body="webhook_url" type="string">
+  The HTTPS URL to receive webhook events. Must be a valid HTTP or HTTPS URL. Set to `null` or empty string to disable and clear the signing secret.
+</ParamField>
+
+## Response
+
+<ResponseField name="success" type="boolean">
+  Whether the update was successful.
+</ResponseField>
+
+<ResponseField name="webhook_url" type="string">
+  The updated webhook URL, or `null` if cleared.
+</ResponseField>
+
+<ResponseField name="webhook_secret" type="string">
+  The signing secret for HMAC verification. Format: `whsec_...`. `null` if webhook was cleared.
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl -X POST https://api.magpipe.ai/functions/v1/manage-api-keys \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "update",
+    "key_id": "b007638d-9550-4cc4-b35f-d11632d77d08",
+    "webhook_url": "https://your-server.com/webhook"
+  }'
+```
+
+```javascript Node.js
+const response = await fetch(
+  'https://api.magpipe.ai/functions/v1/manage-api-keys',
+  {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer YOUR_API_KEY',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      action: 'update',
+      key_id: 'b007638d-9550-4cc4-b35f-d11632d77d08',
+      webhook_url: 'https://your-server.com/webhook',
+    }),
+  }
+);
+
+const { webhook_secret } = await response.json();
+console.log('Save this secret:', webhook_secret);
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'https://api.magpipe.ai/functions/v1/manage-api-keys',
+    headers={
+        'Authorization': 'Bearer YOUR_API_KEY',
+        'Content-Type': 'application/json',
+    },
+    json={
+        'action': 'update',
+        'key_id': 'b007638d-9550-4cc4-b35f-d11632d77d08',
+        'webhook_url': 'https://your-server.com/webhook',
+    }
+)
+
+data = response.json()
+print(f"Signing secret: {data['webhook_secret']}")
+```
+</RequestExample>
+
+<ResponseExample>
+```json Success Response
+{
+  "success": true,
+  "webhook_url": "https://your-server.com/webhook",
+  "webhook_secret": "whsec_f7afad8c139e15f53e4c7afe127fa30655c96fbfd8226c15c4d6a2a8e199a34e"
+}
+```
+
+```json Cleared Webhook
+{
+  "success": true,
+  "webhook_url": null,
+  "webhook_secret": null
+}
+```
+
+```json Validation Error
+{
+  "error": "Invalid webhook URL. Must be a valid HTTP/HTTPS URL."
+}
+```
+</ResponseExample>
