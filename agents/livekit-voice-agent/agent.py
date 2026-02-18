@@ -2088,7 +2088,7 @@ async def entrypoint(ctx: JobContext):
         if service_number:
             # Look up user and agent from service_numbers table (SignalWire numbers)
             response = supabase.table("service_numbers") \
-                .select("user_id, agent_id, cnam_name") \
+                .select("user_id, agent_id") \
                 .eq("phone_number", service_number) \
                 .eq("is_active", True) \
                 .limit(1) \
@@ -2097,10 +2097,7 @@ async def entrypoint(ctx: JobContext):
             if response.data and len(response.data) > 0:
                 user_id = response.data[0]["user_id"]
                 agent_id = response.data[0].get("agent_id")
-                cnam_name = response.data[0].get("cnam_name")
                 room_metadata["user_id"] = user_id
-                if cnam_name:
-                    room_metadata["cnam_name"] = cnam_name
                 if agent_id:
                     room_metadata["agent_id"] = agent_id
                     logger.info(f"Looked up user_id: {user_id}, agent_id: {agent_id} from service_numbers")
