@@ -3369,8 +3369,11 @@ ADMIN MODE ACTIVATED:
         if direction == "inbound":
             # Say greeting immediately when participant joins - use say() for instant response
             # (don't use generate_reply() which adds LLM latency)
-            await session.say(greeting, allow_interruptions=True)
-            logger.info("📞 Inbound call - Agent greeted caller")
+            if greeting:
+                await session.say(greeting, allow_interruptions=True)
+                logger.info("📞 Inbound call - Agent greeted caller")
+            else:
+                logger.info("📞 Inbound call - No greeting configured, waiting for caller")
             log_call_state(ctx.room.name, "greeting_spoken", "agent", {"direction": "inbound"})
         else:
             # Outbound call - don't greet, wait for user to speak
