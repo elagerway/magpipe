@@ -1,0 +1,104 @@
+---
+title: "Create Dynamic Variable"
+api: "POST /manage-dynamic-variables"
+description: "Create a new dynamic variable for an agent"
+---
+
+Create a dynamic variable that your AI agent will extract from conversations. Dynamic variables let you capture structured data (names, emails, order numbers, etc.) during calls.
+
+## Request Body
+
+<ParamField body="agent_id" type="string" required>
+  UUID of the agent this variable belongs to
+</ParamField>
+
+<ParamField body="name" type="string" required>
+  Variable name (e.g., `caller_name`, `order_id`). Used as the key in extracted data.
+</ParamField>
+
+<ParamField body="description" type="string">
+  Description of what this variable captures. The AI uses this to know what to extract.
+</ParamField>
+
+<ParamField body="var_type" type="string" default="text">
+  Data type: `text`, `number`, `boolean`, or `enum`
+</ParamField>
+
+<ParamField body="enum_options" type="array">
+  Required when `var_type` is `enum`. List of allowed values.
+  ```json
+  ["small", "medium", "large"]
+  ```
+</ParamField>
+
+## Response
+
+<ResponseField name="id" type="string">
+  UUID of the created variable
+</ResponseField>
+
+<ResponseField name="agent_id" type="string">
+  UUID of the agent
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Variable name
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  Variable description
+</ResponseField>
+
+<ResponseField name="var_type" type="string">
+  Data type (text, number, boolean, enum)
+</ResponseField>
+
+<ResponseField name="enum_options" type="array">
+  Allowed values (only for enum type)
+</ResponseField>
+
+<ResponseField name="created_at" type="string">
+  ISO 8601 timestamp
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl -X POST "https://api.magpipe.ai/functions/v1/manage-dynamic-variables" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_id": "123e4567-e89b-12d3-a456-426614174000",
+    "name": "caller_name",
+    "description": "The full name of the caller",
+    "var_type": "text"
+  }'
+```
+</RequestExample>
+
+<ResponseExample>
+```json 201
+{
+  "id": "789e0123-e89b-12d3-a456-426614174000",
+  "agent_id": "123e4567-e89b-12d3-a456-426614174000",
+  "user_id": "456e7890-e89b-12d3-a456-426614174000",
+  "name": "caller_name",
+  "description": "The full name of the caller",
+  "var_type": "text",
+  "enum_options": null,
+  "created_at": "2024-01-15T10:30:00Z",
+  "updated_at": "2024-01-15T10:30:00Z"
+}
+```
+
+```json 400
+{
+  "error": "enum_options must be a non-empty array when var_type is enum"
+}
+```
+
+```json 409
+{
+  "error": "A variable with this name already exists for this agent"
+}
+```
+</ResponseExample>

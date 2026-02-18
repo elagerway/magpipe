@@ -122,6 +122,16 @@
       ]
     },
     {
+      "group": "Dynamic Variables",
+      "pages": [
+        "api-reference/endpoints/create-dynamic-variable",
+        "api-reference/endpoints/get-dynamic-variable",
+        "api-reference/endpoints/update-dynamic-variable",
+        "api-reference/endpoints/list-dynamic-variables",
+        "api-reference/endpoints/delete-dynamic-variable"
+      ]
+    },
+    {
       "group": "Memory",
       "pages": [
         "api-reference/endpoints/list-memories",

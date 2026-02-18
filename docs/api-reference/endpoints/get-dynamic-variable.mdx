@@ -1,0 +1,80 @@
+---
+title: "Get Dynamic Variable"
+api: "GET /manage-dynamic-variables/{id}"
+description: "Get a specific dynamic variable by ID"
+---
+
+Retrieve details of a specific dynamic variable.
+
+## Path Parameters
+
+<ParamField path="id" type="string" required>
+  UUID of the dynamic variable
+</ParamField>
+
+## Response
+
+<ResponseField name="id" type="string">
+  UUID of the variable
+</ResponseField>
+
+<ResponseField name="agent_id" type="string">
+  UUID of the agent this variable belongs to
+</ResponseField>
+
+<ResponseField name="user_id" type="string">
+  UUID of the user who created this variable
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Variable name
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  Variable description
+</ResponseField>
+
+<ResponseField name="var_type" type="string">
+  Data type (text, number, boolean, enum)
+</ResponseField>
+
+<ResponseField name="enum_options" type="array">
+  Allowed values (only for enum type, null otherwise)
+</ResponseField>
+
+<ResponseField name="created_at" type="string">
+  ISO 8601 creation timestamp
+</ResponseField>
+
+<ResponseField name="updated_at" type="string">
+  ISO 8601 last update timestamp
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl "https://api.magpipe.ai/functions/v1/manage-dynamic-variables/789e0123-e89b-12d3-a456-426614174000" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+</RequestExample>
+
+<ResponseExample>
+```json 200
+{
+  "id": "789e0123-e89b-12d3-a456-426614174000",
+  "agent_id": "123e4567-e89b-12d3-a456-426614174000",
+  "user_id": "456e7890-e89b-12d3-a456-426614174000",
+  "name": "caller_name",
+  "description": "The full name of the caller",
+  "var_type": "text",
+  "enum_options": null,
+  "created_at": "2024-01-15T10:30:00Z",
+  "updated_at": "2024-01-15T10:30:00Z"
+}
+```
+
+```json 404
+{
+  "error": "Dynamic variable not found"
+}
+```
+</ResponseExample>

@@ -1,0 +1,85 @@
+---
+title: "List Dynamic Variables"
+api: "GET /manage-dynamic-variables"
+description: "List all dynamic variables for an agent"
+---
+
+Retrieve all dynamic variables configured for a specific agent.
+
+## Query Parameters
+
+<ParamField query="agent_id" type="string" required>
+  UUID of the agent to list variables for
+</ParamField>
+
+## Response
+
+Returns an array of dynamic variable objects.
+
+<ResponseField name="id" type="string">
+  UUID of the variable
+</ResponseField>
+
+<ResponseField name="agent_id" type="string">
+  UUID of the agent
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Variable name
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  Variable description
+</ResponseField>
+
+<ResponseField name="var_type" type="string">
+  Data type (text, number, boolean, enum)
+</ResponseField>
+
+<ResponseField name="enum_options" type="array">
+  Allowed values (only for enum type)
+</ResponseField>
+
+<ResponseField name="created_at" type="string">
+  ISO 8601 timestamp
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl "https://api.magpipe.ai/functions/v1/manage-dynamic-variables?agent_id=123e4567-e89b-12d3-a456-426614174000" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+</RequestExample>
+
+<ResponseExample>
+```json 200
+[
+  {
+    "id": "789e0123-e89b-12d3-a456-426614174000",
+    "agent_id": "123e4567-e89b-12d3-a456-426614174000",
+    "user_id": "456e7890-e89b-12d3-a456-426614174000",
+    "name": "caller_name",
+    "description": "The full name of the caller",
+    "var_type": "text",
+    "enum_options": null,
+    "created_at": "2024-01-15T10:30:00Z",
+    "updated_at": "2024-01-15T10:30:00Z"
+  },
+  {
+    "id": "abc12345-e89b-12d3-a456-426614174000",
+    "agent_id": "123e4567-e89b-12d3-a456-426614174000",
+    "user_id": "456e7890-e89b-12d3-a456-426614174000",
+    "name": "shirt_size",
+    "description": "Customer preferred shirt size",
+    "var_type": "enum",
+    "enum_options": ["small", "medium", "large", "x-large"],
+    "created_at": "2024-01-14T09:00:00Z",
+    "updated_at": "2024-01-14T09:00:00Z"
+  }
+]
+```
+
+```json 200
+[]
+```
+</ResponseExample>
