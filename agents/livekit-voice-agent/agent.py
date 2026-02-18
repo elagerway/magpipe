@@ -2551,6 +2551,23 @@ THIS IS AN OUTBOUND CALL:
         if reconnect_reason == "transfer_declined":
             reconnect_context = f"\n- IMPORTANT: This caller just tried to transfer to {transfer_target} but they were unavailable. Apologize briefly and offer to help with something else."
 
+        # Resolve agent's spoken name: voice name as fallback
+        VOICE_NAMES = {
+            "21m00Tcm4TlvDq8ikWAM": "Rachel",
+            "pNInz6obpgDQGcFmaJgB": "Adam",
+            "EXAVITQu4vr4xnSDxMaL": "Sarah",
+            "TxGEqnHWrfWFTfGW9XjX": "Josh",
+            "cjVigY5qzO86Huf0OWal": "Eric",
+            "onwK4e9ZLuTAKqWW03F9": "Daniel",
+            "cgSgspJ2msm6clMCkdW9": "Jessica",
+            "iP95p4xoKVk53GoZ742B": "Chris",
+        }
+        voice_id = user_config.get("voice_id", "")
+        voice_name = VOICE_NAMES.get(voice_id, "Maggie")
+        # Use voice name if system prompt doesn't already specify a name
+        agent_spoken_name = voice_name
+        name_line = f"\n- Your name is {agent_spoken_name}. Introduce yourself by this name."
+
         # Put role clarification FIRST, then user's prompt, then call context
         INBOUND_ROLE_PREFIX = f"""CRITICAL - UNDERSTAND YOUR ROLE:
 The person on this call is a CALLER/CUSTOMER calling in - they are NOT the business owner.
@@ -2558,7 +2575,7 @@ The person on this call is a CALLER/CUSTOMER calling in - they are NOT the busin
 - The CALLER is a customer/client reaching out to the business
 - Do NOT treat the caller as your boss or as if they set you up
 - Do NOT say "your assistant" or "your number" to them - you're not THEIR assistant
-- Treat every caller professionally as a potential customer{caller_phone_info}{reconnect_context}
+- Treat every caller professionally as a potential customer{name_line}{caller_phone_info}{reconnect_context}
 
 YOUR CONFIGURED PERSONALITY:
 """
