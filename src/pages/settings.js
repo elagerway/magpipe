@@ -1754,10 +1754,13 @@ export default class SettingsPage {
         <!-- Generate key form (hidden by default) -->
         <div id="api-key-generate-form" class="hidden" style="margin-bottom: 1rem; padding: 1rem; background: var(--bg-secondary); border-radius: var(--radius-sm);">
           <label style="font-weight: 600; display: block; margin-bottom: 0.5rem;">Key Name</label>
-          <div style="display: flex; gap: 0.5rem;">
-            <input type="text" id="api-key-name-input" placeholder="e.g. Production, CI/CD, Testing" style="flex: 1;" maxlength="64" />
-            <button class="btn btn-primary" id="api-key-create-btn">Create</button>
+          <input type="text" id="api-key-name-input" placeholder="e.g. Production, CI/CD, Testing" style="width: 100%; margin-bottom: 0.75rem;" maxlength="64" />
+          <label style="font-weight: 600; display: block; margin-bottom: 0.5rem;">Webhook URL <span style="font-weight: 400; color: var(--text-secondary);">(optional)</span></label>
+          <input type="url" id="api-key-webhook-input" placeholder="https://your-server.com/webhook" style="width: 100%; margin-bottom: 0.75rem;" maxlength="2048" />
+          <p style="margin: 0 0 0.75rem 0; font-size: 0.8rem; color: var(--text-secondary);">Receives POST with call data when calls complete.</p>
+          <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
             <button class="btn btn-secondary" id="api-key-cancel-btn">Cancel</button>
+            <button class="btn btn-primary" id="api-key-create-btn">Create</button>
           </div>
         </div>
 
@@ -1788,6 +1791,60 @@ export default class SettingsPage {
         <div id="api-keys-list">
           <div style="text-align: center; padding: 1rem; color: var(--text-secondary);">Loading...</div>
         </div>
+      </div>
+
+      <!-- Webhook Payload Reference -->
+      <div class="card">
+        <details id="webhook-payload-reference">
+          <summary style="cursor: pointer; font-weight: 600; font-size: 1rem; user-select: none;">
+            Webhook Payload Reference
+          </summary>
+          <div style="margin-top: 1rem;">
+            <p style="margin: 0 0 0.75rem 0; font-size: 0.85rem; color: var(--text-secondary);">
+              When a call completes, each API key with a webhook URL receives a <code>POST</code> request with <code>Content-Type: application/json</code>. Timeout is 10 seconds.
+            </p>
+            <p style="margin: 0 0 0.5rem 0; font-weight: 600; font-size: 0.85rem;">call.completed</p>
+<pre style="background: var(--bg-secondary); padding: 0.75rem; border-radius: var(--radius-sm); font-size: 0.78rem; overflow-x: auto; margin: 0; line-height: 1.5;">{
+  "event": "call.completed",
+  "timestamp": "2026-02-18T15:30:45.123456Z",
+  "data": {
+    "call_record_id": "uuid",
+    "direction": "inbound | outbound",
+    "caller_number": "+16045551234",
+    "service_number": "+16042101966",
+    "agent_id": "uuid",
+    "agent_name": "Reception Agent",
+    "duration_seconds": 127,
+    "transcript": "Agent: Hello...\\n\\nCaller: Hi...",
+    "summary": "Caller requested a consultation.",
+    "extracted_data": { "caller_name": "John" },
+    "status": "completed"
+  }
+}</pre>
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-top: 0.75rem;">
+              <thead>
+                <tr style="text-align: left; border-bottom: 1px solid var(--border-color);">
+                  <th style="padding: 0.35rem 0.5rem 0.35rem 0;">Field</th>
+                  <th style="padding: 0.35rem 0.5rem;">Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr style="border-bottom: 1px solid var(--border-color);">
+                  <td style="padding: 0.35rem 0.5rem 0.35rem 0;"><code>transcript</code></td>
+                  <td style="padding: 0.35rem 0.5rem; color: var(--text-secondary);">null when PII storage is disabled</td>
+                </tr>
+                <tr style="border-bottom: 1px solid var(--border-color);">
+                  <td style="padding: 0.35rem 0.5rem 0.35rem 0;"><code>summary</code></td>
+                  <td style="padding: 0.35rem 0.5rem; color: var(--text-secondary);">null if call was too short for a summary</td>
+                </tr>
+                <tr style="border-bottom: 1px solid var(--border-color);">
+                  <td style="padding: 0.35rem 0.5rem 0.35rem 0;"><code>extracted_data</code></td>
+                  <td style="padding: 0.35rem 0.5rem; color: var(--text-secondary);">null if no dynamic variables configured on agent</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </details>
       </div>
     `;
   }
@@ -1829,6 +1886,7 @@ export default class SettingsPage {
             <tr style="text-align: left; border-bottom: 1px solid var(--border-color);">
               <th style="padding: 0.5rem 0.5rem 0.5rem 0;">Name</th>
               <th style="padding: 0.5rem;">Key</th>
+              <th style="padding: 0.5rem;" class="desktop-only">Webhook</th>
               <th style="padding: 0.5rem;" class="desktop-only">Created</th>
               <th style="padding: 0.5rem;" class="desktop-only">Last Used</th>
               <th style="padding: 0.5rem; text-align: right;"></th>
@@ -1840,6 +1898,13 @@ export default class SettingsPage {
                 <td style="padding: 0.5rem 0.5rem 0.5rem 0; font-weight: 500;">${this.escapeHtml(key.name)}</td>
                 <td style="padding: 0.5rem;">
                   <code style="font-size: 0.8rem; background: var(--bg-secondary); padding: 0.15rem 0.35rem; border-radius: 3px;">${key.key_prefix}...</code>
+                </td>
+                <td style="padding: 0.5rem; color: var(--text-secondary);" class="desktop-only">
+                  ${key.is_active ? (key.webhook_url
+                    ? `<span style="font-size: 0.8rem; max-width: 180px; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;" title="${this.escapeHtml(key.webhook_url)}">${this.escapeHtml(key.webhook_url)}</span>
+                       <button class="btn btn-secondary api-key-edit-webhook-btn" data-key-id="${key.id}" data-webhook-url="${this.escapeHtml(key.webhook_url)}" style="font-size: 0.7rem; padding: 0.15rem 0.35rem; margin-left: 0.25rem; vertical-align: middle;">Edit</button>`
+                    : `<button class="btn btn-secondary api-key-edit-webhook-btn" data-key-id="${key.id}" data-webhook-url="" style="font-size: 0.7rem; padding: 0.15rem 0.35rem;">+ Add</button>`
+                  ) : '<span style="font-size: 0.75rem;">—</span>'}
                 </td>
                 <td style="padding: 0.5rem; color: var(--text-secondary);" class="desktop-only">
                   ${new Date(key.created_at).toLocaleDateString()}
@@ -1862,6 +1927,11 @@ export default class SettingsPage {
       // Attach revoke listeners
       listContainer.querySelectorAll('.api-key-revoke-btn').forEach(btn => {
         btn.addEventListener('click', () => this.revokeApiKey(btn.dataset.keyId, btn.dataset.keyName));
+      });
+
+      // Attach edit webhook listeners
+      listContainer.querySelectorAll('.api-key-edit-webhook-btn').forEach(btn => {
+        btn.addEventListener('click', () => this.showEditWebhookModal(btn.dataset.keyId, btn.dataset.webhookUrl));
       });
     } catch (error) {
       console.error('Error loading API keys:', error);
@@ -1913,10 +1983,84 @@ export default class SettingsPage {
     return div.innerHTML;
   }
 
+  showEditWebhookModal(keyId, currentUrl) {
+    // Remove any existing modal
+    const existing = document.getElementById('webhook-edit-overlay');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'webhook-edit-overlay';
+    overlay.className = 'contact-modal-overlay';
+    overlay.style.display = 'flex';
+    overlay.onclick = () => { overlay.style.display = 'none'; overlay.remove(); };
+    overlay.innerHTML = `
+      <div class="contact-modal" onclick="event.stopPropagation()" style="max-width: 500px;">
+        <div class="contact-modal-header">
+          <h3>Edit Webhook URL</h3>
+          <button class="close-modal-btn" id="webhook-modal-close">&times;</button>
+        </div>
+        <form id="webhook-edit-form">
+          <div class="contact-modal-body">
+            <label style="font-weight: 600; display: block; margin-bottom: 0.5rem;">Webhook URL</label>
+            <input type="url" id="webhook-edit-url" value="${this.escapeHtml(currentUrl || '')}" placeholder="https://your-server.com/webhook" style="width: 100%;" maxlength="2048" />
+            <p style="margin: 0.5rem 0 0 0; font-size: 0.8rem; color: var(--text-secondary);">
+              Receives a POST request with call data when calls complete. Leave empty to disable.
+            </p>
+          </div>
+          <div class="contact-modal-footer">
+            <button type="button" class="btn btn-secondary" id="webhook-modal-cancel">Cancel</button>
+            <button type="submit" class="btn btn-primary" id="webhook-modal-save">Save</button>
+          </div>
+        </form>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const closeModal = () => { overlay.style.display = 'none'; overlay.remove(); };
+    document.getElementById('webhook-modal-close').onclick = closeModal;
+    document.getElementById('webhook-modal-cancel').onclick = closeModal;
+    document.getElementById('webhook-edit-url').focus();
+
+    document.getElementById('webhook-edit-form').onsubmit = async (e) => {
+      e.preventDefault();
+      const newUrl = document.getElementById('webhook-edit-url').value.trim();
+      const saveBtn = document.getElementById('webhook-modal-save');
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error('Not authenticated');
+
+        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-api-keys`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ action: 'update', key_id: keyId, webhook_url: newUrl || null })
+        });
+
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to update webhook');
+
+        closeModal();
+        showToast('Webhook URL updated', 'success');
+        this.loadApiKeys();
+      } catch (error) {
+        console.error('Error updating webhook:', error);
+        showToast(error.message || 'Failed to update webhook URL.', 'error');
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save';
+      }
+    };
+  }
+
   attachApiTabListeners() {
     const generateBtn = document.getElementById('generate-api-key-btn');
     const generateForm = document.getElementById('api-key-generate-form');
     const nameInput = document.getElementById('api-key-name-input');
+    const webhookInput = document.getElementById('api-key-webhook-input');
     const createBtn = document.getElementById('api-key-create-btn');
     const cancelBtn = document.getElementById('api-key-cancel-btn');
     const createdDisplay = document.getElementById('api-key-created-display');
@@ -1933,6 +2077,7 @@ export default class SettingsPage {
         generateForm.classList.remove('hidden');
         createdDisplay.classList.add('hidden');
         nameInput.value = '';
+        webhookInput.value = '';
         nameInput.focus();
       });
     }
@@ -1966,7 +2111,7 @@ export default class SettingsPage {
               'Authorization': `Bearer ${session.access_token}`,
               'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ action: 'generate', name })
+            body: JSON.stringify({ action: 'generate', name, webhook_url: webhookInput.value.trim() || undefined })
           });
 
           const data = await response.json();
