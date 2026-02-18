@@ -89,6 +89,34 @@ Deno.serve(async (req) => {
     const agentId = agentConfig?.id || null
     console.log('Using agent for SMS:', agentId, agentConfig?.name || 'None')
 
+    // Check if this is the system agent or no agent — auto-reply and stop
+    const SYSTEM_AGENT_ID = '00000000-0000-0000-0000-000000000002'
+    if (!agentConfig || agentConfig.id === SYSTEM_AGENT_ID) {
+      console.log('No real agent assigned for SMS on', to, '- sending auto-reply')
+
+      // Save the inbound message
+      await supabase.from('sms_messages').insert({
+        user_id: serviceNumber.user_id,
+        agent_id: agentId,
+        sender_number: from,
+        recipient_number: to,
+        direction: 'inbound',
+        content: body,
+        status: 'sent',
+        sent_at: new Date().toISOString(),
+      })
+
+      // Send auto-reply
+      const autoReply = 'This number is not currently assigned to an agent. Visit magpipe.ai to set up your messaging agent.'
+      sendSMS(serviceNumber.user_id, from, to, autoReply, supabase, false)
+
+      const twiml = `<?xml version="1.0" encoding="UTF-8"?><Response></Response>`
+      return new Response(twiml, {
+        headers: { 'Content-Type': 'text/xml' },
+        status: 200,
+      })
+    }
+
     // Analyze sentiment of the incoming message
     let messageSentiment: string | null = null
     try {
