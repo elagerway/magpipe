@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { resolveUser } from '../_shared/api-auth.ts'
 import Stripe from 'npm:stripe@14.10.0'
 import { corsHeaders, handleCors } from '../_shared/cors.ts'
 
@@ -39,19 +40,13 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey)
 
     // Verify user authentication
-    const authHeader = req.headers.get('Authorization')
-    if (!authHeader) {
+    const supabaseClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY') ?? '', {
+      global: { headers: { Authorization: req.headers.get('Authorization')! } },
+    })
+    const user = await resolveUser(req, supabaseClient)
+
+    if (!user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
-    }
-
-    const token = authHeader.replace('Bearer ', '')
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-
-    if (authError || !user) {
-      return new Response(JSON.stringify({ error: 'Invalid token' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })

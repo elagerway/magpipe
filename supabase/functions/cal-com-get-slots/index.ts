@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { resolveUser } from '../_shared/api-auth.ts'
 import { corsHeaders, handleCors } from '../_shared/cors.ts'
 
 interface GetSlotsRequest {
@@ -94,15 +95,18 @@ Deno.serve(async (req) => {
     if (jwt === supabaseServiceKey && internalUserId) {
       userId = internalUserId;
     } else {
-      // Regular user JWT auth
-      const { data: { user }, error: userError } = await supabase.auth.getUser(jwt);
-      if (userError || !user) {
+      // Regular user JWT or API key auth
+      const supabaseClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY') ?? '', {
+        global: { headers: { Authorization: req.headers.get('Authorization')! } },
+      });
+      const resolvedUser = await resolveUser(req, supabaseClient);
+      if (!resolvedUser) {
         return new Response(
           JSON.stringify({ error: 'Invalid authorization token' }),
           { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
-      userId = user.id;
+      userId = resolvedUser.id;
     }
 
     // Get user's Cal.com credentials
