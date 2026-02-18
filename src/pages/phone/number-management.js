@@ -81,6 +81,10 @@ export const numberManagementMethods = {
           agent:agent_configs!service_numbers_agent_id_fkey (
             id,
             name
+          ),
+          text_agent:agent_configs!service_numbers_text_agent_id_fkey (
+            id,
+            name
           )
         `)
         .eq('user_id', this.userId)
@@ -313,7 +317,15 @@ export const numberManagementMethods = {
                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
                 <circle cx="12" cy="7" r="4"/>
               </svg>
-              ${agentName}
+              ${number.text_agent?.name ? 'Voice: ' : ''}${agentName}
+            </span>
+          ` : ''}
+          ${number.text_agent?.name ? `
+            <span style="font-size: 0.7rem; padding: 0.125rem 0.375rem; background: rgba(21, 128, 61, 0.1); color: rgb(21, 128, 61); border-radius: 0.25rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+              Text: ${number.text_agent.name}
             </span>
           ` : ''}
         </div>

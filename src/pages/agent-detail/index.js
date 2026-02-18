@@ -122,7 +122,7 @@ export default class AgentDetailPage {
     ] = await Promise.all([
       supabase.from('voices').select('voice_id, voice_name').eq('user_id', user.id).eq('is_cloned', true).order('created_at', { ascending: false }),
       supabase.from('knowledge_sources').select('id, title, url, sync_status, chunk_count, crawl_mode').eq('user_id', user.id).order('created_at', { ascending: false }),
-      supabase.from('service_numbers').select('id, phone_number, friendly_name, agent_id, termination_uri').eq('user_id', user.id).eq('is_active', true).order('created_at', { ascending: true }),
+      supabase.from('service_numbers').select('id, phone_number, friendly_name, agent_id, text_agent_id, termination_uri').eq('user_id', user.id).eq('is_active', true).order('created_at', { ascending: true }),
       supabase.from('external_sip_numbers').select('id, phone_number, friendly_name, agent_id, trunk_id, external_sip_trunks(name)').eq('user_id', user.id).eq('is_active', true).order('created_at', { ascending: true }),
       supabase.from('users').select('cal_com_access_token').eq('id', user.id).single(),
       ChatWidget.getByAgentId(this.agent.id),
@@ -377,7 +377,9 @@ export default class AgentDetailPage {
 
         // Check if trying to activate without a deployed number
         if (isActive) {
-          const assignedNumbers = this.serviceNumbers.filter(n => n.agent_id === this.agent.id);
+          const isTextAgent = this.agent.agent_type === 'text';
+          const col = isTextAgent ? 'text_agent_id' : 'agent_id';
+          const assignedNumbers = this.serviceNumbers.filter(n => n[col] === this.agent.id);
           if (assignedNumbers.length === 0) {
             // Revert the toggle
             e.target.checked = false;

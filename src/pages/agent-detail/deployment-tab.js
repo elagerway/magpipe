@@ -4,13 +4,21 @@ import { showToast } from '../../lib/toast.js';
 
 export const deploymentTabMethods = {
   renderDeploymentTab() {
-    const assignedNumbers = this.serviceNumbers.filter(n => n.agent_id === this.agent.id);
-    const availableNumbers = this.serviceNumbers.filter(n => !n.agent_id);
+    const agentType = this.agent.agent_type || 'inbound_voice';
+    const showPhone = ['inbound_voice', 'outbound_voice', 'text'].includes(agentType);
+    const showEmail = agentType === 'email';
+    const showChat = agentType === 'chat_widget';
+    const isTextAgent = agentType === 'text';
+    const column = isTextAgent ? 'text_agent_id' : 'agent_id';
+
+    const assignedNumbers = this.serviceNumbers.filter(n => n[column] === this.agent.id);
+    const availableNumbers = this.serviceNumbers.filter(n => !n[column]);
 
     return `
+      ${showPhone ? `
       <div class="config-section">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-          <h3 style="margin: 0;">Calls & Texts</h3>
+          <h3 style="margin: 0;">${isTextAgent ? 'Text Numbers' : 'Phone Numbers'}</h3>
           <div style="display: flex; gap: 0.5rem; align-items: center;">
             <a href="#" onclick="navigateTo('/select-number'); return false;" class="btn btn-sm btn-secondary" style="display: flex; align-items: center;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.4rem;">
@@ -30,7 +38,7 @@ export const deploymentTabMethods = {
             ` : ''}
           </div>
         </div>
-        <p class="section-desc">Assign phone numbers to this agent for handling calls and text messages.</p>
+        <p class="section-desc">Assign phone numbers to this agent for handling ${isTextAgent ? 'text messages' : 'calls'}.</p>
 
         ${assignedNumbers.length > 0 ? `
           <div class="assigned-numbers">
@@ -60,11 +68,13 @@ export const deploymentTabMethods = {
           </div>
         ` : ''}
       </div>
+      ` : ''}
 
       <!-- Email Section -->
-      ${this.renderEmailSection()}
+      ${showEmail ? this.renderEmailSection() : ''}
 
       <!-- Chat Section -->
+      ${showChat ? `
       <div class="config-section">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
           <h3 style="margin: 0;">Chat</h3>
@@ -131,6 +141,7 @@ export const deploymentTabMethods = {
           <div class="no-numbers-message">No chat widget configured for this agent</div>
         `}
       </div>
+      ` : ''}
     `;
   },
 
@@ -228,16 +239,18 @@ export const deploymentTabMethods = {
     try {
       const num = this.serviceNumbers.find(n => n.id === numberId);
       const table = num?.isSipTrunk ? 'external_sip_numbers' : 'service_numbers';
+      const isTextAgent = this.agent.agent_type === 'text';
+      const column = isTextAgent ? 'text_agent_id' : 'agent_id';
 
       const { error } = await supabase
         .from(table)
-        .update({ agent_id: this.agent.id })
+        .update({ [column]: this.agent.id })
         .eq('id', numberId);
 
       if (error) throw error;
 
       // Update local state and re-render
-      if (num) num.agent_id = this.agent.id;
+      if (num) num[column] = this.agent.id;
 
       this.switchTab('deployment');
     } catch (err) {
@@ -250,16 +263,18 @@ export const deploymentTabMethods = {
     try {
       const num = this.serviceNumbers.find(n => n.id === numberId);
       const table = num?.isSipTrunk ? 'external_sip_numbers' : 'service_numbers';
+      const isTextAgent = this.agent.agent_type === 'text';
+      const column = isTextAgent ? 'text_agent_id' : 'agent_id';
 
       const { error } = await supabase
         .from(table)
-        .update({ agent_id: null })
+        .update({ [column]: null })
         .eq('id', numberId);
 
       if (error) throw error;
 
       // Update local state and re-render
-      if (num) num.agent_id = null;
+      if (num) num[column] = null;
 
       this.switchTab('deployment');
     } catch (err) {
@@ -522,7 +537,9 @@ export const deploymentTabMethods = {
   },
 
   showAssignNumbersModal() {
-    const availableNumbers = this.serviceNumbers.filter(n => !n.agent_id);
+    const isTextAgent = this.agent.agent_type === 'text';
+    const column = isTextAgent ? 'text_agent_id' : 'agent_id';
+    const availableNumbers = this.serviceNumbers.filter(n => !n[column]);
 
     if (availableNumbers.length === 0) {
       return;
@@ -632,13 +649,16 @@ export const deploymentTabMethods = {
 
   async assignMultipleNumbers(numberIds) {
     try {
+      const isTextAgent = this.agent.agent_type === 'text';
+      const column = isTextAgent ? 'text_agent_id' : 'agent_id';
+
       for (const numberId of numberIds) {
         const num = this.serviceNumbers.find(n => n.id === numberId);
         const table = num?.isSipTrunk ? 'external_sip_numbers' : 'service_numbers';
 
         const { error } = await supabase
           .from(table)
-          .update({ agent_id: this.agent.id })
+          .update({ [column]: this.agent.id })
           .eq('id', numberId);
 
         if (error) {
@@ -646,7 +666,7 @@ export const deploymentTabMethods = {
           continue;
         }
 
-        if (num) num.agent_id = this.agent.id;
+        if (num) num[column] = this.agent.id;
       }
 
       this.switchTab('deployment');

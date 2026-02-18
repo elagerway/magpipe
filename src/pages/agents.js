@@ -179,7 +179,7 @@ export default class AgentsPage {
     const [{ profile }, agentsResult, numbersResult] = await Promise.all([
       User.getProfile(user.id),
       AgentConfig.getAllByUserId(user.id),
-      supabase.from('service_numbers').select('id, phone_number, agent_id').eq('user_id', user.id).eq('is_active', true)
+      supabase.from('service_numbers').select('id, phone_number, agent_id, text_agent_id').eq('user_id', user.id).eq('is_active', true)
     ]);
     this.agents = agentsResult.configs || [];
     this.serviceNumbers = numbersResult.data || [];
@@ -430,7 +430,11 @@ export default class AgentsPage {
     try {
       // Check if trying to activate without a deployed number
       if (isActive) {
-        const hasNumber = this.serviceNumbers.some(n => n.agent_id === agentId);
+        const agent = this.agents.find(a => a.id === agentId);
+        const isTextAgent = agent?.agent_type === 'text';
+        const hasNumber = isTextAgent
+          ? this.serviceNumbers.some(n => n.text_agent_id === agentId)
+          : this.serviceNumbers.some(n => n.agent_id === agentId);
         if (!hasNumber) {
           this.showNoNumberModal(agentId);
           // Revert the toggle in UI
