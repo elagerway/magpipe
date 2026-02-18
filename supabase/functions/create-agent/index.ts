@@ -84,6 +84,63 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Handle dynamic_variables if provided
+    const dynamicVariables = body.dynamic_variables;
+    if (Array.isArray(dynamicVariables) && dynamicVariables.length > 0) {
+      const VALID_VAR_TYPES = ["text", "number", "boolean", "enum"];
+
+      for (const v of dynamicVariables) {
+        if (!v.name) {
+          return new Response(
+            JSON.stringify({ error: { code: "validation_error", message: "Each dynamic variable must have a name" } }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        const vt = v.var_type || "text";
+        if (!VALID_VAR_TYPES.includes(vt)) {
+          return new Response(
+            JSON.stringify({ error: { code: "validation_error", message: `var_type must be one of: ${VALID_VAR_TYPES.join(", ")}` } }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        if (vt === "enum" && (!Array.isArray(v.enum_options) || v.enum_options.length === 0)) {
+          return new Response(
+            JSON.stringify({ error: { code: "validation_error", message: `enum_options required for enum variable "${v.name}"` } }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      }
+
+      const rows = dynamicVariables.map((v: Record<string, unknown>) => ({
+        user_id: user.id,
+        agent_id: agent.id,
+        name: v.name,
+        description: v.description || null,
+        var_type: v.var_type || "text",
+        enum_options: (v.var_type || "text") === "enum" ? v.enum_options : null,
+      }));
+
+      const { error: insertErr } = await queryClient
+        .from("dynamic_variables")
+        .insert(rows);
+
+      if (insertErr) {
+        console.error("Error inserting dynamic variables:", insertErr);
+      }
+
+      // Fetch back the created variables
+      const { data: vars } = await queryClient
+        .from("dynamic_variables")
+        .select("id, name, description, var_type, enum_options, created_at, updated_at")
+        .eq("agent_id", agent.id)
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: true });
+
+      agent.dynamic_variables = vars || [];
+    } else {
+      agent.dynamic_variables = [];
+    }
+
     return new Response(
       JSON.stringify({ agent }),
       { status: 201, headers: { ...corsHeaders, "Content-Type": "application/json" } }

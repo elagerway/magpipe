@@ -213,6 +213,26 @@ Creates a new AI agent that can handle phone calls, SMS messages, and chat conve
   ```
 </ParamField>
 
+<ParamField body="dynamic_variables" type="array">
+  Dynamic variables for extracting structured data from conversations. These are stored separately from the agent config and define what information the AI should capture during calls.
+
+  Each variable object:
+  - `name` (string, required) — Variable name (e.g., `caller_name`)
+  - `description` (string) — What to extract
+  - `var_type` (string) — `text` (default), `number`, `boolean`, or `enum`
+  - `enum_options` (array) — Required when `var_type` is `enum`
+
+  ```json
+  [
+    {"name": "caller_name", "description": "Full name of the caller", "var_type": "text"},
+    {"name": "caller_email", "description": "Email address", "var_type": "text"},
+    {"name": "priority", "description": "Call priority level", "var_type": "enum", "enum_options": ["low", "medium", "high"]}
+  ]
+  ```
+
+  You can also manage dynamic variables independently via the [Dynamic Variables API](/api-reference/endpoints/create-dynamic-variable).
+</ParamField>
+
 ## Response
 
 Returns the full agent object wrapped in an `agent` key.
@@ -329,7 +349,8 @@ print(response.json()['agent'])
     "language": "en-US",
     "is_active": true,
     "created_at": "2024-01-15T10:00:00.000Z",
-    "updated_at": "2024-01-15T10:00:00.000Z"
+    "updated_at": "2024-01-15T10:00:00.000Z",
+    "dynamic_variables": []
   }
 }
 ```
