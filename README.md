@@ -237,7 +237,7 @@ The LiveKit voice agent runs on Render and connects to LiveKit Cloud, handling c
 - `email_messages` - Email threads for inbox (id, user_id, agent_id, contact_id, thread_id, gmail_message_id, from/to/cc/bcc, subject, body_text, body_html, direction, status, is_ai_generated, is_read, sent_at, `attachments` JSONB for image metadata)
 - `agent_email_configs` - Per-agent email channel config (gmail_address, agent_mode: off/draft/auto, watch_expiration, last_history_id)
 - `conversation_contexts` - Conversation memory with embeddings
-- `service_numbers` - User's phone numbers from SignalWire
+- `service_numbers` - User's phone numbers from SignalWire (`agent_id` for voice, `text_agent_id` for SMS — independent routing)
 - `support_tickets` - Support ticket threads (Gmail integration, `attachments` JSONB for image metadata)
 - `support_ticket_notes` - Internal notes on support threads
 - `support_email_config` - Gmail connection, AI agent settings, ticket creation toggle
