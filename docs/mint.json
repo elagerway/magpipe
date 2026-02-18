@@ -81,6 +81,7 @@
         "features/billing",
         "features/scheduled-actions",
         "features/bulk-calling",
+        "features/webhooks",
         "features/settings"
       ]
     },
