@@ -943,7 +943,7 @@ async def send_webhooks(user_id: str, event_type: str, payload: dict):
     try:
         # Find all active API keys for this user that have a webhook_url
         response = supabase.table("api_keys") \
-            .select("id, webhook_url") \
+            .select("id, webhook_url, webhook_secret") \
             .eq("user_id", user_id) \
             .eq("is_active", True) \
             .not_.is_("webhook_url", "null") \
@@ -962,16 +962,27 @@ async def send_webhooks(user_id: str, event_type: str, payload: dict):
             for key_row in response.data:
                 api_key_id = key_row["id"]
                 url = key_row["webhook_url"]
+                secret = key_row.get("webhook_secret")
                 start_ms = int(time_module.time() * 1000)
                 status_code = None
                 response_body = None
                 error_message = None
 
+                # Build headers with HMAC signature if secret exists
+                headers = {"Content-Type": "application/json"}
+                if secret:
+                    signature = hmac.new(
+                        secret.encode("utf-8"),
+                        webhook_body.encode("utf-8"),
+                        hashlib.sha256,
+                    ).hexdigest()
+                    headers["x-magpipe-signature"] = f"sha256={signature}"
+
                 try:
                     async with session.post(
                         url,
                         data=webhook_body,
-                        headers={"Content-Type": "application/json"},
+                        headers=headers,
                         timeout=aiohttp.ClientTimeout(total=10),
                     ) as resp:
                         status_code = resp.status

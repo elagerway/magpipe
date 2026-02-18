@@ -1801,7 +1801,10 @@ export default class SettingsPage {
           </summary>
           <div style="margin-top: 1rem;">
             <p style="margin: 0 0 0.75rem 0; font-size: 0.85rem; color: var(--text-secondary);">
-              When a call completes, each API key with a webhook URL receives a <code>POST</code> request with <code>Content-Type: application/json</code>. Timeout is 10 seconds.
+              When a call completes, each API key with a webhook URL receives a <code>POST</code> request with <code>Content-Type: application/json</code>. Timeout is 10 seconds. Each request includes an <code>x-magpipe-signature</code> header containing an HMAC-SHA256 signature of the body, signed with your webhook signing secret.
+            </p>
+            <p style="margin: 0 0 0.75rem 0; font-size: 0.85rem; color: var(--text-secondary);">
+              Verify: compute <code>HMAC-SHA256(secret, raw_body)</code> and compare to the header value (format: <code>sha256=&lt;hex&gt;</code>).
             </p>
             <p style="margin: 0 0 0.5rem 0; font-weight: 600; font-size: 0.85rem;">call.completed</p>
 <pre style="background: var(--bg-secondary); padding: 0.75rem; border-radius: var(--radius-sm); font-size: 0.78rem; overflow-x: auto; margin: 0; line-height: 1.5;">{
@@ -1902,8 +1905,8 @@ export default class SettingsPage {
                 <td style="padding: 0.5rem; color: var(--text-secondary);" class="desktop-only">
                   ${key.is_active ? (key.webhook_url
                     ? `<span style="font-size: 0.8rem; max-width: 180px; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;" title="${this.escapeHtml(key.webhook_url)}">${this.escapeHtml(key.webhook_url)}</span>
-                       <button class="btn btn-secondary api-key-edit-webhook-btn" data-key-id="${key.id}" data-webhook-url="${this.escapeHtml(key.webhook_url)}" style="font-size: 0.7rem; padding: 0.15rem 0.35rem; margin-left: 0.25rem; vertical-align: middle;">Edit</button>`
-                    : `<button class="btn btn-secondary api-key-edit-webhook-btn" data-key-id="${key.id}" data-webhook-url="" style="font-size: 0.7rem; padding: 0.15rem 0.35rem;">+ Add</button>`
+                       <button class="btn btn-secondary api-key-edit-webhook-btn" data-key-id="${key.id}" data-webhook-url="${this.escapeHtml(key.webhook_url)}" data-webhook-secret="${this.escapeHtml(key.webhook_secret || '')}" style="font-size: 0.7rem; padding: 0.15rem 0.35rem; margin-left: 0.25rem; vertical-align: middle;">Edit</button>`
+                    : `<button class="btn btn-secondary api-key-edit-webhook-btn" data-key-id="${key.id}" data-webhook-url="" data-webhook-secret="" style="font-size: 0.7rem; padding: 0.15rem 0.35rem;">+ Add</button>`
                   ) : '<span style="font-size: 0.75rem;">—</span>'}
                 </td>
                 <td style="padding: 0.5rem; color: var(--text-secondary);" class="desktop-only">
@@ -1931,7 +1934,7 @@ export default class SettingsPage {
 
       // Attach edit webhook listeners
       listContainer.querySelectorAll('.api-key-edit-webhook-btn').forEach(btn => {
-        btn.addEventListener('click', () => this.showEditWebhookModal(btn.dataset.keyId, btn.dataset.webhookUrl));
+        btn.addEventListener('click', () => this.showEditWebhookModal(btn.dataset.keyId, btn.dataset.webhookUrl, btn.dataset.webhookSecret));
       });
     } catch (error) {
       console.error('Error loading API keys:', error);
@@ -1983,7 +1986,7 @@ export default class SettingsPage {
     return div.innerHTML;
   }
 
-  showEditWebhookModal(keyId, currentUrl) {
+  showEditWebhookModal(keyId, currentUrl, currentSecret) {
     // Remove any existing modal
     const existing = document.getElementById('webhook-edit-overlay');
     if (existing) existing.remove();
@@ -1996,7 +1999,7 @@ export default class SettingsPage {
     overlay.innerHTML = `
       <div class="contact-modal" onclick="event.stopPropagation()" style="max-width: 500px;">
         <div class="contact-modal-header">
-          <h3>Edit Webhook URL</h3>
+          <h3>Edit Webhook</h3>
           <button class="close-modal-btn" id="webhook-modal-close">&times;</button>
         </div>
         <form id="webhook-edit-form">
@@ -2006,6 +2009,22 @@ export default class SettingsPage {
             <p style="margin: 0.5rem 0 0 0; font-size: 0.8rem; color: var(--text-secondary);">
               Receives a POST request with call data when calls complete. Leave empty to disable.
             </p>
+            ${currentSecret ? `
+              <div style="margin-top: 1rem; padding: 0.75rem; background: var(--bg-secondary); border-radius: var(--radius-sm);">
+                <label style="font-weight: 600; display: block; margin-bottom: 0.35rem; font-size: 0.85rem;">Signing Secret</label>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                  <code id="webhook-secret-display" style="flex: 1; font-size: 0.75rem; word-break: break-all; user-select: all;">${this.escapeHtml(currentSecret)}</code>
+                  <button type="button" class="btn btn-secondary" id="webhook-secret-copy-btn" style="font-size: 0.7rem; padding: 0.2rem 0.4rem; white-space: nowrap;">Copy</button>
+                </div>
+                <p style="margin: 0.35rem 0 0 0; font-size: 0.75rem; color: var(--text-secondary);">
+                  Verify deliveries using the <code>x-magpipe-signature</code> header (HMAC-SHA256).
+                </p>
+              </div>
+            ` : `
+              <p style="margin: 0.75rem 0 0 0; font-size: 0.8rem; color: var(--text-secondary);">
+                A signing secret will be generated when you save a webhook URL.
+              </p>
+            `}
           </div>
           <div class="contact-modal-footer">
             <button type="button" class="btn btn-secondary" id="webhook-modal-cancel">Cancel</button>
@@ -2020,6 +2039,18 @@ export default class SettingsPage {
     document.getElementById('webhook-modal-close').onclick = closeModal;
     document.getElementById('webhook-modal-cancel').onclick = closeModal;
     document.getElementById('webhook-edit-url').focus();
+
+    // Copy secret button
+    const secretCopyBtn = document.getElementById('webhook-secret-copy-btn');
+    if (secretCopyBtn) {
+      secretCopyBtn.onclick = async () => {
+        try {
+          await navigator.clipboard.writeText(document.getElementById('webhook-secret-display').textContent);
+          secretCopyBtn.textContent = 'Copied!';
+          setTimeout(() => { secretCopyBtn.textContent = 'Copy'; }, 2000);
+        } catch { /* ignore */ }
+      };
+    }
 
     document.getElementById('webhook-edit-form').onsubmit = async (e) => {
       e.preventDefault();

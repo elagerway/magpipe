@@ -1,5 +1,6 @@
--- Add webhook_url to api_keys
+-- Add webhook_url and webhook_secret to api_keys
 ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS webhook_url TEXT;
+ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS webhook_secret TEXT;
 
 -- Webhook delivery log for debugging
 CREATE TABLE IF NOT EXISTS webhook_deliveries (
