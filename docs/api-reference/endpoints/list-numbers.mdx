@@ -17,7 +17,11 @@ Retrieve all phone numbers provisioned in your account with their current config
 </ParamField>
 
 <ParamField body="agent_id" type="string">
-  Filter by assigned agent UUID.
+  Filter by assigned voice agent UUID.
+</ParamField>
+
+<ParamField body="text_agent_id" type="string">
+  Filter by assigned text agent UUID.
 </ParamField>
 
 <ParamField body="is_active" type="boolean">
@@ -86,6 +90,8 @@ print(f"You have {data['total']} numbers")
       "friendly_name": "Main Line",
       "agent_id": "550e8400-e29b-41d4-a716-446655440000",
       "agent_name": "Sarah - Receptionist",
+      "text_agent_id": "660e8400-e29b-41d4-a716-446655440001",
+      "text_agent_name": "SMS Handler",
       "capabilities": {
         "voice": true,
         "sms": true,
@@ -100,6 +106,8 @@ print(f"You have {data['total']} numbers")
       "friendly_name": "Support Line",
       "agent_id": null,
       "agent_name": null,
+      "text_agent_id": null,
+      "text_agent_name": null,
       "capabilities": {
         "voice": true,
         "sms": true,

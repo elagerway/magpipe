@@ -230,7 +230,7 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 
 | Function | Auth | Tables | External APIs | Called By |
 |----------|------|--------|---------------|----------|
-| `webhook-inbound-sms` | **No JWT** | `sms_messages`, `service_numbers`, `agent_configs`, `contacts`, `conversation_contexts`, `knowledge_chunks`, `sms_opt_outs` | OpenAI (GPT-4o-mini), SignalWire, Slack | SignalWire webhook |
+| `webhook-inbound-sms` | **No JWT** | `sms_messages`, `service_numbers`, `agent_configs`, `contacts`, `conversation_contexts`, `knowledge_chunks`, `sms_opt_outs` | OpenAI (GPT-4o-mini), SignalWire, Slack | SignalWire webhook. Routes via `text_agent_id` first, falls back to `agent_id` |
 | `send-user-sms` | JWT | `sms_messages`, `service_numbers` | SignalWire | messages UI |
 | `webhook-sms-status` | **No JWT** | `sms_messages` | None | SignalWire webhook |
 | `schedule-sms` | JWT | `scheduled_actions` | None | scheduling UI |
@@ -361,7 +361,7 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 ## Database Tables (grouped)
 
 ### Core
-`users`, `organizations`, `organization_members`, `service_numbers`, `agent_configs` (5 types: inbound_voice, outbound_voice, text, email, chat_widget; single system_prompt; shared_memory_agent_ids UUID[])
+`users`, `organizations`, `organization_members`, `service_numbers` (agent_id for voice, text_agent_id for SMS — independent routing), `agent_configs` (5 types: inbound_voice, outbound_voice, text, email, chat_widget; single system_prompt; shared_memory_agent_ids UUID[])
 
 ### Communication
 `call_records`, `sms_messages`, `email_messages`, `chat_sessions`, `chat_messages`, `contacts`, `conversation_contexts`

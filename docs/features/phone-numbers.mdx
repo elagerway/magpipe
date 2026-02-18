@@ -61,17 +61,26 @@ Most US/Canada numbers support all three capabilities. Some toll-free numbers ma
 
 ### Assigning Agents
 
-Each phone number can have one assigned agent:
+Each phone number supports independent voice and text agent assignments:
 
-1. Go to **Phone** or **Agent Detail** → **Deploy**
-2. Click **Assign** next to the number
-3. Select an agent from the dropdown
-4. Agent immediately starts handling calls
+- **Voice agent**: Handles inbound and outbound phone calls
+- **Text agent**: Handles inbound SMS messages
 
-To change agents:
-1. Click the current agent name
-2. Select a different agent
-3. Or click **Detach** to remove assignment
+A single number can have both a voice agent and a text agent at the same time, allowing specialized handling for each channel.
+
+#### From Agent Detail → Deploy
+1. Open an agent and go to the **Deploy** tab
+2. Click **Assign Number** to assign available numbers
+3. Voice agents assign to the number's voice slot; text agents assign to the text slot
+
+#### From Phone → Number Management
+1. Go to **Phone** or **Manage Numbers**
+2. Each number shows its voice and text agent assignments
+3. Click to change or detach either assignment
+
+<Note>
+If a number has no text agent assigned, inbound SMS falls back to the voice agent. This maintains backward compatibility — existing setups continue working without changes.
+</Note>
 
 ### Friendly Names
 
