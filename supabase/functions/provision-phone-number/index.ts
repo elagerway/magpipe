@@ -9,7 +9,8 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { phoneNumber } = await req.json()
+    const body = await req.json()
+    const phoneNumber = body.phone_number || body.phoneNumber
 
     if (!phoneNumber) {
       return new Response(
