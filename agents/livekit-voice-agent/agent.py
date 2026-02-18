@@ -3371,9 +3371,10 @@ ADMIN MODE ACTIVATED:
             # (don't use generate_reply() which adds LLM latency)
             if greeting:
                 await session.say(greeting, allow_interruptions=True)
-                logger.info("📞 Inbound call - Agent greeted caller")
+                logger.info("📞 Inbound call - Agent greeted caller (configured greeting)")
             else:
-                logger.info("📞 Inbound call - No greeting configured, waiting for caller")
+                await session.generate_reply()
+                logger.info("📞 Inbound call - Agent greeted caller (LLM-generated)")
             log_call_state(ctx.room.name, "greeting_spoken", "agent", {"direction": "inbound"})
         else:
             # Outbound call - don't greet, wait for user to speak
