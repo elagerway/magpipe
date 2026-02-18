@@ -56,6 +56,16 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Fetch dynamic variables from separate table
+    const { data: dynamicVars } = await queryClient
+      .from("dynamic_variables")
+      .select("id, name, description, var_type, enum_options, created_at, updated_at")
+      .eq("agent_id", agent_id)
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: true });
+
+    agent.dynamic_variables = dynamicVars || [];
+
     return new Response(JSON.stringify(agent), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

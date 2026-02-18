@@ -86,6 +86,10 @@ Get the full configuration and details of an AI agent.
   When the agent was last modified.
 </ResponseField>
 
+<ResponseField name="dynamic_variables" type="array">
+  Dynamic variables configured for this agent. Each variable has `id`, `name`, `description`, `var_type` (text, number, boolean, enum), `enum_options`, `created_at`, and `updated_at`.
+</ResponseField>
+
 <RequestExample>
 ```bash cURL
 curl -X POST https://api.magpipe.ai/functions/v1/get-agent \
@@ -150,7 +154,18 @@ print(f"Agent: {agent['name']}")
   "is_active": true,
   "is_default": true,
   "created_at": "2024-01-10T10:00:00Z",
-  "updated_at": "2024-01-15T14:30:00Z"
+  "updated_at": "2024-01-15T14:30:00Z",
+  "dynamic_variables": [
+    {
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "name": "caller_name",
+      "description": "Full name of the caller",
+      "var_type": "text",
+      "enum_options": null,
+      "created_at": "2024-01-10T10:00:00Z",
+      "updated_at": "2024-01-10T10:00:00Z"
+    }
+  ]
 }
 ```
 </ResponseExample>
