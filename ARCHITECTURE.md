@@ -179,7 +179,7 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 | `send-team-invitation` | JWT | `users` | Postmark | team page |
 | `send-contact-email` | JWT | None | Postmark | contact form (sends to help@magpipe.ai) |
 | `send-custom-plan-inquiry` | No JWT | None | Postmark | custom-plan page |
-| `manage-api-keys` | JWT | `api_keys` | None | settings page |
+| `manage-api-keys` | JWT | `api_keys`, `webhook_deliveries` | None | settings page (generate/list/revoke/update with webhook URLs) |
 | `create-user-sip-endpoint` | JWT | `users`, `user_sip_endpoints` | SignalWire | SIP config |
 | `save-push-subscription` | JWT | `push_subscriptions` | None | notification setup |
 | `delete-push-subscription` | JWT | `push_subscriptions` | None | settings |
@@ -395,7 +395,7 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 `referral_rewards`
 
 ### Security
-`phone_verifications`, `sms_opt_outs`, `access_code_attempts`, `sms_confirmations`, `oauth_states`, `api_keys`
+`phone_verifications`, `sms_opt_outs`, `access_code_attempts`, `sms_confirmations`, `oauth_states`, `api_keys`, `webhook_deliveries`
 
 ### Social Listening
 `social_listening_keywords`, `social_listening_results`

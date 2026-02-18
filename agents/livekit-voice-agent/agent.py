@@ -938,6 +938,69 @@ Keep the most important information. Focus on the overall relationship and key n
         return False
 
 
+async def send_webhooks(user_id: str, event_type: str, payload: dict):
+    """Send webhook notifications to all active API keys with webhook URLs configured."""
+    try:
+        # Find all active API keys for this user that have a webhook_url
+        response = supabase.table("api_keys") \
+            .select("id, webhook_url") \
+            .eq("user_id", user_id) \
+            .eq("is_active", True) \
+            .not_.is_("webhook_url", "null") \
+            .execute()
+
+        if not response.data:
+            return
+
+        webhook_body = json.dumps({
+            "event": event_type,
+            "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+            "data": payload,
+        })
+
+        async with aiohttp.ClientSession() as session:
+            for key_row in response.data:
+                api_key_id = key_row["id"]
+                url = key_row["webhook_url"]
+                start_ms = int(time_module.time() * 1000)
+                status_code = None
+                response_body = None
+                error_message = None
+
+                try:
+                    async with session.post(
+                        url,
+                        data=webhook_body,
+                        headers={"Content-Type": "application/json"},
+                        timeout=aiohttp.ClientTimeout(total=10),
+                    ) as resp:
+                        status_code = resp.status
+                        response_body = (await resp.text())[:2000]
+                        logger.info(f"🔔 Webhook delivered to {url} — status {status_code}")
+                except Exception as e:
+                    error_message = str(e)[:500]
+                    logger.warning(f"🔔 Webhook delivery failed for {url}: {e}")
+
+                duration_ms = int(time_module.time() * 1000) - start_ms
+
+                # Log delivery attempt
+                try:
+                    supabase.table("webhook_deliveries").insert({
+                        "api_key_id": api_key_id,
+                        "event_type": event_type,
+                        "payload": json.loads(webhook_body),
+                        "status_code": status_code,
+                        "response_body": response_body,
+                        "error_message": error_message,
+                        "duration_ms": duration_ms,
+                    }).execute()
+                except Exception as log_err:
+                    logger.warning(f"🔔 Failed to log webhook delivery: {log_err}")
+
+    except Exception as e:
+        logger.error(f"🔔 send_webhooks error: {e}", exc_info=True)
+
+
 def normalize_voice_to_digits(text: str) -> str:
     """Convert spoken numbers to digit string (e.g., 'one two three' -> '123')"""
     # Map of spoken numbers to digits
@@ -3215,6 +3278,23 @@ AFTER-HOURS CONTEXT:
                         )
                     else:
                         logger.info(f"🧠 Memory enabled but missing phone or agent_id (phone={memory_phone}, agent_id={agent_id})")
+
+                # Send webhooks (fire-and-forget)
+                if user_id:
+                    webhook_payload = {
+                        "call_record_id": call_record_id,
+                        "direction": direction,
+                        "caller_number": remote_party_phone,
+                        "service_number": service_number,
+                        "agent_id": user_config.get("id") if user_config else None,
+                        "agent_name": user_config.get("name") if user_config else None,
+                        "duration_seconds": call_duration,
+                        "transcript": update_data.get("transcript") if pii_mode != "disabled" else None,
+                        "summary": update_data.get("call_summary"),
+                        "extracted_data": update_data.get("extracted_data"),
+                        "status": "completed",
+                    }
+                    asyncio.create_task(send_webhooks(user_id, "call.completed", webhook_payload))
             else:
                 logger.warning("No call_record found - cannot save transcript")
 

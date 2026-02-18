@@ -55,12 +55,27 @@ Deno.serve(async (req) => {
 
     switch (action) {
       case 'generate': {
-        const { name } = body
+        const { name, webhook_url } = body
         if (!name || typeof name !== 'string' || name.trim().length === 0) {
           return new Response(
             JSON.stringify({ error: 'Key name is required' }),
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           )
+        }
+
+        // Validate webhook_url if provided
+        if (webhook_url) {
+          try {
+            const parsed = new URL(webhook_url)
+            if (!['http:', 'https:'].includes(parsed.protocol)) {
+              throw new Error('Invalid protocol')
+            }
+          } catch {
+            return new Response(
+              JSON.stringify({ error: 'Invalid webhook URL. Must be a valid HTTP/HTTPS URL.' }),
+              { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+          }
         }
 
         // Limit number of active keys per user
@@ -81,15 +96,20 @@ Deno.serve(async (req) => {
         const keyHash = await sha256(fullKey)
         const keyPrefix = fullKey.substring(0, 8) // "mgp_" + first 4 hex chars
 
+        const insertData: Record<string, unknown> = {
+          user_id: user.id,
+          name: name.trim(),
+          key_prefix: keyPrefix,
+          key_hash: keyHash,
+        }
+        if (webhook_url) {
+          insertData.webhook_url = webhook_url.trim()
+        }
+
         const { data: keyRecord, error: insertError } = await serviceClient
           .from('api_keys')
-          .insert({
-            user_id: user.id,
-            name: name.trim(),
-            key_prefix: keyPrefix,
-            key_hash: keyHash,
-          })
-          .select('id, name, key_prefix, created_at')
+          .insert(insertData)
+          .select('id, name, key_prefix, created_at, webhook_url')
           .single()
 
         if (insertError) {
@@ -116,7 +136,7 @@ Deno.serve(async (req) => {
       case 'list': {
         const { data: keys, error: listError } = await serviceClient
           .from('api_keys')
-          .select('id, name, key_prefix, created_at, last_used_at, is_active')
+          .select('id, name, key_prefix, created_at, last_used_at, is_active, webhook_url')
           .eq('user_id', user.id)
           .order('created_at', { ascending: false })
 
@@ -164,9 +184,54 @@ Deno.serve(async (req) => {
         )
       }
 
+      case 'update': {
+        const { key_id: updateKeyId, webhook_url: updateWebhookUrl } = body
+        if (!updateKeyId) {
+          return new Response(
+            JSON.stringify({ error: 'key_id is required' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+
+        // Validate webhook_url if provided (allow null/empty to clear)
+        if (updateWebhookUrl) {
+          try {
+            const parsed = new URL(updateWebhookUrl)
+            if (!['http:', 'https:'].includes(parsed.protocol)) {
+              throw new Error('Invalid protocol')
+            }
+          } catch {
+            return new Response(
+              JSON.stringify({ error: 'Invalid webhook URL. Must be a valid HTTP/HTTPS URL.' }),
+              { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+          }
+        }
+
+        const { data: updatedKey, error: updateError } = await serviceClient
+          .from('api_keys')
+          .update({ webhook_url: updateWebhookUrl || null })
+          .eq('id', updateKeyId)
+          .eq('user_id', user.id)
+          .select('id, webhook_url')
+          .single()
+
+        if (updateError || !updatedKey) {
+          return new Response(
+            JSON.stringify({ error: 'API key not found' }),
+            { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+
+        return new Response(
+          JSON.stringify({ success: true, webhook_url: updatedKey.webhook_url }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
       default:
         return new Response(
-          JSON.stringify({ error: 'Invalid action. Use: generate, list, revoke' }),
+          JSON.stringify({ error: 'Invalid action. Use: generate, list, revoke, update' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
     }
