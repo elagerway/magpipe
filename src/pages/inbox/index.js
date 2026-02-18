@@ -1132,7 +1132,7 @@ class InboxPage {
       supabase.from('contacts').select('*').eq('user_id', userId),
       ChatSession.getRecentWithPreview(userId, 50),
       supabase.from('agent_configs').select('id, translate_to, language').eq('user_id', userId),
-      supabase.from('service_numbers').select('phone_number, agent_id').eq('user_id', userId).eq('is_active', true),
+      supabase.from('service_numbers').select('phone_number, agent_id, text_agent_id').eq('user_id', userId).eq('is_active', true),
       supabase.from('email_messages').select('*').eq('user_id', userId).order('sent_at', { ascending: false }).limit(500),
     ]);
 
@@ -1148,11 +1148,13 @@ class InboxPage {
     agentConfigs.forEach(ac => { agentConfigMap[ac.id] = ac; });
 
     // Map service numbers to their agent's language
+    // For SMS context, prefer text_agent_id language when available
     this.serviceNumberLanguages = {};
     const serviceNumbers = serviceNumbersResult.data || [];
     serviceNumbers.forEach(sn => {
-      if (sn.agent_id && agentConfigMap[sn.agent_id]) {
-        this.serviceNumberLanguages[sn.phone_number] = agentConfigMap[sn.agent_id].language || 'en-US';
+      const smsAgentId = sn.text_agent_id || sn.agent_id;
+      if (smsAgentId && agentConfigMap[smsAgentId]) {
+        this.serviceNumberLanguages[sn.phone_number] = agentConfigMap[smsAgentId].language || 'en-US';
       }
     });
 

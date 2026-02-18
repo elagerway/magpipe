@@ -50,15 +50,17 @@ Deno.serve(async (req) => {
 
     console.log('Number is active, processing SMS for user:', serviceNumber.users.email)
 
-    // Get agent config - prioritize number-specific agent, then default agent
+    // Get agent config - prefer text-specific agent, then fall back to voice agent (backward compat)
     let agentConfig = null
 
-    if (serviceNumber.agent_id) {
-      console.log('Routing SMS to agent assigned to number:', serviceNumber.agent_id)
+    const smsAgentId = serviceNumber.text_agent_id || serviceNumber.agent_id
+
+    if (smsAgentId) {
+      console.log('Routing SMS to agent:', smsAgentId, serviceNumber.text_agent_id ? '(text_agent_id)' : '(agent_id fallback)')
       const { data: assignedAgent } = await supabase
         .from('agent_configs')
         .select('*')
-        .eq('id', serviceNumber.agent_id)
+        .eq('id', smsAgentId)
         .single()
       agentConfig = assignedAgent
     }

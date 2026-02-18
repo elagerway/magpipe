@@ -144,6 +144,10 @@ export default class ManageNumbersPage {
           agent:agent_configs!service_numbers_agent_id_fkey (
             id,
             name
+          ),
+          text_agent:agent_configs!service_numbers_text_agent_id_fkey (
+            id,
+            name
           )
         `)
         .eq('user_id', this.user.id)
@@ -451,13 +455,22 @@ export default class ManageNumbersPage {
                 </svg>
               </button>
             </div>
-            ${number.agent?.name ? `
-              <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 0.25rem;">
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                  <circle cx="12" cy="7" r="4"/>
-                </svg>
-                ${number.agent.name}
+            ${number.agent?.name || number.text_agent?.name ? `
+              <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 0.25rem; flex-wrap: wrap;">
+                ${number.agent?.name ? `<span style="display: inline-flex; align-items: center; gap: 0.25rem;">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                    <circle cx="12" cy="7" r="4"/>
+                  </svg>
+                  ${number.text_agent?.name ? 'Voice: ' : ''}${number.agent.name}
+                </span>` : ''}
+                ${number.text_agent?.name ? `<span style="display: inline-flex; align-items: center; gap: 0.25rem;">
+                  ${number.agent?.name ? '<span style="color: var(--border-color);">|</span>' : ''}
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                  </svg>
+                  Text: ${number.text_agent.name}
+                </span>` : ''}
               </div>
             ` : ''}
             ${isUSRelay && relayForNumber ? `
@@ -502,15 +515,15 @@ export default class ManageNumbersPage {
           ${hasSms ? '<span style="display: inline-block; padding: 0.125rem 0.5rem; background: rgba(59, 130, 246, 0.1); color: rgb(59, 130, 246); border-radius: 0.25rem; font-size: 0.75rem; font-weight: 500;">SMS</span>' : '<span style="display: inline-block; padding: 0.125rem 0.5rem; background: rgba(156, 163, 175, 0.1); color: rgb(107, 114, 128); border-radius: 0.25rem; font-size: 0.75rem; font-weight: 500;">No SMS</span>'}
         </div>
 
-        <!-- Assigned Agent -->
+        <!-- Assigned Agent(s) -->
         ${number.agent && number.agent_id !== SYSTEM_AGENT_ID ? `
-          <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; padding: 0.5rem 0.75rem; background: rgba(99, 102, 241, 0.08); border-radius: 0.375rem;">
+          <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: ${number.text_agent ? '0.25rem' : '0.75rem'}; padding: 0.5rem 0.75rem; background: rgba(99, 102, 241, 0.08); border-radius: 0.375rem;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--primary-color); flex-shrink: 0;">
               <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
               <circle cx="12" cy="7" r="4"/>
             </svg>
             <span style="font-size: 0.8125rem; color: var(--text-primary); flex: 1;">
-              Agent: <strong>${number.agent.name}</strong>
+              ${number.text_agent ? 'Voice: ' : 'Agent: '}<strong>${number.agent.name}</strong>
             </span>
             <button
               id="remove-agent-${number.id}"
@@ -535,16 +548,26 @@ export default class ManageNumbersPage {
             </button>
           </div>
         ` : `
-          <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; padding: 0.5rem 0.75rem; background: rgba(156, 163, 175, 0.08); border-radius: 0.375rem;">
+          <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: ${number.text_agent ? '0.25rem' : '0.75rem'}; padding: 0.5rem 0.75rem; background: rgba(156, 163, 175, 0.08); border-radius: 0.375rem;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--text-muted); flex-shrink: 0;">
               <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
               <circle cx="12" cy="7" r="4"/>
             </svg>
             <span style="font-size: 0.8125rem; color: var(--text-muted);">
-              System default (not assigned)
+              Voice: System default (not assigned)
             </span>
           </div>
         `}
+        ${number.text_agent ? `
+          <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; padding: 0.5rem 0.75rem; background: rgba(21, 128, 61, 0.08); border-radius: 0.375rem;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: #15803d; flex-shrink: 0;">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+            <span style="font-size: 0.8125rem; color: var(--text-primary); flex: 1;">
+              Text: <strong>${number.text_agent.name}</strong>
+            </span>
+          </div>
+        ` : ''}
 
         <!-- Purchase date and delete button -->
         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border-color);">
