@@ -2405,14 +2405,6 @@ async def entrypoint(ctx: JobContext):
     agent_language = user_config.get("language", "en-US") if user_config else "en-US"
     logger.info(f"🌐 Agent language: {agent_language}")
 
-    DEFAULT_GREETINGS = {
-        "en-US": "Hello! This is {name}. How can I help you today?",
-        "multi": "Hello! This is {name}. How can I help you today?",
-        "fr": "Bonjour! Ici {name}. Comment puis-je vous aider?",
-        "es": "¡Hola! Soy {name}. ¿Cómo puedo ayudarle hoy?",
-        "de": "Hallo! Hier ist {name}. Wie kann ich Ihnen helfen?",
-    }
-
     LANGUAGE_INSTRUCTIONS = {
         "en-US": "",
         "multi": "LANGUAGE: Start in English. If the caller speaks another language, switch to it seamlessly.\n\n",
@@ -2459,9 +2451,7 @@ THIS IS AN OUTBOUND CALL:
             logger.info(f"📋 Added template context to outbound prompt: contact='{contact_phone}', purpose='{call_purpose}', goal='{call_goal}'")
     else:
         # INBOUND: Agent handles the call for the user (traditional behavior)
-        agent_name = user_config.get("agent_name", "Maggie")
-        default_greeting = DEFAULT_GREETINGS.get(agent_language, DEFAULT_GREETINGS["en-US"]).format(name=agent_name)
-        greeting = user_config.get("greeting") or default_greeting
+        greeting = user_config.get("greeting") or ""
 
         # Get the actual caller phone number for the prompt
         # Try sip_caller_number first, then caller_number, then parse from participants
@@ -2554,7 +2544,7 @@ THIS IS AN OUTBOUND CALL:
             greeting = f"I'm sorry, {transfer_target} wasn't available. How else can I help you?"
             logger.info(f"🔄 Using reconnect greeting for declined transfer to {transfer_target}")
         else:
-            greeting = user_config.get("greeting") or default_greeting
+            greeting = user_config.get("greeting") or ""
 
         caller_phone_info = f"\n- The caller's phone number is: {actual_caller_phone}" if actual_caller_phone else ""
         reconnect_context = ""
