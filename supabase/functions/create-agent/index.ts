@@ -49,6 +49,7 @@ Deno.serve(async (req) => {
     const insert: Record<string, unknown> = {
       user_id: user.id,
       name: body.name,
+      active_voice_stack: body.active_voice_stack || "livekit",
     };
 
     const allowedFields = [
