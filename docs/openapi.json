@@ -1532,6 +1532,56 @@
           "404": { "description": "Action not found" }
         }
       }
+    },
+    "/manage-api-keys": {
+      "post": {
+        "operationId": "manageApiKeys",
+        "tags": ["API Keys & Webhooks"],
+        "summary": "Manage API keys and webhooks",
+        "description": "Create, list, update, and revoke API keys. Set webhook URLs to receive call completion events with HMAC-SHA256 signed payloads.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["action"],
+                "properties": {
+                  "action": { "type": "string", "enum": ["generate", "list", "update", "revoke"], "description": "The operation to perform" },
+                  "name": { "type": "string", "description": "Key name (required for generate)", "maxLength": 64 },
+                  "webhook_url": { "type": "string", "format": "uri", "description": "Webhook URL (optional for generate/update)" },
+                  "key_id": { "type": "string", "format": "uuid", "description": "Key ID (required for update/revoke)" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success. Response varies by action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "key": { "type": "string", "description": "Full API key (generate only, shown once)" },
+                    "id": { "type": "string", "format": "uuid" },
+                    "name": { "type": "string" },
+                    "key_prefix": { "type": "string" },
+                    "webhook_url": { "type": "string" },
+                    "webhook_secret": { "type": "string", "description": "HMAC signing secret (whsec_...)" },
+                    "keys": { "type": "array", "description": "Array of keys (list action)" },
+                    "success": { "type": "boolean" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Invalid action or parameters" },
+          "401": { "description": "Unauthorized" },
+          "404": { "description": "Key not found" }
+        }
+      }
     }
   },
   "tags": [
@@ -1547,6 +1597,7 @@
     { "name": "Calendar", "description": "Cal.com integration" },
     { "name": "Contacts", "description": "Contact management" },
     { "name": "Billing", "description": "Credits and billing management" },
-    { "name": "Scheduled Actions", "description": "Schedule SMS and calls for future delivery" }
+    { "name": "Scheduled Actions", "description": "Schedule SMS and calls for future delivery" },
+    { "name": "API Keys & Webhooks", "description": "Manage API keys and webhook URLs" }
   ]
 }
