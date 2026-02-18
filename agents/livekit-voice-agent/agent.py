@@ -329,6 +329,14 @@ async def extract_data_from_transcript(transcript_text: str, dynamic_variables: 
 For each variable, provide a value based on what was discussed in the call.
 If a value cannot be determined from the transcript, use null.
 
+IMPORTANT: This transcript comes from speech-to-text, so values may be spoken out loud rather than formatted properly. You MUST normalize them:
+- Email addresses: "john at gmail dot com" → "john@gmail.com", "jane dot doe at company dot co" → "jane.doe@company.co"
+- URLs: "w w w dot example dot com" → "www.example.com"
+- Phone numbers: "six zero four five five five one two three four" → "6045551234"
+- Spelled-out words: "dash" → "-", "underscore" → "_", "at sign" or "at" (in email context) → "@", "dot" (in email/URL context) → "."
+- Names: Capitalize properly ("john smith" → "John Smith")
+Always return the properly formatted version, never the spoken-out version.
+
 Variables to extract:
 {json.dumps(variables_schema, indent=2)}
 
@@ -346,6 +354,14 @@ For text variables, use a string value."""
             # Fallback: extract common fields automatically
             prompt = f"""Analyze this phone call transcript and extract any relevant structured data.
 Extract ONLY fields that are clearly mentioned or discussed in the call. Omit fields with no information.
+
+IMPORTANT: This transcript comes from speech-to-text, so values may be spoken out loud rather than formatted properly. You MUST normalize them:
+- Email addresses: "john at gmail dot com" → "john@gmail.com", "jane dot doe at company dot co" → "jane.doe@company.co"
+- URLs: "w w w dot example dot com" → "www.example.com"
+- Phone numbers: "six zero four five five five one two three four" → "6045551234"
+- Spelled-out words: "dash" → "-", "underscore" → "_", "at sign" or "at" (in email context) → "@", "dot" (in email/URL context) → "."
+- Names: Capitalize properly ("john smith" → "John Smith")
+Always return the properly formatted version, never the spoken-out version.
 
 Common fields to look for (include only if present):
 - caller_name: The caller's full name
