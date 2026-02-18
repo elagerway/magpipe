@@ -2360,7 +2360,7 @@ async def entrypoint(ctx: JobContext):
         is_system_agent = agent_id_str == SYSTEM_AGENT_ID or agent_name == "System - Not Assigned"
         if is_system_agent:
             logger.info("🔔 System agent detected - speaking greeting and disconnecting")
-            greeting = user_config.get("greeting_template", "This number is not currently assigned.")
+            greeting = user_config.get("greeting", "This number is not currently assigned.")
             await speak_error_and_disconnect(ctx, greeting)
             return
 
@@ -2461,7 +2461,7 @@ THIS IS AN OUTBOUND CALL:
         # INBOUND: Agent handles the call for the user (traditional behavior)
         agent_name = user_config.get("agent_name", "Maggie")
         default_greeting = DEFAULT_GREETINGS.get(agent_language, DEFAULT_GREETINGS["en-US"]).format(name=agent_name)
-        greeting = user_config.get("greeting_template") or default_greeting
+        greeting = user_config.get("greeting") or default_greeting
 
         # Get the actual caller phone number for the prompt
         # Try sip_caller_number first, then caller_number, then parse from participants
@@ -2554,7 +2554,7 @@ THIS IS AN OUTBOUND CALL:
             greeting = f"I'm sorry, {transfer_target} wasn't available. How else can I help you?"
             logger.info(f"🔄 Using reconnect greeting for declined transfer to {transfer_target}")
         else:
-            greeting = user_config.get("greeting_template") or default_greeting
+            greeting = user_config.get("greeting") or default_greeting
 
         caller_phone_info = f"\n- The caller's phone number is: {actual_caller_phone}" if actual_caller_phone else ""
         reconnect_context = ""
