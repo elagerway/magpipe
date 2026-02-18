@@ -241,11 +241,13 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 
 | Function | Auth | Tables | External APIs | Called By |
 |----------|------|--------|---------------|----------|
-| `get-agent` | JWT | `agent_configs`, `knowledge_sources` | None | agent-detail page |
-| `list-agents` | JWT / API key | `agent_configs` | None | agents page, API |
-| `create-agent` | JWT / API key | `agent_configs` | None | API |
-| `update-agent` | JWT | `agent_configs`, `service_numbers`, `knowledge_sources` | None | agent-detail page |
+| `get-agent` | JWT / API key | `agent_configs`, `dynamic_variables` | None | agent-detail page, API |
+| `list-agents` | JWT / API key | `agent_configs`, `dynamic_variables` | None | agents page, API |
+| `create-agent` | JWT / API key | `agent_configs`, `dynamic_variables` | None | API |
+| `update-agent` | JWT / API key | `agent_configs`, `dynamic_variables` | None | agent-detail page, API |
 | `delete-agent` | JWT | `agent_configs`, `service_numbers` | None | agent list |
+| `custom-functions` | JWT / API key | `custom_functions` | None | functions tab, API |
+| `manage-dynamic-variables` | JWT / API key | `dynamic_variables` | None | API |
 | `list-voices` | JWT | None | ElevenLabs | voice selection |
 | `clone-voice` | JWT / API key | `cloned_voices` | ElevenLabs | voice cloning, API |
 | `delete-voice` | JWT | `cloned_voices` | ElevenLabs | voice management |
