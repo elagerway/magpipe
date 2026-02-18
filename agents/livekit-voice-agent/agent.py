@@ -306,24 +306,26 @@ async def get_dynamic_variables(agent_id: str, user_id: str) -> list:
 
 
 async def extract_data_from_transcript(transcript_text: str, dynamic_variables: list) -> dict:
-    """Use OpenAI to extract structured data from transcript based on variable definitions"""
-    if not dynamic_variables or not transcript_text:
+    """Use OpenAI to extract structured data from transcript based on variable definitions.
+    Falls back to general-purpose extraction when no dynamic variables are configured."""
+    if not transcript_text:
         return {}
 
     try:
-        # Build extraction schema from variable definitions
-        variables_schema = []
-        for var in dynamic_variables:
-            var_def = {
-                "name": var["name"],
-                "description": var.get("description", ""),
-                "type": var.get("var_type", "text"),
-            }
-            if var.get("var_type") == "enum" and var.get("enum_options"):
-                var_def["allowed_values"] = var["enum_options"]
-            variables_schema.append(var_def)
+        if dynamic_variables:
+            # Build extraction schema from variable definitions
+            variables_schema = []
+            for var in dynamic_variables:
+                var_def = {
+                    "name": var["name"],
+                    "description": var.get("description", ""),
+                    "type": var.get("var_type", "text"),
+                }
+                if var.get("var_type") == "enum" and var.get("enum_options"):
+                    var_def["allowed_values"] = var["enum_options"]
+                variables_schema.append(var_def)
 
-        prompt = f"""Analyze this phone call transcript and extract the following information.
+            prompt = f"""Analyze this phone call transcript and extract the following information.
 For each variable, provide a value based on what was discussed in the call.
 If a value cannot be determined from the transcript, use null.
 
@@ -340,6 +342,26 @@ For boolean variables, use true/false.
 For number variables, use numeric values.
 For enum variables, use one of the allowed values or null.
 For text variables, use a string value."""
+        else:
+            # Fallback: extract common fields automatically
+            prompt = f"""Analyze this phone call transcript and extract any relevant structured data.
+Extract ONLY fields that are clearly mentioned or discussed in the call. Omit fields with no information.
+
+Common fields to look for (include only if present):
+- caller_name: The caller's full name
+- email: Email address mentioned
+- phone: Phone number mentioned (other than the one they called from)
+- company: Company or organization name
+- reason: Brief reason for the call (1 sentence)
+- action_items: List of follow-up actions discussed
+- appointment_date: Any date/time mentioned for a meeting or callback
+- sentiment: Overall caller sentiment (positive, neutral, negative)
+
+Transcript:
+{transcript_text}
+
+Respond with ONLY a valid JSON object. Only include fields where the value was clearly stated or discussed.
+Use null for fields that were asked about but not answered. Omit fields entirely if not relevant to the call."""
 
         client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -3210,7 +3232,7 @@ AFTER-HOURS CONTEXT:
                         logger.info(f"📝 Generating call summary and extracting data...")
 
                         summary_task = generate_call_summary(store_transcript)
-                        extraction_task = extract_data_from_transcript(store_transcript, dynamic_variables) if (dynamic_variables and extract_calls_enabled) else None
+                        extraction_task = extract_data_from_transcript(store_transcript, dynamic_variables) if extract_calls_enabled else None
 
                         if extraction_task:
                             call_summary, extracted_data = await asyncio.gather(summary_task, extraction_task)

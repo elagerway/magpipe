@@ -1,13 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { corsHeaders, handleCors } from '../_shared/cors.ts'
-
-async function sha256(message: string): Promise<string> {
-  const encoder = new TextEncoder()
-  const data = encoder.encode(message)
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
-  const hashArray = Array.from(new Uint8Array(hashBuffer))
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
-}
+import { resolveUser, sha256 } from '../_shared/api-auth.ts'
 
 function generateApiKey(): string {
   const array = new Uint8Array(20) // 20 bytes = 40 hex chars
@@ -29,7 +22,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Authenticate user via Supabase JWT
+    // Authenticate user via Supabase JWT or mgp_ API key
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -40,11 +33,9 @@ Deno.serve(async (req) => {
       }
     )
 
-    const authHeader = req.headers.get('Authorization')!
-    const token = authHeader.replace('Bearer ', '')
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token)
+    const user = await resolveUser(req, supabaseClient)
 
-    if (userError || !user) {
+    if (!user) {
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
