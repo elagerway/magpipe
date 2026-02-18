@@ -64,9 +64,32 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Fetch dynamic variables for all returned agents
+    const agentIds = (agents || []).map((a: { id: string }) => a.id);
+    let allVars: Record<string, unknown[]> = {};
+    if (agentIds.length > 0) {
+      const { data: vars } = await queryClient
+        .from("dynamic_variables")
+        .select("id, agent_id, name, description, var_type, enum_options, created_at, updated_at")
+        .eq("user_id", user.id)
+        .in("agent_id", agentIds)
+        .order("created_at", { ascending: true });
+
+      for (const v of vars || []) {
+        const aid = (v as { agent_id: string }).agent_id;
+        if (!allVars[aid]) allVars[aid] = [];
+        allVars[aid].push(v);
+      }
+    }
+
+    const enrichedAgents = (agents || []).map((a: { id: string }) => ({
+      ...a,
+      dynamic_variables: allVars[a.id] || [],
+    }));
+
     return new Response(
       JSON.stringify({
-        agents: agents || [],
+        agents: enrichedAgents,
         total: count || 0,
         has_more: (count || 0) > offset + limit,
       }),
