@@ -1,6 +1,6 @@
 ---
 title: "Create Agent"
-api: "POST https://api.magpipe.ai/rest/v1/agent_configs"
+api: "POST https://api.magpipe.ai/functions/v1/create-agent"
 description: "Create a new AI agent with custom configuration"
 ---
 
@@ -13,19 +13,11 @@ Creates a new AI agent that can handle phone calls, SMS messages, and chat conve
 ### Headers
 
 <ParamField header="Authorization" type="string" required>
-  Bearer token for authentication.
-</ParamField>
-
-<ParamField header="apikey" type="string" required>
-  Your Supabase anon key.
+  Bearer token — either a Supabase JWT or a `mgp_` API key.
 </ParamField>
 
 <ParamField header="Content-Type" type="string" required>
   Must be `application/json`
-</ParamField>
-
-<ParamField header="Prefer" type="string">
-  Set to `return=representation` to get the created agent in the response.
 </ParamField>
 
 ### Body Parameters
@@ -37,7 +29,6 @@ Creates a new AI agent that can handle phone calls, SMS messages, and chat conve
 
   **Constraints:**
   - 1-100 characters
-  - Must be unique within your account
 </ParamField>
 
 <ParamField body="greeting" type="string">
@@ -50,7 +41,7 @@ Creates a new AI agent that can handle phone calls, SMS messages, and chat conve
   - Should be under 15 seconds when spoken
 </ParamField>
 
-<ParamField body="system_prompt" type="string" required>
+<ParamField body="system_prompt" type="string">
   Instructions that define the agent's personality, knowledge, and behavior. This is the most important setting for customizing agent responses.
 
   **Example:**
@@ -85,7 +76,7 @@ Creates a new AI agent that can handle phone calls, SMS messages, and chat conve
   | `TxGEqnHWrfWFTfGW9XjX` | Josh | Strong, American male |
   | `cjVigY5qzO86Huf0OWal` | Eric | Friendly, American male |
 
-  **Default:** `21m00Tcm4TlvDq8ikWAM` (Rachel)
+  **Default:** `11labs-Kate`
 </ParamField>
 
 <ParamField body="llm_model" type="string">
@@ -108,23 +99,31 @@ Creates a new AI agent that can handle phone calls, SMS messages, and chat conve
   **Supported:** `en-US`, `en-GB`, `es-ES`, `fr-FR`, `de-DE`
 </ParamField>
 
-<ParamField body="max_call_duration" type="integer">
-  Maximum call duration in seconds. Call ends automatically after this time.
+<ParamField body="agent_type" type="string">
+  The type of agent.
 
-  **Default:** 1800 (30 minutes)
-
-  **Range:** 60 to 3600
+  **Default:** `inbound`
 </ParamField>
 
-<ParamField body="end_call_phrases" type="array">
-  Phrases that trigger automatic call termination.
+<ParamField body="organization_name" type="string">
+  Name of the organization the agent represents.
 
-  **Example:** `["goodbye", "thank you bye", "that's all"]`
-
-  **Default:** `["goodbye", "bye", "have a good day"]`
+  **Example:** `"Acme Corp"`
 </ParamField>
 
-<ParamField body="transfer_number" type="string">
+<ParamField body="owner_name" type="string">
+  Name of the agent's owner.
+
+  **Example:** `"Jane Smith"`
+</ParamField>
+
+<ParamField body="agent_role" type="string">
+  Description of the agent's role.
+
+  **Example:** `"Front desk receptionist"`
+</ParamField>
+
+<ParamField body="transfer_phone_number" type="string">
   Phone number to transfer calls to when requested.
 
   **Example:** `"+14155551234"`
@@ -134,6 +133,14 @@ Creates a new AI agent that can handle phone calls, SMS messages, and chat conve
   Whether the agent is active and can receive calls.
 
   **Default:** `true`
+</ParamField>
+
+<ParamField body="temperature" type="number">
+  LLM temperature for response creativity.
+
+  **Default:** `0.7`
+
+  **Range:** 0 to 1
 </ParamField>
 
 <ParamField body="functions" type="object">
@@ -208,36 +215,46 @@ Creates a new AI agent that can handle phone calls, SMS messages, and chat conve
 
 ## Response
 
-<ResponseField name="id" type="string">
-  Unique identifier (UUID) for the agent.
-</ResponseField>
+Returns the full agent object wrapped in an `agent` key.
 
-<ResponseField name="name" type="string">
-  Agent display name.
-</ResponseField>
+<ResponseField name="agent" type="object">
+  <Expandable title="Agent object">
+    <ResponseField name="id" type="string">
+      Unique identifier (UUID) for the agent config row.
+    </ResponseField>
 
-<ResponseField name="greeting" type="string">
-  Call greeting message.
-</ResponseField>
+    <ResponseField name="agent_id" type="string">
+      Unique agent identifier (UUID) used for dispatch and assignment.
+    </ResponseField>
 
-<ResponseField name="system_prompt" type="string">
-  Agent instructions.
-</ResponseField>
+    <ResponseField name="name" type="string">
+      Agent display name.
+    </ResponseField>
 
-<ResponseField name="voice_id" type="string">
-  Selected voice ID.
-</ResponseField>
+    <ResponseField name="greeting" type="string">
+      Call greeting message.
+    </ResponseField>
 
-<ResponseField name="is_active" type="boolean">
-  Active status.
-</ResponseField>
+    <ResponseField name="system_prompt" type="string">
+      Agent instructions.
+    </ResponseField>
 
-<ResponseField name="created_at" type="string">
-  ISO 8601 creation timestamp.
-</ResponseField>
+    <ResponseField name="voice_id" type="string">
+      Selected voice ID.
+    </ResponseField>
 
-<ResponseField name="updated_at" type="string">
-  ISO 8601 last update timestamp.
+    <ResponseField name="is_active" type="boolean">
+      Active status.
+    </ResponseField>
+
+    <ResponseField name="created_at" type="string">
+      ISO 8601 creation timestamp.
+    </ResponseField>
+
+    <ResponseField name="updated_at" type="string">
+      ISO 8601 last update timestamp.
+    </ResponseField>
+  </Expandable>
 </ResponseField>
 
 ## Example Request
@@ -245,11 +262,9 @@ Creates a new AI agent that can handle phone calls, SMS messages, and chat conve
 <CodeGroup>
 
 ```bash cURL
-curl -X POST "https://api.magpipe.ai/rest/v1/agent_configs" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "apikey: YOUR_ANON_KEY" \
+curl -X POST "https://api.magpipe.ai/functions/v1/create-agent" \
+  -H "Authorization: Bearer mgp_your_api_key" \
   -H "Content-Type: application/json" \
-  -H "Prefer: return=representation" \
   -d '{
     "name": "Reception Agent",
     "greeting": "Hello, thanks for calling! How can I help you today?",
@@ -259,37 +274,42 @@ curl -X POST "https://api.magpipe.ai/rest/v1/agent_configs" \
 ```
 
 ```javascript JavaScript
-const { createClient } = require('@supabase/supabase-js');
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-const { data, error } = await supabase
-  .from('agent_configs')
-  .insert({
+const response = await fetch('https://api.magpipe.ai/functions/v1/create-agent', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer mgp_your_api_key',
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
     name: 'Reception Agent',
     greeting: 'Hello, thanks for calling! How can I help you today?',
     system_prompt: 'You are a friendly receptionist. Be helpful and professional.',
     voice_id: '21m00Tcm4TlvDq8ikWAM',
-  })
-  .select()
-  .single();
+  }),
+});
 
-console.log(data);
+const data = await response.json();
+console.log(data.agent);
 ```
 
 ```python Python
-from supabase import create_client
+import requests
 
-supabase = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+response = requests.post(
+    'https://api.magpipe.ai/functions/v1/create-agent',
+    headers={
+        'Authorization': 'Bearer mgp_your_api_key',
+        'Content-Type': 'application/json',
+    },
+    json={
+        'name': 'Reception Agent',
+        'greeting': 'Hello, thanks for calling! How can I help you today?',
+        'system_prompt': 'You are a friendly receptionist. Be helpful and professional.',
+        'voice_id': '21m00Tcm4TlvDq8ikWAM',
+    },
+)
 
-result = supabase.table('agent_configs').insert({
-    'name': 'Reception Agent',
-    'greeting': 'Hello, thanks for calling! How can I help you today?',
-    'system_prompt': 'You are a friendly receptionist. Be helpful and professional.',
-    'voice_id': '21m00Tcm4TlvDq8ikWAM',
-}).execute()
-
-print(result.data)
+print(response.json()['agent'])
 ```
 
 </CodeGroup>
@@ -298,17 +318,19 @@ print(result.data)
 
 ```json
 {
-  "id": "c72ea2b8-1234-5678-9abc-def012345678",
-  "name": "Reception Agent",
-  "greeting": "Hello, thanks for calling! How can I help you today?",
-  "system_prompt": "You are a friendly receptionist. Be helpful and professional.",
-  "voice_id": "21m00Tcm4TlvDq8ikWAM",
-  "llm_model": "gpt-4.1-nano",
-  "language": "en-US",
-  "max_call_duration": 1800,
-  "is_active": true,
-  "created_at": "2024-01-15T10:00:00.000Z",
-  "updated_at": "2024-01-15T10:00:00.000Z"
+  "agent": {
+    "id": "c72ea2b8-1234-5678-9abc-def012345678",
+    "agent_id": "a1b2c3d4-5678-9abc-def0-123456789abc",
+    "name": "Reception Agent",
+    "greeting": "Hello, thanks for calling! How can I help you today?",
+    "system_prompt": "You are a friendly receptionist. Be helpful and professional.",
+    "voice_id": "21m00Tcm4TlvDq8ikWAM",
+    "llm_model": "gpt-4.1-nano",
+    "language": "en-US",
+    "is_active": true,
+    "created_at": "2024-01-15T10:00:00.000Z",
+    "updated_at": "2024-01-15T10:00:00.000Z"
+  }
 }
 ```
 
@@ -318,7 +340,7 @@ print(result.data)
 ```json 400 Bad Request
 {
   "error": {
-    "code": "VALIDATION_ERROR",
+    "code": "missing_param",
     "message": "name is required"
   }
 }
@@ -329,19 +351,8 @@ print(result.data)
 ```json 401 Unauthorized
 {
   "error": {
-    "code": "UNAUTHORIZED",
-    "message": "Invalid or expired access token"
-  }
-}
-```
-</ResponseExample>
-
-<ResponseExample>
-```json 409 Conflict
-{
-  "error": {
-    "code": "DUPLICATE_NAME",
-    "message": "An agent with this name already exists"
+    "code": "unauthorized",
+    "message": "Unauthorized"
   }
 }
 ```
