@@ -1011,7 +1011,7 @@ export const viewsMethods = {
           let lastIsAgent = true;
           for (const line of lines) {
             const colonIndex = line.indexOf(':');
-            if (colonIndex > 0 && colonIndex < 20) {
+            if (colonIndex > 0 && colonIndex < 60) {
               const speaker = line.substring(0, colonIndex).trim().toLowerCase();
               let text = line.substring(colonIndex + 1).trim();
               // Caller/User are always the caller; any other name is the agent (supports custom agent names)
@@ -1078,7 +1078,7 @@ export const viewsMethods = {
           let lastIsAgent = true; // Track last speaker for continuation lines
           for (const line of lines) {
             const colonIndex = line.indexOf(':');
-            if (colonIndex > 0 && colonIndex < 20) {
+            if (colonIndex > 0 && colonIndex < 60) {
               const speaker = line.substring(0, colonIndex).trim().toLowerCase();
               let text = line.substring(colonIndex + 1).trim();
               // Caller/User are always the caller; any other name is the agent (supports custom agent names)

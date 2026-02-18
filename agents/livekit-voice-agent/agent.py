@@ -3014,9 +3014,8 @@ AFTER-HOURS CONTEXT:
                     # Debounce: write on first message or after 3+ seconds since last write
                     if last_transcript_write == 0 or (now - last_transcript_write) >= 3:
                         last_transcript_write = now
-                        transcript_agent_name = user_config.get("agent_name") or user_config.get("name") or "Maggie"
                         partial_transcript = "\n\n".join([
-                            f"{transcript_agent_name if msg['speaker'] == 'agent' else 'Caller'}: {msg['text']}"
+                            f"{'Agent' if msg['speaker'] == 'agent' else 'Caller'}: {msg['text']}"
                             for msg in transcript_messages
                         ])
 
@@ -3040,10 +3039,8 @@ AFTER-HOURS CONTEXT:
         try:
             logger.info("📞 Call ending - saving transcript...")
 
-            # Format transcript - use agent's configured name, fallback to "Maggie"
-            transcript_agent_name = user_config.get("agent_name") or user_config.get("name") or "Maggie"
             transcript_text = "\n\n".join([
-                f"{transcript_agent_name if msg['speaker'] == 'agent' else 'Caller'}: {msg['text']}"
+                f"{'Agent' if msg['speaker'] == 'agent' else 'Caller'}: {msg['text']}"
                 for msg in transcript_messages
             ])
 
