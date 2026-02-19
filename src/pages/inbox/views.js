@@ -939,6 +939,20 @@ export const viewsMethods = {
           }
         }
 
+        // Update the syncing badge in the thread list item
+        const listItem = document.querySelector(`.conversation-item[data-call-id="${callId}"]`);
+        if (listItem) {
+          const preview = listItem.querySelector('.conversation-preview');
+          if (preview) {
+            // The last child of .conversation-preview is either syncing badge or sentiment
+            const lastChild = preview.lastElementChild;
+            if (!stillPending && lastChild && lastChild.textContent.includes('Syncing')) {
+              const sentiment = this.getConversationSentiment(this.conversations[convIndex]);
+              lastChild.outerHTML = this.formatSentimentLabel(sentiment);
+            }
+          }
+        }
+
         // If still pending and under retry limit, schedule another refresh
         if (stillPending && recordings.length > 0 && retryCount < maxRetries) {
           this._recordingRetryCount.set(callId, retryCount + 1);

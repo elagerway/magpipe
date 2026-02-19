@@ -540,6 +540,24 @@ class InboxPage {
       setTimeout(() => this.subscribeToMessages(), 100);
     });
 
+    // Refresh conversations when tab becomes visible (catches missed realtime events)
+    this._visibilityHandler = async () => {
+      if (!document.hidden && this.userId) {
+        const timeSinceLastFetch = Date.now() - (this.lastFetchTime || 0);
+        if (timeSinceLastFetch > 10000) { // Only if >10s since last fetch
+          console.log('📥 Tab visible again, refreshing inbox...');
+          await this.loadConversations(this.userId);
+          this.lastFetchTime = Date.now();
+          const conversationsEl = document.getElementById('conversations');
+          if (conversationsEl) {
+            conversationsEl.innerHTML = this.renderConversationList();
+            this.attachConversationListeners();
+          }
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', this._visibilityHandler);
+
     // Expose showCallInterface globally for phone nav button
     window.showDialpad = () => this.showCallInterface();
 
@@ -702,6 +720,10 @@ class InboxPage {
       })
       .subscribe((status) => {
         console.log('Inbox subscription status:', status);
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.warn('⚠️ Inbox realtime disconnected, reconnecting in 5s...');
+          setTimeout(() => this.subscribeToMessages(), 5000);
+        }
       });
   }
 
@@ -1103,6 +1125,10 @@ class InboxPage {
   }
 
   cleanup() {
+    if (this._visibilityHandler) {
+      document.removeEventListener('visibilitychange', this._visibilityHandler);
+      this._visibilityHandler = null;
+    }
     if (this.subscription) {
       this.subscription.unsubscribe();
       this.subscription = null;
