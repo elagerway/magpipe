@@ -5,7 +5,7 @@
     "dark": "logo/dark.svg",
     "light": "logo/light.svg"
   },
-  "favicon": "favicon.svg",
+  "favicon": "logo/magpipe-bird-2.png",
   "openapi": "openapi.json",
   "api": {
     "baseUrl": "https://api.magpipe.ai/functions/v1",
