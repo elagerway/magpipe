@@ -2942,19 +2942,22 @@ AFTER-HOURS CONTEXT:
         sms_from_number = None
         try:
             agent_id_for_sms = user_config.get("id")
+            logger.info(f"📱 SMS lookup: agent_id={agent_id_for_sms} (type={type(agent_id_for_sms).__name__})")
             sms_numbers = supabase.table("service_numbers") \
                 .select("phone_number, capabilities") \
-                .eq("agent_id", agent_id_for_sms) \
+                .eq("agent_id", str(agent_id_for_sms)) \
                 .eq("is_active", True) \
                 .execute()
+            logger.info(f"📱 SMS lookup result: {len(sms_numbers.data)} rows, data={sms_numbers.data}")
             if sms_numbers.data:
                 for sn in sms_numbers.data:
                     caps = sn.get("capabilities") or {}
+                    logger.info(f"📱 Checking number {sn.get('phone_number')}: caps={caps}, caps_type={type(caps).__name__}, sms={caps.get('sms')}")
                     if caps.get("sms"):
                         sms_from_number = sn["phone_number"]
                         break
         except Exception as e:
-            logger.warning(f"Could not look up SMS-capable number: {e}")
+            logger.warning(f"Could not look up SMS-capable number: {e}", exc_info=True)
 
         # Do NOT fall back to service_number — it may be voice-only
         if not sms_from_number:
