@@ -41,7 +41,7 @@ Deno.serve(async (req) => {
       .from("service_numbers")
       .select(`
         *,
-        agent:agent_configs(id, name)
+        agent:agent_configs!service_numbers_agent_id_fkey(id, name)
       `, { count: "exact" })
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
