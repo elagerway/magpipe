@@ -1,5 +1,6 @@
 /**
  * Service Number Selection Page
+ * Phone number search with country, area code, and city filters
  */
 
 import { User } from '../models/User.js';
@@ -12,6 +13,7 @@ export default class SelectNumberPage {
   constructor() {
     this.availableNumbers = [];
     this.selectedNumber = null;
+    this.numberType = 'local';
   }
 
   async render() {
@@ -22,12 +24,9 @@ export default class SelectNumberPage {
       return;
     }
 
-    // Check if user can add more phone numbers
     const phoneCheck = await canAddPhoneNumber(user.id);
-
     const appElement = document.getElementById('app');
 
-    // If user can't add more numbers, show upgrade prompt
     if (!phoneCheck.canAdd) {
       appElement.innerHTML = `
         <div class="container with-bottom-nav" style="max-width: 600px; padding-top: 1.5rem;">
@@ -81,8 +80,8 @@ export default class SelectNumberPage {
     }
 
     appElement.innerHTML = `
-      <div class="container with-bottom-nav" style="max-width: 600px; padding-top: 1.5rem;">
-        <button onclick="navigateTo(window.innerWidth > 768 ? '/phone' : '/manage-numbers')" style="
+      <div class="container with-bottom-nav" style="max-width: 850px; padding-top: 1.5rem;">
+        <button onclick="navigateTo(window.innerWidth > 768 ? '/phone' : '/manage-numbers')" class="mobile-only" style="
           background: none;
           border: none;
           color: var(--text-secondary);
@@ -101,33 +100,81 @@ export default class SelectNumberPage {
           Back
         </button>
 
-        <div class="card">
-          <h1 class="text-center">Select Your Service Number</h1>
-          <p class="text-center text-muted">
-            Choose a phone number that callers will use to reach your AI assistant
-          </p>
+        <div class="card" style="padding: 1.5rem;">
+          <!-- Header -->
+          <h2 style="margin: 0 0 1.5rem 0; font-size: 1.25rem; font-weight: 600;">Choose your phone number</h2>
 
-          <div id="search-form">
-            <div class="form-group">
-              <label class="form-label" for="search-query">Search by Area Code or Location</label>
-              <input
-                type="text"
-                id="search-query"
-                class="form-input"
-                placeholder="e.g., 415 or San Francisco, CA"
-              />
-              <p class="form-help">Enter an area code (e.g., 415) or city and state</p>
+          <!-- Search controls -->
+          <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; align-items: flex-start;">
+            <!-- Area code search + Local/Toll Free toggle -->
+            <div style="flex: 0 0 auto;">
+              <div style="display: flex; gap: 0.5rem; align-items: center;">
+                <div style="position: relative;">
+                  <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="position: absolute; left: 0.625rem; top: 50%; transform: translateY(-50%); color: var(--text-secondary); pointer-events: none;">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                  </svg>
+                  <input type="text" id="area-code-input" class="form-input" placeholder="Area code"
+                    style="width: 130px; padding-left: 2rem;" maxlength="3" />
+                </div>
+                <button class="btn btn-primary" id="area-code-search-btn" style="white-space: nowrap;">Search</button>
+              </div>
+              <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem;">
+                <span style="font-size: 0.8rem; color: var(--text-secondary);">Local</span>
+                <label class="toggle-switch" style="vertical-align: middle;">
+                  <input type="checkbox" id="number-type-toggle" />
+                  <span class="toggle-slider"></span>
+                </label>
+                <span style="font-size: 0.8rem; color: var(--text-secondary);">Toll Free</span>
+              </div>
             </div>
 
-            <button class="btn btn-primary btn-full" id="search-btn">
-              Search Available Numbers
-            </button>
-
+            <!-- City search -->
+            <div style="flex: 0 1 auto;">
+              <div style="display: flex; gap: 0.5rem; align-items: center;">
+                <div style="position: relative;">
+                  <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="position: absolute; left: 0.625rem; top: 50%; transform: translateY(-50%); color: var(--text-secondary); pointer-events: none;">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                  </svg>
+                  <input type="text" id="city-input" class="form-input" placeholder="City"
+                    style="width: 150px; padding-left: 2rem;" />
+                </div>
+                <button class="btn btn-primary" id="city-search-btn" style="white-space: nowrap;">Search</button>
+              </div>
+            </div>
           </div>
 
-          <div id="results-section" class="hidden" style="margin-top: 2rem;">
-            <h3>Available Numbers</h3>
-            <div id="numbers-list"></div>
+          <!-- Results table -->
+          <div id="results-section" style="display: none; border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden;">
+            <table style="width: 100%; border-collapse: collapse;">
+              <thead>
+                <tr style="background: var(--bg-secondary);">
+                  <th style="text-align: left; padding: 0.75rem 1rem; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.05em;">Phone Number</th>
+                  <th style="text-align: left; padding: 0.75rem 1rem; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.05em;">Capabilities</th>
+                  <th style="text-align: right; padding: 0.75rem 1rem; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.05em;">Price</th>
+                </tr>
+              </thead>
+              <tbody id="numbers-list"></tbody>
+            </table>
+          </div>
+
+          <!-- Empty state -->
+          <div id="empty-state" style="text-align: center; padding: 3rem 1rem; color: var(--text-secondary);">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin: 0 auto 1rem; opacity: 0.4;">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" />
+            </svg>
+            <p style="margin: 0;">Search for available phone numbers using the controls above</p>
+          </div>
+
+          <!-- Loading state -->
+          <div id="loading-state" style="display: none; text-align: center; padding: 3rem 1rem;">
+            <div class="spinner"></div>
+            <p style="color: var(--text-secondary); margin-top: 1rem;">Searching available numbers...</p>
+          </div>
+
+          <!-- Footer with Cancel / Next -->
+          <div style="display: flex; justify-content: flex-end; gap: 0.75rem; padding-top: 1rem; margin-top: 1.5rem; border-top: 1px solid var(--border-color);">
+            <button class="btn btn-secondary" onclick="navigateTo(window.innerWidth > 768 ? '/phone' : '/manage-numbers')">Cancel</button>
+            <button class="btn btn-primary" id="next-btn" disabled>Next</button>
           </div>
         </div>
       </div>
@@ -138,179 +185,199 @@ export default class SelectNumberPage {
   }
 
   attachEventListeners() {
-    const searchBtn = document.getElementById('search-btn');
-    const resultsSection = document.getElementById('results-section');
+    // Number type toggle
+    const toggle = document.getElementById('number-type-toggle');
+    toggle.addEventListener('change', () => {
+      this.numberType = toggle.checked ? 'tollFree' : 'local';
+    });
 
-    searchBtn.addEventListener('click', async () => {
-      const searchQuery = document.getElementById('search-query').value;
+    // Area code search
+    const areaCodeBtn = document.getElementById('area-code-search-btn');
+    const areaCodeInput = document.getElementById('area-code-input');
 
-      if (!searchQuery.trim()) {
-        showToast('Please enter an area code or location', 'error');
+    areaCodeBtn.addEventListener('click', () => {
+      const areaCode = areaCodeInput.value.trim();
+      if (!areaCode) {
+        showToast('Please enter an area code', 'error');
         return;
       }
+      this.performSearch({ areaCode, numberType: this.numberType });
+    });
 
-      searchBtn.disabled = true;
-      searchBtn.textContent = 'Searching...';
+    areaCodeInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') areaCodeBtn.click();
+    });
+
+    // City search
+    const cityBtn = document.getElementById('city-search-btn');
+    const cityInput = document.getElementById('city-input');
+
+    cityBtn.addEventListener('click', () => {
+      const city = cityInput.value.trim();
+      if (!city) {
+        showToast('Please enter a city name', 'error');
+        return;
+      }
+      this.performSearch({ city, numberType: this.numberType });
+    });
+
+    cityInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') cityBtn.click();
+    });
+
+    // Next button
+    const nextBtn = document.getElementById('next-btn');
+    nextBtn.addEventListener('click', async () => {
+      if (!this.selectedNumber) return;
+
+      nextBtn.disabled = true;
+      nextBtn.textContent = 'Provisioning...';
 
       try {
-        // In production, call Supabase Edge Function to search SignalWire
-        const result = await this.searchNumbers(searchQuery);
-        this.availableNumbers = result.numbers || [];
+        await this.provisionNumber(this.selectedNumber);
 
-        if (this.availableNumbers.length === 0) {
-          showToast('No numbers found for this search. Try a different area code or location.', 'warning');
-          resultsSection.classList.add('hidden');
-        } else {
-          // Show info message if fallback area codes were used
-          if (result.usedFallback) {
-            showToast(`No numbers found for ${searchQuery}. Showing available numbers from nearby area codes in the same region.`, 'info');
-          }
+        const { user } = await getCurrentUser();
+        await User.setServiceNumber(user.id, this.selectedNumber);
 
-          this.renderNumbersList();
-          resultsSection.classList.remove('hidden');
-        }
+        showToast('Number added successfully! Redirecting...', 'success');
 
-        searchBtn.disabled = false;
-        searchBtn.textContent = 'Search Available Numbers';
+        setTimeout(() => {
+          const destination = window.innerWidth > 768 ? '/phone' : '/manage-numbers';
+          navigateTo(destination);
+        }, 1500);
       } catch (error) {
-        console.error('Search error:', error);
-        showToast('Failed to search for numbers. Please try again.', 'error');
+        console.error('Provision error:', error);
+        showToast(error.message || 'Failed to provision number. Please try again.', 'error');
 
-        searchBtn.disabled = false;
-        searchBtn.textContent = 'Search Available Numbers';
+        nextBtn.disabled = false;
+        nextBtn.textContent = 'Next';
       }
     });
+  }
+
+  async performSearch(params) {
+    const resultsSection = document.getElementById('results-section');
+    const emptyState = document.getElementById('empty-state');
+    const loadingState = document.getElementById('loading-state');
+
+    // Show loading
+    resultsSection.style.display = 'none';
+    emptyState.style.display = 'none';
+    loadingState.style.display = 'block';
+
+    // Disable all search buttons
+    const searchBtns = document.querySelectorAll('#area-code-search-btn, #city-search-btn');
+    searchBtns.forEach(btn => { btn.disabled = true; });
+
+    try {
+      const result = await this.searchNumbers(params);
+      this.availableNumbers = result.numbers || [];
+      this.selectedNumber = null;
+
+      // Update Next button state
+      document.getElementById('next-btn').disabled = true;
+
+      if (this.availableNumbers.length === 0) {
+        showToast('No numbers found. Try a different search.', 'warning');
+        loadingState.style.display = 'none';
+        emptyState.style.display = 'block';
+      } else {
+        if (result.usedFallback) {
+          showToast('Showing available numbers from nearby area codes in the same region.', 'info');
+        }
+        this.renderNumbersList();
+        loadingState.style.display = 'none';
+        resultsSection.style.display = 'block';
+      }
+    } catch (error) {
+      console.error('Search error:', error);
+      showToast('Failed to search for numbers. Please try again.', 'error');
+      loadingState.style.display = 'none';
+      emptyState.style.display = 'block';
+    } finally {
+      searchBtns.forEach(btn => { btn.disabled = false; });
+    }
   }
 
   renderNumbersList() {
     const numbersList = document.getElementById('numbers-list');
 
     numbersList.innerHTML = this.availableNumbers
-      .map(
-        (number) => `
-        <div class="number-option" data-number="${number.phone_number}" style="
-          padding: 1rem;
-          border: 2px solid var(--border-color);
-          border-radius: var(--radius-md);
-          margin-bottom: 0.75rem;
-          cursor: pointer;
-          transition: all 0.2s ease;
-        ">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <div>
-              <div style="font-size: 1.125rem; font-weight: 600;">${this.formatPhoneNumber(number.phone_number)}</div>
-              <div class="text-sm text-muted">${number.locality}, ${number.region}</div>
-              <div style="margin-top: 0.25rem; display: flex; gap: 0.5rem;">
-                ${number.capabilities?.voice ? '<span style="display: inline-block; padding: 0.125rem 0.5rem; background: rgba(34, 197, 94, 0.1); color: rgb(34, 197, 94); border-radius: 0.25rem; font-size: 0.75rem; font-weight: 500;">Voice</span>' : '<span style="display: inline-block; padding: 0.125rem 0.5rem; background: rgba(156, 163, 175, 0.1); color: rgb(107, 114, 128); border-radius: 0.25rem; font-size: 0.75rem; font-weight: 500;">No Voice</span>'}
-                ${number.capabilities?.sms ? '<span style="display: inline-block; padding: 0.125rem 0.5rem; background: rgba(59, 130, 246, 0.1); color: rgb(59, 130, 246); border-radius: 0.25rem; font-size: 0.75rem; font-weight: 500;">SMS</span>' : '<span style="display: inline-block; padding: 0.125rem 0.5rem; background: rgba(156, 163, 175, 0.1); color: rgb(107, 114, 128); border-radius: 0.25rem; font-size: 0.75rem; font-weight: 500;">No SMS</span>'}
-              </div>
-            </div>
-            <button class="purchase-btn" style="
-              background: var(--primary-color);
-              color: white;
-              border: none;
-              padding: 0.5rem 1rem;
-              border-radius: var(--radius-sm);
-              font-size: 0.875rem;
-              cursor: pointer;
-              transition: all 0.2s ease;
-              display: none;
-            ">
-              Purchase
-            </button>
-            <div class="select-text" style="color: var(--primary-color); font-size: 0.875rem;">
-              Select
-            </div>
-          </div>
-        </div>
-      `
-      )
+      .map((number) => {
+        const caps = [];
+        if (number.capabilities?.voice) caps.push('voice');
+        if (number.capabilities?.sms) caps.push('sms');
+        if (number.capabilities?.mms) caps.push('mms');
+        if (number.capabilities?.fax) caps.push('fax');
+        const capsText = caps.length > 0 ? caps.join(', ') : 'none';
+
+        return `
+          <tr class="sn-number-row" data-number="${number.phone_number}" style="cursor: pointer; border-bottom: 1px solid var(--border-color); transition: background-color 0.15s;">
+            <td style="padding: 0.75rem 1rem;">
+              <div style="font-weight: 600; font-size: 0.95rem;">${this.formatPhoneNumber(number.phone_number)}</div>
+              <div style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase;">${number.locality || 'Unknown'}${number.region ? ', ' + number.region : ''}</div>
+            </td>
+            <td style="padding: 0.75rem 1rem; color: var(--text-secondary); font-size: 0.875rem;">${capsText}</td>
+            <td style="padding: 0.75rem 1rem; text-align: right; color: var(--text-secondary); font-size: 0.875rem;">US $0</td>
+          </tr>
+        `;
+      })
       .join('');
 
-    // Add click handlers to number options
-    document.querySelectorAll('.number-option').forEach((option) => {
-      const purchaseBtn = option.querySelector('.purchase-btn');
-      const selectText = option.querySelector('.select-text');
-
-      option.addEventListener('click', (e) => {
-        // Don't trigger if clicking the purchase button
-        if (e.target.classList.contains('purchase-btn')) return;
-
-        // Remove selection from all options
-        document.querySelectorAll('.number-option').forEach((opt) => {
-          opt.style.borderColor = 'var(--border-color)';
-          opt.style.backgroundColor = 'var(--bg-primary)';
-          opt.querySelector('.purchase-btn').style.display = 'none';
-          opt.querySelector('.select-text').style.display = 'block';
+    // Row click handlers
+    document.querySelectorAll('.sn-number-row').forEach(row => {
+      row.addEventListener('click', () => {
+        // Deselect all
+        document.querySelectorAll('.sn-number-row').forEach(r => {
+          r.style.backgroundColor = '';
         });
 
-        // Highlight selected option and show purchase button
-        option.style.borderColor = 'var(--primary-color)';
-        option.style.backgroundColor = 'rgba(99, 102, 241, 0.05)';
-        purchaseBtn.style.display = 'block';
-        selectText.style.display = 'none';
+        // Select this row
+        row.style.backgroundColor = 'rgba(99, 102, 241, 0.08)';
+        this.selectedNumber = row.dataset.number;
 
-        // Store selection
-        this.selectedNumber = option.dataset.number;
+        // Enable Next button
+        document.getElementById('next-btn').disabled = false;
       });
 
-      // Handle purchase button click
-      purchaseBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-
-        if (!this.selectedNumber) return;
-
-        purchaseBtn.disabled = true;
-        purchaseBtn.textContent = 'Purchasing...';
-
-        try {
-          // Provision number via SignalWire
-          const result = await this.provisionNumber(this.selectedNumber);
-
-          // Update user profile with service number
-          const { user } = await getCurrentUser();
-          await User.setServiceNumber(user.id, this.selectedNumber);
-
-          showToast('Number added successfully! Redirecting...', 'success');
-
-          setTimeout(() => {
-            const destination = window.innerWidth > 768 ? '/phone' : '/manage-numbers';
-            navigateTo(destination);
-          }, 1500);
-        } catch (error) {
-          console.error('Provision error:', error);
-          showToast(error.message || 'Failed to provision number. Please try again.', 'error');
-
-          purchaseBtn.disabled = false;
-          purchaseBtn.textContent = 'Purchase';
+      // Hover effect
+      row.addEventListener('mouseenter', () => {
+        if (row.dataset.number !== this.selectedNumber) {
+          row.style.backgroundColor = 'rgba(99, 102, 241, 0.04)';
+        }
+      });
+      row.addEventListener('mouseleave', () => {
+        if (row.dataset.number !== this.selectedNumber) {
+          row.style.backgroundColor = '';
         }
       });
     });
   }
 
   formatPhoneNumber(phoneNumber) {
-    // Format E.164 number as (XXX) XXX-XXXX
     const cleaned = phoneNumber.replace(/\D/g, '');
     const match = cleaned.match(/^1?(\d{3})(\d{3})(\d{4})$/);
-
     if (match) {
-      return `(${match[1]}) ${match[2]}-${match[3]}`;
+      return `+1 ${match[1]}-${match[2]}-${match[3]}`;
     }
-
     return phoneNumber;
   }
 
-  async searchNumbers(query) {
+  async searchNumbers(params) {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session) {
+      throw new Error('You must be logged in to search for phone numbers');
+    }
 
     const response = await fetch(`${supabaseUrl}/functions/v1/search-phone-numbers`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${supabaseAnonKey}`,
+        'Authorization': `Bearer ${session.access_token}`,
       },
-      body: JSON.stringify({ query }),
+      body: JSON.stringify(params),
     });
 
     if (!response.ok) {
@@ -350,5 +417,4 @@ export default class SelectNumberPage {
 
     return await response.json();
   }
-
 }
