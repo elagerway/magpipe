@@ -10,13 +10,13 @@ The Magpipe MCP server lets AI coding tools (Claude Code, Cursor, Windsurf, etc.
 ## Installation
 
 ```bash
-npm install -g @magpipe/mcp-server
+npm install -g magpipe-mcp-server
 ```
 
 Or run via npx (no install required):
 
 ```bash
-npx @magpipe/mcp-server
+npx magpipe-mcp-server
 ```
 
 ## Configuration
@@ -30,7 +30,7 @@ Add to `~/.claude.json`:
   "mcpServers": {
     "magpipe": {
       "command": "npx",
-      "args": ["-y", "@magpipe/mcp-server"],
+      "args": ["-y", "magpipe-mcp-server"],
       "env": {
         "MAGPIPE_API_KEY": "mgp_your_key_here"
       }
@@ -48,7 +48,7 @@ Add to `.cursor/mcp.json`:
   "mcpServers": {
     "magpipe": {
       "command": "npx",
-      "args": ["-y", "@magpipe/mcp-server"],
+      "args": ["-y", "magpipe-mcp-server"],
       "env": {
         "MAGPIPE_API_KEY": "mgp_your_key_here"
       }
@@ -62,7 +62,7 @@ Add to `.cursor/mcp.json`:
 The server uses **stdio transport**. Launch it as a subprocess with the `MAGPIPE_API_KEY` environment variable set:
 
 ```bash
-MAGPIPE_API_KEY=mgp_xxx npx @magpipe/mcp-server
+MAGPIPE_API_KEY=mgp_xxx npx magpipe-mcp-server
 ```
 
 ## Environment Variables

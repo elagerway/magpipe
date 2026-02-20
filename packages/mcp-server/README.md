@@ -1,17 +1,17 @@
-# @magpipe/mcp-server
+# magpipe-mcp-server
 
 MCP server for [Magpipe](https://magpipe.ai) — manage agents, calls, SMS, contacts, and phone numbers from AI coding tools like Claude Code and Cursor.
 
 ## Install
 
 ```sh
-npm install -g @magpipe/mcp-server
+npm install -g magpipe-mcp-server
 ```
 
 Or run directly with npx:
 
 ```sh
-npx @magpipe/mcp-server
+npx magpipe-mcp-server
 ```
 
 ## Setup
@@ -31,7 +31,7 @@ Add to `~/.claude.json`:
   "mcpServers": {
     "magpipe": {
       "command": "npx",
-      "args": ["-y", "@magpipe/mcp-server"],
+      "args": ["-y", "magpipe-mcp-server"],
       "env": {
         "MAGPIPE_API_KEY": "mgp_your_key_here"
       }
@@ -49,7 +49,7 @@ Add to `.cursor/mcp.json`:
   "mcpServers": {
     "magpipe": {
       "command": "npx",
-      "args": ["-y", "@magpipe/mcp-server"],
+      "args": ["-y", "magpipe-mcp-server"],
       "env": {
         "MAGPIPE_API_KEY": "mgp_your_key_here"
       }
