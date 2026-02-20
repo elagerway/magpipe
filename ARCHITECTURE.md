@@ -12,6 +12,15 @@
 | Voice AI | LiveKit Cloud + ElevenLabs TTS + Deepgram STT | LiveKit Cloud |
 | Email | Postmark | Postmark Cloud |
 | Payments | Stripe | Stripe Cloud |
+| MCP Server | TypeScript (`@modelcontextprotocol/sdk`) | npm (stdio) |
+
+---
+
+## Packages
+
+| Package | Path | Purpose |
+|---------|------|---------|
+| `@magpipe/mcp-server` | `packages/mcp-server/` | MCP server — exposes Magpipe API as tools for AI coding assistants (Claude Code, Cursor, etc.) |
 
 ---
 

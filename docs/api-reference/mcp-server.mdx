@@ -1,0 +1,165 @@
+---
+title: "MCP Server"
+description: "Connect AI coding tools to Magpipe via the Model Context Protocol"
+---
+
+## Overview
+
+The Magpipe MCP server lets AI coding tools (Claude Code, Cursor, Windsurf, etc.) manage your agents, calls, SMS, contacts, and phone numbers directly. It wraps the Magpipe REST API as discoverable MCP tools.
+
+## Installation
+
+```bash
+npm install -g @magpipe/mcp-server
+```
+
+Or run via npx (no install required):
+
+```bash
+npx @magpipe/mcp-server
+```
+
+## Configuration
+
+### Claude Code
+
+Add to `~/.claude.json`:
+
+```json
+{
+  "mcpServers": {
+    "magpipe": {
+      "command": "npx",
+      "args": ["-y", "@magpipe/mcp-server"],
+      "env": {
+        "MAGPIPE_API_KEY": "mgp_your_key_here"
+      }
+    }
+  }
+}
+```
+
+### Cursor
+
+Add to `.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "magpipe": {
+      "command": "npx",
+      "args": ["-y", "@magpipe/mcp-server"],
+      "env": {
+        "MAGPIPE_API_KEY": "mgp_your_key_here"
+      }
+    }
+  }
+}
+```
+
+### Generic MCP Client
+
+The server uses **stdio transport**. Launch it as a subprocess with the `MAGPIPE_API_KEY` environment variable set:
+
+```bash
+MAGPIPE_API_KEY=mgp_xxx npx @magpipe/mcp-server
+```
+
+## Environment Variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `MAGPIPE_API_KEY` | Yes | Your API key (starts with `mgp_`). Generate at **Settings → API**. |
+| `MAGPIPE_API_URL` | No | Override the API base URL. Default: `https://api.magpipe.ai/functions/v1` |
+
+## Available Tools
+
+### Agents
+
+| Tool | Description |
+|---|---|
+| `list_agents` | List all agents with optional filters |
+| `get_agent` | Get full agent details including assigned phone numbers, custom functions, knowledge sources, and dynamic variables |
+| `create_agent` | Create a new agent |
+| `update_agent` | Update agent configuration |
+| `delete_agent` | Delete an agent |
+
+### Calls
+
+| Tool | Description |
+|---|---|
+| `list_calls` | List call records with direction, status, date, and agent filters |
+| `get_call` | Get call details including transcript, summary, and recording |
+| `initiate_call` | Place an outbound call via an agent |
+| `terminate_call` | End an active call |
+| `get_recording` | Get a signed URL to download a call recording |
+
+### Messages
+
+| Tool | Description |
+|---|---|
+| `list_messages` | List SMS messages with thread, direction, and date filters |
+| `get_message` | Get a single message |
+| `send_sms` | Send an SMS from a service number |
+
+### Phone Numbers
+
+| Tool | Description |
+|---|---|
+| `list_phone_numbers` | List provisioned phone numbers |
+| `search_phone_numbers` | Search available numbers by area code, city, or type |
+| `provision_phone_number` | Purchase a phone number |
+| `release_phone_number` | Release a phone number |
+
+### Contacts
+
+| Tool | Description |
+|---|---|
+| `list_contacts` | List contacts with search, tags, and sorting |
+| `get_contact` | Get contact details |
+| `create_contact` | Create a contact |
+| `update_contact` | Update a contact |
+| `delete_contact` | Delete a contact |
+
+### Knowledge Base
+
+| Tool | Description |
+|---|---|
+| `list_knowledge_sources` | List knowledge sources for an agent |
+| `add_knowledge_source` | Add URL-based knowledge (crawled and indexed) |
+| `add_knowledge_manual` | Add manual text knowledge |
+| `delete_knowledge_source` | Delete a knowledge source |
+| `sync_knowledge_source` | Re-crawl a URL knowledge source |
+
+### Voices
+
+| Tool | Description |
+|---|---|
+| `list_voices` | List available ElevenLabs voices |
+| `delete_voice` | Delete a cloned voice |
+
+### Calendar
+
+| Tool | Description |
+|---|---|
+| `get_calendar_slots` | Get available Cal.com booking slots |
+| `create_booking` | Create a booking |
+| `cancel_booking` | Cancel a booking |
+
+### API Keys
+
+| Tool | Description |
+|---|---|
+| `manage_api_keys` | Generate, list, revoke, or update API keys |
+
+### Other
+
+| Tool | Description |
+|---|---|
+| `list_models` | List available LLM models |
+| `chat_with_agent` | Send a text chat message to an agent |
+| `list_chat_sessions` | List chat widget sessions |
+| `list_custom_functions` | List custom functions |
+| `create_custom_function` | Create a custom function |
+| `manage_dynamic_variables` | Manage agent data extraction variables |
+| `list_scheduled_actions` | List scheduled actions |

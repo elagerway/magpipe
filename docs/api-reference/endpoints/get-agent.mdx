@@ -90,6 +90,18 @@ Get the full configuration and details of an AI agent.
   Dynamic variables configured for this agent. Each variable has `id`, `name`, `description`, `var_type` (text, number, boolean, enum), `enum_options`, `created_at`, and `updated_at`.
 </ResponseField>
 
+<ResponseField name="phone_numbers" type="array">
+  Phone numbers assigned to this agent. Each entry has `id`, `phone_number`, `friendly_name`, `capabilities` (voice, sms, mms), `is_active`, and `created_at`.
+</ResponseField>
+
+<ResponseField name="custom_functions" type="array">
+  Custom functions (tools) the agent can call during conversations. Each entry has `id`, `name`, `description`, `http_method`, `endpoint_url`, `headers`, `query_params`, `body_schema`, `response_variables`, `timeout_ms`, `max_retries`, `is_active`, `created_at`, and `updated_at`.
+</ResponseField>
+
+<ResponseField name="knowledge_sources" type="array">
+  Knowledge base sources linked to this agent. Each entry has `id`, `title`, `url`, `sync_status`, `chunk_count`, `last_synced_at`, `created_at`, and `updated_at`.
+</ResponseField>
+
 <RequestExample>
 ```bash cURL
 curl -X POST https://api.magpipe.ai/functions/v1/get-agent \
@@ -164,6 +176,40 @@ print(f"Agent: {agent['name']}")
       "enum_options": null,
       "created_at": "2024-01-10T10:00:00Z",
       "updated_at": "2024-01-10T10:00:00Z"
+    }
+  ],
+  "phone_numbers": [
+    {
+      "id": "fea1d6c3-d686-4a1b-bfe6-2acbd30dd991",
+      "phone_number": "+16045551234",
+      "friendly_name": "Main Line",
+      "capabilities": { "voice": true, "sms": true, "mms": false },
+      "is_active": true,
+      "created_at": "2024-01-10T10:00:00Z"
+    }
+  ],
+  "custom_functions": [
+    {
+      "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+      "name": "check_availability",
+      "description": "Check calendar availability",
+      "http_method": "POST",
+      "endpoint_url": "https://api.example.com/availability",
+      "is_active": true,
+      "created_at": "2024-01-10T10:00:00Z",
+      "updated_at": "2024-01-10T10:00:00Z"
+    }
+  ],
+  "knowledge_sources": [
+    {
+      "id": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+      "title": "Company FAQ",
+      "url": "https://example.com/faq",
+      "sync_status": "completed",
+      "chunk_count": 12,
+      "last_synced_at": "2024-01-15T14:00:00Z",
+      "created_at": "2024-01-10T10:00:00Z",
+      "updated_at": "2024-01-15T14:00:00Z"
     }
   ]
 }

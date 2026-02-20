@@ -111,6 +111,8 @@ pat/
 │   │   ├── webhook-inbound-sms/
 │   │   └── ...
 │   └── migrations/               # Database migrations
+├── packages/
+│   └── mcp-server/               # MCP server for AI coding tools (Claude Code, Cursor)
 ├── tests/                        # Playwright & contract tests
 └── specs/                        # Feature specifications
 ```
