@@ -1849,6 +1849,59 @@ export default class SettingsPage {
           </div>
         </details>
       </div>
+
+      <!-- MCP Server -->
+      <div class="card" style="margin-top: 1rem;">
+        <div style="margin-bottom: 1rem;">
+          <h2 style="margin: 0 0 0.25rem 0;">MCP Server</h2>
+          <p class="text-muted" style="margin: 0; font-size: 0.85rem;">
+            Connect AI coding tools like Claude Code and Cursor to your Magpipe account. The MCP server exposes your agents, calls, SMS, contacts, and phone numbers as tools.
+          </p>
+        </div>
+
+        <div style="margin-bottom: 1rem;">
+          <p style="font-weight: 600; font-size: 0.85rem; margin: 0 0 0.5rem 0;">1. Install</p>
+<pre style="background: var(--bg-secondary); padding: 0.75rem; border-radius: var(--radius-sm); font-size: 0.8rem; overflow-x: auto; margin: 0; line-height: 1.5; user-select: all;">npx @magpipe/mcp-server</pre>
+        </div>
+
+        <div style="margin-bottom: 1rem;">
+          <p style="font-weight: 600; font-size: 0.85rem; margin: 0 0 0.5rem 0;">2. Configure Claude Code</p>
+          <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 0 0 0.5rem 0;">Add to <code>~/.claude.json</code>:</p>
+          <div style="position: relative;">
+<pre id="mcp-claude-config" style="background: var(--bg-secondary); padding: 0.75rem; border-radius: var(--radius-sm); font-size: 0.78rem; overflow-x: auto; margin: 0; line-height: 1.5;">{
+  "mcpServers": {
+    "magpipe": {
+      "command": "npx",
+      "args": ["-y", "@magpipe/mcp-server"],
+      "env": {
+        "MAGPIPE_API_KEY": "mgp_your_key_here"
+      }
+    }
+  }
+}</pre>
+            <button class="btn btn-secondary" onclick="navigator.clipboard.writeText(document.getElementById('mcp-claude-config').textContent)" style="position: absolute; top: 0.5rem; right: 0.5rem; font-size: 0.75rem; padding: 0.25rem 0.5rem;">Copy</button>
+          </div>
+        </div>
+
+        <div>
+          <p style="font-weight: 600; font-size: 0.85rem; margin: 0 0 0.5rem 0;">Or configure Cursor</p>
+          <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 0 0 0.5rem 0;">Add to <code>.cursor/mcp.json</code>:</p>
+          <div style="position: relative;">
+<pre id="mcp-cursor-config" style="background: var(--bg-secondary); padding: 0.75rem; border-radius: var(--radius-sm); font-size: 0.78rem; overflow-x: auto; margin: 0; line-height: 1.5;">{
+  "mcpServers": {
+    "magpipe": {
+      "command": "npx",
+      "args": ["-y", "@magpipe/mcp-server"],
+      "env": {
+        "MAGPIPE_API_KEY": "mgp_your_key_here"
+      }
+    }
+  }
+}</pre>
+            <button class="btn btn-secondary" onclick="navigator.clipboard.writeText(document.getElementById('mcp-cursor-config').textContent)" style="position: absolute; top: 0.5rem; right: 0.5rem; font-size: 0.75rem; padding: 0.25rem 0.5rem;">Copy</button>
+          </div>
+        </div>
+      </div>
     `;
   }
 

@@ -56,15 +56,53 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Fetch dynamic variables from separate table
-    const { data: dynamicVars } = await queryClient
-      .from("dynamic_variables")
-      .select("id, name, description, var_type, enum_options, created_at, updated_at")
-      .eq("agent_id", agent_id)
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: true });
+    // Use service role client for enrichment queries (bypasses RLS has_org_access policies
+    // on service_numbers and knowledge_sources). Safe because we already verified agent ownership above.
+    const serviceClient = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+    );
+
+    // Fetch all associated data in parallel
+    const [
+      { data: dynamicVars },
+      { data: phoneNumbers },
+      { data: customFunctions },
+      { data: knowledgeSources },
+    ] = await Promise.all([
+      serviceClient
+        .from("dynamic_variables")
+        .select("id, name, description, var_type, enum_options, created_at, updated_at")
+        .eq("agent_id", agent_id)
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: true }),
+      serviceClient
+        .from("service_numbers")
+        .select("id, phone_number, friendly_name, capabilities, is_active, created_at")
+        .eq("agent_id", agent_id)
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: true }),
+      serviceClient
+        .from("custom_functions")
+        .select("*")
+        .eq("agent_id", agent_id)
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false }),
+      (agent.knowledge_source_ids?.length > 0
+        ? serviceClient
+            .from("knowledge_sources")
+            .select("id, title, url, sync_status, chunk_count, last_synced_at, created_at, updated_at")
+            .in("id", agent.knowledge_source_ids)
+            .eq("user_id", user.id)
+            .order("created_at", { ascending: false })
+        : Promise.resolve({ data: [] })
+      ),
+    ]);
 
     agent.dynamic_variables = dynamicVars || [];
+    agent.phone_numbers = phoneNumbers || [];
+    agent.custom_functions = customFunctions || [];
+    agent.knowledge_sources = knowledgeSources || [];
 
     return new Response(JSON.stringify(agent), {
       status: 200,
