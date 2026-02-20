@@ -1,5 +1,5 @@
 {
-  "name": "@magpipe/mcp-server",
+  "name": "magpipe-mcp-server",
   "version": "0.1.0",
   "description": "MCP server for Magpipe — manage agents, calls, SMS, contacts, and phone numbers from AI coding tools",
   "license": "MIT",

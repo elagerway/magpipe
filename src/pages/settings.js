@@ -1861,7 +1861,7 @@ export default class SettingsPage {
 
         <div style="margin-bottom: 1rem;">
           <p style="font-weight: 600; font-size: 0.85rem; margin: 0 0 0.5rem 0;">1. Install</p>
-<pre style="background: var(--bg-secondary); padding: 0.75rem; border-radius: var(--radius-sm); font-size: 0.8rem; overflow-x: auto; margin: 0; line-height: 1.5; user-select: all;">npx @magpipe/mcp-server</pre>
+<pre style="background: var(--bg-secondary); padding: 0.75rem; border-radius: var(--radius-sm); font-size: 0.8rem; overflow-x: auto; margin: 0; line-height: 1.5; user-select: all;">npx magpipe-mcp-server</pre>
         </div>
 
         <div style="margin-bottom: 1rem;">
@@ -1872,7 +1872,7 @@ export default class SettingsPage {
   "mcpServers": {
     "magpipe": {
       "command": "npx",
-      "args": ["-y", "@magpipe/mcp-server"],
+      "args": ["-y", "magpipe-mcp-server"],
       "env": {
         "MAGPIPE_API_KEY": "mgp_your_key_here"
       }
@@ -1891,7 +1891,7 @@ export default class SettingsPage {
   "mcpServers": {
     "magpipe": {
       "command": "npx",
-      "args": ["-y", "@magpipe/mcp-server"],
+      "args": ["-y", "magpipe-mcp-server"],
       "env": {
         "MAGPIPE_API_KEY": "mgp_your_key_here"
       }

@@ -20,7 +20,7 @@
 
 | Package | Path | Purpose |
 |---------|------|---------|
-| `@magpipe/mcp-server` | `packages/mcp-server/` | MCP server — exposes Magpipe API as tools for AI coding assistants (Claude Code, Cursor, etc.) |
+| `magpipe-mcp-server` | `packages/mcp-server/` | MCP server — exposes Magpipe API as tools for AI coding assistants (Claude Code, Cursor, etc.) |
 
 ---
 
