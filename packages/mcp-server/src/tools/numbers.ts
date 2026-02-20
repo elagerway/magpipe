@@ -78,4 +78,21 @@ export function registerNumberTools(server: McpServer, client: MagpipeClient) {
       }
     }
   );
+
+  server.tool(
+    "lookup_phone_number",
+    "Look up carrier/linetype info for a phone number (wireless, landline, voip)",
+    {
+      phone_number: z.string().describe("Phone number to look up (E.164 format)"),
+    },
+    async ({ phone_number }) => {
+      try {
+        return formatToolResponse(
+          await client.call("lookup-phone-number", { phone_number })
+        );
+      } catch (e) {
+        return formatError(e);
+      }
+    }
+  );
 }
