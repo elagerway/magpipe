@@ -1,6 +1,6 @@
 ---
 title: "Get Call"
-api: "GET /get-call"
+api: "POST /get-call"
 description: "Retrieve details of a specific call including transcript and recording"
 ---
 
@@ -20,6 +20,10 @@ Get detailed information about a call, including its status, transcript, summary
 
 <ResponseField name="agent_id" type="string">
   The agent that handled this call.
+</ResponseField>
+
+<ResponseField name="agent_name" type="string">
+  Name of the agent that handled this call.
 </ResponseField>
 
 <ResponseField name="from_number" type="string">
@@ -43,32 +47,11 @@ Get detailed information about a call, including its status, transcript, summary
 </ResponseField>
 
 <ResponseField name="recording_url" type="string">
-  Signed URL to download the call recording. Expires after 1 hour.
+  URL to the call recording, if available. Use the [Get Recording](/api-reference/endpoints/get-recording) endpoint for full recording details.
 </ResponseField>
 
 <ResponseField name="transcript" type="string">
-  Full transcript of the conversation.
-</ResponseField>
-
-<ResponseField name="transcript_segments" type="array">
-  Timestamped transcript segments with speaker identification.
-
-  ```json
-  [
-    {
-      "speaker": "agent",
-      "text": "Hello, this is Sarah from Acme Dental.",
-      "start_time": 0.5,
-      "end_time": 3.2
-    },
-    {
-      "speaker": "caller",
-      "text": "Hi Sarah, I'm calling about my appointment.",
-      "start_time": 3.5,
-      "end_time": 6.1
-    }
-  ]
-  ```
+  Full transcript of the conversation with speaker labels.
 </ResponseField>
 
 <ResponseField name="sentiment" type="string">
@@ -84,11 +67,15 @@ Get detailed information about a call, including its status, transcript, summary
 </ResponseField>
 
 <ResponseField name="started_at" type="string">
-  When the call was answered.
+  When the call was answered (ISO 8601).
 </ResponseField>
 
 <ResponseField name="ended_at" type="string">
-  When the call ended.
+  When the call ended (ISO 8601).
+</ResponseField>
+
+<ResponseField name="created_at" type="string">
+  When the call record was created (ISO 8601).
 </ResponseField>
 
 <RequestExample>
@@ -140,33 +127,17 @@ print(f"Summary: {call['call_summary']}")
 {
   "id": "7f3d8e00-a1b2-4c3d-9e4f-567890abcdef",
   "agent_id": "550e8400-e29b-41d4-a716-446655440000",
+  "agent_name": "Sarah - Receptionist",
   "from_number": "+16045551234",
   "to_number": "+14155551234",
-  "direction": "outbound",
+  "direction": "inbound",
   "status": "completed",
   "duration": 125,
-  "recording_url": "https://storage.example.com/recordings/abc123.wav?token=xyz",
-  "transcript": "Agent: Hello, this is Sarah from Acme Dental. I'm calling to confirm your appointment tomorrow at 2pm.\n\nCaller: Yes, I'll be there. Thank you for the reminder.",
-  "transcript_segments": [
-    {
-      "speaker": "agent",
-      "text": "Hello, this is Sarah from Acme Dental. I'm calling to confirm your appointment tomorrow at 2pm.",
-      "start_time": 0.5,
-      "end_time": 5.2
-    },
-    {
-      "speaker": "caller",
-      "text": "Yes, I'll be there. Thank you for the reminder.",
-      "start_time": 5.8,
-      "end_time": 8.3
-    }
-  ],
+  "recording_url": "https://storage.supabase.co/v1/object/public/recordings/7f3d8e00.mp3",
+  "transcript": "Agent: Hello, this is Sarah from Acme Dental. How can I help you today?\n\nCaller: Hi, I'd like to book an appointment for a cleaning.\n\nAgent: Of course! I have availability this Thursday at 2pm or Friday at 10am. Which works better for you?",
   "sentiment": "positive",
-  "call_summary": "Appointment confirmation call. Customer confirmed their dental appointment for tomorrow at 2pm.",
-  "metadata": {
-    "customer_id": "cust_123",
-    "campaign": "appointment_reminder"
-  },
+  "call_summary": "Caller requested a dental cleaning appointment. Agent offered Thursday 2pm or Friday 10am slots.",
+  "metadata": null,
   "started_at": "2024-01-15T10:30:15Z",
   "ended_at": "2024-01-15T10:32:20Z",
   "created_at": "2024-01-15T10:30:00Z"

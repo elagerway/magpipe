@@ -1,29 +1,37 @@
 ---
-title: "Get Recording URL"
+title: "Get Recording"
 api: "POST /get-signed-recording-url"
-description: "Get a signed URL to access a call recording"
+description: "Get recording URLs for a call"
 ---
 
-Retrieve a signed URL to download or stream a call recording. URLs are temporary and expire after the specified duration.
+Retrieve recording URLs for a specific call. Returns all available recordings (e.g., main conversation, transfer segments). If recordings haven't been synced to permanent storage yet, the original provider URL is returned as a fallback.
 
 ## Request Body
 
 <ParamField body="call_id" type="string" required>
-  The unique identifier of the call to get the recording for.
-</ParamField>
-
-<ParamField body="expires_in" type="integer" default={3600}>
-  URL expiration time in seconds. Default: 3600 (1 hour). Max: 86400 (24 hours).
+  The unique identifier of the call to get recordings for.
 </ParamField>
 
 ## Response
 
-<ResponseField name="recording_url" type="string">
-  Signed URL to access the recording. Use this URL to download or stream the audio file.
+<ResponseField name="call_id" type="string">
+  The call identifier.
 </ResponseField>
 
-<ResponseField name="expires_at" type="string">
-  ISO 8601 timestamp when the URL will expire.
+<ResponseField name="recording_url" type="string">
+  URL of the primary recording.
+</ResponseField>
+
+<ResponseField name="recordings" type="array">
+  Array of all recording segments for this call.
+
+  Each recording contains:
+  - `url` — Direct URL to the audio file
+  - `label` — Segment type: `main`, `transfer_conference`, `reconnect_to_agent`, etc.
+  - `duration_seconds` — Length in seconds
+  - `source` — Origin: `signalwire`, `livekit`, or `unknown`
+  - `status` — `synced` (permanent URL) or `pending_sync` (provider URL, may expire)
+  - `created_at` — ISO 8601 timestamp
 </ResponseField>
 
 <RequestExample>
@@ -31,10 +39,7 @@ Retrieve a signed URL to download or stream a call recording. URLs are temporary
 curl -X POST https://api.magpipe.ai/functions/v1/get-signed-recording-url \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{
-    "call_id": "7f3d8e00-a1b2-4c3d-9e4f-567890abcdef",
-    "expires_in": 7200
-  }'
+  -d '{"call_id": "7f3d8e00-a1b2-4c3d-9e4f-567890abcdef"}'
 ```
 
 ```javascript Node.js
@@ -47,14 +52,12 @@ const response = await fetch(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      call_id: '7f3d8e00-a1b2-4c3d-9e4f-567890abcdef',
-      expires_in: 7200
+      call_id: '7f3d8e00-a1b2-4c3d-9e4f-567890abcdef'
     }),
   }
 );
 
-const { recording_url } = await response.json();
-// Use recording_url to download or embed audio
+const { recording_url, recordings } = await response.json();
 ```
 
 ```python Python
@@ -66,22 +69,46 @@ response = requests.post(
         'Authorization': 'Bearer YOUR_API_KEY',
         'Content-Type': 'application/json',
     },
-    json={
-        'call_id': '7f3d8e00-a1b2-4c3d-9e4f-567890abcdef',
-        'expires_in': 7200
-    }
+    json={'call_id': '7f3d8e00-a1b2-4c3d-9e4f-567890abcdef'}
 )
 
 data = response.json()
-print(f"Recording URL: {data['recording_url']}")
+print(f"Recording: {data['recording_url']}")
 ```
 </RequestExample>
 
 <ResponseExample>
 ```json Success Response
 {
-  "recording_url": "https://storage.example.com/recordings/abc123.wav?token=xyz789&expires=1705320000",
-  "expires_at": "2024-01-15T12:00:00Z"
+  "call_id": "7f3d8e00-a1b2-4c3d-9e4f-567890abcdef",
+  "recording_url": "https://storage.supabase.co/v1/object/public/recordings/7f3d8e00.mp3",
+  "recordings": [
+    {
+      "url": "https://storage.supabase.co/v1/object/public/recordings/7f3d8e00.mp3",
+      "label": "main",
+      "duration_seconds": 125,
+      "source": "signalwire",
+      "status": "synced",
+      "created_at": "2024-01-15T10:32:20Z"
+    }
+  ]
+}
+```
+
+```json Pending Sync Response
+{
+  "call_id": "8a4f04da-860b-4321-abcd-1234567890ab",
+  "recording_url": "https://erik.signalwire.com/api/laml/.../Recordings/abc123.mp3",
+  "recordings": [
+    {
+      "url": "https://erik.signalwire.com/api/laml/.../Recordings/abc123.mp3",
+      "label": "main",
+      "duration_seconds": 90,
+      "source": "signalwire",
+      "status": "pending_sync",
+      "created_at": "2024-01-15T11:00:00Z"
+    }
+  ]
 }
 ```
 

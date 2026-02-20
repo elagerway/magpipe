@@ -932,8 +932,8 @@
     "/get-signed-recording-url": {
       "post": {
         "operationId": "getRecordingUrl",
-        "summary": "Get Call Recording URL",
-        "description": "Get a signed URL to access a call recording.",
+        "summary": "Get Call Recording",
+        "description": "Get recording URLs for a call. Returns all available recordings with status.",
         "tags": ["Calls"],
         "requestBody": {
           "required": true,
@@ -941,12 +941,12 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["recordingUrl"],
+                "required": ["call_id"],
                 "properties": {
-                  "recordingUrl": {
+                  "call_id": {
                     "type": "string",
-                    "format": "uri",
-                    "description": "Original recording URL to sign"
+                    "format": "uuid",
+                    "description": "Call record UUID"
                   }
                 }
               }
@@ -955,13 +955,80 @@
         },
         "responses": {
           "200": {
-            "description": "Signed URL returned",
+            "description": "Recording URLs returned",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "signedUrl": { "type": "string", "format": "uri", "description": "Signed recording URL" }
+                    "call_id": { "type": "string", "format": "uuid" },
+                    "recording_url": { "type": "string", "format": "uri", "description": "Primary recording URL" },
+                    "recordings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "url": { "type": "string", "format": "uri" },
+                          "label": { "type": "string", "description": "Segment label: main, transfer_conference, etc." },
+                          "duration_seconds": { "type": "integer", "nullable": true },
+                          "source": { "type": "string", "description": "signalwire, livekit, or unknown" },
+                          "status": { "type": "string", "description": "synced or pending_sync" },
+                          "created_at": { "type": "string", "format": "date-time", "nullable": true }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No recording available"
+          }
+        }
+      }
+    },
+    "/lookup-phone-number": {
+      "post": {
+        "operationId": "lookupPhoneNumber",
+        "summary": "Lookup Phone Number",
+        "description": "Look up carrier and line type information for a phone number.",
+        "tags": ["Phone Numbers"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["phone_number"],
+                "properties": {
+                  "phone_number": {
+                    "type": "string",
+                    "description": "Phone number in E.164 format (e.g. +16045551234)"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Lookup result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "phone_number": { "type": "string" },
+                    "carrier": {
+                      "type": "object",
+                      "properties": {
+                        "linetype": { "type": "string", "nullable": true, "description": "wireless, landline, voip, or null" },
+                        "name": { "type": "string", "nullable": true, "description": "Carrier name" }
+                      }
+                    },
+                    "valid": { "type": "boolean" },
+                    "location": { "type": "string", "nullable": true }
                   }
                 }
               }

@@ -229,7 +229,7 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 |----------|------|--------|---------------|----------|
 | `fetch-call-recordings` | JWT | `call_records` | SignalWire | call history |
 | `fetch-livekit-recording` | JWT | `call_records` | LiveKit Egress | call history |
-| `get-signed-recording-url` | JWT | `call_records` | SignalWire | call playback |
+| `get-signed-recording-url` | JWT / API key | `call_records` | None | call playback, API |
 | `sip-recording-callback` | **No JWT** | `call_records` | None | SignalWire webhook |
 | `reconcile-recordings` | JWT/cron | `call_records` | SignalWire, LiveKit | admin tools |
 | `sync-recording` | JWT | `call_records` | SignalWire | call list |
@@ -293,6 +293,7 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 | `process-scheduled-deletions` | Cron | `numbers_to_delete`, `service_numbers` | SignalWire | cron job |
 | `configure-signalwire-number` | JWT | `service_numbers` | SignalWire | number config |
 | `fix-number-capabilities` | JWT | `service_numbers` | SignalWire | admin tools |
+| `lookup-phone-number` | JWT / API key | None | SignalWire Lookup | API, webhooks |
 | `submit-cnam-request` | JWT | `cnam_requests`, `service_numbers` | None | CNAM management |
 
 ### Credits & Billing
