@@ -260,12 +260,16 @@ source .env && curl -s -u "$SIGNALWIRE_PROJECT_ID:$SIGNALWIRE_API_TOKEN" \
 
 ## Supabase Edge Functions
 
-### Webhook Authentication
-External webhooks (SignalWire, etc.) don't send auth headers. Use:
-```typescript
-Deno.serve(async (req) => { ... });  // NOT imported serve()
+### JWT Verification & `--no-verify-jwt` (IMPORTANT)
+**ALL edge functions that accept API key auth (`mgp_` keys via `resolveUser()`) MUST be deployed with `--no-verify-jwt`.**
+- Supabase's built-in JWT verification runs BEFORE your function code — it rejects API key requests with 401 "Invalid JWT" before `resolveUser()` ever sees them
+- This applies to ALL MCP/API endpoints (get-agent, list-agents, list-phone-numbers, list-calls, etc.), not just webhooks
+- SignalWire webhook handlers also need `--no-verify-jwt` since they don't send auth headers
+- **Rule of thumb**: If the function uses `resolveUser()`, deploy with `--no-verify-jwt`
+
+```bash
+npx supabase functions deploy <name> --no-verify-jwt
 ```
-Deploy with: `npx supabase functions deploy <name> --no-verify-jwt`
 
 ### Import Style (IMPORTANT)
 - **Use `npm:` imports**, not `https://esm.sh/` - the esm.sh imports cause "Bundle generation timed out" errors during deployment
