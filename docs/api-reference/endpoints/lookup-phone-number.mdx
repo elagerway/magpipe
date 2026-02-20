@@ -1,0 +1,135 @@
+---
+title: "Lookup Phone Number"
+api: "POST /lookup-phone-number"
+description: "Look up carrier and line type information for a phone number"
+---
+
+Look up carrier information for any phone number. Returns the line type (wireless, landline, VoIP), carrier name, and location. Useful for determining if a number can receive SMS before sending.
+
+## Request Body
+
+<ParamField body="phone_number" type="string" required>
+  Phone number to look up in E.164 format (e.g., `+16045551234`).
+</ParamField>
+
+## Response
+
+<ResponseField name="phone_number" type="string">
+  The phone number in E.164 format.
+</ResponseField>
+
+<ResponseField name="carrier" type="object">
+  Carrier information for the number.
+
+  - `linetype` — `wireless`, `landline`, `voip`, or `null` if unknown
+  - `name` — Carrier name (e.g., "Rogers Communications Canada Inc.")
+</ResponseField>
+
+<ResponseField name="valid" type="boolean">
+  Whether the number is a valid phone number.
+</ResponseField>
+
+<ResponseField name="location" type="string">
+  Geographic location (state/province) of the number, if available.
+</ResponseField>
+
+## Common Use Case
+
+Check if a number is wireless before sending SMS:
+
+```javascript
+const lookup = await fetch('https://api.magpipe.ai/functions/v1/lookup-phone-number', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer YOUR_API_KEY',
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({ phone_number: callerPhone }),
+}).then(r => r.json());
+
+if (lookup.carrier?.linetype === 'wireless') {
+  // Safe to send SMS
+  await sendSms(callerPhone, message);
+}
+```
+
+<RequestExample>
+```bash cURL
+curl -X POST https://api.magpipe.ai/functions/v1/lookup-phone-number \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"phone_number": "+16045551234"}'
+```
+
+```javascript Node.js
+const response = await fetch(
+  'https://api.magpipe.ai/functions/v1/lookup-phone-number',
+  {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer YOUR_API_KEY',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      phone_number: '+16045551234'
+    }),
+  }
+);
+
+const data = await response.json();
+console.log(`Line type: ${data.carrier.linetype}`);
+// "wireless" | "landline" | "voip" | null
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'https://api.magpipe.ai/functions/v1/lookup-phone-number',
+    headers={
+        'Authorization': 'Bearer YOUR_API_KEY',
+        'Content-Type': 'application/json',
+    },
+    json={'phone_number': '+16045551234'}
+)
+
+data = response.json()
+if data['carrier']['linetype'] == 'wireless':
+    print('Number can receive SMS')
+```
+</RequestExample>
+
+<ResponseExample>
+```json Wireless Number
+{
+  "phone_number": "+16045551234",
+  "carrier": {
+    "linetype": "wireless",
+    "name": "Rogers Communications Canada Inc. (Wireless)"
+  },
+  "valid": true,
+  "location": "British Columbia"
+}
+```
+
+```json Landline Number
+{
+  "phone_number": "+16045559999",
+  "carrier": {
+    "linetype": "landline",
+    "name": "Telus Communications Inc."
+  },
+  "valid": true,
+  "location": "British Columbia"
+}
+```
+
+```json Error Response
+{
+  "error": {
+    "code": "lookup_failed",
+    "message": "Lookup failed: 404"
+  }
+}
+```
+</ResponseExample>

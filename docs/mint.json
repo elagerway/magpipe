@@ -166,7 +166,8 @@
         "api-reference/endpoints/search-numbers",
         "api-reference/endpoints/provision-number",
         "api-reference/endpoints/list-numbers",
-        "api-reference/endpoints/release-number"
+        "api-reference/endpoints/release-number",
+        "api-reference/endpoints/lookup-phone-number"
       ]
     },
     {
