@@ -1905,7 +1905,11 @@ def extract_json_path(data: dict, path: str):
 
 
 def create_custom_function_tool(func_config: dict, webhook_secret: str = None):
-    """Create a LiveKit function_tool from custom function configuration"""
+    """Create a LiveKit function_tool from custom function configuration.
+
+    Uses raw_schema to register with the correct tool name and give the LLM
+    proper typed parameters (instead of a single JSON string).
+    """
     func_name = func_config['name']
     func_description = func_config['description']
     http_method = func_config['http_method']
@@ -1916,35 +1920,40 @@ def create_custom_function_tool(func_config: dict, webhook_secret: str = None):
     timeout_ms = func_config.get('timeout_ms') or 120000
     max_retries = func_config.get('max_retries') or 2
 
-    # Build parameter annotations for the function based on body_schema
-    # For now, we'll accept kwargs and validate against schema
-    param_descriptions = []
+    # Build raw JSON schema with proper parameter definitions
+    # This gives the LLM individually typed parameters instead of a single JSON string
+    properties = {}
+    required_params = []
     for param in body_schema:
-        required_str = " (required)" if param.get('required') else ""
-        param_descriptions.append(f"- {param['name']}: {param.get('description', 'No description')}{required_str}")
+        param_type = param.get('type', 'string')
+        # Map to valid JSON Schema types
+        if param_type not in ('string', 'number', 'integer', 'boolean', 'array', 'object'):
+            param_type = 'string'
+        properties[param['name']] = {
+            "type": param_type,
+            "description": param.get('description', ''),
+        }
+        if param.get('required'):
+            required_params.append(param['name'])
 
-    full_description = func_description
-    if param_descriptions:
-        full_description += "\n\nParameters:\n" + "\n".join(param_descriptions)
+    raw_schema = {
+        "name": func_name,
+        "description": func_description,
+        "parameters": {
+            "type": "object",
+            "properties": properties,
+        },
+    }
+    if required_params:
+        raw_schema["parameters"]["required"] = required_params
 
-    @function_tool(description=full_description)
-    async def custom_function(
-        parameters: Annotated[str, "JSON string of parameters to pass to the function"]
-    ):
+    @function_tool(raw_schema=raw_schema)
+    async def custom_fn(raw_arguments: dict[str, object]):
         """Execute a custom webhook function"""
-        logger.info(f"🔧 Custom function '{func_name}' called with parameters: {parameters}")
+        params = dict(raw_arguments)
+        logger.info(f"🔧 Custom function '{func_name}' called with params: {params}")
 
         try:
-            # Parse parameters
-            params = {}
-            if parameters:
-                try:
-                    params = json.loads(parameters)
-                except json.JSONDecodeError:
-                    # Try to extract key-value pairs from natural language
-                    logger.warning(f"Failed to parse parameters as JSON: {parameters}")
-                    params = {"raw_input": parameters}
-
             # Validate required parameters
             missing_required = []
             for param_def in body_schema:
@@ -1987,7 +1996,7 @@ def create_custom_function_tool(func_config: dict, webhook_secret: str = None):
                             async with session.request(http_method, endpoint_url, json=params, headers=headers) as resp:
                                 result = await resp.json()
 
-                        logger.info(f"🔧 Custom function '{func_name}' response: {result}")
+                        logger.info(f"🔧 Custom function '{func_name}' response (status {resp.status}): {result}")
 
                         # Extract response variables if configured
                         if response_variables:
@@ -2002,7 +2011,6 @@ def create_custom_function_tool(func_config: dict, webhook_secret: str = None):
 
                         # Return full response if no variables to extract
                         if isinstance(result, dict):
-                            # Try to find a message or status in the response
                             for key in ['message', 'result', 'status', 'data']:
                                 if key in result:
                                     return f"Function completed. {key.capitalize()}: {result[key]}"
@@ -2010,20 +2018,16 @@ def create_custom_function_tool(func_config: dict, webhook_secret: str = None):
                         return f"Function completed. Response: {result}"
 
                     except aiohttp.ClientError as e:
-                        logger.error(f"Request attempt {attempt + 1} failed: {e}")
+                        logger.error(f"🔧 Custom function '{func_name}' HTTP attempt {attempt + 1} failed: {e}")
                         if attempt == max_retries:
                             return "I'm having trouble completing that request. Please try again later."
-                        await asyncio.sleep(1)  # Brief delay before retry
+                        await asyncio.sleep(1)
 
         except Exception as e:
-            logger.error(f"Custom function '{func_name}' error: {e}")
+            logger.error(f"🔧 Custom function '{func_name}' error: {e}", exc_info=True)
             return "I encountered an error processing that request."
 
-    # Set the function name for the tool registry
-    custom_function.__name__ = func_name
-    custom_function.__qualname__ = func_name
-
-    return custom_function
+    return custom_fn
 
 
 async def prewarm(proc: JobProcess):
