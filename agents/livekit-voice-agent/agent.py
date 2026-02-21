@@ -3,7 +3,7 @@
 Maggie AI Voice Agent - LiveKit Implementation
 Handles real-time voice conversations with STT, LLM, and TTS pipeline
 """
-print("🔴 AGENT CODE VERSION: BILLING-V1 🔴")
+print("🔴 AGENT CODE VERSION: CUSTOM-FN-V2 🔴")
 
 import aiohttp
 import asyncio
@@ -1907,8 +1907,8 @@ def extract_json_path(data: dict, path: str):
 def create_custom_function_tool(func_config: dict, webhook_secret: str = None):
     """Create a LiveKit function_tool from custom function configuration.
 
-    Uses raw_schema to register with the correct tool name and give the LLM
-    proper typed parameters (instead of a single JSON string).
+    Uses raw_schema for proper typed parameters (like Retell AI's approach).
+    Falls back to name= FunctionTool if raw_schema isn't supported.
     """
     func_name = func_config['name']
     func_description = func_config['description']
@@ -1920,38 +1920,9 @@ def create_custom_function_tool(func_config: dict, webhook_secret: str = None):
     timeout_ms = func_config.get('timeout_ms') or 120000
     max_retries = func_config.get('max_retries') or 2
 
-    # Build raw JSON schema with proper parameter definitions
-    # This gives the LLM individually typed parameters instead of a single JSON string
-    properties = {}
-    required_params = []
-    for param in body_schema:
-        param_type = param.get('type', 'string')
-        # Map to valid JSON Schema types
-        if param_type not in ('string', 'number', 'integer', 'boolean', 'array', 'object'):
-            param_type = 'string'
-        properties[param['name']] = {
-            "type": param_type,
-            "description": param.get('description', ''),
-        }
-        if param.get('required'):
-            required_params.append(param['name'])
-
-    raw_schema = {
-        "name": func_name,
-        "description": func_description,
-        "parameters": {
-            "type": "object",
-            "properties": properties,
-        },
-    }
-    if required_params:
-        raw_schema["parameters"]["required"] = required_params
-
-    @function_tool(raw_schema=raw_schema)
-    async def custom_fn(raw_arguments: dict[str, object]):
-        """Execute a custom webhook function"""
-        params = dict(raw_arguments)
-        logger.info(f"🔧 Custom function '{func_name}' called with params: {params}")
+    async def _execute_custom_function(params: dict) -> str:
+        """Shared execution logic for custom function HTTP calls."""
+        logger.info(f"🔧 Custom function '{func_name}' executing with params: {params}")
 
         try:
             # Validate required parameters
@@ -1966,7 +1937,6 @@ def create_custom_function_tool(func_config: dict, webhook_secret: str = None):
             # Build headers
             headers = {'Content-Type': 'application/json'}
 
-            # Add request signing if webhook_secret is provided
             if webhook_secret:
                 timestamp = str(int(time_module.time()))
                 payload_str = json.dumps(params, sort_keys=True)
@@ -1978,13 +1948,12 @@ def create_custom_function_tool(func_config: dict, webhook_secret: str = None):
                 headers['X-Magpipe-Timestamp'] = timestamp
                 headers['X-Magpipe-Signature'] = signature
 
-            # Add custom headers from config
             for h in headers_config:
                 if h.get('name') and h.get('value'):
                     headers[h['name']] = h['value']
 
-            # Make HTTP request with retries
             timeout = aiohttp.ClientTimeout(total=timeout_ms / 1000)
+            logger.info(f"🔧 Custom function '{func_name}' -> {http_method} {endpoint_url}")
 
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 for attempt in range(max_retries + 1):
@@ -1998,18 +1967,15 @@ def create_custom_function_tool(func_config: dict, webhook_secret: str = None):
 
                         logger.info(f"🔧 Custom function '{func_name}' response (status {resp.status}): {result}")
 
-                        # Extract response variables if configured
                         if response_variables:
                             extracted = {}
                             for var in response_variables:
                                 value = extract_json_path(result, var.get('json_path', ''))
                                 if value is not None:
                                     extracted[var['name']] = value
-
                             if extracted:
                                 return f"Function completed successfully. Results: {json.dumps(extracted)}"
 
-                        # Return full response if no variables to extract
                         if isinstance(result, dict):
                             for key in ['message', 'result', 'status', 'data']:
                                 if key in result:
@@ -2027,7 +1993,116 @@ def create_custom_function_tool(func_config: dict, webhook_secret: str = None):
             logger.error(f"🔧 Custom function '{func_name}' error: {e}", exc_info=True)
             return "I encountered an error processing that request."
 
-    return custom_fn
+    # --- Try raw_schema approach first (proper typed parameters like Retell AI) ---
+    try:
+        properties = {}
+        required_params = []
+        for param in body_schema:
+            param_type = param.get('type', 'string')
+            if param_type not in ('string', 'number', 'integer', 'boolean', 'array', 'object'):
+                param_type = 'string'
+            properties[param['name']] = {
+                "type": param_type,
+                "description": param.get('description', ''),
+            }
+            if param.get('required'):
+                required_params.append(param['name'])
+
+        raw_schema = {
+            "name": func_name,
+            "description": func_description,
+            "parameters": {
+                "type": "object",
+                "properties": properties,
+                "additionalProperties": False,
+            },
+        }
+        if required_params:
+            raw_schema["parameters"]["required"] = required_params
+
+        @function_tool(raw_schema=raw_schema)
+        async def custom_fn_raw(raw_arguments: dict[str, object]):
+            """Execute a custom webhook function"""
+            params = dict(raw_arguments)
+            logger.info(f"🔧 [raw_schema] Custom function '{func_name}' called with params: {params}")
+            return await _execute_custom_function(params)
+
+        logger.info(f"🔧 Created '{func_name}' as RawFunctionTool (typed params)")
+        return custom_fn_raw
+
+    except Exception as e:
+        logger.warning(f"🔧 raw_schema failed for '{func_name}': {e}, falling back to FunctionTool")
+
+    # --- Fallback: FunctionTool with name= parameter ---
+    try:
+        param_descriptions = []
+        for param in body_schema:
+            required_str = " (required)" if param.get('required') else ""
+            param_descriptions.append(f"- {param['name']}: {param.get('description', '')}{required_str}")
+        full_description = func_description
+        if param_descriptions:
+            full_description += "\n\nParameters:\n" + "\n".join(param_descriptions)
+
+        @function_tool(name=func_name, description=full_description)
+        async def custom_fn_named(
+            parameters: Annotated[str, "JSON string of parameters"]
+        ):
+            """Execute a custom webhook function"""
+            logger.info(f"🔧 [named] Custom function '{func_name}' called with: {parameters!r}")
+            params = {}
+            if parameters:
+                if isinstance(parameters, dict):
+                    params = parameters
+                elif isinstance(parameters, str):
+                    try:
+                        params = json.loads(parameters)
+                    except json.JSONDecodeError:
+                        if body_schema and len(body_schema) == 1:
+                            params = {body_schema[0]['name']: parameters}
+                        else:
+                            params = {"raw_input": parameters}
+            return await _execute_custom_function(params)
+
+        logger.info(f"🔧 Created '{func_name}' as FunctionTool with name= (fallback 1)")
+        return custom_fn_named
+
+    except Exception as e:
+        logger.warning(f"🔧 name= failed for '{func_name}': {e}, falling back to __name__ override")
+
+    # --- Last resort: set __name__ before decoration ---
+    param_descriptions = []
+    for param in body_schema:
+        required_str = " (required)" if param.get('required') else ""
+        param_descriptions.append(f"- {param['name']}: {param.get('description', '')}{required_str}")
+    full_description = func_description
+    if param_descriptions:
+        full_description += "\n\nParameters:\n" + "\n".join(param_descriptions)
+
+    async def custom_fn_legacy(
+        parameters: Annotated[str, "JSON string of parameters"]
+    ):
+        """Execute a custom webhook function"""
+        logger.info(f"🔧 [legacy] Custom function '{func_name}' called with: {parameters!r}")
+        params = {}
+        if parameters:
+            if isinstance(parameters, dict):
+                params = parameters
+            elif isinstance(parameters, str):
+                try:
+                    params = json.loads(parameters)
+                except json.JSONDecodeError:
+                    if body_schema and len(body_schema) == 1:
+                        params = {body_schema[0]['name']: parameters}
+                    else:
+                        params = {"raw_input": parameters}
+        return await _execute_custom_function(params)
+
+    # Set name BEFORE decoration so the decorator picks it up
+    custom_fn_legacy.__name__ = func_name
+    custom_fn_legacy.__qualname__ = func_name
+    tool = function_tool(description=full_description)(custom_fn_legacy)
+    logger.info(f"🔧 Created '{func_name}' as FunctionTool with __name__ override (fallback 2, tool.info.name={tool.info.name})")
+    return tool
 
 
 async def prewarm(proc: JobProcess):
@@ -2864,7 +2939,9 @@ AFTER-HOURS CONTEXT:
 
     # Already connected earlier to get service number, don't connect again in session.start
 
-    log_call_state(ctx.room.name, "debug_6_custom_funcs", "agent", {})
+    # Log SDK version so we can verify what's running on Render
+    _sdk_ver = getattr(llm, '__version__', None) or getattr(AgentSession, '__module__', 'unknown')
+    log_call_state(ctx.room.name, "debug_6_custom_funcs", "agent", {"code_version": "CUSTOM-FN-V2", "sdk_version": str(_sdk_ver)})
 
     # Load custom functions for this agent
     custom_tools = []
@@ -2874,13 +2951,16 @@ AFTER-HOURS CONTEXT:
             logger.info(f"🔧 Loading {len(custom_function_configs)} custom functions for agent {agent_id}")
             # Get webhook secret from environment (optional)
             webhook_secret = os.getenv("CUSTOM_FUNCTION_WEBHOOK_SECRET")
+            loaded_names = []
             for func_config in custom_function_configs:
                 try:
                     tool = create_custom_function_tool(func_config, webhook_secret)
                     custom_tools.append(tool)
-                    logger.info(f"🔧 Registered custom function: {func_config['name']}")
+                    loaded_names.append(f"{func_config['name']}(type={type(tool).__name__},id={tool.info.name})")
+                    logger.info(f"🔧 Registered custom function: {func_config['name']} as {type(tool).__name__} with id={tool.info.name}")
                 except Exception as e:
-                    logger.error(f"Failed to create custom function '{func_config['name']}': {e}")
+                    logger.error(f"Failed to create custom function '{func_config['name']}': {e}", exc_info=True)
+            log_call_state(ctx.room.name, "custom_functions_loaded", "agent", {"functions": loaded_names})
         else:
             logger.info(f"🔧 No custom functions configured for agent {agent_id}")
 
