@@ -1948,12 +1948,15 @@ def create_custom_function_tool(func_config: dict, webhook_secret: str = None):
                 headers['X-Magpipe-Timestamp'] = timestamp
                 headers['X-Magpipe-Signature'] = signature
 
+            # Add custom headers from config (support both 'name'/'key' field names)
             for h in headers_config:
-                if h.get('name') and h.get('value'):
-                    headers[h['name']] = h['value']
+                header_name = h.get('name') or h.get('key')
+                header_value = h.get('value')
+                if header_name and header_value:
+                    headers[header_name] = header_value
 
             timeout = aiohttp.ClientTimeout(total=timeout_ms / 1000)
-            logger.info(f"🔧 Custom function '{func_name}' -> {http_method} {endpoint_url}")
+            logger.info(f"🔧 Custom function '{func_name}' -> {http_method} {endpoint_url} (headers: {list(headers.keys())})")
 
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 for attempt in range(max_retries + 1):
@@ -1965,21 +1968,47 @@ def create_custom_function_tool(func_config: dict, webhook_secret: str = None):
                             async with session.request(http_method, endpoint_url, json=params, headers=headers) as resp:
                                 result = await resp.json()
 
-                        logger.info(f"🔧 Custom function '{func_name}' response (status {resp.status}): {result}")
+                        logger.info(f"🔧 Custom function '{func_name}' response (status {resp.status}): {str(result)[:500]}")
 
+                        # Check for HTTP errors
+                        if resp.status >= 400:
+                            error_msg = result.get('error', result.get('message', f'HTTP {resp.status}')) if isinstance(result, dict) else str(result)
+                            logger.error(f"🔧 Custom function '{func_name}' HTTP error: {error_msg}")
+                            return f"The request failed with an error: {error_msg}"
+
+                        # Extract response variables if configured
                         if response_variables:
                             extracted = {}
                             for var in response_variables:
-                                value = extract_json_path(result, var.get('json_path', ''))
-                                if value is not None:
-                                    extracted[var['name']] = value
-                            if extracted:
-                                return f"Function completed successfully. Results: {json.dumps(extracted)}"
+                                json_path = var.get('json_path', '')
+                                var_name = var.get('name', '')
 
+                                # Try json_path first, then fall back to using var name as direct key
+                                value = None
+                                if json_path:
+                                    value = extract_json_path(result, json_path)
+                                if value is None and var_name and isinstance(result, dict):
+                                    # Direct key lookup (handles missing json_path)
+                                    value = result.get(var_name)
+
+                                if value is not None:
+                                    extracted[var_name] = value
+
+                            if extracted:
+                                # Truncate to prevent overwhelming the LLM (like Retell's 15k limit)
+                                result_str = json.dumps(extracted)
+                                if len(result_str) > 10000:
+                                    result_str = result_str[:10000] + "... (truncated)"
+                                return f"Function completed successfully. Results: {result_str}"
+
+                        # Return full response if no variables to extract
                         if isinstance(result, dict):
                             for key in ['message', 'result', 'status', 'data']:
                                 if key in result:
-                                    return f"Function completed. {key.capitalize()}: {result[key]}"
+                                    value_str = str(result[key])
+                                    if len(value_str) > 10000:
+                                        value_str = value_str[:10000] + "... (truncated)"
+                                    return f"Function completed. {key.capitalize()}: {value_str}"
                             return f"Function completed successfully."
                         return f"Function completed. Response: {result}"
 
