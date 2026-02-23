@@ -44,7 +44,7 @@ Update any configuration fields for an existing AI agent. Only include fields yo
   Phrases that trigger call termination.
 </ParamField>
 
-<ParamField body="transfer_number" type="string">
+<ParamField body="transfer_phone_number" type="string">
   Phone number for call transfers.
 </ParamField>
 
@@ -92,6 +92,60 @@ Update any configuration fields for an existing AI agent. Only include fields yo
     {"name": "caller_name", "description": "Full name of the caller", "var_type": "text"},
     {"name": "priority", "description": "Call priority level", "var_type": "enum", "enum_options": ["low", "medium", "high"]}
   ]
+  ```
+</ParamField>
+
+<ParamField body="memory_enabled" type="boolean">
+  Enable [caller memory](/features/agent-memory) — the agent remembers past conversations with each contact.
+</ParamField>
+
+<ParamField body="memory_config" type="object">
+  Configuration for caller memory. Only applies when `memory_enabled` is `true`.
+
+  | Property | Type | Default | Description |
+  |----------|------|---------|-------------|
+  | `include_summaries` | boolean | `true` | Include AI-generated relationship summary in context |
+  | `max_history_calls` | number | `5` | Number of recent calls to consider when building context |
+  | `include_key_topics` | boolean | `true` | Include key topics in context |
+  | `include_preferences` | boolean | `true` | Include caller preferences in context |
+
+  ```json
+  {
+    "include_summaries": true,
+    "max_history_calls": 10,
+    "include_key_topics": true,
+    "include_preferences": true
+  }
+  ```
+</ParamField>
+
+<ParamField body="semantic_memory_enabled" type="boolean">
+  Enable [semantic memory](/features/agent-memory#semantic-memory) — the agent finds similar past conversations across all contacts using AI embeddings.
+</ParamField>
+
+<ParamField body="semantic_memory_config" type="object">
+  Configuration for semantic memory. Only applies when `semantic_memory_enabled` is `true`.
+
+  | Property | Type | Default | Description |
+  |----------|------|---------|-------------|
+  | `max_results` | number | `3` | Number of similar conversations to include |
+  | `similarity_threshold` | number | `0.75` | Minimum similarity score (0.6–0.85) |
+  | `include_other_callers` | boolean | `true` | Include conversations from other contacts |
+
+  ```json
+  {
+    "max_results": 5,
+    "similarity_threshold": 0.75,
+    "include_other_callers": true
+  }
+  ```
+</ParamField>
+
+<ParamField body="shared_memory_agent_ids" type="array">
+  Array of agent UUIDs that share memory with this agent. Allows multiple agents to access the same contact memories.
+
+  ```json
+  ["550e8400-e29b-41d4-a716-446655440001", "550e8400-e29b-41d4-a716-446655440002"]
   ```
 </ParamField>
 
