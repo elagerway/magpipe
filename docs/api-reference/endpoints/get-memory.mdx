@@ -1,14 +1,14 @@
 ---
 title: "Get Memory"
-api: "GET /conversation-contexts/{id}"
+api: "POST /get-memory"
 description: "Get a specific caller memory by ID"
 ---
 
 Retrieve detailed information about a specific caller's memory, including their call history.
 
-## Path Parameters
+## Request Body
 
-<ParamField path="id" type="string" required>
+<ParamField body="memory_id" type="string" required>
   UUID of the memory record
 </ParamField>
 
@@ -18,7 +18,11 @@ Retrieve detailed information about a specific caller's memory, including their 
   UUID of the memory record
 </ResponseField>
 
-<ResponseField name="contact" type="object">
+<ResponseField name="contact_phone" type="string">
+  Phone number of the caller
+</ResponseField>
+
+<ResponseField name="contacts" type="object">
   Contact information
   - `id` - Contact UUID
   - `name` - Contact name
@@ -29,7 +33,7 @@ Retrieve detailed information about a specific caller's memory, including their 
   AI-generated relationship summary
 </ResponseField>
 
-<ResponseField name="keyTopics" type="array">
+<ResponseField name="key_topics" type="array">
   Key topics discussed
 </ResponseField>
 
@@ -37,35 +41,47 @@ Retrieve detailed information about a specific caller's memory, including their 
   Caller preferences
 </ResponseField>
 
-<ResponseField name="relationshipNotes" type="string">
+<ResponseField name="relationship_notes" type="string">
   Additional notes about the relationship
 </ResponseField>
 
-<ResponseField name="interactionCount" type="integer">
-  Number of conversations
+<ResponseField name="interaction_count" type="integer">
+  Number of voice conversations
 </ResponseField>
 
-<ResponseField name="callHistory" type="array">
+<ResponseField name="sms_interaction_count" type="integer">
+  Number of SMS interactions
+</ResponseField>
+
+<ResponseField name="semantic_match_count" type="integer">
+  Number of semantic memory matches
+</ResponseField>
+
+<ResponseField name="call_history" type="array">
   Recent calls with this contact
-  - `id` - Call record ID
+  - `id` - Call record UUID
   - `started_at` - Call start time
   - `duration_seconds` - Call duration
   - `call_summary` - AI summary of call
   - `direction` - "inbound" or "outbound"
 </ResponseField>
 
-<ResponseField name="lastUpdated" type="string">
+<ResponseField name="last_updated" type="string">
   Last interaction timestamp
 </ResponseField>
 
-<ResponseField name="createdAt" type="string">
+<ResponseField name="created_at" type="string">
   When memory was first created
 </ResponseField>
 
 <RequestExample>
 ```bash cURL
-curl "https://api.magpipe.ai/functions/v1/conversation-contexts/789e0123-e89b-12d3-a456-426614174000" \
-  -H "Authorization: Bearer YOUR_API_KEY"
+curl -X POST "https://api.magpipe.ai/functions/v1/get-memory" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "memory_id": "789e0123-e89b-12d3-a456-426614174000"
+  }'
 ```
 </RequestExample>
 
@@ -73,20 +89,23 @@ curl "https://api.magpipe.ai/functions/v1/conversation-contexts/789e0123-e89b-12
 ```json 200
 {
   "id": "789e0123-e89b-12d3-a456-426614174000",
-  "contact": {
+  "contact_phone": "+14155551234",
+  "contacts": {
     "id": "abc12345-e89b-12d3-a456-426614174000",
     "name": "Sarah Johnson",
     "phone_number": "+14155551234"
   },
   "summary": "Regular customer who had delivery issues with order #4521. Issue was resolved with a refund. Prefers email follow-ups.",
-  "keyTopics": ["orders", "delivery", "refunds"],
+  "key_topics": ["orders", "delivery", "refunds"],
   "preferences": {
     "contact_method": "email",
     "best_time": "afternoons"
   },
-  "relationshipNotes": "VIP customer - escalate issues to manager if needed",
-  "interactionCount": 3,
-  "callHistory": [
+  "relationship_notes": "VIP customer - escalate issues to manager if needed",
+  "interaction_count": 3,
+  "sms_interaction_count": 0,
+  "semantic_match_count": 1,
+  "call_history": [
     {
       "id": "call-001",
       "started_at": "2024-01-15T14:30:00Z",
@@ -102,14 +121,17 @@ curl "https://api.magpipe.ai/functions/v1/conversation-contexts/789e0123-e89b-12
       "direction": "inbound"
     }
   ],
-  "lastUpdated": "2024-01-15T14:30:00Z",
-  "createdAt": "2024-01-05T09:00:00Z"
+  "last_updated": "2024-01-15T14:30:00Z",
+  "created_at": "2024-01-05T09:00:00Z"
 }
 ```
 
 ```json 404
 {
-  "error": "Memory not found"
+  "error": {
+    "code": "not_found",
+    "message": "Memory not found"
+  }
 }
 ```
 </ResponseExample>

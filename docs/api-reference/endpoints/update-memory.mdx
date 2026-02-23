@@ -1,24 +1,22 @@
 ---
 title: "Update Memory"
-api: "PATCH /conversation-contexts/{id}"
+api: "POST /update-memory"
 description: "Update a caller's memory"
 ---
 
 Update a caller's memory record. Only include fields you want to change.
 
-## Path Parameters
+## Request Body
 
-<ParamField path="id" type="string" required>
+<ParamField body="memory_id" type="string" required>
   UUID of the memory record to update
 </ParamField>
-
-## Request Body
 
 <ParamField body="summary" type="string">
   Updated relationship summary
 </ParamField>
 
-<ParamField body="keyTopics" type="array">
+<ParamField body="key_topics" type="array">
   Updated list of key topics
 </ParamField>
 
@@ -26,7 +24,7 @@ Update a caller's memory record. Only include fields you want to change.
   Updated caller preferences
 </ParamField>
 
-<ParamField body="relationshipNotes" type="string">
+<ParamField body="relationship_notes" type="string">
   Updated relationship notes
 </ParamField>
 
@@ -36,17 +34,18 @@ Returns the updated memory object.
 
 <RequestExample>
 ```bash cURL
-curl -X PATCH "https://api.magpipe.ai/functions/v1/conversation-contexts/789e0123-e89b-12d3-a456-426614174000" \
+curl -X POST "https://api.magpipe.ai/functions/v1/update-memory" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
+    "memory_id": "789e0123-e89b-12d3-a456-426614174000",
     "summary": "VIP customer, longtime buyer. Had delivery issue that was resolved.",
     "preferences": {
       "contact_method": "email",
       "best_time": "afternoons",
       "vip": true
     },
-    "relationshipNotes": "Escalate any issues to manager immediately"
+    "relationship_notes": "Escalate any issues to manager immediately"
   }'
 ```
 </RequestExample>
@@ -69,7 +68,10 @@ curl -X PATCH "https://api.magpipe.ai/functions/v1/conversation-contexts/789e012
 
 ```json 404
 {
-  "error": "Memory not found"
+  "error": {
+    "code": "not_found",
+    "message": "Memory not found"
+  }
 }
 ```
 </ResponseExample>

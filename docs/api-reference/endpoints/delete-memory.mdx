@@ -1,6 +1,6 @@
 ---
 title: "Delete Memory"
-api: "DELETE /conversation-contexts/{id}"
+api: "POST /delete-memory"
 description: "Delete a caller's memory"
 ---
 
@@ -10,9 +10,9 @@ Permanently delete a caller's memory. This removes all stored information about 
 This action is irreversible. The agent will treat future calls from this contact as new conversations.
 </Warning>
 
-## Path Parameters
+## Request Body
 
-<ParamField path="id" type="string" required>
+<ParamField body="memory_id" type="string" required>
   UUID of the memory record to delete
 </ParamField>
 
@@ -22,8 +22,12 @@ Returns a success confirmation.
 
 <RequestExample>
 ```bash cURL
-curl -X DELETE "https://api.magpipe.ai/functions/v1/conversation-contexts/789e0123-e89b-12d3-a456-426614174000" \
-  -H "Authorization: Bearer YOUR_API_KEY"
+curl -X POST "https://api.magpipe.ai/functions/v1/delete-memory" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "memory_id": "789e0123-e89b-12d3-a456-426614174000"
+  }'
 ```
 </RequestExample>
 
@@ -36,7 +40,10 @@ curl -X DELETE "https://api.magpipe.ai/functions/v1/conversation-contexts/789e01
 
 ```json 404
 {
-  "error": "Memory not found"
+  "error": {
+    "code": "not_found",
+    "message": "Memory not found"
+  }
 }
 ```
 </ResponseExample>

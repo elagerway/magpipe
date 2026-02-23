@@ -1,91 +1,128 @@
 ---
 title: "List Memories"
-api: "GET /conversation-contexts"
+api: "POST /list-memories"
 description: "List all caller memories for an agent"
 ---
 
 Retrieve all stored conversation memories for a specific agent. Each memory represents the relationship with a unique caller.
 
-## Query Parameters
+## Request Body
 
-<ParamField query="agent_id" type="string" required>
+<ParamField body="agent_id" type="string" required>
   UUID of the agent to list memories for
+</ParamField>
+
+<ParamField body="limit" type="integer" default={50}>
+  Maximum number of results to return
+</ParamField>
+
+<ParamField body="offset" type="integer" default={0}>
+  Pagination offset
 </ParamField>
 
 ## Response
 
-Returns an array of memory objects sorted by last interaction date.
+Returns an object with an array of memory records and pagination info.
 
-<ResponseField name="id" type="string">
+<ResponseField name="memories" type="array">
+  Array of memory objects
+</ResponseField>
+
+<ResponseField name="memories[].id" type="string">
   UUID of the memory record
 </ResponseField>
 
-<ResponseField name="contact" type="object">
+<ResponseField name="memories[].contact_phone" type="string">
+  Phone number of the caller
+</ResponseField>
+
+<ResponseField name="memories[].contacts" type="object">
   Contact information
   - `id` - Contact UUID
   - `name` - Contact name
   - `phone_number` - Phone number in E.164 format
 </ResponseField>
 
-<ResponseField name="summary" type="string">
+<ResponseField name="memories[].summary" type="string">
   AI-generated summary of the relationship with this caller
 </ResponseField>
 
-<ResponseField name="keyTopics" type="array">
+<ResponseField name="memories[].key_topics" type="array">
   List of key topics discussed across conversations
 </ResponseField>
 
-<ResponseField name="preferences" type="object">
+<ResponseField name="memories[].preferences" type="object">
   Caller's stated preferences (contact method, language, etc.)
 </ResponseField>
 
-<ResponseField name="interactionCount" type="integer">
-  Number of conversations with this caller
+<ResponseField name="memories[].relationship_notes" type="string">
+  Additional notes about the relationship
 </ResponseField>
 
-<ResponseField name="lastUpdated" type="string">
+<ResponseField name="memories[].interaction_count" type="integer">
+  Number of voice conversations with this caller
+</ResponseField>
+
+<ResponseField name="memories[].sms_interaction_count" type="integer">
+  Number of SMS interactions with this caller
+</ResponseField>
+
+<ResponseField name="memories[].semantic_match_count" type="integer">
+  Number of semantic memory matches
+</ResponseField>
+
+<ResponseField name="memories[].last_updated" type="string">
   ISO 8601 timestamp of last interaction
+</ResponseField>
+
+<ResponseField name="total" type="integer">
+  Total number of memories for this agent
+</ResponseField>
+
+<ResponseField name="has_more" type="boolean">
+  Whether more results are available
 </ResponseField>
 
 <RequestExample>
 ```bash cURL
-curl "https://api.magpipe.ai/functions/v1/conversation-contexts?agent_id=123e4567-e89b-12d3-a456-426614174000" \
-  -H "Authorization: Bearer YOUR_API_KEY"
+curl -X POST "https://api.magpipe.ai/functions/v1/list-memories" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_id": "123e4567-e89b-12d3-a456-426614174000",
+    "limit": 50,
+    "offset": 0
+  }'
 ```
 </RequestExample>
 
 <ResponseExample>
 ```json 200
-[
-  {
-    "id": "789e0123-e89b-12d3-a456-426614174000",
-    "contact": {
-      "id": "abc12345-e89b-12d3-a456-426614174000",
-      "name": "Sarah Johnson",
-      "phone_number": "+14155551234"
-    },
-    "summary": "Regular customer who had delivery issues with order #4521. Issue was resolved. Prefers email follow-ups.",
-    "keyTopics": ["orders", "delivery", "refunds"],
-    "preferences": {
-      "contact_method": "email",
-      "best_time": "afternoons"
-    },
-    "interactionCount": 3,
-    "lastUpdated": "2024-01-15T14:30:00Z"
-  },
-  {
-    "id": "def67890-e89b-12d3-a456-426614174000",
-    "contact": {
-      "id": "ghi09876-e89b-12d3-a456-426614174000",
-      "name": "Mike Chen",
-      "phone_number": "+14155555678"
-    },
-    "summary": "New customer interested in premium plan. Scheduled demo for next week.",
-    "keyTopics": ["pricing", "demo", "enterprise features"],
-    "preferences": {},
-    "interactionCount": 1,
-    "lastUpdated": "2024-01-14T10:00:00Z"
-  }
-]
+{
+  "memories": [
+    {
+      "id": "789e0123-e89b-12d3-a456-426614174000",
+      "contact_phone": "+14155551234",
+      "contacts": {
+        "id": "abc12345-e89b-12d3-a456-426614174000",
+        "name": "Sarah Johnson",
+        "phone_number": "+14155551234"
+      },
+      "summary": "Regular customer who had delivery issues with order #4521. Issue was resolved. Prefers email follow-ups.",
+      "key_topics": ["orders", "delivery", "refunds"],
+      "preferences": {
+        "contact_method": "email",
+        "best_time": "afternoons"
+      },
+      "relationship_notes": null,
+      "interaction_count": 3,
+      "sms_interaction_count": 0,
+      "semantic_match_count": 1,
+      "last_updated": "2024-01-15T14:30:00Z"
+    }
+  ],
+  "total": 1,
+  "has_more": false
+}
 ```
 </ResponseExample>
