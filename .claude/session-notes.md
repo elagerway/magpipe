@@ -758,3 +758,58 @@ Added billing call to `sip-recording-callback` since it's already being called s
 - **Agent asks for name** - Security layer, not a bug
 - **Memory prompt balanced** - Gives context but instructs agent to confirm identity first
 
+---
+
+## Session: 2026-02-21
+
+### Completed - Custom Functions Fix (Voice Calls)
+
+**Problem:** Custom functions (webhook tools agents call during conversations) worked in chat but failed during live voice calls. The endpoint was never hit despite the LLM deciding to call the function.
+
+**Investigation revealed chat doesn't use custom_functions table at all** — `webhook-chat-message` has zero references to it. The "chat works" test was the LLM answering from knowledge base, not the function.
+
+### Bugs Found & Fixed (3 commits)
+
+#### Bug 1 — Wrong tool name registration (commit ca68bcb)
+- `@function_tool(description=...)` captured `func.__name__` as "custom_function" at decoration time
+- Setting `__name__` after decoration didn't change `FunctionToolInfo.name`
+- Multiple custom functions would crash with `ValueError("duplicate function name: custom_function")`
+- **Fix:** Use `raw_schema` approach which explicitly sets name from `raw_schema["name"]`
+
+#### Bug 2 — JSON-in-JSON parameters (commit ca68bcb)
+- Single `parameters: Annotated[str, "JSON string"]` required LLM to encode JSON within JSON
+- Often failed Pydantic validation silently
+- **Fix:** `raw_schema` with individual typed properties from `body_schema`
+
+#### Bug 3 — SDK fallback + version pinning (commit 9f1536c)
+- Added three-tier fallback chain: `raw_schema` → `name=` FunctionTool → `__name__` override
+- Pinned `livekit-agents>=1.4.0` (was `>=0.8.0`) to ensure `raw_schema` support on Render
+- Added SDK version + code version logging to `call_state_logs`
+
+#### Bug 4 — Headers field name mismatch (commit 613e654)
+- DB stores `{"key": "x-magpipe-secret", "value": "..."}` but code checked `h.get('name')`
+- Auth headers never sent → 401 from customer endpoints
+- **Fix:** `header_name = h.get('name') or h.get('key')`
+
+#### Bug 5 — Response variable extraction failed (commit 613e654)
+- Config had no `json_path` field, so `extract_json_path(result, '')` always returned None
+- Agent said "Function completed successfully" but never read the data
+- **Fix:** Fall back to `result.get(var_name)` when `json_path` is missing
+
+#### Bug 6 — No HTTP error checking (commit 613e654)
+- 401 Unauthorized reported as "Function completed successfully"
+- **Fix:** Check `resp.status >= 400` before processing response
+
+### Files Modified
+- `agents/livekit-voice-agent/agent.py` — Complete rewrite of `create_custom_function_tool()`
+- `agents/livekit-voice-agent/requirements.txt` — Pinned `livekit-agents>=1.4.0`
+
+### Commits
+- `ca68bcb` — Fix custom function tool registration (raw_schema approach)
+- `9f1536c` — Add fallback chain + pin SDK version
+- `613e654` — Fix headers, response extraction, HTTP error handling
+
+### Verification
+- Tested on SeniorHome agent with `lookup_community` custom function
+- Agent successfully retrieved data from webhook and read it to caller
+
