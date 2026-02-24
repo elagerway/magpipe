@@ -112,6 +112,55 @@ export function registerMiscTools(server: McpServer, client: MagpipeClient) {
   );
 
   server.tool(
+    "update_custom_function",
+    "Update an existing custom function (tool)",
+    {
+      function_id: z.string().describe("Custom function UUID"),
+      name: z.string().optional().describe("Function name"),
+      description: z.string().optional().describe("What the function does"),
+      endpoint_url: z.string().optional().describe("Webhook URL to call"),
+      http_method: z.string().optional().describe("HTTP method (GET, POST, etc.)"),
+      headers: z.record(z.string()).optional().describe("HTTP headers to send"),
+      body_schema: z
+        .array(z.object({
+          name: z.string(),
+          type: z.string().optional(),
+          description: z.string().optional(),
+          required: z.boolean().optional(),
+        }))
+        .optional()
+        .describe("Parameter schema for the function body"),
+      is_active: z.boolean().optional().describe("Enable or disable the function"),
+    },
+    async (args) => {
+      try {
+        return formatToolResponse(
+          await client.call("custom-functions", { action: "update", ...args })
+        );
+      } catch (e) {
+        return formatError(e);
+      }
+    }
+  );
+
+  server.tool(
+    "delete_custom_function",
+    "Delete a custom function (tool)",
+    {
+      function_id: z.string().describe("Custom function UUID"),
+    },
+    async (args) => {
+      try {
+        return formatToolResponse(
+          await client.call("custom-functions", { action: "delete", ...args })
+        );
+      } catch (e) {
+        return formatError(e);
+      }
+    }
+  );
+
+  server.tool(
     "manage_dynamic_variables",
     "Manage dynamic variables (data extraction) for an agent. Actions: list, create, update, delete.",
     {
