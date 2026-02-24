@@ -1600,6 +1600,63 @@
         }
       }
     },
+    "/batch-calls": {
+      "post": {
+        "operationId": "batchCalls",
+        "tags": ["Batch Calls"],
+        "summary": "Manage batch calls",
+        "description": "Create, list, get, start, and cancel batch outbound call campaigns. All operations use the `action` field to specify the operation.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["action"],
+                "properties": {
+                  "action": { "type": "string", "enum": ["create", "list", "get", "start", "cancel"], "description": "The operation to perform" },
+                  "name": { "type": "string", "description": "Batch name (required for create)" },
+                  "caller_id": { "type": "string", "description": "Phone number to call from (required for create, must be a provisioned number)" },
+                  "agent_id": { "type": "string", "format": "uuid", "description": "Agent to use for calls (optional)" },
+                  "send_now": { "type": "boolean", "default": true, "description": "Start immediately or schedule for later" },
+                  "scheduled_at": { "type": "string", "format": "date-time", "description": "When to start (required if send_now is false)" },
+                  "window_start_time": { "type": "string", "default": "00:00", "description": "Earliest time of day to make calls (HH:MM)" },
+                  "window_end_time": { "type": "string", "default": "23:59", "description": "Latest time of day to make calls (HH:MM)" },
+                  "window_days": { "type": "array", "items": { "type": "integer" }, "default": [0,1,2,3,4,5,6], "description": "Days of week to make calls (0=Sun, 6=Sat)" },
+                  "reserved_concurrency": { "type": "integer", "default": 5, "description": "Concurrency slots reserved for other calls" },
+                  "recipients": { "type": "array", "description": "Array of recipients (required for create)", "items": { "type": "object", "required": ["phone_number"], "properties": { "phone_number": { "type": "string" }, "name": { "type": "string" }, "contact_id": { "type": "string", "format": "uuid" } } } },
+                  "batch_id": { "type": "string", "format": "uuid", "description": "Batch ID (required for get, start, cancel)" },
+                  "status": { "type": "string", "enum": ["draft", "scheduled", "running"], "description": "Filter by status (for list)" },
+                  "limit": { "type": "integer", "default": 50, "description": "Max results (for list)" },
+                  "offset": { "type": "integer", "default": 0, "description": "Pagination offset (for list)" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success. Response varies by action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "batch": { "type": "object", "description": "Batch record (create, get, start, cancel)" },
+                    "batches": { "type": "array", "description": "Array of batches (list action)" },
+                    "recipients": { "type": "array", "description": "Array of recipients (get action)" },
+                    "success": { "type": "boolean" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Invalid parameters" },
+          "401": { "description": "Unauthorized" },
+          "404": { "description": "Batch not found" }
+        }
+      }
+    },
     "/manage-api-keys": {
       "post": {
         "operationId": "manageApiKeys",
@@ -1665,6 +1722,7 @@
     { "name": "Contacts", "description": "Contact management" },
     { "name": "Billing", "description": "Credits and billing management" },
     { "name": "Scheduled Actions", "description": "Schedule SMS and calls for future delivery" },
+    { "name": "Batch Calls", "description": "Create and manage batch outbound call campaigns" },
     { "name": "API Keys & Webhooks", "description": "Manage API keys and webhook URLs" }
   ]
 }
