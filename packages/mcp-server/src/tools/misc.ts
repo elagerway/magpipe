@@ -19,15 +19,32 @@ export function registerMiscTools(server: McpServer, client: MagpipeClient) {
 
   server.tool(
     "chat_with_agent",
-    "Send a text message to an agent and get a response (web chat, not phone call)",
+    "Send a message to an agent's chat widget and get a full AI response with tool calling. Returns sessionId — pass it back to continue the conversation.",
     {
       agent_id: z.string().describe("Agent UUID"),
       message: z.string().describe("Message text"),
-      session_id: z.string().optional().describe("Existing chat session ID to continue"),
+      session_id: z.string().optional().describe("Session ID from a previous response to continue the conversation"),
+      visitor_name: z.string().optional().describe("Visitor name for personalization"),
+      visitor_email: z.string().optional().describe("Visitor email"),
     },
     async (args) => {
       try {
-        return formatToolResponse(await client.call("omni-chat", args));
+        // Route through webhook-chat-message for full agent experience
+        // (custom functions, session persistence, agent system prompt)
+        const payload: Record<string, unknown> = {
+          agentId: args.agent_id,
+          message: args.message,
+        };
+        if (args.session_id) {
+          payload.sessionId = args.session_id;
+        } else {
+          // Generate stable visitor ID from API key context
+          payload.visitorId = `mcp-${args.agent_id}`;
+        }
+        if (args.visitor_name) payload.visitorName = args.visitor_name;
+        if (args.visitor_email) payload.visitorEmail = args.visitor_email;
+
+        return formatToolResponse(await client.call("webhook-chat-message", payload));
       } catch (e) {
         return formatError(e);
       }
