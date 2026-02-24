@@ -75,10 +75,67 @@ Deno.serve(async (req) => {
       return jsonResponse(data);
     }
 
-    // ── CREATE ───────────────────────────────────────────
+    // ── POST (create + action-based routing for MCP) ────
     if (req.method === "POST") {
       const body = await req.json();
 
+      // Action-based routing (MCP client sends POST for everything)
+      if (body.action === "list") {
+        const agentId = body.agent_id;
+        if (!agentId) return jsonResponse({ error: "agent_id is required" }, 400);
+
+        const { data, error } = await queryClient
+          .from("custom_functions")
+          .select("*")
+          .eq("user_id", user.id)
+          .eq("agent_id", agentId)
+          .order("created_at", { ascending: false });
+
+        if (error) return jsonResponse({ error: error.message }, 500);
+        return jsonResponse(data);
+      }
+
+      if (body.action === "update") {
+        if (!body.function_id) return jsonResponse({ error: "function_id is required" }, 400);
+
+        const allowed = [
+          "name", "description", "http_method", "endpoint_url",
+          "headers", "query_params", "body_schema", "response_variables",
+          "timeout_ms", "max_retries", "is_active",
+        ];
+        const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+        for (const field of allowed) {
+          if (body[field] !== undefined) updates[field] = body[field];
+        }
+
+        const { data, error } = await queryClient
+          .from("custom_functions")
+          .update(updates)
+          .eq("id", body.function_id)
+          .eq("user_id", user.id)
+          .select()
+          .single();
+
+        if (error || !data) return jsonResponse({ error: "Custom function not found" }, 404);
+        return jsonResponse(data);
+      }
+
+      if (body.action === "delete") {
+        if (!body.function_id) return jsonResponse({ error: "function_id is required" }, 400);
+
+        const { data, error } = await queryClient
+          .from("custom_functions")
+          .delete()
+          .eq("id", body.function_id)
+          .eq("user_id", user.id)
+          .select()
+          .single();
+
+        if (error || !data) return jsonResponse({ error: "Custom function not found" }, 404);
+        return jsonResponse({ success: true, message: "Custom function deleted" });
+      }
+
+      // Default POST = create (action: "create" or no action)
       const required = ["agent_id", "name", "description", "http_method", "endpoint_url"];
       for (const field of required) {
         if (!body[field]) return jsonResponse({ error: `${field} is required` }, 400);
