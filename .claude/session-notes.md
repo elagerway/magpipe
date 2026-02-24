@@ -904,7 +904,24 @@ Multiple fixes and features added to the chat widget backend:
 - `webhook-chat-message` (with `--no-verify-jwt`) — multiple deploys
 - `batch-calls`, `process-batch-calls` (with `--no-verify-jwt`)
 
+### Session 3 (2026-02-24) — MCP Server Publish + semantic_memory_config
+
+**npm publish fixes:**
+- Got new npm granular access token (classic tokens revoked by npm security update)
+- Published `magpipe-mcp-server@0.1.2` (chat_with_agent → webhook-chat-message routing)
+- Published `magpipe-mcp-server@0.1.3` (added semantic_memory_config to update_agent)
+
+**semantic_memory_config exposed via API:**
+- Added `semantic_memory_config` to `update-agent` edge function allowedFields
+- Added `semantic_memory_config` param to MCP `update_agent` tool (max_results, similarity_threshold, include_other_callers)
+- Updated openapi.json Agent schema with semantic_memory_config
+- Deployed `update-agent` edge function
+
+**Full flow tested via mgp_ API key:**
+- Turn 1: chat_with_agent → community listings with links
+- Turn 2: sessionId persistence → send_info_email fired → signup link returned
+- update_agent semantic_memory_config → writes and persists correctly
+
 ### Pending
-- npm publish for `magpipe-mcp-server@0.1.2` — needs new npm granular token (classic tokens revoked)
-- `send_info_email` untested end-to-end (depends on SeniorHome endpoint being live)
+- `send_info_email` endpoint on SeniorHome side — untested end-to-end (depends on their API being live)
 

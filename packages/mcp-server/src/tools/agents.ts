@@ -87,6 +87,14 @@ export function registerAgentTools(server: McpServer, client: MagpipeClient) {
       transfer_phone_number: z.string().optional().describe("Transfer number"),
       is_active: z.boolean().optional().describe("Active status"),
       temperature: z.number().optional().describe("LLM temperature"),
+      semantic_memory_config: z
+        .object({
+          max_results: z.number().optional().describe("Max memory results to retrieve (default 3)"),
+          similarity_threshold: z.number().optional().describe("Similarity threshold 0-1 (default 0.75)"),
+          include_other_callers: z.boolean().optional().describe("Include memories from other callers (default true)"),
+        })
+        .optional()
+        .describe("Semantic memory configuration"),
     },
     async (args) => {
       try {

@@ -1,6 +1,6 @@
 {
   "name": "magpipe-mcp-server",
-  "version": "0.1.1",
+  "version": "0.1.3",
   "description": "MCP server for Magpipe — manage agents, calls, SMS, contacts, and phone numbers from AI coding tools",
   "license": "MIT",
   "type": "module",

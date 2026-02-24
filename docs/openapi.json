@@ -61,6 +61,17 @@
           "organization_name": { "type": "string" },
           "owner_name": { "type": "string" },
           "agent_role": { "type": "string" },
+          "memory_enabled": { "type": "boolean", "default": false, "description": "Enable caller memory" },
+          "semantic_memory_enabled": { "type": "boolean", "default": false, "description": "Enable semantic memory" },
+          "semantic_memory_config": {
+            "type": "object",
+            "description": "Semantic memory configuration",
+            "properties": {
+              "max_results": { "type": "integer", "default": 3, "description": "Max similar conversations to retrieve" },
+              "similarity_threshold": { "type": "number", "default": 0.75, "description": "Minimum similarity score (0-1)" },
+              "include_other_callers": { "type": "boolean", "default": true, "description": "Include memories from other contacts" }
+            }
+          },
           "created_at": { "type": "string", "format": "date-time" },
           "updated_at": { "type": "string", "format": "date-time" }
         }
