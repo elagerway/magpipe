@@ -54,6 +54,7 @@ Deno.serve(async (req) => {
       "translate_to", "pii_storage", "calls_schedule", "texts_schedule",
       "schedule_timezone", "outbound_system_prompt", "knowledge_source_ids",
       "vad_silence_duration", "vad_speech_duration", "vad_activation_threshold",
+      "semantic_memory_config",
     ];
 
     const updateData: Record<string, unknown> = {};
