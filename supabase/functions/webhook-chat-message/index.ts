@@ -641,6 +641,23 @@ TROUBLESHOOTING:
     const mcpTools = await fetchUserMcpTools(supabase, widget.user_id)
     console.log(`Found ${mcpTools.length} MCP tools for user, HubSpot connected: ${hasHubspot}`)
 
+    // Fetch custom functions for this agent
+    const customFunctions: any[] = []
+    if (agentConfig.id) {
+      const { data: cfFunctions } = await supabase
+        .from('custom_functions')
+        .select('id, name, description, http_method, endpoint_url, headers, body_schema')
+        .eq('agent_id', agentConfig.id)
+        .eq('is_active', true)
+
+      if (cfFunctions && cfFunctions.length > 0) {
+        console.log(`Found ${cfFunctions.length} custom function(s) for agent ${agentConfig.id}`)
+        for (const cf of cfFunctions) {
+          customFunctions.push(cf)
+        }
+      }
+    }
+
     // Add HubSpot tools if connected (native integration)
     const allTools: ToolDefinition[] = [...mcpTools]
     if (hasHubspot) {
@@ -680,6 +697,30 @@ TROUBLESHOOTING:
             priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'], description: 'Ticket priority level' },
           },
           required: ['subject', 'description', 'user_email'],
+        },
+      })
+    }
+
+    // Add custom functions (from custom_functions table)
+    for (const cf of customFunctions) {
+      const properties: Record<string, any> = {}
+      const required: string[] = []
+      if (cf.body_schema && Array.isArray(cf.body_schema)) {
+        for (const param of cf.body_schema) {
+          properties[param.name] = {
+            type: param.type || 'string',
+            description: param.description || param.name,
+          }
+          if (param.required) required.push(param.name)
+        }
+      }
+      allTools.push({
+        name: `cf_${cf.name}`,
+        description: cf.description || `Custom function: ${cf.name}`,
+        parameters: {
+          type: 'object',
+          properties,
+          ...(required.length > 0 ? { required } : {}),
         },
       })
     }
@@ -757,8 +798,8 @@ You can create support tickets for visitors when they describe issues, problems,
 
     while (toolCallCount < maxToolCalls) {
       const requestBody: any = {
-        model: 'gpt-4o-mini',
-        max_tokens: 300,
+        model: agentConfig.chat_model || 'gpt-4o-mini',
+        max_tokens: agentConfig.max_tokens || 1024,
         messages: messages,
       }
 
@@ -844,6 +885,44 @@ You can create support tickets for visitors when they describe issues, problems,
             } catch (ticketErr) {
               console.error('Support ticket creation error:', ticketErr)
               toolResult = { success: false, error: ticketErr instanceof Error ? ticketErr.message : 'Unknown error' }
+            }
+          } else if (toolName.startsWith('cf_')) {
+            // Custom function — execute via HTTP
+            const cfName = toolName.slice(3) // strip 'cf_' prefix
+            const cf = customFunctions.find((f: any) => f.name === cfName)
+            if (!cf) {
+              toolResult = { success: false, error: `Custom function "${cfName}" not found` }
+            } else {
+              try {
+                const cfHeaders: Record<string, string> = {}
+                if (cf.headers && Array.isArray(cf.headers)) {
+                  for (const h of cf.headers) {
+                    const headerName = h.name || h.key
+                    const headerValue = h.value
+                    if (headerName && headerValue) cfHeaders[headerName] = headerValue
+                  }
+                }
+                if (!cfHeaders['Content-Type']) cfHeaders['Content-Type'] = 'application/json'
+
+                const cfResponse = await fetch(cf.endpoint_url, {
+                  method: cf.http_method || 'POST',
+                  headers: cfHeaders,
+                  body: JSON.stringify(toolArgs),
+                })
+
+                if (cfResponse.status >= 400) {
+                  const errText = await cfResponse.text()
+                  console.error(`Custom function ${cfName} returned ${cfResponse.status}:`, errText)
+                  toolResult = { success: false, error: `HTTP ${cfResponse.status}: ${errText.substring(0, 200)}` }
+                } else {
+                  const cfData = await cfResponse.json()
+                  console.log(`Custom function ${cfName} result:`, JSON.stringify(cfData).substring(0, 500))
+                  toolResult = { success: true, result: JSON.stringify(cfData) }
+                }
+              } catch (cfErr) {
+                console.error(`Custom function ${cfName} error:`, cfErr)
+                toolResult = { success: false, error: cfErr instanceof Error ? cfErr.message : 'Unknown error' }
+              }
             }
           } else {
             toolResult = await executeMcpTool(supabase, widget.user_id, toolName, toolArgs)
