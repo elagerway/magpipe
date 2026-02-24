@@ -858,17 +858,19 @@ You can create support tickets for visitors when they describe issues, problems,
               : `Error: ${toolResult.error}`,
           })
 
-          // Log tool execution
-          await supabase.from('integration_tool_logs').insert({
-            user_id: widget.user_id,
-            tool_name: toolName,
-            tool_source: `mcp:${toolName.split(':')[0]}`,
-            input: toolArgs,
-            output: toolResult,
-            success: toolResult.success,
-            error_message: toolResult.success ? null : toolResult.error,
-            context: { session_id: session.id, widget_id: widget.id },
-          }).catch((err: Error) => console.error('Failed to log tool execution:', err))
+          // Log tool execution (fire and forget)
+          try {
+            await supabase.from('integration_tool_logs').insert({
+              user_id: widget.user_id,
+              tool_name: toolName,
+              tool_source: `mcp:${toolName.split(':')[0]}`,
+              input: toolArgs,
+              output: toolResult,
+              success: toolResult.success,
+              error_message: toolResult.success ? null : toolResult.error,
+              context: { session_id: session.id, widget_id: widget.id },
+            })
+          } catch (err) { console.error('Failed to log tool execution:', err) }
         }
 
         toolCallCount++
