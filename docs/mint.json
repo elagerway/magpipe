@@ -80,7 +80,7 @@
         "features/white-labeling",
         "features/billing",
         "features/scheduled-actions",
-        "features/bulk-calling",
+        "features/batch-calling",
         "features/webhooks",
         "features/settings"
       ]
@@ -150,6 +150,15 @@
         "api-reference/endpoints/transfer-call",
         "api-reference/endpoints/end-call",
         "api-reference/endpoints/get-recording"
+      ]
+    },
+    {
+      "group": "Batch Calls",
+      "pages": [
+        "api-reference/endpoints/create-batch",
+        "api-reference/endpoints/list-batches",
+        "api-reference/endpoints/get-batch",
+        "api-reference/endpoints/cancel-batch"
       ]
     },
     {

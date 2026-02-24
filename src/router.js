@@ -50,6 +50,7 @@ export class Router {
     this.addRoute('/settings', () => import('./pages/settings.js'), true);
     this.addRoute('/team', () => import('./pages/team.js'), true);
     this.addRoute('/bulk-calling', () => import('./pages/bulk-calling.js'), true);
+    this.addRoute('/batch-calls', () => import('./pages/batch-calls.js'), true);
 
     // Admin routes (role-protected)
     this.addRoute('/admin', () => import('./pages/admin.js'), true, ['admin', 'support', 'god']);

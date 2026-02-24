@@ -1,0 +1,203 @@
+---
+title: "Batch Calling"
+description: "Create and manage batch outbound call campaigns with scheduling, CSV upload, and concurrency controls"
+---
+
+Batch Calling lets you create large-scale outbound call campaigns using your AI agents. Upload a CSV of recipients, configure scheduling and concurrency, then let your agents handle each conversation.
+
+## Overview
+
+Batch Calling provides enterprise-grade outbound calling capabilities:
+
+- **CSV Upload** - Upload recipients via CSV file with a downloadable template
+- **Scheduling** - Send now or schedule for a specific date and time
+- **Call Windows** - Restrict calls to specific hours and days of the week
+- **Concurrency** - Control how many calls run simultaneously
+- **Draft & History** - Save drafts and track all batch campaigns
+
+### Use Cases
+
+- **Appointment reminders** - Call patients/clients about upcoming appointments
+- **Follow-up campaigns** - Reach out to leads after an event or inquiry
+- **Survey calls** - Collect feedback from customers at scale
+- **Notification calls** - Inform contacts about important updates
+- **Outreach campaigns** - Introduce new products or services
+
+## How It Works
+
+### 1. Create a Batch
+
+Navigate to **Batch Calls** in the sidebar to access the feature.
+
+Fill in the batch configuration:
+- **Batch Call Name** - A descriptive name for your campaign
+- **From Number** - Select which Magpipe phone number to call from (shows associated agent)
+
+### 2. Upload Recipients
+
+Upload a CSV file with your recipient list. Download the template for the correct format:
+
+```csv
+name,phone_number
+John Doe,+14155551234
+Jane Smith,+12125559876
+```
+
+The CSV parser automatically detects columns including `name`, `first_name`, `last_name`, `phone`, `phone_number`, `mobile`, and `cell`.
+
+<Tip>
+Phone numbers should be in E.164 format (+1XXXXXXXXXX). Numbers without the + prefix will be auto-formatted.
+</Tip>
+
+### 3. Configure Scheduling
+
+- **Send Now** - Calls begin immediately after creation
+- **Schedule** - Pick a specific date and time to start the campaign
+
+### 4. Set Call Window
+
+Control when calls can be made:
+- **Time Range** - e.g., 9:00 AM to 5:00 PM
+- **Days** - Select which days of the week (default: Monday-Friday)
+
+Calls outside the window are automatically paused and resume when the window reopens.
+
+### 5. Concurrency Settings
+
+- **Reserved Concurrency** - Slots reserved for inbound and other calls
+- **Batch Concurrency** - Remaining slots allocated to batch calling
+
+### 6. Send or Save Draft
+
+- **Save as Draft** - Save your batch to edit and send later
+- **Send** - Start the campaign (or schedule it)
+
+### 7. Track Results
+
+Switch to the **History** tab to view all batches with:
+- Status (draft, scheduled, running, completed, cancelled, failed)
+- Completion counts and failure counts
+- Click any batch to view individual recipient status
+
+## Batch Status Flow
+
+```
+draft → scheduled → running → completed
+                  ↘ paused ↗
+                  ↘ cancelled
+                  ↘ failed
+```
+
+| Status | Description |
+|--------|-------------|
+| `draft` | Saved but not sent |
+| `scheduled` | Scheduled for future execution |
+| `running` | Currently making calls |
+| `paused` | Temporarily paused (outside call window) |
+| `completed` | All recipients processed |
+| `cancelled` | Manually cancelled |
+| `failed` | Batch encountered a critical error |
+
+## Recipient Status
+
+Each recipient in a batch has its own status:
+
+| Status | Description |
+|--------|-------------|
+| `pending` | Waiting to be called |
+| `calling` | Currently on a call |
+| `completed` | Call completed successfully |
+| `failed` | Call failed to connect |
+| `skipped` | Skipped (batch cancelled) |
+| `no_answer` | Recipient did not answer |
+
+## API Integration
+
+You can create and manage batch calls programmatically via the API:
+
+```javascript
+const response = await fetch('https://api.magpipe.ai/functions/v1/batch-calls', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${apiKey}`,
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    action: 'create',
+    name: 'Appointment Reminders - January',
+    caller_id: '+16045551234',
+    send_now: true,
+    window_start_time: '09:00',
+    window_end_time: '17:00',
+    window_days: [1, 2, 3, 4, 5],
+    reserved_concurrency: 5,
+    recipients: [
+      { name: 'John Doe', phone_number: '+14155551234' },
+      { name: 'Jane Smith', phone_number: '+12125559876' }
+    ]
+  })
+});
+```
+
+See the [Batch Calls API Reference](/api-reference/endpoints/create-batch) for full details.
+
+## Best Practices
+
+### Contact Preparation
+
+- **Verify phone numbers** - Ensure all numbers are in E.164 format
+- **Segment your list** - Group contacts by campaign type
+- **Check consent** - Only call contacts who've opted in
+
+### Timing
+
+- **Business hours** - Use call windows to restrict calling hours
+- **Time zones** - Consider contact locations when setting windows
+- **Scheduling** - Schedule campaigns for optimal pickup rates
+
+### Agent Configuration
+
+<Tip>
+Make sure your outbound agent's system prompt includes context about why you're calling and what to achieve. Consider using outbound call templates for consistency.
+</Tip>
+
+### Compliance
+
+<Warning>
+Ensure your batch calling campaigns comply with local regulations:
+- **TCPA** (US) - Requires prior express consent for automated calls
+- **Do Not Call** - Respect opt-out requests
+- **Local laws** - Check requirements in your jurisdiction
+</Warning>
+
+## Limits
+
+| Limit | Value |
+|-------|-------|
+| Recipients per batch | Unlimited |
+| Max concurrency | 20 |
+| Cost per dial | $0.005 |
+
+## FAQ
+
+<AccordionGroup>
+  <Accordion title="Can I pause a running batch?">
+    Yes, you can cancel a running batch from the History view. All pending recipients will be marked as skipped.
+  </Accordion>
+
+  <Accordion title="What happens outside the call window?">
+    The batch processor automatically pauses when outside your configured call window and resumes when the window reopens.
+  </Accordion>
+
+  <Accordion title="Can I edit a batch after creation?">
+    Only draft batches can be edited. Once a batch is scheduled or running, you can only cancel it.
+  </Accordion>
+
+  <Accordion title="How is billing handled?">
+    Each dial costs $0.005 plus standard per-minute calling charges. Your credit balance is checked before each call.
+  </Accordion>
+
+  <Accordion title="What happens if my credits run out mid-batch?">
+    The batch will pause when credits are insufficient. Add credits and restart the batch to continue.
+  </Accordion>
+</AccordionGroup>

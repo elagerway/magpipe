@@ -813,3 +813,47 @@ Added billing call to `sip-recording-callback` since it's already being called s
 - Tested on SeniorHome agent with `lookup_community` custom function
 - Agent successfully retrieved data from webhook and read it to caller
 
+---
+
+## Session: 2026-02-24
+
+### Completed - Batch Calls Feature (Full Implementation)
+
+Built a complete Batch Calls feature for scheduling and managing outbound call campaigns.
+
+#### Frontend
+- `src/pages/batch-calls.js` — New page with two-panel layout (form + recipients), History/Create tabs, CSV upload with parsing, scheduling, concurrency controls, call window configuration
+- `src/components/BottomNav.js` — Added "Batch Calls" nav item (desktop-only) to both primary and fallback arrays
+- `src/router.js` — Added `/batch-calls` route
+
+#### Backend
+- `supabase/functions/batch-calls/index.ts` — CRUD edge function (create, list, get, update, start, cancel)
+- `supabase/functions/process-batch-calls/index.ts` — Worker that processes batches in chunks, respects call windows/concurrency, self-re-invokes for continuation
+
+#### Database
+- `supabase/migrations/20260224_batch_calls.sql` — `batch_calls` and `batch_call_recipients` tables with RLS policies and indexes
+- Migration run via Supabase Management API
+
+#### Documentation
+- `docs/features/batch-calling.mdx` — Feature documentation
+- `docs/api-reference/endpoints/create-batch.mdx` — API reference
+- `docs/api-reference/endpoints/list-batches.mdx`
+- `docs/api-reference/endpoints/get-batch.mdx`
+- `docs/api-reference/endpoints/cancel-batch.mdx`
+- `docs/mint.json` — Updated navigation (replaced bulk-calling with batch-calling, added API group)
+
+#### UX Improvements
+- Real-time Supabase subscriptions + polling fallback for live batch progress
+- `resetForm()` method for clean multi-batch creation flow
+- "+ New Batch" button in History view
+- History as default view (not Create form)
+- Fixed layout overflow where tabs were clipped off-screen (changed from `max-width: 1200px` to `flex: 1; min-width: 0`)
+
+#### Edge Functions Deployed
+- `batch-calls` (with `--no-verify-jwt`)
+- `process-batch-calls` (with `--no-verify-jwt`)
+
+### Files Modified
+- `ARCHITECTURE.md` — Added batch calls route, edge functions, DB tables
+- `CLAUDE.md` — Added batch calling section
+

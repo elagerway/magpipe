@@ -292,6 +292,18 @@ npx supabase functions deploy <name> --no-verify-jwt
 ### LiveKit Agent Dispatch
 Agent dispatch rules are configured in **LiveKit Cloud dashboard**, NOT via code. Don't retry code-based solutions for agent dispatch.
 
+## Batch Outbound Calling
+- **Page**: `/batch-calls` (desktop-only nav item after Phone)
+- **DB tables**: `batch_calls` (batch metadata, status, scheduling), `batch_call_recipients` (per-recipient tracking)
+- **Edge functions**: `batch-calls` (CRUD via `action` field: create, list, get, update, start, cancel), `process-batch-calls` (worker that initiates calls)
+- **Architecture**: User creates batch → uploads CSV → batch-calls function creates records → process-batch-calls iterates recipients → calls `initiate-bridged-call` per recipient
+- **CSV format**: `name,phone_number` columns (flexible detection: first_name, last_name, phone, mobile, cell)
+- **Scheduling**: `send_now` boolean or `scheduled_at` timestamp. Call window: `window_start_time`/`window_end_time` (TIME) + `window_days` (integer array, 0=Sun)
+- **Concurrency**: `max_concurrency` controls parallel batch calls, `reserved_concurrency` reserves slots for inbound
+- **Status flow**: draft → scheduled → running → completed/cancelled/failed
+- **Legacy**: `/bulk-calling` page still exists (to be removed once batch-calls is fully operational)
+- **Deploy**: `npx supabase functions deploy batch-calls --no-verify-jwt` and `npx supabase functions deploy process-batch-calls --no-verify-jwt`
+
 ## HubSpot Integration
 - **NOT MCP-based**: HubSpot uses direct API calls via `executeNativeTool()`, not MCP servers
 - **Tools live in**: `supabase/functions/mcp-execute/index.ts` (handleHubSpotTool, handleHubSpotCreateContact, etc.)

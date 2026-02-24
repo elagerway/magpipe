@@ -1,0 +1,948 @@
+/**
+ * Batch Calls Page - Create and manage batch outbound calls
+ * Two-panel layout: form on left, recipient preview on right
+ */
+
+import { getCurrentUser, supabase } from '../lib/supabase.js';
+import { renderBottomNav } from '../components/BottomNav.js';
+import { showToast } from '../lib/toast.js';
+import { showConfirmModal } from '../components/ConfirmModal.js';
+
+export default class BatchCallsPage {
+  constructor() {
+    this.userId = null;
+    this.serviceNumbers = [];
+    this.recipients = [];
+    this.batches = [];
+    this.currentView = 'history'; // 'create' | 'history'
+    this.sendNow = true;
+    this.reservedConcurrency = 5;
+    this.windowDays = [1, 2, 3, 4, 5]; // Mon-Fri default
+    this.subscription = null;
+    this.recipientSubscription = null;
+    this.pollInterval = null;
+  }
+
+  async render() {
+    const { user } = await getCurrentUser();
+    if (!user) {
+      window.navigateTo('/login');
+      return;
+    }
+    this.userId = user.id;
+
+    const appElement = document.getElementById('app');
+    appElement.innerHTML = `
+      <style>
+        .batch-page { padding: 1.5rem; flex: 1; min-width: 0; box-sizing: border-box; }
+        .batch-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 0.75rem; }
+        .batch-header h1 { margin: 0; font-size: 1.5rem; font-weight: 600; color: var(--text-primary); }
+        .batch-header-right { display: flex; align-items: center; gap: 0.75rem; }
+        .batch-cost-badge { font-size: 0.8rem; color: var(--text-secondary); background: var(--bg-secondary); padding: 0.25rem 0.75rem; border-radius: 20px; display: flex; align-items: center; gap: 0.35rem; }
+        .batch-cost-badge svg { width: 14px; height: 14px; }
+        .batch-tabs { display: flex; gap: 0.5rem; }
+        .batch-tab { padding: 0.5rem 1rem; border: 1px solid rgba(128,128,128,0.2); border-radius: 8px; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 0.875rem; transition: all 0.15s; }
+        .batch-tab.active { background: var(--primary-color, #6366f1); color: white; border-color: var(--primary-color, #6366f1); }
+        .batch-grid { display: grid; grid-template-columns: minmax(0, 480px) minmax(0, 1fr); gap: 1.5rem; }
+        .batch-card { background: var(--bg-primary, white); border: 1px solid rgba(128,128,128,0.15); border-radius: 12px; overflow: hidden; }
+        .batch-form-section { padding: 1.25rem 1.5rem; border-bottom: 1px solid rgba(128,128,128,0.1); }
+        .batch-form-section:last-child { border-bottom: none; }
+        .batch-label { display: block; font-size: 0.8rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem; }
+        .batch-input { width: 100%; padding: 0.625rem 0.75rem; border: 1px solid rgba(128,128,128,0.25); border-radius: 8px; background: var(--bg-primary, white); color: var(--text-primary); font-size: 0.9rem; outline: none; transition: border-color 0.15s; box-sizing: border-box; }
+        .batch-input:focus { border-color: var(--primary-color, #6366f1); }
+        .batch-select { width: 100%; padding: 0.625rem 0.75rem; border: 1px solid rgba(128,128,128,0.25); border-radius: 8px; background: var(--bg-primary, white); color: var(--text-primary); font-size: 0.9rem; cursor: pointer; outline: none; }
+
+        /* CSV drop zone */
+        .csv-upload-section { margin-top: 0.5rem; }
+        .csv-template-link { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; color: var(--text-secondary); text-decoration: none; margin-bottom: 0.75rem; cursor: pointer; }
+        .csv-template-link:hover { color: var(--primary-color, #6366f1); }
+        .csv-drop-zone { border: 2px dashed rgba(128,128,128,0.3); border-radius: 10px; padding: 1.5rem; text-align: center; cursor: pointer; transition: all 0.15s; background: var(--bg-secondary, #f8f9fa); }
+        .csv-drop-zone:hover, .csv-drop-zone.drag-over { border-color: var(--primary-color, #6366f1); background: rgba(99, 102, 241, 0.04); }
+        .csv-drop-zone .upload-icon { color: var(--text-secondary); margin-bottom: 0.5rem; }
+        .csv-drop-zone .upload-text { font-size: 0.85rem; color: var(--text-secondary); }
+        .csv-drop-zone .upload-hint { font-size: 0.75rem; color: rgba(128,128,128,0.6); margin-top: 0.25rem; }
+        .csv-file-input { display: none; }
+
+        /* Send timing */
+        .send-toggle { display: flex; gap: 0; border: 1px solid rgba(128,128,128,0.25); border-radius: 8px; overflow: hidden; }
+        .send-toggle-btn { flex: 1; padding: 0.5rem; text-align: center; font-size: 0.85rem; cursor: pointer; border: none; background: transparent; color: var(--text-secondary); transition: all 0.15s; }
+        .send-toggle-btn.active { background: var(--primary-color, #6366f1); color: white; }
+
+        /* Call window */
+        .window-times { display: flex; align-items: center; gap: 0.5rem; }
+        .window-times input[type="time"] { padding: 0.4rem 0.5rem; border: 1px solid rgba(128,128,128,0.25); border-radius: 6px; background: var(--bg-primary, white); color: var(--text-primary); font-size: 0.85rem; }
+        .window-days { display: flex; gap: 0.35rem; margin-top: 0.5rem; }
+        .day-chip { width: 36px; height: 32px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(128,128,128,0.25); border-radius: 6px; font-size: 0.75rem; cursor: pointer; background: transparent; color: var(--text-secondary); transition: all 0.15s; }
+        .day-chip.active { background: var(--primary-color, #6366f1); color: white; border-color: var(--primary-color, #6366f1); }
+
+        /* Concurrency stepper */
+        .concurrency-stepper { display: flex; align-items: center; border: 1px solid rgba(128,128,128,0.25); border-radius: 8px; overflow: hidden; }
+        .concurrency-btn { width: 36px; height: 36px; border: none; background: var(--bg-secondary); color: var(--text-primary); cursor: pointer; font-size: 1.1rem; display: flex; align-items: center; justify-content: center; transition: background 0.15s; }
+        .concurrency-btn:hover { background: rgba(128,128,128,0.2); }
+        .concurrency-value { flex: 1; text-align: center; font-size: 0.95rem; font-weight: 500; color: var(--text-primary); }
+        .concurrency-info { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; padding: 0.5rem 0.75rem; background: rgba(59, 130, 246, 0.08); border-radius: 8px; font-size: 0.8rem; color: #3b82f6; }
+        .concurrency-info svg { flex-shrink: 0; }
+
+        /* Footer buttons */
+        .batch-footer { display: flex; align-items: center; justify-content: center; gap: 0.75rem; padding: 1.25rem 1.5rem; border-top: 1px solid rgba(128,128,128,0.1); }
+        .btn-draft { padding: 0.6rem 1.25rem; border: 1px solid rgba(128,128,128,0.25); border-radius: 8px; background: transparent; color: var(--text-primary); font-size: 0.875rem; cursor: pointer; font-weight: 500; }
+        .btn-send { padding: 0.6rem 1.75rem; border: none; border-radius: 8px; background: var(--primary-color, #6366f1); color: white; font-size: 0.875rem; cursor: pointer; font-weight: 500; opacity: 0.5; pointer-events: none; }
+        .btn-send.enabled { opacity: 1; pointer-events: auto; }
+
+        /* Recipients panel */
+        .recipients-header { padding: 1rem 1.25rem; border-bottom: 1px solid rgba(128,128,128,0.1); font-weight: 600; font-size: 0.95rem; color: var(--text-primary); }
+        .recipients-empty { display: flex; align-items: center; justify-content: center; min-height: 300px; color: var(--text-secondary); font-size: 0.9rem; }
+        .recipients-list { max-height: 600px; overflow-y: auto; }
+        .recipient-row { display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 1.25rem; border-bottom: 1px solid rgba(128,128,128,0.06); font-size: 0.85rem; }
+        .recipient-row:last-child { border-bottom: none; }
+        .recipient-name { font-weight: 500; color: var(--text-primary); }
+        .recipient-phone { color: var(--text-secondary); }
+        .recipient-index { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; background: var(--bg-secondary); border-radius: 50%; font-size: 0.75rem; color: var(--text-secondary); flex-shrink: 0; }
+
+        /* History view */
+        .batch-history-list { padding: 0; }
+        .batch-history-row { display: grid; grid-template-columns: 1fr auto auto auto; gap: 1rem; align-items: center; padding: 0.85rem 1.25rem; border-bottom: 1px solid rgba(128,128,128,0.08); cursor: pointer; transition: background 0.1s; }
+        .batch-history-row:hover { background: rgba(128,128,128,0.04); }
+        .batch-history-name { font-weight: 500; color: var(--text-primary); font-size: 0.9rem; }
+        .batch-history-date { font-size: 0.8rem; color: var(--text-secondary); }
+        .batch-status-badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 12px; font-size: 0.75rem; font-weight: 500; }
+        .batch-status-draft { background: rgba(128,128,128,0.1); color: var(--text-secondary); }
+        .batch-status-scheduled { background: rgba(59,130,246,0.1); color: #3b82f6; }
+        .batch-status-running { background: rgba(245,158,11,0.1); color: #f59e0b; }
+        .batch-status-completed { background: rgba(16,185,129,0.1); color: #10b981; }
+        .batch-status-cancelled, .batch-status-failed { background: rgba(239,68,68,0.1); color: #ef4444; }
+        .batch-status-paused { background: rgba(168,85,247,0.1); color: #a855f7; }
+        .batch-history-counts { font-size: 0.8rem; color: var(--text-secondary); white-space: nowrap; }
+
+        /* Terms line */
+        .batch-terms { font-size: 0.75rem; color: var(--text-secondary); text-align: center; padding: 0 1.5rem 1rem; }
+        .batch-terms a { color: var(--primary-color, #6366f1); text-decoration: none; }
+
+        /* Schedule picker */
+        .schedule-picker { margin-top: 0.5rem; display: none; }
+        .schedule-picker.visible { display: block; }
+
+        @media (max-width: 768px) {
+          .batch-grid { grid-template-columns: 1fr; }
+          .batch-page { padding: 1rem; }
+          .window-days { flex-wrap: wrap; }
+        }
+      </style>
+
+      <div class="batch-page container with-bottom-nav">
+        <!-- Header -->
+        <div class="batch-header">
+          <div style="display: flex; align-items: center; gap: 1rem;">
+            <h1>Batch Calls</h1>
+            <span class="batch-cost-badge">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+              Batch call cost $0.005 per dial
+            </span>
+          </div>
+          <div class="batch-header-right">
+            <div class="batch-tabs">
+              <button class="batch-tab ${this.currentView === 'create' ? 'active' : ''}" data-view="create">Create</button>
+              <button class="batch-tab ${this.currentView === 'history' ? 'active' : ''}" data-view="history">History</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Create View -->
+        <div id="batch-create-view" style="display: ${this.currentView === 'create' ? 'block' : 'none'};">
+          <div class="batch-grid">
+            <!-- Left Panel: Form -->
+            <div>
+              <div class="batch-card">
+                <!-- Batch Call Name -->
+                <div class="batch-form-section">
+                  <label class="batch-label">Batch Call Name</label>
+                  <input type="text" id="batch-name" class="batch-input" placeholder="Enter">
+                </div>
+
+                <!-- From Number -->
+                <div class="batch-form-section">
+                  <label class="batch-label">From number</label>
+                  <select id="batch-caller-id" class="batch-select">
+                    <option value="">Loading numbers...</option>
+                  </select>
+                </div>
+
+                <!-- Upload Recipients -->
+                <div class="batch-form-section">
+                  <label class="batch-label">Upload Recipients</label>
+                  <div class="csv-upload-section">
+                    <a class="csv-template-link" id="download-template">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                      Download the template
+                    </a>
+                    <div class="csv-drop-zone" id="csv-drop-zone">
+                      <div class="upload-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                      </div>
+                      <div class="upload-text">Choose a csv or drag & drop it here.</div>
+                      <div class="upload-hint">Up to 50 MB</div>
+                    </div>
+                    <input type="file" class="csv-file-input" id="csv-file-input" accept=".csv">
+                  </div>
+                </div>
+
+                <!-- When to Send -->
+                <div class="batch-form-section">
+                  <label class="batch-label">When to send the calls</label>
+                  <div class="send-toggle">
+                    <button class="send-toggle-btn ${this.sendNow ? 'active' : ''}" data-send="now">
+                      Send Now
+                      <span style="margin-left: 6px; display: inline-flex; width: 16px; height: 16px; border-radius: 50%; border: 2px solid ${this.sendNow ? 'white' : 'rgba(128,128,128,0.4)'}; align-items: center; justify-content: center;">
+                        ${this.sendNow ? '<span style="width: 8px; height: 8px; border-radius: 50%; background: white;"></span>' : ''}
+                      </span>
+                    </button>
+                    <button class="send-toggle-btn ${!this.sendNow ? 'active' : ''}" data-send="schedule">
+                      Schedule
+                      <span style="margin-left: 6px; display: inline-flex; width: 16px; height: 16px; border-radius: 50%; border: 2px solid ${!this.sendNow ? 'white' : 'rgba(128,128,128,0.4)'}; align-items: center; justify-content: center;">
+                        ${!this.sendNow ? '<span style="width: 8px; height: 8px; border-radius: 50%; background: white;"></span>' : ''}
+                      </span>
+                    </button>
+                  </div>
+                  <div class="schedule-picker ${!this.sendNow ? 'visible' : ''}" id="schedule-picker">
+                    <input type="datetime-local" class="batch-input" id="batch-schedule-time" style="margin-top: 0.5rem;">
+                  </div>
+                </div>
+
+                <!-- When Calls Can Run -->
+                <div class="batch-form-section">
+                  <label class="batch-label" style="display: flex; align-items: center; justify-content: space-between;">
+                    When Calls Can Run
+                    <span style="font-weight: 400; font-size: 0.8rem; color: var(--text-secondary); cursor: pointer;" id="window-toggle">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: -2px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                      <span id="window-summary">00:00-23:59, Mon-Sun</span>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: -1px;"><polyline points="9 18 15 12 9 6"/></svg>
+                    </span>
+                  </label>
+                  <div id="window-details" style="display: none; margin-top: 0.5rem;">
+                    <div class="window-times">
+                      <input type="time" id="window-start" value="00:00">
+                      <span style="color: var(--text-secondary);">to</span>
+                      <input type="time" id="window-end" value="23:59">
+                    </div>
+                    <div class="window-days">
+                      ${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((day, i) => `
+                        <button class="day-chip ${this.windowDays.includes(i) ? 'active' : ''}" data-day="${i}">${day}</button>
+                      `).join('')}
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Reserved Concurrency -->
+                <div class="batch-form-section">
+                  <label class="batch-label">Reserved Concurrency for Other Calls</label>
+                  <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.5rem;">Number of concurrency reserved for all other calls, such as inbound calls.</div>
+                  <div class="concurrency-stepper">
+                    <button class="concurrency-btn" id="concurrency-minus">&minus;</button>
+                    <span class="concurrency-value" id="concurrency-value">${this.reservedConcurrency}</span>
+                    <button class="concurrency-btn" id="concurrency-plus">+</button>
+                  </div>
+                  <div class="concurrency-info">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+                    <span>Concurrency allocated to batch calling: <strong id="batch-concurrency-value">15</strong></span>
+                  </div>
+                </div>
+
+                <!-- Footer -->
+                <div class="batch-terms">
+                  You've read and agree with the <a href="/terms" target="_blank">Terms of service</a>.
+                </div>
+                <div class="batch-footer">
+                  <button class="btn-draft" id="btn-save-draft">Save as draft</button>
+                  <button class="btn-send" id="btn-send">Send</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right Panel: Recipients -->
+            <div>
+              <div class="batch-card">
+                <div class="recipients-header">
+                  Recipients <span id="recipient-count" style="font-weight: 400; color: var(--text-secondary);"></span>
+                </div>
+                <div id="recipients-content">
+                  <div class="recipients-empty">Please upload recipients first</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- History View -->
+        <div id="batch-history-view" style="display: ${this.currentView === 'history' ? 'block' : 'none'};">
+          <div style="display: flex; justify-content: flex-end; margin-bottom: 0.75rem;">
+            <button class="btn-send enabled" id="btn-new-batch" style="opacity: 1; pointer-events: auto; font-size: 0.85rem; padding: 0.5rem 1rem;">+ New Batch</button>
+          </div>
+          <div class="batch-card">
+            <div id="batch-history-content">
+              <div class="recipients-empty">Loading batches...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      ${renderBottomNav('/batch-calls')}
+    `;
+
+    this.attachEventListeners();
+    await this.loadServiceNumbers();
+    await this.loadBatches();
+    this.subscribeToUpdates();
+    this.startPolling();
+  }
+
+  attachEventListeners() {
+    // Tab switching
+    document.querySelectorAll('.batch-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        this.switchToView(tab.dataset.view);
+      });
+    });
+
+    // New Batch button
+    const newBatchBtn = document.getElementById('btn-new-batch');
+    if (newBatchBtn) {
+      newBatchBtn.addEventListener('click', () => {
+        this.switchToView('create');
+      });
+    }
+
+    // CSV template download
+    const downloadTemplate = document.getElementById('download-template');
+    if (downloadTemplate) {
+      downloadTemplate.addEventListener('click', (e) => {
+        e.preventDefault();
+        const csv = 'name,phone_number\nJohn Doe,+14155551234\nJane Smith,+12125559876\n';
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'batch-calls-template.csv';
+        a.click();
+        URL.revokeObjectURL(url);
+      });
+    }
+
+    // CSV drop zone
+    const dropZone = document.getElementById('csv-drop-zone');
+    const fileInput = document.getElementById('csv-file-input');
+    if (dropZone && fileInput) {
+      dropZone.addEventListener('click', () => fileInput.click());
+      dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+      dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+      dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('drag-over');
+        const file = e.dataTransfer.files[0];
+        if (file && file.name.endsWith('.csv')) this.handleCSVFile(file);
+        else showToast('Please upload a .csv file', 'warning');
+      });
+      fileInput.addEventListener('change', () => {
+        if (fileInput.files[0]) this.handleCSVFile(fileInput.files[0]);
+      });
+    }
+
+    // Send Now / Schedule toggle
+    document.querySelectorAll('.send-toggle-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this.sendNow = btn.dataset.send === 'now';
+        document.querySelectorAll('.send-toggle-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const picker = document.getElementById('schedule-picker');
+        if (picker) picker.classList.toggle('visible', !this.sendNow);
+        // Update radio indicators
+        this.updateSendToggleRadios();
+      });
+    });
+
+    // Call window toggle
+    const windowToggle = document.getElementById('window-toggle');
+    const windowDetails = document.getElementById('window-details');
+    if (windowToggle && windowDetails) {
+      windowToggle.addEventListener('click', () => {
+        windowDetails.style.display = windowDetails.style.display === 'none' ? 'block' : 'none';
+      });
+    }
+
+    // Day chips
+    document.querySelectorAll('.day-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const day = parseInt(chip.dataset.day);
+        if (this.windowDays.includes(day)) {
+          this.windowDays = this.windowDays.filter(d => d !== day);
+          chip.classList.remove('active');
+        } else {
+          this.windowDays.push(day);
+          chip.classList.add('active');
+        }
+        this.updateWindowSummary();
+      });
+    });
+
+    // Window time changes
+    const windowStart = document.getElementById('window-start');
+    const windowEnd = document.getElementById('window-end');
+    if (windowStart) windowStart.addEventListener('change', () => this.updateWindowSummary());
+    if (windowEnd) windowEnd.addEventListener('change', () => this.updateWindowSummary());
+
+    // Concurrency stepper
+    const minusBtn = document.getElementById('concurrency-minus');
+    const plusBtn = document.getElementById('concurrency-plus');
+    if (minusBtn) minusBtn.addEventListener('click', () => this.adjustConcurrency(-1));
+    if (plusBtn) plusBtn.addEventListener('click', () => this.adjustConcurrency(1));
+
+    // Save Draft
+    const saveDraftBtn = document.getElementById('btn-save-draft');
+    if (saveDraftBtn) saveDraftBtn.addEventListener('click', () => this.saveBatch('draft'));
+
+    // Send
+    const sendBtn = document.getElementById('btn-send');
+    if (sendBtn) sendBtn.addEventListener('click', () => this.confirmAndSend());
+  }
+
+  updateSendToggleRadios() {
+    document.querySelectorAll('.send-toggle-btn').forEach(btn => {
+      const isActive = btn.classList.contains('active');
+      const radioSpan = btn.querySelector('span');
+      if (radioSpan) {
+        radioSpan.style.borderColor = isActive ? 'white' : 'rgba(128,128,128,0.4)';
+        radioSpan.innerHTML = isActive ? '<span style="width: 8px; height: 8px; border-radius: 50%; background: white;"></span>' : '';
+      }
+    });
+  }
+
+  updateWindowSummary() {
+    const start = document.getElementById('window-start')?.value || '00:00';
+    const end = document.getElementById('window-end')?.value || '23:59';
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const sorted = [...this.windowDays].sort();
+    let dayStr;
+    if (sorted.length === 7) dayStr = 'Mon-Sun';
+    else if (sorted.length === 5 && sorted.join(',') === '1,2,3,4,5') dayStr = 'Mon-Fri';
+    else dayStr = sorted.map(d => dayNames[d]).join(', ');
+    const summaryEl = document.getElementById('window-summary');
+    if (summaryEl) summaryEl.textContent = `${start}-${end}, ${dayStr}`;
+  }
+
+  adjustConcurrency(delta) {
+    this.reservedConcurrency = Math.max(0, Math.min(20, this.reservedConcurrency + delta));
+    const valueEl = document.getElementById('concurrency-value');
+    if (valueEl) valueEl.textContent = this.reservedConcurrency;
+    const batchValue = document.getElementById('batch-concurrency-value');
+    if (batchValue) batchValue.textContent = Math.max(0, 20 - this.reservedConcurrency);
+  }
+
+  async loadServiceNumbers() {
+    const select = document.getElementById('batch-caller-id');
+    if (!select) return;
+
+    const { data: numbers, error } = await supabase
+      .from('service_numbers')
+      .select('phone_number, agent_id, agent_configs(id, name)')
+      .eq('user_id', this.userId)
+      .eq('is_active', true)
+      .order('created_at', { ascending: false });
+
+    if (error || !numbers?.length) {
+      select.innerHTML = '<option value="">No numbers available</option>';
+      return;
+    }
+
+    this.serviceNumbers = numbers;
+    select.innerHTML = numbers.map(n => {
+      const agentName = n.agent_configs?.name || '';
+      const label = agentName ? `${n.phone_number} (${agentName})` : n.phone_number;
+      return `<option value="${n.phone_number}" data-agent-id="${n.agent_id || ''}">${label}</option>`;
+    }).join('');
+  }
+
+  // CSV parsing
+  parseCSVRow(row) {
+    const values = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < row.length; i++) {
+      const char = row[i];
+      if (char === '"') {
+        if (inQuotes && row[i + 1] === '"') { current += '"'; i++; }
+        else inQuotes = !inQuotes;
+      } else if (char === ',' && !inQuotes) { values.push(current.trim()); current = ''; }
+      else current += char;
+    }
+    values.push(current.trim());
+    return values;
+  }
+
+  async handleCSVFile(file) {
+    try {
+      const text = await file.text();
+      const lines = text.split('\n').filter(l => l.trim());
+      if (lines.length < 2) { showToast('CSV must have a header row and at least one data row', 'warning'); return; }
+
+      const headers = this.parseCSVRow(lines[0]).map(h => h.trim().toLowerCase());
+      const nameIdx = headers.findIndex(h => h === 'name' || (h.includes('first') && h.includes('name')));
+      const lastNameIdx = headers.findIndex(h => h.includes('last') && h.includes('name'));
+      const phoneIdx = headers.findIndex(h => h.includes('phone') || h.includes('mobile') || h.includes('cell'));
+
+      if (phoneIdx === -1) { showToast('CSV must contain a phone number column (phone, phone_number, mobile, cell)', 'error'); return; }
+
+      const recipients = [];
+      let skipped = 0;
+      for (let i = 1; i < lines.length; i++) {
+        const values = this.parseCSVRow(lines[i]);
+        const phone = (values[phoneIdx] || '').replace(/[^+\d]/g, '');
+        if (!phone) { skipped++; continue; }
+
+        let name = nameIdx !== -1 ? values[nameIdx] || '' : '';
+        if (lastNameIdx !== -1 && values[lastNameIdx]) name = name ? `${name} ${values[lastNameIdx]}` : values[lastNameIdx];
+        if (!name) name = phone;
+
+        recipients.push({ name, phone_number: phone, sort_order: i - 1 });
+      }
+
+      this.recipients = recipients;
+      this.renderRecipients();
+      this.updateSendButton();
+
+      // Update drop zone to show file name
+      const dropZone = document.getElementById('csv-drop-zone');
+      if (dropZone) {
+        dropZone.innerHTML = `
+          <div style="color: var(--primary-color, #6366f1); font-weight: 500;">${file.name}</div>
+          <div class="upload-hint">${recipients.length} recipients loaded${skipped ? `, ${skipped} skipped` : ''}</div>
+          <div class="upload-hint" style="margin-top: 0.25rem; cursor: pointer; color: var(--primary-color, #6366f1);">Click to replace</div>
+        `;
+      }
+
+      showToast(`Loaded ${recipients.length} recipients from CSV`, 'success');
+    } catch (err) {
+      console.error('CSV parse error:', err);
+      showToast('Failed to parse CSV file', 'error');
+    }
+  }
+
+  renderRecipients() {
+    const content = document.getElementById('recipients-content');
+    const countEl = document.getElementById('recipient-count');
+    if (!content) return;
+
+    if (this.recipients.length === 0) {
+      content.innerHTML = '<div class="recipients-empty">Please upload recipients first</div>';
+      if (countEl) countEl.textContent = '';
+      return;
+    }
+
+    if (countEl) countEl.textContent = `(${this.recipients.length})`;
+    content.innerHTML = `
+      <div class="recipients-list">
+        ${this.recipients.map((r, i) => `
+          <div class="recipient-row">
+            <span class="recipient-index">${i + 1}</span>
+            <span class="recipient-name">${this.escapeHtml(r.name)}</span>
+            <span class="recipient-phone">${r.phone_number}</span>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  updateSendButton() {
+    const btn = document.getElementById('btn-send');
+    if (btn) {
+      const hasRecipients = this.recipients.length > 0;
+      btn.classList.toggle('enabled', hasRecipients);
+    }
+  }
+
+  escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  getFormData() {
+    const name = document.getElementById('batch-name')?.value?.trim() || '';
+    const callerSelect = document.getElementById('batch-caller-id');
+    const callerId = callerSelect?.value || '';
+    const agentId = callerSelect?.selectedOptions[0]?.dataset?.agentId || null;
+    const scheduledAt = !this.sendNow ? document.getElementById('batch-schedule-time')?.value : null;
+    const windowStart = document.getElementById('window-start')?.value || '00:00';
+    const windowEnd = document.getElementById('window-end')?.value || '23:59';
+
+    return {
+      name,
+      caller_id: callerId,
+      agent_id: agentId,
+      send_now: this.sendNow,
+      scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : null,
+      window_start_time: windowStart,
+      window_end_time: windowEnd,
+      window_days: this.windowDays,
+      reserved_concurrency: this.reservedConcurrency,
+      recipients: this.recipients
+    };
+  }
+
+  validateForm(data) {
+    if (!data.name) { showToast('Please enter a batch call name', 'warning'); return false; }
+    if (!data.caller_id) { showToast('Please select a from number', 'warning'); return false; }
+    if (data.recipients.length === 0) { showToast('Please upload recipients', 'warning'); return false; }
+    if (!data.send_now && !data.scheduled_at) { showToast('Please select a schedule time', 'warning'); return false; }
+    return true;
+  }
+
+  async saveBatch(status = 'draft') {
+    const data = this.getFormData();
+    if (status !== 'draft' && !this.validateForm(data)) return;
+    if (status === 'draft' && !data.name) { showToast('Please enter a batch call name', 'warning'); return; }
+
+    try {
+      // Create batch via direct Supabase query (edge function not deployed yet)
+      const { data: batch, error } = await supabase
+        .from('batch_calls')
+        .insert({
+          user_id: this.userId,
+          name: data.name,
+          caller_id: data.caller_id,
+          agent_id: data.agent_id || null,
+          status,
+          send_now: data.send_now,
+          scheduled_at: data.scheduled_at,
+          window_start_time: data.window_start_time,
+          window_end_time: data.window_end_time,
+          window_days: data.window_days,
+          reserved_concurrency: data.reserved_concurrency,
+          total_recipients: data.recipients.length
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Insert recipients
+      if (data.recipients.length > 0) {
+        const recipientRows = data.recipients.map((r, i) => ({
+          batch_id: batch.id,
+          phone_number: r.phone_number,
+          name: r.name,
+          sort_order: i
+        }));
+
+        const { error: recipErr } = await supabase
+          .from('batch_call_recipients')
+          .insert(recipientRows);
+
+        if (recipErr) throw recipErr;
+      }
+
+      showToast(status === 'draft' ? 'Batch saved as draft' : `Batch created with ${data.recipients.length} recipients`, 'success');
+
+      // Reset form state then switch to history view
+      this.resetForm();
+      this.switchToView('history');
+
+    } catch (err) {
+      console.error('Save batch error:', err);
+      showToast('Failed to save batch: ' + err.message, 'error');
+    }
+  }
+
+  async confirmAndSend() {
+    const data = this.getFormData();
+    if (!this.validateForm(data)) return;
+
+    showConfirmModal({
+      title: 'Start Batch Calls',
+      message: `This will call ${data.recipients.length} recipients from ${data.caller_id}. ${this.sendNow ? 'Calls will start immediately.' : `Calls scheduled for ${new Date(data.scheduled_at).toLocaleString()}.`}`,
+      confirmText: 'Send',
+      confirmStyle: 'primary',
+      onConfirm: () => this.saveBatch(this.sendNow ? 'running' : 'scheduled')
+    });
+  }
+
+  async loadBatches() {
+    const content = document.getElementById('batch-history-content');
+    if (!content) return;
+
+    const { data: batches, error } = await supabase
+      .from('batch_calls')
+      .select('*')
+      .eq('user_id', this.userId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      content.innerHTML = '<div class="recipients-empty">Error loading batches</div>';
+      return;
+    }
+
+    this.batches = batches || [];
+
+    if (this.batches.length === 0) {
+      content.innerHTML = '<div class="recipients-empty">No batch calls yet. Create your first one!</div>';
+      return;
+    }
+
+    content.innerHTML = `
+      <div class="batch-history-list">
+        ${this.batches.map(b => `
+          <div class="batch-history-row" data-batch-id="${b.id}">
+            <div>
+              <div class="batch-history-name">${this.escapeHtml(b.name)}</div>
+              <div class="batch-history-date">${new Date(b.created_at).toLocaleDateString()} ${new Date(b.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+            </div>
+            <span class="batch-status-badge batch-status-${b.status}">${b.status}</span>
+            <span class="batch-history-counts">${b.completed_count}/${b.total_recipients} completed</span>
+            <span class="batch-history-counts">${b.failed_count} failed</span>
+          </div>
+        `).join('')}
+      </div>
+    `;
+
+    // Click handlers for batch rows
+    content.querySelectorAll('.batch-history-row').forEach(row => {
+      row.addEventListener('click', () => {
+        this.viewBatchDetails(row.dataset.batchId);
+      });
+    });
+  }
+
+  async viewBatchDetails(batchId) {
+    const batch = this.batches.find(b => b.id === batchId);
+    if (!batch) return;
+
+    // Fetch recipients
+    const { data: recipients } = await supabase
+      .from('batch_call_recipients')
+      .select('*')
+      .eq('batch_id', batchId)
+      .order('sort_order');
+
+    const statusColors = {
+      pending: '#9ca3af', calling: '#f59e0b', completed: '#10b981',
+      failed: '#ef4444', skipped: '#6b7280', no_answer: '#f97316'
+    };
+
+    const modalHtml = `
+      <div class="contact-modal-overlay" id="batch-detail-modal" style="display: flex;"
+           onclick="if(event.target===this)this.style.display='none'">
+        <div class="contact-modal" onclick="event.stopPropagation()" style="max-width: 650px;">
+          <div class="contact-modal-header">
+            <h3>${this.escapeHtml(batch.name)}</h3>
+            <button class="close-modal-btn" onclick="document.getElementById('batch-detail-modal').style.display='none'">&times;</button>
+          </div>
+          <div class="contact-modal-body scrollable">
+            <div style="display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;">
+              <span class="batch-status-badge batch-status-${batch.status}" style="font-size: 0.85rem;">${batch.status}</span>
+              <span style="font-size: 0.85rem; color: var(--text-secondary);">From: ${batch.caller_id}</span>
+              <span style="font-size: 0.85rem; color: var(--text-secondary);">${batch.total_recipients} recipients</span>
+            </div>
+            ${(recipients || []).map((r, i) => `
+              <div data-recipient-id="${r.id}" style="display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 0; border-bottom: 1px solid rgba(128,128,128,0.08);">
+                <span class="recipient-index">${i + 1}</span>
+                <span style="flex: 1; font-weight: 500;">${this.escapeHtml(r.name || r.phone_number)}</span>
+                <span style="color: var(--text-secondary); font-size: 0.85rem;">${r.phone_number}</span>
+                <span class="status-dot" style="width: 10px; height: 10px; border-radius: 50%; background: ${statusColors[r.status] || '#9ca3af'};" title="${r.status}"></span>
+              </div>
+            `).join('')}
+          </div>
+          <div class="contact-modal-footer">
+            ${batch.status === 'draft' ? `<button class="btn btn-primary" onclick="document.getElementById('batch-detail-modal').style.display='none'">Edit</button>` : ''}
+            ${batch.status === 'running' ? `<button class="btn btn-secondary" id="cancel-batch-btn">Cancel Batch</button>` : ''}
+            <button class="btn btn-secondary" onclick="document.getElementById('batch-detail-modal').style.display='none'">Close</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Remove existing modal if any
+    const existing = document.getElementById('batch-detail-modal');
+    if (existing) existing.remove();
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    // Subscribe to live recipient updates for running batches
+    if (batch.status === 'running' || batch.status === 'calling') {
+      this.subscribeToRecipientUpdates(batchId);
+    }
+
+    // Unsubscribe on modal close
+    const modalEl = document.getElementById('batch-detail-modal');
+    if (modalEl) {
+      const origOnClick = modalEl.getAttribute('onclick') || '';
+      modalEl.addEventListener('click', (e) => {
+        if (e.target === modalEl) {
+          if (this.recipientSubscription) { this.recipientSubscription.unsubscribe(); this.recipientSubscription = null; }
+        }
+      });
+      const closeBtn = modalEl.querySelector('.close-modal-btn');
+      if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+          if (this.recipientSubscription) { this.recipientSubscription.unsubscribe(); this.recipientSubscription = null; }
+        });
+      }
+    }
+
+    // Cancel batch handler
+    const cancelBtn = document.getElementById('cancel-batch-btn');
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', async () => {
+        const { error } = await supabase
+          .from('batch_calls')
+          .update({ status: 'cancelled' })
+          .eq('id', batchId);
+        if (!error) {
+          document.getElementById('batch-detail-modal').style.display = 'none';
+          showToast('Batch cancelled', 'info');
+          await this.loadBatches();
+        }
+      });
+    }
+  }
+
+  switchToView(view) {
+    this.currentView = view;
+    document.querySelectorAll('.batch-tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
+    document.getElementById('batch-create-view').style.display = view === 'create' ? 'block' : 'none';
+    document.getElementById('batch-history-view').style.display = view === 'history' ? 'block' : 'none';
+
+    if (view === 'history') {
+      this.loadBatches();
+      this.subscribeToUpdates();
+      this.startPolling();
+    } else {
+      this.resetForm();
+      this.unsubscribeAll();
+    }
+  }
+
+  resetForm() {
+    // Reset instance state
+    this.recipients = [];
+    this.sendNow = true;
+    this.reservedConcurrency = 5;
+    this.windowDays = [1, 2, 3, 4, 5];
+
+    // Reset DOM
+    const nameInput = document.getElementById('batch-name');
+    if (nameInput) nameInput.value = '';
+
+    const fileInput = document.getElementById('csv-file-input');
+    if (fileInput) fileInput.value = '';
+
+    const dropZone = document.getElementById('csv-drop-zone');
+    if (dropZone) {
+      dropZone.innerHTML = `
+        <div class="upload-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </div>
+        <div class="upload-text">Choose a csv or drag & drop it here.</div>
+        <div class="upload-hint">Up to 50 MB</div>
+      `;
+    }
+
+    // Reset Send Now toggle
+    document.querySelectorAll('.send-toggle-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.send === 'now');
+    });
+    this.updateSendToggleRadios();
+    const picker = document.getElementById('schedule-picker');
+    if (picker) picker.classList.remove('visible');
+    const scheduleInput = document.getElementById('batch-schedule-time');
+    if (scheduleInput) scheduleInput.value = '';
+
+    // Reset call window
+    const windowStart = document.getElementById('window-start');
+    const windowEnd = document.getElementById('window-end');
+    if (windowStart) windowStart.value = '00:00';
+    if (windowEnd) windowEnd.value = '23:59';
+    document.querySelectorAll('.day-chip').forEach(chip => {
+      const day = parseInt(chip.dataset.day);
+      chip.classList.toggle('active', this.windowDays.includes(day));
+    });
+    const windowDetails = document.getElementById('window-details');
+    if (windowDetails) windowDetails.style.display = 'none';
+    this.updateWindowSummary();
+
+    // Reset concurrency
+    const valueEl = document.getElementById('concurrency-value');
+    if (valueEl) valueEl.textContent = this.reservedConcurrency;
+    const batchValue = document.getElementById('batch-concurrency-value');
+    if (batchValue) batchValue.textContent = Math.max(0, 20 - this.reservedConcurrency);
+
+    // Reset recipients panel + send button
+    this.renderRecipients();
+    this.updateSendButton();
+  }
+
+  subscribeToUpdates() {
+    // Unsubscribe previous if any
+    if (this.subscription) { this.subscription.unsubscribe(); this.subscription = null; }
+
+    this.subscription = supabase
+      .channel(`batch-updates-${this.userId}-${Date.now()}`)
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'batch_calls',
+        filter: `user_id=eq.${this.userId}`
+      }, () => this.loadBatches())
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          setTimeout(() => { if (this.currentView === 'history') this.subscribeToUpdates(); }, 5000);
+        }
+      });
+  }
+
+  subscribeToRecipientUpdates(batchId) {
+    if (this.recipientSubscription) { this.recipientSubscription.unsubscribe(); this.recipientSubscription = null; }
+
+    this.recipientSubscription = supabase
+      .channel(`batch-recipients-${batchId}-${Date.now()}`)
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'batch_call_recipients',
+        filter: `batch_id=eq.${batchId}`
+      }, (payload) => {
+        // Update the status dot in the open modal without re-fetching
+        const modal = document.getElementById('batch-detail-modal');
+        if (!modal || modal.style.display === 'none') return;
+        const row = payload.new;
+        if (!row) return;
+        // Find matching recipient row by phone number and update status dot
+        const rows = modal.querySelectorAll('[data-recipient-id]');
+        rows.forEach(el => {
+          if (el.dataset.recipientId === row.id) {
+            const dot = el.querySelector('.status-dot');
+            const colors = { pending: '#9ca3af', calling: '#f59e0b', completed: '#10b981', failed: '#ef4444', skipped: '#6b7280', no_answer: '#f97316' };
+            if (dot) { dot.style.background = colors[row.status] || '#9ca3af'; dot.title = row.status; }
+          }
+        });
+      })
+      .subscribe();
+  }
+
+  startPolling() {
+    this.stopPolling();
+    this.pollInterval = setInterval(() => {
+      if (this.currentView !== 'history') { this.stopPolling(); return; }
+      const hasActive = this.batches.some(b => b.status === 'running' || b.status === 'scheduled');
+      if (hasActive) this.loadBatches();
+    }, 5000);
+  }
+
+  stopPolling() {
+    if (this.pollInterval) { clearInterval(this.pollInterval); this.pollInterval = null; }
+  }
+
+  unsubscribeAll() {
+    if (this.subscription) { this.subscription.unsubscribe(); this.subscription = null; }
+    if (this.recipientSubscription) { this.recipientSubscription.unsubscribe(); this.recipientSubscription = null; }
+    this.stopPolling();
+  }
+
+  cleanup() {
+    const modal = document.getElementById('batch-detail-modal');
+    if (modal) modal.remove();
+    this.unsubscribeAll();
+  }
+}
