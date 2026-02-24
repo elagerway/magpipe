@@ -9,6 +9,7 @@
  */
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { resolveUser } from '../_shared/api-auth.ts'
 import { corsHeaders, handleCors } from '../_shared/cors.ts'
 
 interface ToolDefinition {
@@ -257,6 +258,22 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseKey)
+
+    // Optional: validate mgp_ API key if provided (for server-side integrations)
+    // Widget requests use widgetKey for auth; API key is an additional auth path
+    const authHeader = req.headers.get('Authorization')
+    const token = authHeader?.replace('Bearer ', '')
+    if (token && token.startsWith('mgp_')) {
+      const anonClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!)
+      const apiUser = await resolveUser(req, anonClient)
+      if (!apiUser) {
+        return new Response(
+          JSON.stringify({ error: 'Invalid API key' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+      console.log(`API key auth: user ${apiUser.id}`)
+    }
 
     // Validate widget key and get widget config
     const { data: widget, error: widgetError } = await supabase
