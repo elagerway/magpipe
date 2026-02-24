@@ -245,12 +245,14 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { widgetKey, visitorId, message, visitorName, visitorEmail, pageUrl, browserInfo, requestGreeting } = await req.json()
+    const { widgetKey, agentId, visitorId, sessionId, message, visitorName, visitorEmail, pageUrl, browserInfo, requestGreeting } = await req.json()
 
     // Allow greeting requests without a message
-    if (!widgetKey || !visitorId || (!message && !requestGreeting)) {
+    // sessionId can substitute for visitorId (resume existing session)
+    // agentId can substitute for widgetKey (auto-resolves to first active widget)
+    if ((!widgetKey && !agentId) || (!visitorId && !sessionId) || (!message && !requestGreeting)) {
       return new Response(
-        JSON.stringify({ error: 'Missing required fields: widgetKey, visitorId, message' }),
+        JSON.stringify({ error: 'Missing required fields: widgetKey (or agentId), visitorId (or sessionId), message' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -275,16 +277,30 @@ Deno.serve(async (req) => {
       console.log(`API key auth: user ${apiUser.id}`)
     }
 
-    // Validate widget key and get widget config
-    const { data: widget, error: widgetError } = await supabase
-      .from('chat_widgets')
-      .select('*, agent_configs(*)')
-      .eq('widget_key', widgetKey)
-      .eq('is_active', true)
-      .single()
+    // Resolve widget: by widgetKey or by agentId (find first active widget for agent)
+    let widget = null
+    if (widgetKey) {
+      const { data, error } = await supabase
+        .from('chat_widgets')
+        .select('*, agent_configs(*)')
+        .eq('widget_key', widgetKey)
+        .eq('is_active', true)
+        .single()
+      if (!error) widget = data
+    } else if (agentId) {
+      const { data, error } = await supabase
+        .from('chat_widgets')
+        .select('*, agent_configs(*)')
+        .eq('agent_id', agentId)
+        .eq('is_active', true)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .single()
+      if (!error) widget = data
+    }
 
-    if (widgetError || !widget) {
-      console.error('Widget not found or inactive:', widgetKey, widgetError)
+    if (!widget) {
+      console.error('Widget not found:', widgetKey || agentId)
       return new Response(
         JSON.stringify({ error: 'Widget not found or inactive' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -309,16 +325,35 @@ Deno.serve(async (req) => {
     }
 
     // Get or create chat session
+    // Priority: sessionId (resume existing) > visitor_id (find/create)
     let session = null
-    const { data: existingSession } = await supabase
-      .from('chat_sessions')
-      .select('*')
-      .eq('widget_id', widget.id)
-      .eq('visitor_id', visitorId)
-      .eq('status', 'active')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single()
+    let existingSession = null
+
+    if (sessionId) {
+      // Resume existing session by ID
+      const { data: sessionById } = await supabase
+        .from('chat_sessions')
+        .select('*')
+        .eq('id', sessionId)
+        .eq('widget_id', widget.id)
+        .eq('status', 'active')
+        .single()
+      existingSession = sessionById
+    }
+
+    if (!existingSession && visitorId) {
+      // Fall back to visitor_id lookup
+      const { data: sessionByVisitor } = await supabase
+        .from('chat_sessions')
+        .select('*')
+        .eq('widget_id', widget.id)
+        .eq('visitor_id', visitorId)
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single()
+      existingSession = sessionByVisitor
+    }
 
     let isNewSession = false
     if (existingSession) {

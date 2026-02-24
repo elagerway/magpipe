@@ -410,15 +410,25 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["widgetKey", "visitorId", "message"],
+                "required": ["message"],
                 "properties": {
                   "widgetKey": {
                     "type": "string",
-                    "description": "Chat widget key from your dashboard"
+                    "description": "Chat widget key. Required if agentId is not provided."
+                  },
+                  "agentId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Agent UUID — auto-resolves to the agent's chat widget. Use instead of widgetKey for API/MCP calls."
+                  },
+                  "sessionId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Session ID from a previous response. Pass this to continue the conversation with full history."
                   },
                   "visitorId": {
                     "type": "string",
-                    "description": "Unique visitor identifier (e.g., from localStorage)"
+                    "description": "Unique visitor identifier. Required if sessionId is not provided."
                   },
                   "message": {
                     "type": "string",
@@ -454,7 +464,8 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "session_id": { "type": "string", "format": "uuid" },
+                    "success": { "type": "boolean" },
+                    "sessionId": { "type": "string", "format": "uuid", "description": "Session ID — pass this back as sessionId in subsequent requests to continue the conversation" },
                     "aiResponse": { "type": "string" },
                     "aiMessageId": { "type": "string", "format": "uuid" }
                   }
