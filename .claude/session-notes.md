@@ -857,3 +857,54 @@ Built a complete Batch Calls feature for scheduling and managing outbound call c
 - `ARCHITECTURE.md` — Added batch calls route, edge functions, DB tables
 - `CLAUDE.md` — Added batch calling section
 
+### Completed - webhook-chat-message Fixes & Enhancements
+
+Multiple fixes and features added to the chat widget backend:
+
+#### 1. API Key Auth (commit f728808)
+- Added `resolveUser()` support so `mgp_` API keys work alongside widget key auth
+- Updated `magpipe-chat.js` with current Supabase anon key
+
+#### 2. .catch() Bug Fix (commit 5c81b1d)
+- `supabase.from(...).insert(...).catch()` threw "not a function" on follow-up messages
+- Supabase PostgrestBuilder doesn't support `.catch()` — replaced with try/catch
+
+#### 3. Custom Functions in Chat (commit 64502f9)
+- webhook-chat-message had NO custom function support — only MCP tools, HubSpot, and support tickets
+- Added: load custom functions from `custom_functions` table, register as OpenAI tools with `cf_` prefix, execute via HTTP
+- Changed hardcoded `model: 'gpt-4o-mini'` and `max_tokens: 300` to use `agentConfig.chat_model` and `agentConfig.max_tokens`
+
+#### 4. Session Persistence & agentId Support (commit 1b0fca6)
+- Added `sessionId` param — callers pass it from previous response to resume conversation with full history
+- Added `agentId` param — auto-resolves to agent's first active widget (no need to know widget key)
+- Session lookup: sessionId first → visitorId fallback → create new
+- `visitorId` no longer required if `sessionId` is provided
+
+#### 5. MCP `chat_with_agent` Tool Rerouted
+- Changed from `omni-chat` (admin-only, no custom functions, no sessions) to `webhook-chat-message`
+- Now gets full agent experience: agent system prompt, custom functions, session persistence
+- Added `visitor_name` and `visitor_email` params
+- Stable `visitorId` (`mcp-{agent_id}`) for implicit session persistence
+- Built dist and copied to npx cache (`/Users/erik/.npm/_npx/04dc65b01aa097a7/`)
+- npm publish blocked by expired classic token (npm security update revoked classic tokens)
+
+### Completed - SeniorHome Chat Agent Configuration
+
+- `max_tokens`: 150 → 1024 → **2048** (needed for community listings + email offer in one response)
+- DB constraint widened: `agent_configs_max_tokens_check` from 50-500 to **50-4096**
+- Migration: `supabase/migrations/20260225_widen_max_tokens_constraint.sql`
+- Created `send_info_email` custom function (DB ID: `427a2539-7211-47f0-a97c-798ea397f951`)
+  - Endpoint: `https://www.seniorhome.ca/api/agent-tools/send-info-email`
+  - Params: email (required), name, location, care_needs (optional)
+
+### Documentation Updates
+- `docs/openapi.json` — Added `agentId`, `sessionId` to webhook-chat-message request/response schema; fixed `session_id` → `sessionId` in response
+
+### Edge Functions Deployed
+- `webhook-chat-message` (with `--no-verify-jwt`) — multiple deploys
+- `batch-calls`, `process-batch-calls` (with `--no-verify-jwt`)
+
+### Pending
+- npm publish for `magpipe-mcp-server@0.1.2` — needs new npm granular token (classic tokens revoked)
+- `send_info_email` untested end-to-end (depends on SeniorHome endpoint being live)
+
