@@ -91,14 +91,24 @@ export function registerMiscTools(server: McpServer, client: MagpipeClient) {
     "create_custom_function",
     "Create a custom function (tool) that agents can call during conversations",
     {
+      agent_id: z.string().describe("Agent UUID to assign the function to"),
       name: z.string().describe("Function name"),
       description: z.string().describe("What the function does"),
+      http_method: z.string().describe("HTTP method: GET or POST"),
       endpoint_url: z.string().describe("Webhook URL to call"),
-      parameters: z
-        .record(z.unknown())
+      headers: z.record(z.string()).optional().describe("HTTP headers to send"),
+      body_schema: z
+        .array(z.object({
+          name: z.string(),
+          type: z.string().optional(),
+          description: z.string().optional(),
+          required: z.boolean().optional(),
+        }))
         .optional()
-        .describe("JSON Schema for function parameters"),
-      agent_id: z.string().optional().describe("Assign to specific agent"),
+        .describe("Parameter schema for the function body"),
+      query_params: z.record(z.string()).optional().describe("Static query parameters"),
+      timeout_ms: z.number().optional().describe("Timeout in milliseconds (default 10000)"),
+      is_active: z.boolean().optional().describe("Enable or disable (default true)"),
     },
     async (args) => {
       try {
