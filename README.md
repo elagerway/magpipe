@@ -86,6 +86,7 @@ pat/
 │   │   │   ├── call-handler.js
 │   │   │   ├── dialpad.js
 │   │   │   └── number-management.js
+│   │   ├── batch-calls.js          # Batch outbound calls (CSV upload, scheduling)
 │   │   ├── contacts.js
 │   │   ├── settings.js
 │   │   └── ...
@@ -101,6 +102,8 @@ pat/
 │   │   ├── _shared/             # Shared utilities (cors, auth, balance-check)
 │   │   ├── admin-status/
 │   │   ├── contact-lookup/       # Apollo.io enrichment
+│   │   ├── batch-calls/            # Batch call CRUD (create, list, get, start, cancel)
+│   │   ├── process-batch-calls/    # Batch call worker (initiates calls per recipient)
 │   │   ├── initiate-bridged-call/
 │   │   ├── gmail-push-webhook/   # Gmail Pub/Sub push notifications + support ticket mirroring
 │   │   ├── gmail-watch-renew/    # Daily Gmail watch renewal
@@ -247,6 +250,8 @@ The LiveKit voice agent runs on Render and connects to LiveKit Cloud, handling c
 - `credit_transactions` - Billing and credit history
 - `knowledge_sources` / `knowledge_chunks` - RAG knowledge base (pgvector)
 - `chat_widgets` / `chat_sessions` / `chat_messages` - Embeddable chat widget
+- `batch_calls` - Batch outbound call jobs (status, scheduling, concurrency settings)
+- `batch_call_recipients` - Per-recipient tracking for batch calls (status, call_record_id)
 - `referral_rewards` - Referral tracking and bonus payouts
 - `social_listening_keywords` - Tracked keywords for social monitoring
 - `social_listening_results` - Reddit/HackerNews/Google mention results
