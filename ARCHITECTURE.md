@@ -70,7 +70,7 @@
 | `/select-number` | `select-number.js` | Phone number purchase | `service_numbers` | `search-phone-numbers`, `provision-phone-number` |
 | `/manage-numbers` | `manage-numbers.js` | Number management (mobile) | `service_numbers`, `numbers_to_delete`, `agent_configs` | `queue-number-deletion`, `cancel-number-deletion`, `configure-signalwire-number`, `fix-number-capabilities` |
 | `/bulk-calling` | `bulk-calling.js` | Outbound bulk calling (legacy) | `service_numbers`, `contacts` | None (legacy) |
-| `/batch-calls` | `batch-calls.js` | Batch outbound calls — CSV upload, scheduling, concurrency, real-time status via Supabase Realtime, conference bridge calling | `batch_calls`, `batch_call_recipients`, `service_numbers`, `agent_configs` | `batch-calls`, `process-batch-calls`, `batch-call-cxml` |
+| `/batch-calls` | `batch-calls.js` | Batch outbound calls — CSV upload, scheduling, concurrency, real-time status via Supabase Realtime, conference bridge calling, recurring batches (hourly/daily/weekly/monthly with parent-child model) | `batch_calls`, `batch_call_recipients`, `service_numbers`, `agent_configs` | `batch-calls`, `process-batch-calls`, `batch-call-cxml` |
 | `/verify-phone` | `verify-phone.js` | Phone verification OTP | `users`, `service_numbers` | `verify-phone-send`, `verify-phone-check` |
 | `/agent-config` | `agent-config.js` | Legacy global agent config | `agent_configs`, `outbound_templates` | `fetch-agent-avatar`, `preview-voice`, `clone-voice` |
 | `/chat-widget/:id` | `chat-widget-settings.js` | Chat widget config | `chat_widgets` | None |
@@ -213,8 +213,8 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 | `warm-transfer-status` | **No JWT** | `call_records` | None | SignalWire webhook |
 | `warm-transfer-twiml` | **No JWT** | `call_records` | SignalWire | SignalWire webhook |
 | `terminate-call` | JWT / API key | `call_records` | LiveKit | agent controls, API |
-| `batch-calls` | JWT / API key | `batch_calls`, `batch_call_recipients`, `service_numbers` | None | batch-calls page, API |
-| `process-batch-calls` | **No JWT** (service role) | `batch_calls`, `batch_call_recipients`, `call_records` | SignalWire (conference bridge) | `batch-calls` function, cron |
+| `batch-calls` | JWT / API key | `batch_calls`, `batch_call_recipients`, `service_numbers` | None | batch-calls page, API. Actions: create, list, list_runs, get, update, start, cancel, pause_series, resume_series. Supports recurring parent-child model. |
+| `process-batch-calls` | **No JWT** (service role) | `batch_calls`, `batch_call_recipients`, `call_records` | SignalWire (conference bridge) | `batch-calls` function, cron. Also handles recurring batch spawning via `spawnDueRecurringChildren()`. |
 | `batch-call-cxml` | **No JWT** | None | None | SignalWire webhook (CXML for conference legs) |
 | `webhook-call-status` | **No JWT** | `call_records` | None | SignalWire webhook |
 | `sip-call-handler` | **No JWT** | `call_records` | SignalWire | SignalWire webhook |
@@ -420,7 +420,7 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 `blog_posts`
 
 ### Batch Calling
-`batch_calls`, `batch_call_recipients`
+`batch_calls` (includes recurrence columns: `recurrence_type`, `recurrence_interval`, `recurrence_end_date`, `recurrence_max_runs`, `recurrence_run_count`, `parent_batch_id`, `occurrence_number`), `batch_call_recipients`
 
 ### Other
 `notification_preferences`, `push_subscriptions`, `webhook_logs`, `scheduled_actions`, `sms_templates`, `voices`, `temp_state`, `call_state_logs`, `collected_call_data`, `transfer_numbers`, `outbound_call_templates`, `cloned_voices`
