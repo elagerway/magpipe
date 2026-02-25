@@ -71,6 +71,69 @@ Deno.serve(async (req) => {
     } else {
       console.log("Call record updated successfully:", updateData);
 
+      // Update batch_call_recipients if this call is part of a batch
+      if (callRecord) {
+        const { data: batchRecipient } = await supabaseClient
+          .from("batch_call_recipients")
+          .select("id, batch_id")
+          .eq("call_record_id", callRecord.id)
+          .maybeSingle();
+
+        if (batchRecipient) {
+          const recipientUpdate: Record<string, any> = { status: dbStatus };
+          if (["completed", "busy", "failed", "no-answer"].includes(callStatus)) {
+            recipientUpdate.completed_at = new Date().toISOString();
+            if (callStatus === "completed") {
+              // Increment batch completed count
+              const { data: batch } = await supabaseClient
+                .from("batch_calls")
+                .select("completed_count")
+                .eq("id", batchRecipient.batch_id)
+                .single();
+              await supabaseClient
+                .from("batch_calls")
+                .update({ completed_count: (batch?.completed_count || 0) + 1, updated_at: new Date().toISOString() })
+                .eq("id", batchRecipient.batch_id);
+            } else {
+              // Increment batch failed count
+              const { data: batch } = await supabaseClient
+                .from("batch_calls")
+                .select("failed_count")
+                .eq("id", batchRecipient.batch_id)
+                .single();
+              await supabaseClient
+                .from("batch_calls")
+                .update({ failed_count: (batch?.failed_count || 0) + 1, updated_at: new Date().toISOString() })
+                .eq("id", batchRecipient.batch_id);
+              recipientUpdate.error_message = callStatus === "busy" ? "Line busy" : callStatus === "no-answer" ? "No answer" : "Call failed";
+            }
+          }
+          await supabaseClient
+            .from("batch_call_recipients")
+            .update(recipientUpdate)
+            .eq("id", batchRecipient.id);
+          console.log(`Batch recipient ${batchRecipient.id} updated to ${recipientUpdate.status}`);
+
+          // Check if batch is complete (no more pending or active recipients)
+          if (["completed", "busy", "failed", "no-answer"].includes(callStatus)) {
+            const { count: remaining } = await supabaseClient
+              .from("batch_call_recipients")
+              .select("*", { count: "exact", head: true })
+              .eq("batch_id", batchRecipient.batch_id)
+              .in("status", ["pending", "calling", "initiated", "ringing", "in_progress"]);
+
+            if ((remaining || 0) === 0) {
+              await supabaseClient
+                .from("batch_calls")
+                .update({ status: "completed", completed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+                .eq("id", batchRecipient.batch_id)
+                .eq("status", "running");
+              console.log(`Batch ${batchRecipient.batch_id} marked completed`);
+            }
+          }
+        }
+      }
+
       // Deduct credits for completed calls with duration
       const durationSeconds = updateData.duration_seconds;
       if (callRecord && callStatus === "completed" && durationSeconds > 0) {

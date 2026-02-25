@@ -138,9 +138,11 @@ async function handleCreate(client: any, userId: string, params: any) {
 
   // If status is 'running' and send_now, trigger processing
   if ((status === 'running' || status === 'scheduled') && send_now) {
-    triggerProcessing(batch.id).catch(err =>
+    try {
+      await triggerProcessing(batch.id)
+    } catch (err) {
       console.error('Failed to trigger processing:', err)
-    )
+    }
   }
 
   return jsonResponse({ batch })
@@ -263,25 +265,49 @@ async function handleStart(client: any, userId: string, params: any) {
     return jsonResponse({ error: 'Batch not found' }, 404)
   }
 
-  if (!['draft', 'scheduled', 'paused'].includes(batch.status)) {
+  if (!['draft', 'scheduled', 'paused', 'cancelled', 'failed', 'completed', 'running'].includes(batch.status)) {
     return jsonResponse({ error: `Cannot start batch in ${batch.status} status` }, 400)
+  }
+
+  const isRerun = ['cancelled', 'failed', 'completed'].includes(batch.status)
+
+  // Reset all recipients back to pending for re-runs
+  if (isRerun) {
+    const { error: resetErr, count: resetCount } = await client
+      .from('batch_call_recipients')
+      .update({ status: 'pending', call_record_id: null, error_message: null, attempted_at: null, completed_at: null })
+      .eq('batch_id', batch_id)
+      .neq('status', 'pending')
+
+    console.log(`Re-run reset: ${resetCount ?? '?'} recipients reset to pending, error: ${resetErr?.message || 'none'}`)
+
+    if (resetErr) {
+      return jsonResponse({ error: 'Failed to reset recipients: ' + resetErr.message }, 500)
+    }
   }
 
   const { error } = await client
     .from('batch_calls')
-    .update({ status: 'running', started_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .update({
+      status: 'running',
+      started_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      ...(isRerun ? { completed_count: 0, failed_count: 0 } : {})
+    })
     .eq('id', batch_id)
 
   if (error) {
     return jsonResponse({ error: error.message }, 500)
   }
 
-  // Trigger processing
-  triggerProcessing(batch_id).catch(err =>
+  // Trigger processing (must await — fire-and-forget can race with recipient reset)
+  try {
+    await triggerProcessing(batch_id)
+  } catch (err) {
     console.error('Failed to trigger processing:', err)
-  )
+  }
 
-  return jsonResponse({ success: true, message: 'Batch started' })
+  return jsonResponse({ success: true, message: isRerun ? 'Batch re-started' : 'Batch started' })
 }
 
 async function handleCancel(client: any, userId: string, params: any) {

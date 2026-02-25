@@ -2636,7 +2636,8 @@ async def entrypoint(ctx: JobContext):
     # Different prompts and behavior based on call direction
     if direction == "outbound":
         # OUTBOUND: Agent is calling someone on behalf of the owner
-        greeting = ""  # Don't greet - wait for destination to answer
+        # Use configured greeting so agent speaks first (instant TTS, no LLM wait)
+        greeting = user_config.get("greeting") or ""
 
         # Use system_prompt (new single-prompt architecture) with fallback to outbound_system_prompt (legacy)
         outbound_prompt = user_config.get("system_prompt") or user_config.get("outbound_system_prompt")
@@ -3642,40 +3643,14 @@ ADMIN MODE ACTIVATED:
                 logger.info("📞 Inbound call - Agent greeted caller (LLM-generated)")
             log_call_state(ctx.room.name, "greeting_spoken", "agent", {"direction": "inbound"})
         else:
-            # Outbound call - don't greet, wait for user to speak
-            logger.info("📞 Outbound call - Agent waiting for user to speak first")
-            log_call_state(ctx.room.name, "waiting_for_user", "agent", {"direction": "outbound"})
-
-            # Warm up ALL connections in background (reduces first-response latency)
-            async def warmup_connections():
-                try:
-                    # 1. Warm up LLM (OpenAI) connection - make a tiny request
-                    openai_key = os.getenv("OPENAI_API_KEY")
-                    if openai_key:
-                        async with aiohttp.ClientSession() as http:
-                            async with http.post(
-                                "https://api.openai.com/v1/chat/completions",
-                                headers={
-                                    "Authorization": f"Bearer {openai_key}",
-                                    "Content-Type": "application/json",
-                                },
-                                json={
-                                    "model": llm_model,
-                                    "messages": [{"role": "user", "content": "hi"}],
-                                    "max_tokens": 1,
-                                },
-                                timeout=aiohttp.ClientTimeout(total=5.0),
-                            ) as resp:
-                                await resp.read()
-                        logger.info("🔥 LLM connection warmed up")
-
-                    # 2. Warm up TTS (ElevenLabs) connection
-                    await session.say("", allow_interruptions=True)
-                    logger.info("🔥 TTS connection warmed up")
-
-                except Exception as e:
-                    logger.debug(f"Connection warmup: {e}")
-            asyncio.ensure_future(warmup_connections())
+            # Outbound call - speak greeting immediately if configured, otherwise wait
+            if greeting:
+                await session.say(greeting, allow_interruptions=True)
+                logger.info("📞 Outbound call - Agent greeted immediately (configured greeting)")
+                log_call_state(ctx.room.name, "greeting_spoken", "agent", {"direction": "outbound"})
+            else:
+                logger.info("📞 Outbound call - No greeting configured, waiting for user to speak")
+                log_call_state(ctx.room.name, "waiting_for_user", "agent", {"direction": "outbound"})
 
     logger.info("✅ Agent session started successfully - ready for calls")
 

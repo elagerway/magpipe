@@ -11,6 +11,7 @@ import { showConfirmModal } from '../components/ConfirmModal.js';
 export default class BatchCallsPage {
   constructor() {
     this.userId = null;
+    this.agents = [];
     this.serviceNumbers = [];
     this.recipients = [];
     this.batches = [];
@@ -18,6 +19,7 @@ export default class BatchCallsPage {
     this.sendNow = true;
     this.reservedConcurrency = 5;
     this.windowDays = [1, 2, 3, 4, 5]; // Mon-Fri default
+    this.editingBatchId = null;
     this.subscription = null;
     this.recipientSubscription = null;
     this.pollInterval = null;
@@ -62,6 +64,18 @@ export default class BatchCallsPage {
         .csv-drop-zone .upload-text { font-size: 0.85rem; color: var(--text-secondary); }
         .csv-drop-zone .upload-hint { font-size: 0.75rem; color: rgba(128,128,128,0.6); margin-top: 0.25rem; }
         .csv-file-input { display: none; }
+
+        /* Manual recipients */
+        .manual-recipients-toggle { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; color: var(--text-secondary); cursor: pointer; margin-top: 0.75rem; }
+        .manual-recipients-toggle:hover { color: var(--primary-color, #6366f1); }
+        .manual-recipients-rows { margin-top: 0.5rem; }
+        .manual-recipient-row { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center; }
+        .manual-recipient-row input { flex: 1; padding: 0.5rem 0.65rem; border: 1px solid rgba(128,128,128,0.25); border-radius: 8px; background: var(--bg-primary, white); color: var(--text-primary); font-size: 0.85rem; outline: none; box-sizing: border-box; }
+        .manual-recipient-row input:focus { border-color: var(--primary-color, #6366f1); }
+        .manual-remove-btn { width: 28px; height: 28px; border: none; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 1.1rem; display: flex; align-items: center; justify-content: center; border-radius: 6px; flex-shrink: 0; }
+        .manual-remove-btn:hover { background: rgba(239,68,68,0.1); color: #ef4444; }
+        .manual-add-btn { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; color: var(--primary-color, #6366f1); cursor: pointer; border: none; background: none; padding: 0.25rem 0; font-weight: 500; }
+        .manual-add-btn:hover { opacity: 0.8; }
 
         /* Send timing */
         .send-toggle { display: flex; gap: 0; border: 1px solid rgba(128,128,128,0.25); border-radius: 8px; overflow: hidden; }
@@ -159,11 +173,19 @@ export default class BatchCallsPage {
                   <input type="text" id="batch-name" class="batch-input" placeholder="Enter">
                 </div>
 
+                <!-- Agent -->
+                <div class="batch-form-section">
+                  <label class="batch-label">Agent</label>
+                  <select id="batch-agent-id" class="batch-select">
+                    <option value="">Loading agents...</option>
+                  </select>
+                </div>
+
                 <!-- From Number -->
                 <div class="batch-form-section">
                   <label class="batch-label">From number</label>
                   <select id="batch-caller-id" class="batch-select">
-                    <option value="">Loading numbers...</option>
+                    <option value="">Select an agent first</option>
                   </select>
                 </div>
 
@@ -183,6 +205,23 @@ export default class BatchCallsPage {
                       <div class="upload-hint">Up to 50 MB</div>
                     </div>
                     <input type="file" class="csv-file-input" id="csv-file-input" accept=".csv">
+                  </div>
+                  <div class="manual-recipients-toggle" id="manual-toggle">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    Add numbers manually
+                  </div>
+                  <div id="manual-recipients-section" style="display: none;">
+                    <div class="manual-recipients-rows" id="manual-rows">
+                      <div class="manual-recipient-row">
+                        <input type="text" placeholder="Name" class="manual-name">
+                        <input type="tel" placeholder="Phone (+1...)" class="manual-phone">
+                        <button class="manual-remove-btn" title="Remove">&times;</button>
+                      </div>
+                    </div>
+                    <button class="manual-add-btn" id="manual-add-row">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                      Add another
+                    </button>
                   </div>
                 </div>
 
@@ -288,7 +327,7 @@ export default class BatchCallsPage {
     `;
 
     this.attachEventListeners();
-    await this.loadServiceNumbers();
+    await this.loadAgents();
     await this.loadBatches();
     this.subscribeToUpdates();
     this.startPolling();
@@ -398,6 +437,62 @@ export default class BatchCallsPage {
     const saveDraftBtn = document.getElementById('btn-save-draft');
     if (saveDraftBtn) saveDraftBtn.addEventListener('click', () => this.saveBatch('draft'));
 
+    // Manual recipients toggle
+    const manualToggle = document.getElementById('manual-toggle');
+    const manualSection = document.getElementById('manual-recipients-section');
+    if (manualToggle && manualSection) {
+      manualToggle.addEventListener('click', () => {
+        const showing = manualSection.style.display !== 'none';
+        manualSection.style.display = showing ? 'none' : 'block';
+        manualToggle.innerHTML = showing
+          ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add numbers manually'
+          : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Hide manual entry';
+      });
+    }
+
+    // Manual add row
+    const addRowBtn = document.getElementById('manual-add-row');
+    if (addRowBtn) {
+      addRowBtn.addEventListener('click', () => this.addManualRow());
+    }
+
+    // Manual remove buttons (delegate)
+    const manualRows = document.getElementById('manual-rows');
+    if (manualRows) {
+      manualRows.addEventListener('click', (e) => {
+        const removeBtn = e.target.closest('.manual-remove-btn');
+        if (removeBtn) {
+          const row = removeBtn.closest('.manual-recipient-row');
+          const allRows = manualRows.querySelectorAll('.manual-recipient-row');
+          if (allRows.length > 1) {
+            row.remove();
+          } else {
+            // Clear the last row instead of removing it
+            row.querySelector('.manual-name').value = '';
+            row.querySelector('.manual-phone').value = '';
+          }
+          this.applyManualRecipients();
+        }
+      });
+
+      // Live update recipients on input
+      manualRows.addEventListener('input', () => this.applyManualRecipients());
+    }
+
+    // Agent selection → load numbers for that agent
+    const agentSelect = document.getElementById('batch-agent-id');
+    if (agentSelect) {
+      agentSelect.addEventListener('change', () => {
+        const agentId = agentSelect.value;
+        if (agentId) {
+          this.loadAgentNumbers(agentId);
+        } else {
+          const callerSelect = document.getElementById('batch-caller-id');
+          if (callerSelect) callerSelect.innerHTML = '<option value="">Select an agent first</option>';
+        }
+      });
+    }
+
     // Send
     const sendBtn = document.getElementById('btn-send');
     if (sendBtn) sendBtn.addEventListener('click', () => this.confirmAndSend());
@@ -435,28 +530,89 @@ export default class BatchCallsPage {
     if (batchValue) batchValue.textContent = Math.max(0, 20 - this.reservedConcurrency);
   }
 
-  async loadServiceNumbers() {
+  async loadAgents() {
+    const select = document.getElementById('batch-agent-id');
+    if (!select) return;
+
+    const { data: agents, error } = await supabase
+      .from('agent_configs')
+      .select('id, name')
+      .eq('user_id', this.userId)
+      .eq('is_active', true)
+      .order('name', { ascending: true });
+
+    if (error || !agents?.length) {
+      select.innerHTML = '<option value="">No agents available</option>';
+      return;
+    }
+
+    this.agents = agents;
+    select.innerHTML = '<option value="">Select an agent</option>' +
+      agents.map(a => `<option value="${a.id}">${this.escapeHtml(a.name)}</option>`).join('');
+  }
+
+  async loadAgentNumbers(agentId) {
     const select = document.getElementById('batch-caller-id');
     if (!select) return;
 
+    select.innerHTML = '<option value="">Loading numbers...</option>';
+
     const { data: numbers, error } = await supabase
       .from('service_numbers')
-      .select('phone_number, agent_id, agent_configs(id, name)')
+      .select('phone_number')
       .eq('user_id', this.userId)
+      .eq('agent_id', agentId)
       .eq('is_active', true)
       .order('created_at', { ascending: false });
 
     if (error || !numbers?.length) {
-      select.innerHTML = '<option value="">No numbers available</option>';
+      select.innerHTML = '<option value="">No numbers for this agent</option>';
       return;
     }
 
     this.serviceNumbers = numbers;
-    select.innerHTML = numbers.map(n => {
-      const agentName = n.agent_configs?.name || '';
-      const label = agentName ? `${n.phone_number} (${agentName})` : n.phone_number;
-      return `<option value="${n.phone_number}" data-agent-id="${n.agent_id || ''}">${label}</option>`;
-    }).join('');
+    select.innerHTML = numbers.map(n =>
+      `<option value="${n.phone_number}">${n.phone_number}</option>`
+    ).join('');
+  }
+
+  addManualRow() {
+    const container = document.getElementById('manual-rows');
+    if (!container) return;
+    const row = document.createElement('div');
+    row.className = 'manual-recipient-row';
+    row.innerHTML = `
+      <input type="text" placeholder="Name" class="manual-name">
+      <input type="tel" placeholder="Phone (+1...)" class="manual-phone">
+      <button class="manual-remove-btn" title="Remove">&times;</button>
+    `;
+    container.appendChild(row);
+    row.querySelector('.manual-name').focus();
+  }
+
+  applyManualRecipients() {
+    const container = document.getElementById('manual-rows');
+    if (!container) return;
+
+    const manualRecipients = [];
+    container.querySelectorAll('.manual-recipient-row').forEach((row, i) => {
+      const name = row.querySelector('.manual-name')?.value?.trim();
+      const phone = row.querySelector('.manual-phone')?.value?.trim();
+      if (phone) {
+        manualRecipients.push({
+          name: name || phone,
+          phone_number: phone,
+          sort_order: i
+        });
+      }
+    });
+
+    // Merge: CSV recipients first, then manual ones
+    const csvRecipients = this.recipients.filter(r => r._source !== 'manual');
+    const combined = [...csvRecipients, ...manualRecipients.map(r => ({ ...r, _source: 'manual', sort_order: csvRecipients.length + r.sort_order }))];
+    this.recipients = combined;
+    this.renderRecipients();
+    this.updateSendButton();
   }
 
   // CSV parsing
@@ -500,10 +656,12 @@ export default class BatchCallsPage {
         if (lastNameIdx !== -1 && values[lastNameIdx]) name = name ? `${name} ${values[lastNameIdx]}` : values[lastNameIdx];
         if (!name) name = phone;
 
-        recipients.push({ name, phone_number: phone, sort_order: i - 1 });
+        recipients.push({ name, phone_number: phone, sort_order: i - 1, _source: 'csv' });
       }
 
-      this.recipients = recipients;
+      // Merge with any manual recipients
+      const manualRecipients = this.recipients.filter(r => r._source === 'manual');
+      this.recipients = [...recipients, ...manualRecipients.map((r, i) => ({ ...r, sort_order: recipients.length + i }))];
       this.renderRecipients();
       this.updateSendButton();
 
@@ -563,11 +721,50 @@ export default class BatchCallsPage {
     return div.innerHTML;
   }
 
+  recipientStatusLabel(status) {
+    const labels = {
+      pending: 'Pending',
+      calling: 'Initiating',
+      initiated: 'Initiating',
+      ringing: 'Ringing',
+      in_progress: 'Connected',
+      'in-progress': 'Connected',
+      answered: 'Connected',
+      completed: 'Hungup',
+      failed: 'Failed',
+      skipped: 'Skipped',
+      no_answer: 'No Answer',
+      'no-answer': 'No Answer',
+      busy: 'Busy',
+      canceled: 'Cancelled'
+    };
+    return labels[status] || status;
+  }
+
+  recipientBadgeStyle(status) {
+    const styles = {
+      pending: 'background: rgba(156,163,175,0.1); color: #9ca3af;',
+      calling: 'background: rgba(245,158,11,0.1); color: #f59e0b;',
+      initiated: 'background: rgba(245,158,11,0.1); color: #f59e0b;',
+      ringing: 'background: rgba(59,130,246,0.1); color: #3b82f6;',
+      in_progress: 'background: rgba(16,185,129,0.1); color: #10b981;',
+      'in-progress': 'background: rgba(16,185,129,0.1); color: #10b981;',
+      answered: 'background: rgba(16,185,129,0.1); color: #10b981;',
+      completed: 'background: rgba(16,185,129,0.1); color: #10b981;',
+      failed: 'background: rgba(239,68,68,0.1); color: #ef4444;',
+      skipped: 'background: rgba(107,114,128,0.1); color: #6b7280;',
+      no_answer: 'background: rgba(249,115,22,0.1); color: #f97316;',
+      'no-answer': 'background: rgba(249,115,22,0.1); color: #f97316;',
+      busy: 'background: rgba(249,115,22,0.1); color: #f97316;',
+      canceled: 'background: rgba(107,114,128,0.1); color: #6b7280;'
+    };
+    return `display: inline-block; padding: 0.15rem 0.5rem; border-radius: 10px; font-size: 0.7rem; font-weight: 500; white-space: nowrap; ${styles[status] || styles.pending}`;
+  }
+
   getFormData() {
     const name = document.getElementById('batch-name')?.value?.trim() || '';
-    const callerSelect = document.getElementById('batch-caller-id');
-    const callerId = callerSelect?.value || '';
-    const agentId = callerSelect?.selectedOptions[0]?.dataset?.agentId || null;
+    const callerId = document.getElementById('batch-caller-id')?.value || '';
+    const agentId = document.getElementById('batch-agent-id')?.value || null;
     const scheduledAt = !this.sendNow ? document.getElementById('batch-schedule-time')?.value : null;
     const windowStart = document.getElementById('window-start')?.value || '00:00';
     const windowEnd = document.getElementById('window-end')?.value || '23:59';
@@ -582,12 +779,13 @@ export default class BatchCallsPage {
       window_end_time: windowEnd,
       window_days: this.windowDays,
       reserved_concurrency: this.reservedConcurrency,
-      recipients: this.recipients
+      recipients: this.recipients.map(({ _source, ...r }) => r)
     };
   }
 
   validateForm(data) {
     if (!data.name) { showToast('Please enter a batch call name', 'warning'); return false; }
+    if (!data.agent_id) { showToast('Please select an agent', 'warning'); return false; }
     if (!data.caller_id) { showToast('Please select a from number', 'warning'); return false; }
     if (data.recipients.length === 0) { showToast('Please upload recipients', 'warning'); return false; }
     if (!data.send_now && !data.scheduled_at) { showToast('Please select a schedule time', 'warning'); return false; }
@@ -599,33 +797,54 @@ export default class BatchCallsPage {
     if (status !== 'draft' && !this.validateForm(data)) return;
     if (status === 'draft' && !data.name) { showToast('Please enter a batch call name', 'warning'); return; }
 
-    try {
-      // Create batch via direct Supabase query (edge function not deployed yet)
-      const { data: batch, error } = await supabase
-        .from('batch_calls')
-        .insert({
-          user_id: this.userId,
-          name: data.name,
-          caller_id: data.caller_id,
-          agent_id: data.agent_id || null,
-          status,
-          send_now: data.send_now,
-          scheduled_at: data.scheduled_at,
-          window_start_time: data.window_start_time,
-          window_end_time: data.window_end_time,
-          window_days: data.window_days,
-          reserved_concurrency: data.reserved_concurrency,
-          total_recipients: data.recipients.length
-        })
-        .select()
-        .single();
+    const batchPayload = {
+      user_id: this.userId,
+      name: data.name,
+      caller_id: data.caller_id,
+      agent_id: data.agent_id || null,
+      status,
+      send_now: data.send_now,
+      scheduled_at: data.scheduled_at,
+      window_start_time: data.window_start_time,
+      window_end_time: data.window_end_time,
+      window_days: data.window_days,
+      reserved_concurrency: data.reserved_concurrency,
+      total_recipients: data.recipients.length
+    };
 
-      if (error) throw error;
+    try {
+      let batchId;
+
+      if (this.editingBatchId) {
+        // Update existing batch
+        const { error } = await supabase
+          .from('batch_calls')
+          .update(batchPayload)
+          .eq('id', this.editingBatchId);
+        if (error) throw error;
+        batchId = this.editingBatchId;
+
+        // Replace recipients: delete old, insert new
+        const { error: delErr } = await supabase
+          .from('batch_call_recipients')
+          .delete()
+          .eq('batch_id', batchId);
+        if (delErr) throw delErr;
+      } else {
+        // Create new batch
+        const { data: batch, error } = await supabase
+          .from('batch_calls')
+          .insert(batchPayload)
+          .select()
+          .single();
+        if (error) throw error;
+        batchId = batch.id;
+      }
 
       // Insert recipients
       if (data.recipients.length > 0) {
         const recipientRows = data.recipients.map((r, i) => ({
-          batch_id: batch.id,
+          batch_id: batchId,
           phone_number: r.phone_number,
           name: r.name,
           sort_order: i
@@ -638,9 +857,11 @@ export default class BatchCallsPage {
         if (recipErr) throw recipErr;
       }
 
-      showToast(status === 'draft' ? 'Batch saved as draft' : `Batch created with ${data.recipients.length} recipients`, 'success');
+      const action = this.editingBatchId ? 'updated' : (status === 'draft' ? 'saved as draft' : `created with ${data.recipients.length} recipients`);
+      showToast(`Batch ${action}`, 'success');
 
       // Reset form state then switch to history view
+      this.editingBatchId = null;
       this.resetForm();
       this.switchToView('history');
 
@@ -654,13 +875,13 @@ export default class BatchCallsPage {
     const data = this.getFormData();
     if (!this.validateForm(data)) return;
 
-    showConfirmModal({
+    const confirmed = await showConfirmModal({
       title: 'Start Batch Calls',
       message: `This will call ${data.recipients.length} recipients from ${data.caller_id}. ${this.sendNow ? 'Calls will start immediately.' : `Calls scheduled for ${new Date(data.scheduled_at).toLocaleString()}.`}`,
       confirmText: 'Send',
-      confirmStyle: 'primary',
-      onConfirm: () => this.saveBatch(this.sendNow ? 'running' : 'scheduled')
+      confirmStyle: 'primary'
     });
+    if (confirmed) this.saveBatch(this.sendNow ? 'running' : 'scheduled');
   }
 
   async loadBatches() {
@@ -685,19 +906,47 @@ export default class BatchCallsPage {
       return;
     }
 
+    // Fetch live recipient statuses for active batches
+    const activeBatchIds = this.batches.filter(b => b.status === 'running').map(b => b.id);
+    const recipientStatusMap = {};
+    if (activeBatchIds.length > 0) {
+      const { data: recipients } = await supabase
+        .from('batch_call_recipients')
+        .select('batch_id, status')
+        .in('batch_id', activeBatchIds);
+      if (recipients) {
+        for (const r of recipients) {
+          if (!recipientStatusMap[r.batch_id]) recipientStatusMap[r.batch_id] = {};
+          recipientStatusMap[r.batch_id][r.status] = (recipientStatusMap[r.batch_id][r.status] || 0) + 1;
+        }
+      }
+    }
+
     content.innerHTML = `
       <div class="batch-history-list">
-        ${this.batches.map(b => `
+        ${this.batches.map(b => {
+          const statuses = recipientStatusMap[b.id];
+          let liveStatus = '';
+          if (statuses) {
+            const parts = [];
+            if (statuses.calling || statuses.initiated) parts.push(`<span style="color: #f59e0b;">${(statuses.calling || 0) + (statuses.initiated || 0)} initiating</span>`);
+            if (statuses.ringing) parts.push(`<span style="color: #3b82f6;">${statuses.ringing} ringing</span>`);
+            if (statuses['in-progress'] || statuses.in_progress || statuses.answered) parts.push(`<span style="color: #10b981;">${(statuses['in-progress'] || 0) + (statuses.in_progress || 0) + (statuses.answered || 0)} connected</span>`);
+            if (statuses.completed) parts.push(`<span style="color: #10b981;">${statuses.completed} hungup</span>`);
+            if (statuses.failed) parts.push(`<span style="color: #ef4444;">${statuses.failed} failed</span>`);
+            if (parts.length) liveStatus = parts.join(' &middot; ');
+          }
+          return `
           <div class="batch-history-row" data-batch-id="${b.id}">
             <div>
               <div class="batch-history-name">${this.escapeHtml(b.name)}</div>
               <div class="batch-history-date">${new Date(b.created_at).toLocaleDateString()} ${new Date(b.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
             </div>
             <span class="batch-status-badge batch-status-${b.status}">${b.status}</span>
-            <span class="batch-history-counts">${b.completed_count}/${b.total_recipients} completed</span>
-            <span class="batch-history-counts">${b.failed_count} failed</span>
-          </div>
-        `).join('')}
+            <span class="batch-history-counts">${liveStatus || `${b.completed_count || 0}/${b.total_recipients} completed`}</span>
+            <span class="batch-history-counts">${b.failed_count || 0} failed</span>
+          </div>`;
+        }).join('')}
       </div>
     `;
 
@@ -720,11 +969,6 @@ export default class BatchCallsPage {
       .eq('batch_id', batchId)
       .order('sort_order');
 
-    const statusColors = {
-      pending: '#9ca3af', calling: '#f59e0b', completed: '#10b981',
-      failed: '#ef4444', skipped: '#6b7280', no_answer: '#f97316'
-    };
-
     const modalHtml = `
       <div class="contact-modal-overlay" id="batch-detail-modal" style="display: flex;"
            onclick="if(event.target===this)this.style.display='none'">
@@ -734,22 +978,30 @@ export default class BatchCallsPage {
             <button class="close-modal-btn" onclick="document.getElementById('batch-detail-modal').style.display='none'">&times;</button>
           </div>
           <div class="contact-modal-body scrollable">
-            <div style="display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;">
+            <div style="display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; align-items: center;">
               <span class="batch-status-badge batch-status-${batch.status}" style="font-size: 0.85rem;">${batch.status}</span>
               <span style="font-size: 0.85rem; color: var(--text-secondary);">From: ${batch.caller_id}</span>
               <span style="font-size: 0.85rem; color: var(--text-secondary);">${batch.total_recipients} recipients</span>
             </div>
             ${(recipients || []).map((r, i) => `
-              <div data-recipient-id="${r.id}" style="display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 0; border-bottom: 1px solid rgba(128,128,128,0.08);">
+              <div data-recipient-id="${r.id}" style="display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 0; border-bottom: 1px solid rgba(128,128,128,0.08);">
                 <span class="recipient-index">${i + 1}</span>
-                <span style="flex: 1; font-weight: 500;">${this.escapeHtml(r.name || r.phone_number)}</span>
-                <span style="color: var(--text-secondary); font-size: 0.85rem;">${r.phone_number}</span>
-                <span class="status-dot" style="width: 10px; height: 10px; border-radius: 50%; background: ${statusColors[r.status] || '#9ca3af'};" title="${r.status}"></span>
+                <div style="flex: 1; min-width: 0;">
+                  <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <span style="font-weight: 500;">${this.escapeHtml(r.name || r.phone_number)}</span>
+                    <span style="color: var(--text-secondary); font-size: 0.85rem;">${r.phone_number}</span>
+                  </div>
+                  ${r.error_message ? `<div class="recipient-error" style="font-size: 0.75rem; color: #ef4444; margin-top: 0.2rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${this.escapeHtml(r.error_message)}</div>` : ''}
+                </div>
+                <span class="recipient-status-badge" style="${this.recipientBadgeStyle(r.status)}">${this.recipientStatusLabel(r.status)}</span>
+                ${batch.status !== 'running' && batch.status !== 'draft' ? `<button class="retry-recipient-btn" data-recipient-id="${r.id}" data-phone="${r.phone_number}" style="border: none; background: none; color: var(--primary-color, #6366f1); cursor: pointer; font-size: 0.75rem; font-weight: 500; padding: 0.2rem 0.4rem; border-radius: 6px; white-space: nowrap;" title="Retry this call">Retry</button>` : ''}
               </div>
             `).join('')}
           </div>
           <div class="contact-modal-footer">
-            ${batch.status === 'draft' ? `<button class="btn btn-primary" onclick="document.getElementById('batch-detail-modal').style.display='none'">Edit</button>` : ''}
+            ${batch.status === 'draft' ? `<button class="btn btn-primary" id="send-batch-btn">Send Calls</button>` : ''}
+            ${['cancelled', 'failed', 'completed'].includes(batch.status) ? `<button class="btn btn-primary" id="rerun-batch-btn">Re-run All</button>` : ''}
+            ${batch.status === 'draft' ? `<button class="btn btn-secondary" id="edit-batch-btn">Edit</button>` : ''}
             ${batch.status === 'running' ? `<button class="btn btn-secondary" id="cancel-batch-btn">Cancel Batch</button>` : ''}
             <button class="btn btn-secondary" onclick="document.getElementById('batch-detail-modal').style.display='none'">Close</button>
           </div>
@@ -800,6 +1052,212 @@ export default class BatchCallsPage {
         }
       });
     }
+
+    // Send batch handler
+    const sendBatchBtn = document.getElementById('send-batch-btn');
+    if (sendBatchBtn) {
+      sendBatchBtn.addEventListener('click', async () => {
+        // Hide detail modal so confirm modal is visible above it
+        document.getElementById('batch-detail-modal').style.display = 'none';
+        if (this.recipientSubscription) { this.recipientSubscription.unsubscribe(); this.recipientSubscription = null; }
+
+        const confirmed = await showConfirmModal({
+          title: 'Send Batch Calls',
+          message: `Start calling ${batch.total_recipients} recipients from ${batch.caller_id} now?`,
+          confirmText: 'Send',
+          confirmStyle: 'primary'
+        });
+
+        if (confirmed) {
+          try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/batch-calls`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session.access_token}`
+              },
+              body: JSON.stringify({ action: 'start', batch_id: batchId })
+            });
+            const result = await resp.json();
+            if (!resp.ok) throw new Error(result.error || 'Failed to start batch');
+            showToast('Batch calls started', 'success');
+            await this.loadBatches();
+          } catch (err) {
+            showToast('Failed to start batch: ' + err.message, 'error');
+          }
+        } else {
+          // Re-show the detail modal if user cancelled
+          document.getElementById('batch-detail-modal').style.display = 'flex';
+        }
+      });
+    }
+
+    // Re-run batch handler
+    const rerunBtn = document.getElementById('rerun-batch-btn');
+    if (rerunBtn) {
+      rerunBtn.addEventListener('click', async () => {
+        document.getElementById('batch-detail-modal').style.display = 'none';
+        if (this.recipientSubscription) { this.recipientSubscription.unsubscribe(); this.recipientSubscription = null; }
+
+        const confirmed = await showConfirmModal({
+          title: 'Re-run Batch',
+          message: `Re-run ${batch.total_recipients} recipients from ${batch.caller_id}? Skipped and failed recipients will be retried.`,
+          confirmText: 'Re-run',
+          confirmStyle: 'primary'
+        });
+
+        if (confirmed) {
+          try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/batch-calls`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session.access_token}`
+              },
+              body: JSON.stringify({ action: 'start', batch_id: batchId })
+            });
+            const result = await resp.json();
+            if (!resp.ok) throw new Error(result.error || 'Failed to re-run batch');
+            showToast('Batch re-started', 'success');
+            await this.loadBatches();
+          } catch (err) {
+            showToast('Failed to re-run batch: ' + err.message, 'error');
+          }
+        } else {
+          document.getElementById('batch-detail-modal').style.display = 'flex';
+        }
+      });
+    }
+
+    // Edit batch handler
+    const editBtn = document.getElementById('edit-batch-btn');
+    if (editBtn) {
+      editBtn.addEventListener('click', () => {
+        document.getElementById('batch-detail-modal').style.display = 'none';
+        if (this.recipientSubscription) { this.recipientSubscription.unsubscribe(); this.recipientSubscription = null; }
+        this.editBatch(batch, recipients || []);
+      });
+    }
+
+    // Individual retry handlers
+    const modal = document.getElementById('batch-detail-modal');
+    if (modal) {
+      modal.querySelectorAll('.retry-recipient-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const recipientId = btn.dataset.recipientId;
+          btn.textContent = 'Calling...';
+          btn.disabled = true;
+
+          try {
+            // Reset recipient to pending
+            await supabase
+              .from('batch_call_recipients')
+              .update({ status: 'pending', error_message: null, call_record_id: null, attempted_at: null, completed_at: null })
+              .eq('id', recipientId);
+
+            // Ensure batch is running so process-batch-calls will pick it up
+            await supabase
+              .from('batch_calls')
+              .update({ status: 'running', updated_at: new Date().toISOString() })
+              .eq('id', batchId);
+
+            // Trigger processing
+            const { data: { session } } = await supabase.auth.getSession();
+            await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/batch-calls`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+              body: JSON.stringify({ action: 'start', batch_id: batchId })
+            });
+
+            // Update UI
+            const badge = btn.closest('[data-recipient-id]')?.querySelector('.recipient-status-badge');
+            if (badge) { badge.textContent = 'Initiating'; badge.setAttribute('style', this.recipientBadgeStyle('calling')); }
+            const errorEl = btn.closest('[data-recipient-id]')?.querySelector('.recipient-error');
+            if (errorEl) errorEl.remove();
+            btn.textContent = 'Retried';
+          } catch (err) {
+            btn.textContent = 'Failed';
+            showToast('Retry failed: ' + err.message, 'error');
+          }
+        });
+      });
+    }
+  }
+
+  async editBatch(batch, recipients) {
+    // Switch to create view without resetting
+    this.currentView = 'create';
+    this.editingBatchId = batch.id;
+    document.querySelectorAll('.batch-tab').forEach(t => t.classList.toggle('active', t.dataset.view === 'create'));
+    document.getElementById('batch-create-view').style.display = 'block';
+    document.getElementById('batch-history-view').style.display = 'none';
+    this.unsubscribeAll();
+
+    // Pre-fill name
+    const nameInput = document.getElementById('batch-name');
+    if (nameInput) nameInput.value = batch.name || '';
+
+    // Pre-fill agent dropdown and load its numbers
+    const agentSelect = document.getElementById('batch-agent-id');
+    if (agentSelect && batch.agent_id) {
+      agentSelect.value = batch.agent_id;
+      await this.loadAgentNumbers(batch.agent_id);
+      // Now select the caller number
+      const callerSelect = document.getElementById('batch-caller-id');
+      if (callerSelect && batch.caller_id) callerSelect.value = batch.caller_id;
+    }
+
+    // Pre-fill recipients
+    this.recipients = recipients.map((r, i) => ({
+      name: r.name || r.phone_number,
+      phone_number: r.phone_number,
+      sort_order: i,
+      _source: 'csv'
+    }));
+    this.renderRecipients();
+    this.updateSendButton();
+
+    // Pre-fill scheduling
+    this.sendNow = batch.send_now !== false;
+    document.querySelectorAll('.send-toggle-btn').forEach(btn => {
+      btn.classList.toggle('active', (btn.dataset.send === 'now') === this.sendNow);
+    });
+    this.updateSendToggleRadios();
+    const picker = document.getElementById('schedule-picker');
+    if (picker) picker.classList.toggle('visible', !this.sendNow);
+    if (!this.sendNow && batch.scheduled_at) {
+      const scheduleInput = document.getElementById('batch-schedule-time');
+      if (scheduleInput) scheduleInput.value = new Date(batch.scheduled_at).toISOString().slice(0, 16);
+    }
+
+    // Pre-fill call window
+    if (batch.window_start_time) {
+      const ws = document.getElementById('window-start');
+      if (ws) ws.value = batch.window_start_time;
+    }
+    if (batch.window_end_time) {
+      const we = document.getElementById('window-end');
+      if (we) we.value = batch.window_end_time;
+    }
+    if (batch.window_days) {
+      this.windowDays = batch.window_days;
+      document.querySelectorAll('.day-chip').forEach(chip => {
+        chip.classList.toggle('active', this.windowDays.includes(parseInt(chip.dataset.day)));
+      });
+    }
+    this.updateWindowSummary();
+
+    // Pre-fill concurrency
+    if (batch.reserved_concurrency != null) {
+      this.reservedConcurrency = batch.reserved_concurrency;
+      const valueEl = document.getElementById('concurrency-value');
+      if (valueEl) valueEl.textContent = this.reservedConcurrency;
+      const batchValue = document.getElementById('batch-concurrency-value');
+      if (batchValue) batchValue.textContent = Math.max(0, 20 - this.reservedConcurrency);
+    }
   }
 
   switchToView(view) {
@@ -820,6 +1278,7 @@ export default class BatchCallsPage {
 
   resetForm() {
     // Reset instance state
+    this.editingBatchId = null;
     this.recipients = [];
     this.sendNow = true;
     this.reservedConcurrency = 5;
@@ -903,20 +1362,34 @@ export default class BatchCallsPage {
         event: 'UPDATE', schema: 'public', table: 'batch_call_recipients',
         filter: `batch_id=eq.${batchId}`
       }, (payload) => {
-        // Update the status dot in the open modal without re-fetching
         const modal = document.getElementById('batch-detail-modal');
         if (!modal || modal.style.display === 'none') return;
         const row = payload.new;
         if (!row) return;
-        // Find matching recipient row by phone number and update status dot
-        const rows = modal.querySelectorAll('[data-recipient-id]');
-        rows.forEach(el => {
-          if (el.dataset.recipientId === row.id) {
-            const dot = el.querySelector('.status-dot');
-            const colors = { pending: '#9ca3af', calling: '#f59e0b', completed: '#10b981', failed: '#ef4444', skipped: '#6b7280', no_answer: '#f97316' };
-            if (dot) { dot.style.background = colors[row.status] || '#9ca3af'; dot.title = row.status; }
+
+        const el = modal.querySelector(`[data-recipient-id="${row.id}"]`);
+        if (!el) return;
+
+        // Update status badge
+        const badge = el.querySelector('.recipient-status-badge');
+        if (badge) {
+          badge.textContent = this.recipientStatusLabel(row.status);
+          badge.setAttribute('style', this.recipientBadgeStyle(row.status));
+        }
+
+        // Show/update error message
+        let errorEl = el.querySelector('.recipient-error');
+        if (row.error_message) {
+          if (!errorEl) {
+            errorEl = document.createElement('div');
+            errorEl.className = 'recipient-error';
+            errorEl.style.cssText = 'font-size: 0.75rem; color: #ef4444; margin-top: 0.2rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;';
+            el.querySelector('div')?.appendChild(errorEl);
           }
-        });
+          errorEl.textContent = row.error_message;
+        } else if (errorEl) {
+          errorEl.remove();
+        }
       })
       .subscribe();
   }

@@ -925,3 +925,109 @@ Multiple fixes and features added to the chat widget backend:
 ### Pending
 - `send_info_email` endpoint on SeniorHome side — untested end-to-end (depends on their API being live)
 
+---
+
+## Session: 2026-02-24 (Session 5) — Batch Calls Bug Fixes, Recording, Agent Greeting
+
+### Completed — Batch Calls Improvements
+
+#### 1. Badge labels updated
+- Initiating, Ringing, Connected, Hungup (+ raw status for terminal states)
+- Updated `recipientStatusLabel()` and `recipientBadgeStyle()` in batch-calls.js
+
+#### 2. Real-time status from SignalWire callbacks (not polling)
+- `outbound-call-status` now uses mapped `dbStatus` for batch_call_recipients
+- Completion checks include all active statuses: pending, calling, initiated, ringing, in_progress
+- Added `batch_call_recipients` to Supabase Realtime publication
+
+#### 3. Re-run fix
+- Root cause: `updated_at` column doesn't exist on `batch_call_recipients` — caused silent Supabase error
+- Simplified reset from `.in('status', [...])` to `.neq('status', 'pending')`
+- Added error checking and logging
+
+#### 4. Parallel leg initiation
+- Agent SIP + PSTN legs now fire with `Promise.all` (was sequential)
+- Reduced inter-recipient delay from 2000ms to 500ms
+
+#### 5. Recording delivery
+- Moved `record` from `<Conference>` to `<Dial>` (matches working outbound-call-swml pattern)
+- Pass `call_record_id` through: process-batch-calls → CXML URL → batch-call-cxml → recordingStatusCallback
+- Added XML escaping (`&` → `&amp;`) for CXML attribute URLs
+
+#### 6. Agent greeting fix
+- Agent now speaks configured greeting immediately via `session.say()` on outbound calls
+- Removes multi-second delay caused by LLM round-trip (`generate_reply`)
+
+### Files Modified
+- `src/pages/batch-calls.js` — Badge labels, realtime status
+- `supabase/functions/batch-calls/index.ts` — Re-run fix (removed updated_at, await triggerProcessing)
+- `supabase/functions/process-batch-calls/index.ts` — Parallel legs, recording call_record_id, 500ms delay
+- `supabase/functions/batch-call-cxml/index.ts` — Recording on Dial, XML escaping, call_record_id passthrough
+- `supabase/functions/outbound-call-status/index.ts` — Consistent status mapping for batch recipients
+- `agents/livekit-voice-agent/agent.py` — Outbound greeting via session.say()
+- `ARCHITECTURE.md` — Added batch-call-cxml edge function
+
+### Edge Functions Deployed
+- `batch-calls`, `process-batch-calls`, `batch-call-cxml`, `outbound-call-status` (all with `--no-verify-jwt`)
+
+---
+
+## Session: 2026-02-24 (Session 4) — Worktree Cleanup, Outbound Call Fixes, Deploy Safety
+
+### Worktree Cleanup
+- **Merged `claude/pedantic-newton`** into master — had 10 unmerged commits including batch calls, chat widget auth, custom function CRUD, semantic memory config
+- **Deleted `claude/goofy-gates`** — stale worktree with no unique commits (behind master)
+- **Lesson:** Worktree branches can get stranded and not merged. Always check `git worktree list` and `git log master..<branch>` for unmerged work.
+
+### Removed Legacy /bulk-calling
+- Deleted `src/pages/bulk-calling.js`
+- Removed route from `src/router.js`
+- Removed "Bulk Calling" link and event listener from `src/pages/phone/dialpad.js`
+- Removed legacy note from `CLAUDE.md`
+- `/batch-calls` is the replacement (already live and working)
+
+### Fixed Outbound Callback Calls Dropping
+- **Root cause:** `callback-call-handler` edge function was deployed with `verify_jwt: true`
+- SignalWire sends webhook with no JWT → Supabase rejected with 401 → call dropped after connecting
+- **Fix:** Redeployed with `--no-verify-jwt`
+
+### Fixed Balance Check Blocking Calls
+- Changed threshold in `_shared/balance-check.ts` from `balance > 0` to `balance > -50`
+- Both `initiate-callback-call` and `initiate-bridged-call` redeployed
+- Added frontend low balance warning modal in `call-handler.js` — shows when dialing with negative balance, dismissible, call still proceeds
+
+### Fixed signalwire-status-webhook Deploy Error
+- Stray `import` statement at line 307 (inside function body) caused bundling failure
+- Moved import to top of file where it belongs
+
+### Created Deploy Safety Script (`scripts/deploy-functions.sh`)
+- Maintains authoritative list of functions requiring `--no-verify-jwt`
+- `./scripts/deploy-functions.sh <name>` — deploys with correct JWT flag
+- `./scripts/deploy-functions.sh --check` — audits all deployed functions vs expected settings
+- `./scripts/deploy-functions.sh --dry-run` — shows what would be deployed
+- `./scripts/deploy-functions.sh` — deploys ALL functions with correct settings
+
+### Fixed 13 Edge Functions with Wrong JWT Settings
+Functions that were silently broken (JWT ON, should be OFF):
+- `signalwire-status-webhook`, `sip-call-handler`, `forward-to-sip`, `transfer-cxml` (call handling)
+- `stripe-webhook` (payment webhooks)
+- `livekit-swml-handler` (LiveKit voice)
+- `send-contact-email`, `send-custom-plan-inquiry` (public contact forms)
+- `cal-com-oauth-callback` (calendar OAuth)
+- `reconcile-recordings`, `sync-area-codes` (cron jobs)
+- `webhook-campaign-status`, `webhook-sms-status` (status callbacks)
+
+### Documentation Updated
+- `README.md` — Added batch-calls.js, edge functions, DB tables
+- `CLAUDE.md` — Removed /bulk-calling legacy note
+- `ARCHITECTURE.md` — Already had batch calls docs from merge
+- Open-source repo (`elagerway/magpipe`) synced twice
+
+### Verification (All Passed)
+- `/bulk-calling` fully removed, `/batch-calls` route and page intact
+- Balance check passes at -$7.65 for both callback and bridged calls
+- JWT audit: zero WRONG entries
+- `signalwire-status-webhook` responds correctly after import fix
+- All 9 nav items preserved
+- Dialpad HTML structure and event listeners intact
+
