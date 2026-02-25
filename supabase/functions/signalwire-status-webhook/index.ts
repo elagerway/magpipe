@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { corsHeaders, handleCors } from '../_shared/cors.ts'
 import { shouldNotify, filterExtractedDataForApp } from '../_shared/app-function-prefs.ts'
 
 Deno.serve(async (req) => {
@@ -304,7 +305,6 @@ async function sendSlackCallNotification(
       } else if (contact.name === 'Unknown' || contact.name === 'unknown' || !contact.name) {
         // Contact exists but has no real name - update it
         console.log(`Updating contact name from "${contact.name}" to "${callerName}"`)
-import { corsHeaders, handleCors } from '../_shared/cors.ts'
         const { data: updatedContact, error: updateError } = await supabase
           .from('contacts')
           .update({ name: callerName, updated_at: new Date().toISOString() })
