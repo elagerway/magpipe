@@ -474,6 +474,73 @@ export const callHandlerMethods = {
     });
   },
 
+  showLowBalanceWarning(balance) {
+    // Don't show if already visible
+    if (document.getElementById('low-balance-warning-modal')) return;
+
+    const modal = document.createElement('div');
+    modal.id = 'low-balance-warning-modal';
+    modal.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    `;
+
+    modal.innerHTML = `
+      <div style="
+        background: var(--bg-primary);
+        border-radius: 12px;
+        padding: 1.5rem;
+        max-width: 320px;
+        margin: 1rem;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+      ">
+        <h3 style="margin: 0 0 0.75rem 0; color: var(--text-primary); font-size: 1.125rem;">
+          Low Balance
+        </h3>
+        <p style="margin: 0 0 1.25rem 0; color: var(--text-secondary); font-size: 0.875rem; line-height: 1.5;">
+          Your balance is $${balance.toFixed(2)}. Please add credits to continue using the service.
+        </p>
+        <button id="low-balance-dismiss" style="
+          width: 100%;
+          padding: 0.75rem;
+          background: var(--primary-color, #6366f1);
+          color: white;
+          border: none;
+          border-radius: 8px;
+          font-size: 0.875rem;
+          font-weight: 500;
+          cursor: pointer;
+        ">
+          OK
+        </button>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const dismissBtn = modal.querySelector('#low-balance-dismiss');
+    if (dismissBtn) {
+      dismissBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        modal.remove();
+      });
+    }
+
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        modal.remove();
+      }
+    });
+  },
+
   formatRelativeTime(date) {
     const now = new Date();
     const diffMs = now - date;
@@ -530,6 +597,21 @@ export const callHandlerMethods = {
 
   async initiateCall(phoneNumber, callerIdNumber = null) {
     console.log('Initiating SIP call to:', phoneNumber);
+
+    // Check balance and show warning if negative
+    try {
+      const { data: userData } = await supabase
+        .from('users')
+        .select('credits_balance')
+        .eq('id', this.userId)
+        .single();
+
+      if (userData && userData.credits_balance < 0) {
+        this.showLowBalanceWarning(userData.credits_balance);
+      }
+    } catch (e) {
+      console.warn('Balance check failed:', e);
+    }
 
     // Track if user clicks hangup button
     this.userHungUp = false;

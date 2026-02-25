@@ -301,7 +301,6 @@ Agent dispatch rules are configured in **LiveKit Cloud dashboard**, NOT via code
 - **Scheduling**: `send_now` boolean or `scheduled_at` timestamp. Call window: `window_start_time`/`window_end_time` (TIME) + `window_days` (integer array, 0=Sun)
 - **Concurrency**: `max_concurrency` controls parallel batch calls, `reserved_concurrency` reserves slots for inbound
 - **Status flow**: draft → scheduled → running → completed/cancelled/failed
-- **Legacy**: `/bulk-calling` page still exists (to be removed once batch-calls is fully operational)
 - **Deploy**: `npx supabase functions deploy batch-calls --no-verify-jwt` and `npx supabase functions deploy process-batch-calls --no-verify-jwt`
 
 ## HubSpot Integration

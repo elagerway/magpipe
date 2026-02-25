@@ -169,23 +169,6 @@ export const dialpadMethods = {
             <span id="agent-label" style="font-size: 14px; color: var(--text-primary); font-weight: 600;">Agent</span>
           </label>
 
-          <!-- Bulk Calling link -->
-          <a href="#" id="bulk-calling-link" style="
-            font-size: 13px;
-            color: #6366f1;
-            text-decoration: none;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-          ">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-              <circle cx="9" cy="7" r="4"></circle>
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-              <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-            </svg>
-            Bulk Calling
-          </a>
         </div>
 
         <!-- Direct mode sub-toggle (Callback / WebRTC SIP) - hidden by default -->
@@ -570,15 +553,6 @@ export const dialpadMethods = {
             recordLed.style.boxShadow = 'none';
           }
         }
-      });
-    }
-
-    // Bulk Calling link
-    const bulkCallingLink = document.getElementById('bulk-calling-link');
-    if (bulkCallingLink) {
-      bulkCallingLink.addEventListener('click', (e) => {
-        e.preventDefault();
-        window.navigateTo('/bulk-calling');
       });
     }
 

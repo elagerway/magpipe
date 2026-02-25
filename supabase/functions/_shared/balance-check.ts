@@ -19,7 +19,7 @@ export async function checkBalance(
 
   const balance = user.credits_balance ?? 0;
   return {
-    allowed: balance > 0,
+    allowed: balance > -50,
     balance,
   };
 }
