@@ -9,7 +9,7 @@ import { corsHeaders, handleCors } from '../_shared/cors.ts'
 import { getServiceClient } from '../_shared/supabase-client.ts'
 
 const CHUNK_SIZE = 5 // Process this many recipients per invocation
-const CALL_DELAY_MS = 2000 // Delay between initiating calls (avoid overwhelming SignalWire)
+const CALL_DELAY_MS = 500 // Small stagger between recipients to avoid SignalWire rate limits
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return handleCors()
@@ -131,7 +131,7 @@ async function processBatch(client: any, batchId: string) {
       .from('batch_call_recipients')
       .select('*', { count: 'exact', head: true })
       .eq('batch_id', batchId)
-      .in('status', ['pending', 'calling'])
+      .in('status', ['pending', 'calling', 'initiated', 'ringing', 'in_progress'])
 
     if ((remainingPending || 0) === 0) {
       await client
@@ -149,6 +149,13 @@ async function processBatch(client: any, batchId: string) {
     return jsonResponse({ message: 'Waiting for active calls to finish' })
   }
 
+  // SignalWire credentials for direct PSTN calling
+  const swProjectId = Deno.env.get('SIGNALWIRE_PROJECT_ID')!
+  const swToken = Deno.env.get('SIGNALWIRE_API_TOKEN')!
+  const swSpaceUrl = Deno.env.get('SIGNALWIRE_SPACE_URL')!
+  const swAuth = btoa(`${swProjectId}:${swToken}`)
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+
   // Process each pending recipient
   let initiated = 0
   let failed = 0
@@ -161,61 +168,93 @@ async function processBatch(client: any, batchId: string) {
         .update({ status: 'calling', attempted_at: new Date().toISOString() })
         .eq('id', recipient.id)
 
-      // Initiate the call via the existing initiate-bridged-call function
-      const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-      const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-
-      const callResponse = await fetch(`${supabaseUrl}/functions/v1/initiate-bridged-call`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${serviceKey}`,
-          'x-batch-user-id': batch.user_id // Pass user context
-        },
-        body: JSON.stringify({
-          phone_number: recipient.phone_number,
-          caller_id: batch.caller_id,
+      // Create call record
+      const { data: callRecord, error: insertError } = await client
+        .from('call_records')
+        .insert({
           user_id: batch.user_id,
-          purpose: batch.purpose || '',
-          goal: batch.goal || '',
+          caller_number: recipient.phone_number,
+          contact_phone: recipient.phone_number,
+          service_number: batch.caller_id,
+          direction: 'outbound',
+          disposition: 'outbound_completed',
+          status: 'initiated',
+          started_at: new Date().toISOString(),
+          duration_seconds: 0,
+          duration: 0,
+          voice_platform: 'livekit',
+          telephony_vendor: 'signalwire',
+          call_purpose: batch.purpose || null,
+          call_goal: batch.goal || null,
           template_id: batch.template_id || null,
-          batch_id: batchId,
-          batch_recipient_id: recipient.id
         })
-      })
+        .select()
+        .single()
 
-      const callResult = await callResponse.json()
+      if (insertError) throw new Error(`Failed to create call record: ${insertError.message}`)
 
-      if (callResponse.ok && callResult.call_record_id) {
-        // Update recipient with call record ID
+      // Link recipient to call record
+      await client
+        .from('batch_call_recipients')
+        .update({ call_record_id: callRecord.id })
+        .eq('id', recipient.id)
+
+      // Conference bridge: fire both legs in parallel
+      const livekitSipDomain = Deno.env.get('LIVEKIT_SIP_DOMAIN')!
+      const livekitSipUri = `sip:${batch.caller_id}@${livekitSipDomain};transport=tls`
+      const confName = `batch-${recipient.id}`
+      const statusCallbackUrl = `${supabaseUrl}/functions/v1/outbound-call-status`
+      const swCallUrl = `https://${swSpaceUrl}/api/laml/2010-04-01/Accounts/${swProjectId}/Calls.json`
+      const swHeaders = { 'Authorization': `Basic ${swAuth}`, 'Content-Type': 'application/x-www-form-urlencoded' }
+
+      // Leg 1: Agent SIP
+      const agentCxmlUrl = `${supabaseUrl}/functions/v1/batch-call-cxml?leg=agent&conf=${encodeURIComponent(confName)}`
+      const agentFormBody = [
+        `To=${encodeURIComponent(livekitSipUri)}`,
+        `From=${encodeURIComponent(batch.caller_id)}`,
+        `Url=${encodeURIComponent(agentCxmlUrl)}`,
+        `Method=POST`,
+      ].join('&')
+
+      // Leg 2: PSTN recipient (pass call_record_id so recording callback can link it)
+      const pstnCxmlUrl = `${supabaseUrl}/functions/v1/batch-call-cxml?leg=pstn&conf=${encodeURIComponent(confName)}&call_record_id=${callRecord.id}`
+      const pstnFormBody = [
+        `To=${encodeURIComponent(recipient.phone_number)}`,
+        `From=${encodeURIComponent(batch.caller_id)}`,
+        `Url=${encodeURIComponent(pstnCxmlUrl)}`,
+        `Method=POST`,
+        `StatusCallback=${encodeURIComponent(statusCallbackUrl)}`,
+        `StatusCallbackEvent=initiated`,
+        `StatusCallbackEvent=ringing`,
+        `StatusCallbackEvent=answered`,
+        `StatusCallbackEvent=completed`,
+        `StatusCallbackMethod=POST`,
+      ].join('&')
+
+      // Fire both simultaneously — agent SIP connects instantly, PSTN takes seconds to ring
+      const [agentCallResp, pstnCallResp] = await Promise.all([
+        fetch(swCallUrl, { method: 'POST', headers: swHeaders, body: agentFormBody }),
+        fetch(swCallUrl, { method: 'POST', headers: swHeaders, body: pstnFormBody }),
+      ])
+
+      const [agentCallData, pstnCallData] = await Promise.all([
+        agentCallResp.json(),
+        pstnCallResp.json(),
+      ])
+
+      if (!agentCallResp.ok || !agentCallData.sid) {
+        throw new Error(`Agent leg failed: ${agentCallData.message || 'Unknown error'}`)
+      }
+      console.log(`Agent leg started: ${agentCallData.sid}, conference: ${confName}`)
+
+      if (pstnCallResp.ok && pstnCallData.sid) {
         await client
-          .from('batch_call_recipients')
-          .update({ call_record_id: callResult.call_record_id })
-          .eq('id', recipient.id)
-
+          .from('call_records')
+          .update({ vendor_call_id: pstnCallData.sid })
+          .eq('id', callRecord.id)
         initiated++
       } else {
-        // Call initiation failed
-        await client
-          .from('batch_call_recipients')
-          .update({
-            status: 'failed',
-            error_message: callResult.error || 'Failed to initiate call',
-            completed_at: new Date().toISOString()
-          })
-          .eq('id', recipient.id)
-
-        // Update batch failed count
-        await client.rpc('increment_batch_failed_count', { batch_id: batchId })
-          .catch(() => {
-            // Fallback: direct update
-            client
-              .from('batch_calls')
-              .update({ failed_count: (batch.failed_count || 0) + 1 })
-              .eq('id', batchId)
-          })
-
-        failed++
+        throw new Error(pstnCallData.message || pstnCallData.error || 'PSTN call failed')
       }
 
       // Delay between calls
@@ -233,6 +272,12 @@ async function processBatch(client: any, batchId: string) {
           completed_at: new Date().toISOString()
         })
         .eq('id', recipient.id)
+
+      // Update batch failed count
+      await client
+        .from('batch_calls')
+        .update({ failed_count: (batch.failed_count || 0) + failed + 1, updated_at: new Date().toISOString() })
+        .eq('id', batchId)
 
       failed++
     }

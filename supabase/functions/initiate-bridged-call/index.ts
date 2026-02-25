@@ -21,15 +21,25 @@ Deno.serve(async (req) => {
       }
     );
 
-    const user = await resolveUser(req, supabaseClient);
+    const body = await req.json();
+    const { phone_number, caller_id, purpose, goal, template_id, user_id: bodyUserId } = body;
+
+    // Resolve user: standard auth OR internal service-to-service call with user_id in body
+    let user = await resolveUser(req, supabaseClient);
+    if (!user && bodyUserId) {
+      // Internal call from process-batch-calls using service role key
+      const authHeader = req.headers.get("Authorization") || "";
+      const token = authHeader.replace("Bearer ", "");
+      if (token === Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")) {
+        user = { id: bodyUserId, authMethod: "jwt" as const };
+      }
+    }
     if (!user) {
       return new Response(
         JSON.stringify({ error: { code: "unauthorized", message: "Unauthorized" } }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
-    const { phone_number, caller_id, purpose, goal, template_id } = await req.json();
 
     if (!phone_number || !caller_id) {
       return new Response(

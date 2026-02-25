@@ -77,15 +77,16 @@ Calls outside the window are automatically paused and resume when the window reo
 Switch to the **History** tab to view all batches with:
 - Status (draft, scheduled, running, completed, cancelled, failed)
 - Completion counts and failure counts
-- Click any batch to view individual recipient status
+- Click any batch to view individual recipient status updating in real-time
+- Re-run completed or failed batches with one click
 
 ## Batch Status Flow
 
 ```
-draft → scheduled → running → completed
-                  ↘ paused ↗
-                  ↘ cancelled
-                  ↘ failed
+draft → scheduled → running → completed ↘
+                  ↘ paused ↗              → re-run → running
+                  ↘ cancelled            ↗
+                  ↘ failed              ↗
 ```
 
 | Status | Description |
@@ -100,16 +101,28 @@ draft → scheduled → running → completed
 
 ## Recipient Status
 
-Each recipient in a batch has its own status:
+Each recipient's status updates in real-time as the call progresses:
 
-| Status | Description |
-|--------|-------------|
-| `pending` | Waiting to be called |
-| `calling` | Currently on a call |
-| `completed` | Call completed successfully |
-| `failed` | Call failed to connect |
-| `skipped` | Skipped (batch cancelled) |
-| `no_answer` | Recipient did not answer |
+| Status | UI Label | Description |
+|--------|----------|-------------|
+| `pending` | Pending | Waiting to be called |
+| `calling` | Initiating | Call is being placed |
+| `initiated` | Initiating | Call initiated with carrier |
+| `ringing` | Ringing | Recipient's phone is ringing |
+| `in_progress` | Connected | Recipient answered, call in progress |
+| `completed` | Hungup | Call completed successfully |
+| `failed` | Failed | Call failed to connect |
+| `busy` | Busy | Recipient's line was busy |
+| `no_answer` | No Answer | Recipient did not answer |
+| `skipped` | Skipped | Skipped (batch cancelled) |
+
+## Re-running Batches
+
+Completed, cancelled, or failed batches can be re-run from the History view. Click the **Re-Run** button to reset all recipients back to pending and restart the campaign. This is useful for:
+
+- Retrying failed calls after fixing issues
+- Re-running campaigns with updated agent prompts
+- Reaching contacts who didn't answer the first time
 
 ## API Integration
 
