@@ -294,13 +294,15 @@ Agent dispatch rules are configured in **LiveKit Cloud dashboard**, NOT via code
 
 ## Batch Outbound Calling
 - **Page**: `/batch-calls` (desktop-only nav item after Phone)
-- **DB tables**: `batch_calls` (batch metadata, status, scheduling), `batch_call_recipients` (per-recipient tracking)
-- **Edge functions**: `batch-calls` (CRUD via `action` field: create, list, get, update, start, cancel), `process-batch-calls` (worker that initiates calls)
+- **DB tables**: `batch_calls` (batch metadata, status, scheduling, recurrence), `batch_call_recipients` (per-recipient tracking)
+- **Edge functions**: `batch-calls` (CRUD via `action` field: create, list, list_runs, get, update, start, cancel, pause_series, resume_series), `process-batch-calls` (worker that initiates calls + spawns recurring children)
 - **Architecture**: User creates batch → uploads CSV → batch-calls function creates records → process-batch-calls iterates recipients → calls `initiate-bridged-call` per recipient
+- **Recurring batches**: Parent-child model. Parent has `status: 'recurring'`, stores recurrence config + recipients template. Children are actual runs cloned from parent. When child completes → `outbound-call-status` triggers `process_due` → spawns next child.
+- **Recurrence columns**: `recurrence_type` (none/hourly/daily/weekly/monthly), `recurrence_interval`, `recurrence_end_date`, `recurrence_max_runs`, `recurrence_run_count`, `parent_batch_id` (FK), `occurrence_number`
 - **CSV format**: `name,phone_number` columns (flexible detection: first_name, last_name, phone, mobile, cell)
 - **Scheduling**: `send_now` boolean or `scheduled_at` timestamp. Call window: `window_start_time`/`window_end_time` (TIME) + `window_days` (integer array, 0=Sun)
 - **Concurrency**: `max_concurrency` controls parallel batch calls, `reserved_concurrency` reserves slots for inbound
-- **Status flow**: draft → scheduled → running → completed/cancelled/failed
+- **Status flow**: draft → scheduled → running → completed/cancelled/failed; recurring → paused → recurring; recurring → completed (max runs/end date)
 - **Deploy**: `npx supabase functions deploy batch-calls --no-verify-jwt` and `npx supabase functions deploy process-batch-calls --no-verify-jwt`
 
 ## HubSpot Integration

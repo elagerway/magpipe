@@ -1031,3 +1031,73 @@ Functions that were silently broken (JWT ON, should be OFF):
 - All 9 nav items preserved
 - Dialpad HTML structure and event listeners intact
 
+---
+
+## Date: 2026-02-25
+
+### Recurring Batch Calls — Full Implementation
+
+Implemented repeating batch calls (hourly/daily/weekly/monthly) using a parent-child model.
+
+### Database Migration
+- `supabase/migrations/20260225_batch_recurrence.sql` — NEW
+- Added 7 columns to `batch_calls`: `recurrence_type`, `recurrence_interval`, `recurrence_end_date`, `recurrence_max_runs`, `recurrence_run_count`, `parent_batch_id` (FK), `occurrence_number`
+- Updated status constraint to include `recurring`
+- Added `batch_calls_recurrence_type_check` constraint
+- Added indexes: `idx_batch_calls_parent`, `idx_batch_calls_recurring`
+- **Migration applied to production DB**
+
+### Backend Changes
+- **`supabase/functions/batch-calls/index.ts`** — Major rewrite:
+  - `handleCreate` detects recurring batches, creates parent (`status: 'recurring'`), spawns first child via `spawnChildBatch()`
+  - `spawnChildBatch()` clones parent config + recipients into child batch
+  - `calculateNextRunTime()` computes next occurrence (hourly/daily/weekly/monthly)
+  - `handleList` filters children (`.is('parent_batch_id', null)`)
+  - New `list_runs` action returns children for a parent
+  - `handleGet` also fetches child runs for recurring/paused parents
+  - `handleCancel` cascades: cancels parent + all active children
+  - `handleUpdate` allows editing recurrence fields on draft/recurring batches
+  - New `pause_series` and `resume_series` actions
+- **`supabase/functions/process-batch-calls/index.ts`** — Added:
+  - `spawnDueRecurringChildren()` — finds recurring parents with no active children, checks limits (max runs, end date), calculates next run time, spawns child
+  - `processDueBatches()` now calls `spawnDueRecurringChildren()` after scheduled/running
+  - Child completion triggers recurring check
+- **`supabase/functions/outbound-call-status/index.ts`** — Added:
+  - When child batch completes with `parent_batch_id`, fires non-blocking `process_due` call to trigger next-run spawning
+
+### Frontend Changes
+- **`src/pages/batch-calls.js`** — Added:
+  - Recurrence state: `recurrenceType`, `recurrenceInterval`, `recurrenceEndCondition`, `recurrenceMaxRuns`, `recurrenceEndDate`
+  - "Repeat" form section: frequency dropdown, interval stepper, end condition (Never/After N runs/On date)
+  - `.batch-status-recurring` CSS, `.recurrence-badge`, `.runs-list`, `.run-row` styles
+  - History list filters children, shows recurrence badge with run count
+  - `viewRecurringBatchDetails()` — dedicated modal for recurring parents: config summary, runs list (clickable), Pause/Resume/Cancel Series buttons
+  - Recurring batches use edge function `create` action (parent-child flow) instead of direct DB insert
+  - `resetForm()` resets recurrence state + DOM
+  - Polling includes `recurring` status
+
+### Documentation Updated
+- `ARCHITECTURE.md` — Updated batch-calls page description, edge function descriptions, DB table notes
+- `CLAUDE.md` — Updated batch calling section with recurring architecture details
+- `docs/features/batch-calling.mdx` — Added "Recurring Batches" section with architecture, API examples, FAQ
+
+### All 3 Edge Functions Deployed
+- `batch-calls` (--no-verify-jwt)
+- `process-batch-calls` (--no-verify-jwt)
+- `outbound-call-status` (--no-verify-jwt)
+
+### API Tests Passed
+1. Create recurring batch (hourly, max 3, scheduled) → parent `recurring`, child `scheduled` ✅
+2. Parent run_count = 1, recipients template cloned, runs list populated ✅
+3. List action filters children (only parents shown) ✅
+4. list_runs action returns children with correct names/occurrence numbers ✅
+5. Pause series → parent status `paused` ✅
+6. Resume series → parent status back to `recurring` ✅
+7. Cancel series → parent + all children cancelled, `cancelled_children: 1` ✅
+8. Send-now recurring batch → parent `recurring`, first child `running` ✅
+
+### Not Yet Tested
+- End-to-end with real calls (would need to push to master for Render deploy)
+- Frontend UI on localhost (user should test the batch-calls page)
+- Automatic next-child spawning after child completion (requires real call to complete)
+

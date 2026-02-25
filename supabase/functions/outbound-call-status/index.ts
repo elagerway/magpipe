@@ -123,12 +123,31 @@ Deno.serve(async (req) => {
               .in("status", ["pending", "calling", "initiated", "ringing", "in_progress"]);
 
             if ((remaining || 0) === 0) {
+              // Get the batch to check if it's a child of a recurring parent
+              const { data: completedBatch } = await supabaseClient
+                .from("batch_calls")
+                .select("id, parent_batch_id")
+                .eq("id", batchRecipient.batch_id)
+                .single();
+
               await supabaseClient
                 .from("batch_calls")
                 .update({ status: "completed", completed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
                 .eq("id", batchRecipient.batch_id)
                 .eq("status", "running");
               console.log(`Batch ${batchRecipient.batch_id} marked completed`);
+
+              // If child of a recurring parent, trigger process_due to spawn next run
+              if (completedBatch?.parent_batch_id) {
+                const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+                const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+                fetch(`${supabaseUrl}/functions/v1/process-batch-calls`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", "Authorization": `Bearer ${serviceKey}` },
+                  body: JSON.stringify({ action: "process_due" })
+                }).catch(err => console.error("Failed to trigger recurring check:", err));
+                console.log(`Triggered recurring check for parent ${completedBatch.parent_batch_id}`);
+              }
             }
           }
         }

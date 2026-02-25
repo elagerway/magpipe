@@ -1,6 +1,7 @@
 /**
  * Process Batch Calls Worker
  * Picks up pending recipients in a running batch and initiates calls.
+ * Handles recurring batch spawning when children complete.
  * Called by batch-calls edge function or cron job.
  * Deploy with: npx supabase functions deploy process-batch-calls --no-verify-jwt
  */
@@ -41,8 +42,102 @@ function jsonResponse(data: unknown, status = 200) {
   })
 }
 
+// --- Recurrence helpers (inlined to avoid cross-function imports in Deno edge functions) ---
+
+function calculateNextRunTime(fromTime: Date, recurrenceType: string, interval: number): Date {
+  const next = new Date(fromTime)
+  switch (recurrenceType) {
+    case 'hourly':
+      next.setHours(next.getHours() + interval)
+      break
+    case 'daily':
+      next.setDate(next.getDate() + interval)
+      break
+    case 'weekly':
+      next.setDate(next.getDate() + (interval * 7))
+      break
+    case 'monthly':
+      next.setMonth(next.getMonth() + interval)
+      break
+  }
+  return next
+}
+
+async function spawnChildBatch(client: any, parent: any, occurrenceNumber: number, scheduledAt: Date | null): Promise<any> {
+  const { data: child, error: childErr } = await client
+    .from('batch_calls')
+    .insert({
+      user_id: parent.user_id,
+      name: `${parent.name} — Run #${occurrenceNumber}`,
+      caller_id: parent.caller_id,
+      agent_id: parent.agent_id,
+      status: scheduledAt ? 'scheduled' : 'running',
+      send_now: !scheduledAt,
+      scheduled_at: scheduledAt ? scheduledAt.toISOString() : null,
+      window_start_time: parent.window_start_time,
+      window_end_time: parent.window_end_time,
+      window_days: parent.window_days,
+      max_concurrency: parent.max_concurrency,
+      reserved_concurrency: parent.reserved_concurrency,
+      template_id: parent.template_id,
+      purpose: parent.purpose,
+      goal: parent.goal,
+      parent_batch_id: parent.id,
+      occurrence_number: occurrenceNumber,
+      total_recipients: parent.total_recipients
+    })
+    .select()
+    .single()
+
+  if (childErr) {
+    console.error('Failed to spawn child batch:', childErr)
+    throw new Error('Failed to spawn child batch: ' + childErr.message)
+  }
+
+  // Clone recipients from parent
+  const { data: parentRecipients } = await client
+    .from('batch_call_recipients')
+    .select('phone_number, name, contact_id, sort_order')
+    .eq('batch_id', parent.id)
+    .order('sort_order')
+
+  if (parentRecipients?.length) {
+    const childRecipients = parentRecipients.map((r: any) => ({
+      batch_id: child.id,
+      phone_number: r.phone_number,
+      name: r.name,
+      contact_id: r.contact_id,
+      sort_order: r.sort_order
+    }))
+
+    const { error: recipErr } = await client
+      .from('batch_call_recipients')
+      .insert(childRecipients)
+
+    if (recipErr) {
+      console.error('Failed to clone recipients to child:', recipErr)
+      await client.from('batch_calls').delete().eq('id', child.id)
+      throw new Error('Failed to clone recipients: ' + recipErr.message)
+    }
+  }
+
+  // Increment parent run count
+  await client
+    .from('batch_calls')
+    .update({
+      recurrence_run_count: (parent.recurrence_run_count || 0) + 1,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', parent.id)
+
+  console.log(`Spawned child batch ${child.id} (run #${occurrenceNumber}) for parent ${parent.id}`)
+  return child
+}
+
 async function processDueBatches(client: any) {
-  // Find scheduled batches that are due
+  let totalProcessed = 0
+
+  // 1. Find scheduled batches that are due
   const { data: dueBatches } = await client
     .from('batch_calls')
     .select('id')
@@ -50,35 +145,120 @@ async function processDueBatches(client: any) {
     .lte('scheduled_at', new Date().toISOString())
     .limit(10)
 
-  if (!dueBatches?.length) {
-    // Also check running batches that need continuation
-    const { data: runningBatches } = await client
-      .from('batch_calls')
-      .select('id')
-      .eq('status', 'running')
-      .limit(10)
+  if (dueBatches?.length) {
+    for (const batch of dueBatches) {
+      await client
+        .from('batch_calls')
+        .update({ status: 'running', started_at: new Date().toISOString() })
+        .eq('id', batch.id)
 
-    if (!runningBatches?.length) {
-      return jsonResponse({ message: 'No batches to process' })
+      await processBatch(client, batch.id)
     }
+    totalProcessed += dueBatches.length
+  }
 
+  // 2. Continue running batches
+  const { data: runningBatches } = await client
+    .from('batch_calls')
+    .select('id')
+    .eq('status', 'running')
+    .limit(10)
+
+  if (runningBatches?.length) {
     for (const batch of runningBatches) {
       await processBatch(client, batch.id)
     }
-    return jsonResponse({ processed: runningBatches.length })
+    totalProcessed += runningBatches.length
   }
 
-  for (const batch of dueBatches) {
-    // Update status to running
-    await client
-      .from('batch_calls')
-      .update({ status: 'running', started_at: new Date().toISOString() })
-      .eq('id', batch.id)
+  // 3. Handle recurring parents that need next child spawned
+  await spawnDueRecurringChildren(client)
 
-    await processBatch(client, batch.id)
+  if (totalProcessed === 0) {
+    return jsonResponse({ message: 'No batches to process' })
   }
 
-  return jsonResponse({ processed: dueBatches.length })
+  return jsonResponse({ processed: totalProcessed })
+}
+
+async function spawnDueRecurringChildren(client: any) {
+  // Find recurring parents that have no active (scheduled/running) children
+  const { data: recurringParents } = await client
+    .from('batch_calls')
+    .select('*')
+    .eq('status', 'recurring')
+    .limit(20)
+
+  if (!recurringParents?.length) return
+
+  for (const parent of recurringParents) {
+    try {
+      // Check if there's already an active child
+      const { count: activeChildren } = await client
+        .from('batch_calls')
+        .select('*', { count: 'exact', head: true })
+        .eq('parent_batch_id', parent.id)
+        .in('status', ['scheduled', 'running'])
+
+      if ((activeChildren || 0) > 0) continue // Already has an active run
+
+      // Check max runs limit
+      if (parent.recurrence_max_runs && (parent.recurrence_run_count || 0) >= parent.recurrence_max_runs) {
+        console.log(`Recurring batch ${parent.id} reached max runs (${parent.recurrence_max_runs}), marking completed`)
+        await client
+          .from('batch_calls')
+          .update({ status: 'completed', completed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+          .eq('id', parent.id)
+        continue
+      }
+
+      // Check end date
+      if (parent.recurrence_end_date && new Date(parent.recurrence_end_date) < new Date()) {
+        console.log(`Recurring batch ${parent.id} passed end date, marking completed`)
+        await client
+          .from('batch_calls')
+          .update({ status: 'completed', completed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+          .eq('id', parent.id)
+        continue
+      }
+
+      // Get last completed child to calculate next run time
+      const { data: lastChild } = await client
+        .from('batch_calls')
+        .select('completed_at, started_at, occurrence_number')
+        .eq('parent_batch_id', parent.id)
+        .order('occurrence_number', { ascending: false })
+        .limit(1)
+        .single()
+
+      const nextOccurrence = (lastChild?.occurrence_number || 0) + 1
+      const baseTime = lastChild?.completed_at || lastChild?.started_at || parent.created_at
+      const nextRunTime = calculateNextRunTime(
+        new Date(baseTime),
+        parent.recurrence_type,
+        parent.recurrence_interval || 1
+      )
+
+      const now = new Date()
+      if (nextRunTime <= now) {
+        // Due now — spawn as running
+        const child = await spawnChildBatch(client, parent, nextOccurrence, null)
+        // Trigger processing
+        const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+        const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+        fetch(`${supabaseUrl}/functions/v1/process-batch-calls`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${serviceKey}` },
+          body: JSON.stringify({ batch_id: child.id })
+        }).catch(err => console.error('Failed to trigger child processing:', err))
+      } else {
+        // Future — spawn as scheduled
+        await spawnChildBatch(client, parent, nextOccurrence, nextRunTime)
+      }
+    } catch (err) {
+      console.error(`Failed to process recurring parent ${parent.id}:`, err)
+    }
+  }
 }
 
 async function processBatch(client: any, batchId: string) {
@@ -142,6 +322,11 @@ async function processBatch(client: any, batchId: string) {
           updated_at: new Date().toISOString()
         })
         .eq('id', batchId)
+
+      // If this is a child of a recurring parent, trigger next-run check
+      if (batch.parent_batch_id) {
+        triggerRecurringCheck().catch(err => console.error('Failed to trigger recurring check:', err))
+      }
 
       return jsonResponse({ message: 'Batch completed', completed: true })
     }
@@ -303,6 +488,34 @@ async function processBatch(client: any, batchId: string) {
       },
       body: JSON.stringify({ batch_id: batchId })
     }).catch(err => console.error('Failed to schedule continuation:', err))
+  } else {
+    // No more pending — check if all active calls are also done
+    // (handles case where all recipients failed within this function,
+    // before SignalWire callbacks fire)
+    const { count: stillActive } = await client
+      .from('batch_call_recipients')
+      .select('*', { count: 'exact', head: true })
+      .eq('batch_id', batchId)
+      .in('status', ['calling', 'initiated', 'ringing', 'in_progress'])
+
+    if ((stillActive || 0) === 0) {
+      await client
+        .from('batch_calls')
+        .update({
+          status: 'completed',
+          completed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', batchId)
+        .eq('status', 'running')
+
+      console.log(`Batch ${batchId} marked completed (all recipients processed in-function)`)
+
+      // If child of a recurring parent, trigger next-run check
+      if (batch.parent_batch_id) {
+        triggerRecurringCheck().catch(err => console.error('Failed to trigger recurring check:', err))
+      }
+    }
   }
 
   return jsonResponse({
@@ -327,4 +540,18 @@ function isWithinCallWindow(batch: any): boolean {
   const endTime = batch.window_end_time || '23:59'
 
   return currentTime >= startTime && currentTime <= endTime
+}
+
+function triggerRecurringCheck(): Promise<void> {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+
+  return fetch(`${supabaseUrl}/functions/v1/process-batch-calls`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${serviceKey}`
+    },
+    body: JSON.stringify({ action: 'process_due' })
+  }).then(() => {})
 }

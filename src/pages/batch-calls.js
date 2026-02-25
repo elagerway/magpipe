@@ -23,6 +23,12 @@ export default class BatchCallsPage {
     this.subscription = null;
     this.recipientSubscription = null;
     this.pollInterval = null;
+    // Recurrence state
+    this.recurrenceType = 'none';
+    this.recurrenceInterval = 1;
+    this.recurrenceEndCondition = 'never'; // 'never' | 'after_runs' | 'on_date'
+    this.recurrenceMaxRuns = 10;
+    this.recurrenceEndDate = '';
   }
 
   async render() {
@@ -126,6 +132,7 @@ export default class BatchCallsPage {
         .batch-status-completed { background: rgba(16,185,129,0.1); color: #10b981; }
         .batch-status-cancelled, .batch-status-failed { background: rgba(239,68,68,0.1); color: #ef4444; }
         .batch-status-paused { background: rgba(168,85,247,0.1); color: #a855f7; }
+        .batch-status-recurring { background: rgba(99,102,241,0.1); color: #6366f1; }
         .batch-history-counts { font-size: 0.8rem; color: var(--text-secondary); white-space: nowrap; }
 
         /* Terms line */
@@ -135,6 +142,21 @@ export default class BatchCallsPage {
         /* Schedule picker */
         .schedule-picker { margin-top: 0.5rem; display: none; }
         .schedule-picker.visible { display: block; }
+
+        /* Recurrence */
+        .recurrence-section { margin-top: 0.5rem; }
+        .recurrence-row { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; }
+        .recurrence-row select, .recurrence-row input { padding: 0.4rem 0.5rem; border: 1px solid rgba(128,128,128,0.25); border-radius: 6px; background: var(--bg-primary, white); color: var(--text-primary); font-size: 0.85rem; }
+        .recurrence-row input[type="number"] { width: 60px; text-align: center; }
+        .recurrence-end-section { margin-top: 0.5rem; }
+        .recurrence-end-row { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.35rem; }
+        .recurrence-badge { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 10px; background: rgba(99,102,241,0.1); color: #6366f1; font-weight: 500; }
+        .runs-list { margin-top: 0.75rem; }
+        .run-row { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 0; border-bottom: 1px solid rgba(128,128,128,0.08); font-size: 0.85rem; cursor: pointer; }
+        .run-row:hover { background: rgba(128,128,128,0.04); }
+        .run-number { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; background: var(--bg-secondary); border-radius: 50%; font-size: 0.7rem; color: var(--text-secondary); flex-shrink: 0; }
+        .run-info { flex: 1; min-width: 0; }
+        .run-date { font-size: 0.75rem; color: var(--text-secondary); }
 
         @media (max-width: 768px) {
           .batch-grid { grid-template-columns: 1fr; }
@@ -244,6 +266,40 @@ export default class BatchCallsPage {
                   </div>
                   <div class="schedule-picker ${!this.sendNow ? 'visible' : ''}" id="schedule-picker">
                     <input type="datetime-local" class="batch-input" id="batch-schedule-time" style="margin-top: 0.5rem;">
+                  </div>
+                </div>
+
+                <!-- Repeat -->
+                <div class="batch-form-section">
+                  <label class="batch-label">Repeat</label>
+                  <div class="recurrence-section">
+                    <div class="recurrence-row">
+                      <select id="recurrence-type" class="batch-select" style="width: auto; min-width: 120px;">
+                        <option value="none" ${this.recurrenceType === 'none' ? 'selected' : ''}>None</option>
+                        <option value="hourly" ${this.recurrenceType === 'hourly' ? 'selected' : ''}>Hourly</option>
+                        <option value="daily" ${this.recurrenceType === 'daily' ? 'selected' : ''}>Daily</option>
+                        <option value="weekly" ${this.recurrenceType === 'weekly' ? 'selected' : ''}>Weekly</option>
+                        <option value="monthly" ${this.recurrenceType === 'monthly' ? 'selected' : ''}>Monthly</option>
+                      </select>
+                    </div>
+                    <div id="recurrence-options" style="display: ${this.recurrenceType !== 'none' ? 'block' : 'none'};">
+                      <div class="recurrence-row">
+                        <span style="font-size: 0.85rem; color: var(--text-secondary);">Every</span>
+                        <input type="number" id="recurrence-interval" min="1" max="99" value="${this.recurrenceInterval}">
+                        <span id="recurrence-unit-label" style="font-size: 0.85rem; color: var(--text-secondary);">${this.recurrenceType === 'hourly' ? 'hour(s)' : this.recurrenceType === 'daily' ? 'day(s)' : this.recurrenceType === 'weekly' ? 'week(s)' : 'month(s)'}</span>
+                      </div>
+                      <div class="recurrence-end-section">
+                        <label class="batch-label" style="font-size: 0.75rem; margin-top: 0.5rem;">Ends</label>
+                        <div class="recurrence-end-row">
+                          <select id="recurrence-end-condition" style="padding: 0.4rem 0.5rem; border: 1px solid rgba(128,128,128,0.25); border-radius: 6px; background: var(--bg-primary, white); color: var(--text-primary); font-size: 0.85rem;">
+                            <option value="never" ${this.recurrenceEndCondition === 'never' ? 'selected' : ''}>Never</option>
+                            <option value="after_runs" ${this.recurrenceEndCondition === 'after_runs' ? 'selected' : ''}>After N runs</option>
+                            <option value="on_date" ${this.recurrenceEndCondition === 'on_date' ? 'selected' : ''}>On date</option>
+                          </select>
+                        </div>
+                        <div id="recurrence-end-details" style="margin-top: 0.35rem;"></div>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -397,6 +453,34 @@ export default class BatchCallsPage {
       });
     });
 
+    // Recurrence controls
+    const recurrenceType = document.getElementById('recurrence-type');
+    if (recurrenceType) {
+      recurrenceType.addEventListener('change', () => {
+        this.recurrenceType = recurrenceType.value;
+        const options = document.getElementById('recurrence-options');
+        if (options) options.style.display = this.recurrenceType !== 'none' ? 'block' : 'none';
+        this.updateRecurrenceUnitLabel();
+        this.updateRecurrenceEndDetails();
+      });
+    }
+
+    const recurrenceInterval = document.getElementById('recurrence-interval');
+    if (recurrenceInterval) {
+      recurrenceInterval.addEventListener('change', () => {
+        this.recurrenceInterval = Math.max(1, parseInt(recurrenceInterval.value) || 1);
+        recurrenceInterval.value = this.recurrenceInterval;
+      });
+    }
+
+    const recurrenceEndCondition = document.getElementById('recurrence-end-condition');
+    if (recurrenceEndCondition) {
+      recurrenceEndCondition.addEventListener('change', () => {
+        this.recurrenceEndCondition = recurrenceEndCondition.value;
+        this.updateRecurrenceEndDetails();
+      });
+    }
+
     // Call window toggle
     const windowToggle = document.getElementById('window-toggle');
     const windowDetails = document.getElementById('window-details');
@@ -520,6 +604,43 @@ export default class BatchCallsPage {
     else dayStr = sorted.map(d => dayNames[d]).join(', ');
     const summaryEl = document.getElementById('window-summary');
     if (summaryEl) summaryEl.textContent = `${start}-${end}, ${dayStr}`;
+  }
+
+  updateRecurrenceUnitLabel() {
+    const label = document.getElementById('recurrence-unit-label');
+    if (!label) return;
+    const units = { hourly: 'hour(s)', daily: 'day(s)', weekly: 'week(s)', monthly: 'month(s)' };
+    label.textContent = units[this.recurrenceType] || '';
+  }
+
+  updateRecurrenceEndDetails() {
+    const container = document.getElementById('recurrence-end-details');
+    if (!container) return;
+
+    if (this.recurrenceEndCondition === 'after_runs') {
+      container.innerHTML = `
+        <div class="recurrence-row">
+          <span style="font-size: 0.85rem; color: var(--text-secondary);">After</span>
+          <input type="number" id="recurrence-max-runs" min="1" max="999" value="${this.recurrenceMaxRuns}" style="width: 70px; padding: 0.4rem 0.5rem; border: 1px solid rgba(128,128,128,0.25); border-radius: 6px; background: var(--bg-primary, white); color: var(--text-primary); font-size: 0.85rem; text-align: center;">
+          <span style="font-size: 0.85rem; color: var(--text-secondary);">runs</span>
+        </div>
+      `;
+      const input = document.getElementById('recurrence-max-runs');
+      if (input) input.addEventListener('change', () => {
+        this.recurrenceMaxRuns = Math.max(1, parseInt(input.value) || 10);
+        input.value = this.recurrenceMaxRuns;
+      });
+    } else if (this.recurrenceEndCondition === 'on_date') {
+      container.innerHTML = `
+        <input type="date" id="recurrence-end-date" class="batch-input" value="${this.recurrenceEndDate}" style="max-width: 200px; margin-top: 0.25rem;">
+      `;
+      const input = document.getElementById('recurrence-end-date');
+      if (input) input.addEventListener('change', () => {
+        this.recurrenceEndDate = input.value;
+      });
+    } else {
+      container.innerHTML = '';
+    }
   }
 
   adjustConcurrency(delta) {
@@ -769,7 +890,7 @@ export default class BatchCallsPage {
     const windowStart = document.getElementById('window-start')?.value || '00:00';
     const windowEnd = document.getElementById('window-end')?.value || '23:59';
 
-    return {
+    const formData = {
       name,
       caller_id: callerId,
       agent_id: agentId,
@@ -781,6 +902,19 @@ export default class BatchCallsPage {
       reserved_concurrency: this.reservedConcurrency,
       recipients: this.recipients.map(({ _source, ...r }) => r)
     };
+
+    // Add recurrence fields if set
+    if (this.recurrenceType !== 'none') {
+      formData.recurrence_type = this.recurrenceType;
+      formData.recurrence_interval = this.recurrenceInterval;
+      if (this.recurrenceEndCondition === 'after_runs') {
+        formData.recurrence_max_runs = this.recurrenceMaxRuns;
+      } else if (this.recurrenceEndCondition === 'on_date' && this.recurrenceEndDate) {
+        formData.recurrence_end_date = new Date(this.recurrenceEndDate + 'T23:59:59').toISOString();
+      }
+    }
+
+    return formData;
   }
 
   validateForm(data) {
@@ -796,6 +930,38 @@ export default class BatchCallsPage {
     const data = this.getFormData();
     if (status !== 'draft' && !this.validateForm(data)) return;
     if (status === 'draft' && !data.name) { showToast('Please enter a batch call name', 'warning'); return; }
+
+    const isRecurring = data.recurrence_type && data.recurrence_type !== 'none';
+
+    // Recurring batches use the edge function for parent-child creation
+    if (isRecurring && status !== 'draft' && !this.editingBatchId) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/batch-calls`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify({
+            action: 'create',
+            ...data,
+            status: data.send_now ? 'running' : 'scheduled'
+          })
+        });
+        const result = await resp.json();
+        if (!resp.ok) throw new Error(result.error || 'Failed to create recurring batch');
+        showToast(`Recurring batch created — first run started`, 'success');
+        this.editingBatchId = null;
+        this.resetForm();
+        this.switchToView('history');
+        return;
+      } catch (err) {
+        console.error('Save recurring batch error:', err);
+        showToast('Failed to create recurring batch: ' + err.message, 'error');
+        return;
+      }
+    }
 
     const batchPayload = {
       user_id: this.userId,
@@ -875,9 +1041,16 @@ export default class BatchCallsPage {
     const data = this.getFormData();
     if (!this.validateForm(data)) return;
 
+    const isRecurring = this.recurrenceType !== 'none';
+    let message = `This will call ${data.recipients.length} recipients from ${data.caller_id}.`;
+    if (isRecurring) {
+      message += ` This batch will repeat ${this.recurrenceType} (every ${this.recurrenceInterval}).`;
+    }
+    message += this.sendNow ? ' Calls will start immediately.' : ` Calls scheduled for ${new Date(data.scheduled_at).toLocaleString()}.`;
+
     const confirmed = await showConfirmModal({
-      title: 'Start Batch Calls',
-      message: `This will call ${data.recipients.length} recipients from ${data.caller_id}. ${this.sendNow ? 'Calls will start immediately.' : `Calls scheduled for ${new Date(data.scheduled_at).toLocaleString()}.`}`,
+      title: isRecurring ? 'Start Recurring Batch Calls' : 'Start Batch Calls',
+      message,
       confirmText: 'Send',
       confirmStyle: 'primary'
     });
@@ -892,6 +1065,7 @@ export default class BatchCallsPage {
       .from('batch_calls')
       .select('*')
       .eq('user_id', this.userId)
+      .is('parent_batch_id', null) // Hide children from top-level list
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -936,10 +1110,12 @@ export default class BatchCallsPage {
             if (statuses.failed) parts.push(`<span style="color: #ef4444;">${statuses.failed} failed</span>`);
             if (parts.length) liveStatus = parts.join(' &middot; ');
           }
+          const isRecurring = b.recurrence_type && b.recurrence_type !== 'none';
+          const recurrenceBadge = isRecurring ? `<span class="recurrence-badge">${b.recurrence_type} &middot; ${b.recurrence_run_count || 0} runs</span>` : '';
           return `
           <div class="batch-history-row" data-batch-id="${b.id}">
             <div>
-              <div class="batch-history-name">${this.escapeHtml(b.name)}</div>
+              <div class="batch-history-name">${this.escapeHtml(b.name)} ${recurrenceBadge}</div>
               <div class="batch-history-date">${new Date(b.created_at).toLocaleDateString()} ${new Date(b.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
             </div>
             <span class="batch-status-badge batch-status-${b.status}">${b.status}</span>
@@ -961,6 +1137,13 @@ export default class BatchCallsPage {
   async viewBatchDetails(batchId) {
     const batch = this.batches.find(b => b.id === batchId);
     if (!batch) return;
+
+    const isRecurringParent = batch.recurrence_type && batch.recurrence_type !== 'none';
+
+    // For recurring parents, show the runs view instead of recipients
+    if (isRecurringParent) {
+      return this.viewRecurringBatchDetails(batch);
+    }
 
     // Fetch recipients
     const { data: recipients } = await supabase
@@ -1187,6 +1370,174 @@ export default class BatchCallsPage {
     }
   }
 
+  async viewRecurringBatchDetails(batch) {
+    // Fetch child runs
+    const { data: runs } = await supabase
+      .from('batch_calls')
+      .select('id, occurrence_number, status, started_at, completed_at, completed_count, failed_count, total_recipients')
+      .eq('parent_batch_id', batch.id)
+      .order('occurrence_number', { ascending: false })
+      .limit(50);
+
+    const recurrenceLabel = `${batch.recurrence_type}, every ${batch.recurrence_interval || 1}`;
+    const endLabel = batch.recurrence_max_runs
+      ? `After ${batch.recurrence_max_runs} runs`
+      : batch.recurrence_end_date
+        ? `Until ${new Date(batch.recurrence_end_date).toLocaleDateString()}`
+        : 'Never';
+
+    const modalHtml = `
+      <div class="contact-modal-overlay" id="batch-detail-modal" style="display: flex;"
+           onclick="if(event.target===this)this.style.display='none'">
+        <div class="contact-modal" onclick="event.stopPropagation()" style="max-width: 650px;">
+          <div class="contact-modal-header">
+            <h3>${this.escapeHtml(batch.name)}</h3>
+            <button class="close-modal-btn" onclick="document.getElementById('batch-detail-modal').style.display='none'">&times;</button>
+          </div>
+          <div class="contact-modal-body scrollable">
+            <div style="display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; align-items: center;">
+              <span class="batch-status-badge batch-status-${batch.status}" style="font-size: 0.85rem;">${batch.status}</span>
+              <span class="recurrence-badge">${this.escapeHtml(recurrenceLabel)}</span>
+              <span style="font-size: 0.85rem; color: var(--text-secondary);">From: ${batch.caller_id}</span>
+              <span style="font-size: 0.85rem; color: var(--text-secondary);">${batch.total_recipients} recipients</span>
+            </div>
+            <div style="display: flex; gap: 1rem; margin-bottom: 1rem; font-size: 0.8rem; color: var(--text-secondary);">
+              <span>Runs completed: <strong>${batch.recurrence_run_count || 0}</strong>${batch.recurrence_max_runs ? ` / ${batch.recurrence_max_runs}` : ''}</span>
+              <span>Ends: ${endLabel}</span>
+            </div>
+
+            <div style="font-weight: 600; font-size: 0.9rem; margin-bottom: 0.5rem; color: var(--text-primary);">Runs</div>
+            ${(runs || []).length === 0 ? '<div style="color: var(--text-secondary); font-size: 0.85rem; padding: 1rem 0;">No runs yet</div>' : ''}
+            <div class="runs-list">
+              ${(runs || []).map(r => `
+                <div class="run-row" data-run-id="${r.id}">
+                  <span class="run-number">#${r.occurrence_number}</span>
+                  <div class="run-info">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                      <span class="batch-status-badge batch-status-${r.status}" style="font-size: 0.7rem; padding: 0.1rem 0.4rem;">${r.status}</span>
+                      <span class="run-date">${r.started_at ? new Date(r.started_at).toLocaleString() : 'Not started'}</span>
+                    </div>
+                  </div>
+                  <span style="font-size: 0.8rem; color: var(--text-secondary);">${r.completed_count || 0}/${r.total_recipients} completed</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+          <div class="contact-modal-footer">
+            ${batch.status === 'recurring' ? `<button class="btn btn-secondary" id="pause-series-btn">Pause Series</button>` : ''}
+            ${batch.status === 'paused' ? `<button class="btn btn-primary" id="resume-series-btn">Resume Series</button>` : ''}
+            ${['recurring', 'paused'].includes(batch.status) ? `<button class="btn btn-secondary" id="cancel-series-btn" style="color: #ef4444;">Cancel Series</button>` : ''}
+            <button class="btn btn-secondary" onclick="document.getElementById('batch-detail-modal').style.display='none'">Close</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const existing = document.getElementById('batch-detail-modal');
+    if (existing) existing.remove();
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    // Click handler for individual runs → show that child's detail
+    const modal = document.getElementById('batch-detail-modal');
+    if (modal) {
+      modal.querySelectorAll('.run-row').forEach(row => {
+        row.addEventListener('click', async () => {
+          modal.style.display = 'none';
+          // Load the child batch as a regular batch detail
+          const runId = row.dataset.runId;
+          const { data: childBatch } = await supabase
+            .from('batch_calls')
+            .select('*')
+            .eq('id', runId)
+            .single();
+          if (childBatch) {
+            // Temporarily add to batches array for viewBatchDetails
+            const existingIdx = this.batches.findIndex(b => b.id === runId);
+            if (existingIdx === -1) this.batches.push(childBatch);
+            else this.batches[existingIdx] = childBatch;
+            await this.viewBatchDetails(runId);
+          }
+        });
+      });
+    }
+
+    // Pause Series handler
+    const pauseBtn = document.getElementById('pause-series-btn');
+    if (pauseBtn) {
+      pauseBtn.addEventListener('click', async () => {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/batch-calls`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+            body: JSON.stringify({ action: 'pause_series', batch_id: batch.id })
+          });
+          const result = await resp.json();
+          if (!resp.ok) throw new Error(result.error || 'Failed to pause');
+          showToast('Series paused', 'info');
+          document.getElementById('batch-detail-modal').style.display = 'none';
+          await this.loadBatches();
+        } catch (err) {
+          showToast('Failed to pause series: ' + err.message, 'error');
+        }
+      });
+    }
+
+    // Resume Series handler
+    const resumeBtn = document.getElementById('resume-series-btn');
+    if (resumeBtn) {
+      resumeBtn.addEventListener('click', async () => {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/batch-calls`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+            body: JSON.stringify({ action: 'resume_series', batch_id: batch.id })
+          });
+          const result = await resp.json();
+          if (!resp.ok) throw new Error(result.error || 'Failed to resume');
+          showToast('Series resumed', 'success');
+          document.getElementById('batch-detail-modal').style.display = 'none';
+          await this.loadBatches();
+        } catch (err) {
+          showToast('Failed to resume series: ' + err.message, 'error');
+        }
+      });
+    }
+
+    // Cancel Series handler
+    const cancelSeriesBtn = document.getElementById('cancel-series-btn');
+    if (cancelSeriesBtn) {
+      cancelSeriesBtn.addEventListener('click', async () => {
+        document.getElementById('batch-detail-modal').style.display = 'none';
+        const confirmed = await showConfirmModal({
+          title: 'Cancel Recurring Series',
+          message: `Cancel "${batch.name}"? This will stop all future runs and cancel any scheduled/running children.`,
+          confirmText: 'Cancel Series',
+          confirmStyle: 'danger'
+        });
+        if (confirmed) {
+          try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/batch-calls`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+              body: JSON.stringify({ action: 'cancel', batch_id: batch.id })
+            });
+            const result = await resp.json();
+            if (!resp.ok) throw new Error(result.error || 'Failed to cancel');
+            showToast('Series cancelled', 'info');
+            await this.loadBatches();
+          } catch (err) {
+            showToast('Failed to cancel series: ' + err.message, 'error');
+          }
+        } else {
+          document.getElementById('batch-detail-modal').style.display = 'flex';
+        }
+      });
+    }
+  }
+
   async editBatch(batch, recipients) {
     // Switch to create view without resetting
     this.currentView = 'create';
@@ -1283,6 +1634,11 @@ export default class BatchCallsPage {
     this.sendNow = true;
     this.reservedConcurrency = 5;
     this.windowDays = [1, 2, 3, 4, 5];
+    this.recurrenceType = 'none';
+    this.recurrenceInterval = 1;
+    this.recurrenceEndCondition = 'never';
+    this.recurrenceMaxRuns = 10;
+    this.recurrenceEndDate = '';
 
     // Reset DOM
     const nameInput = document.getElementById('batch-name');
@@ -1311,6 +1667,18 @@ export default class BatchCallsPage {
     if (picker) picker.classList.remove('visible');
     const scheduleInput = document.getElementById('batch-schedule-time');
     if (scheduleInput) scheduleInput.value = '';
+
+    // Reset recurrence
+    const recurrenceType = document.getElementById('recurrence-type');
+    if (recurrenceType) recurrenceType.value = 'none';
+    const recurrenceOptions = document.getElementById('recurrence-options');
+    if (recurrenceOptions) recurrenceOptions.style.display = 'none';
+    const recurrenceInterval = document.getElementById('recurrence-interval');
+    if (recurrenceInterval) recurrenceInterval.value = '1';
+    const recurrenceEndCondition = document.getElementById('recurrence-end-condition');
+    if (recurrenceEndCondition) recurrenceEndCondition.value = 'never';
+    const recurrenceEndDetails = document.getElementById('recurrence-end-details');
+    if (recurrenceEndDetails) recurrenceEndDetails.innerHTML = '';
 
     // Reset call window
     const windowStart = document.getElementById('window-start');
@@ -1398,7 +1766,7 @@ export default class BatchCallsPage {
     this.stopPolling();
     this.pollInterval = setInterval(() => {
       if (this.currentView !== 'history') { this.stopPolling(); return; }
-      const hasActive = this.batches.some(b => b.status === 'running' || b.status === 'scheduled');
+      const hasActive = this.batches.some(b => b.status === 'running' || b.status === 'scheduled' || b.status === 'recurring');
       if (hasActive) this.loadBatches();
     }, 5000);
   }

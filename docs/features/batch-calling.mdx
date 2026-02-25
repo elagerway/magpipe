@@ -1,6 +1,6 @@
 ---
 title: "Batch Calling"
-description: "Create and manage batch outbound call campaigns with scheduling, CSV upload, and concurrency controls"
+description: "Create and manage batch outbound call campaigns with scheduling, CSV upload, concurrency controls, and recurring schedules"
 ---
 
 Batch Calling lets you create large-scale outbound call campaigns using your AI agents. Upload a CSV of recipients, configure scheduling and concurrency, then let your agents handle each conversation.
@@ -87,6 +87,10 @@ draft → scheduled → running → completed ↘
                   ↘ paused ↗              → re-run → running
                   ↘ cancelled            ↗
                   ↘ failed              ↗
+
+recurring → paused → recurring (resumed)
+         → cancelled
+         → completed (max runs / end date)
 ```
 
 | Status | Description |
@@ -94,10 +98,11 @@ draft → scheduled → running → completed ↘
 | `draft` | Saved but not sent |
 | `scheduled` | Scheduled for future execution |
 | `running` | Currently making calls |
-| `paused` | Temporarily paused (outside call window) |
-| `completed` | All recipients processed |
+| `paused` | Temporarily paused (outside call window or series paused) |
+| `completed` | All recipients processed (or recurring series finished) |
 | `cancelled` | Manually cancelled |
 | `failed` | Batch encountered a critical error |
+| `recurring` | Parent batch actively spawning child runs on schedule |
 
 ## Recipient Status
 
@@ -115,6 +120,86 @@ Each recipient's status updates in real-time as the call progresses:
 | `busy` | Busy | Recipient's line was busy |
 | `no_answer` | No Answer | Recipient did not answer |
 | `skipped` | Skipped | Skipped (batch cancelled) |
+
+## Recurring Batches
+
+Recurring batches repeat on a schedule — hourly, daily, weekly, or monthly. Each run calls ALL recipients again. This is useful for daily appointment reminders, recurring outreach campaigns, or weekly check-in calls.
+
+### How It Works
+
+Recurring batches use a **parent-child model**:
+- **Parent batch** stores the recurrence config and recipients template. Status = `recurring`.
+- **Child batch** is an actual run, cloned from the parent. Has its own recipients and status tracking.
+- When a child completes, the system automatically spawns the next child scheduled for the next occurrence.
+
+### Setting Up Recurrence
+
+In the Create view, configure the **Repeat** section:
+1. **Frequency** — None, Hourly, Daily, Weekly, or Monthly
+2. **Interval** — Every N units (e.g., every 2 days)
+3. **End Condition** — Never, After N runs, or On a specific date
+
+The existing call window (`window_days` + `window_start_time`/`window_end_time`) is still respected for each run.
+
+### Managing a Recurring Series
+
+From the History view, click a recurring batch to see:
+- **Recurrence config** — frequency, interval, end condition
+- **Run count** — how many runs have completed
+- **Runs list** — all past and current runs (click to see recipient details)
+
+Series controls:
+- **Pause Series** — stops new runs from spawning (active runs continue)
+- **Resume Series** — resumes spawning new runs
+- **Cancel Series** — cancels the parent and all scheduled/running children
+
+### Status Flow
+
+```
+recurring → paused → recurring (resumed)
+         → cancelled
+         → completed (max runs reached or end date passed)
+```
+
+### API Example
+
+```javascript
+await fetch('https://api.magpipe.ai/functions/v1/batch-calls', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${apiKey}`,
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    action: 'create',
+    name: 'Daily Appointment Reminders',
+    caller_id: '+16045551234',
+    send_now: true,
+    recurrence_type: 'daily',
+    recurrence_interval: 1,
+    recurrence_max_runs: 30,
+    window_start_time: '09:00',
+    window_end_time: '17:00',
+    window_days: [1, 2, 3, 4, 5],
+    recipients: [
+      { name: 'John Doe', phone_number: '+14155551234' }
+    ]
+  })
+});
+```
+
+To list child runs for a recurring parent:
+
+```javascript
+await fetch('https://api.magpipe.ai/functions/v1/batch-calls', {
+  method: 'POST',
+  headers: { ... },
+  body: JSON.stringify({
+    action: 'list_runs',
+    parent_batch_id: '<parent-uuid>'
+  })
+});
+```
 
 ## Re-running Batches
 
@@ -212,5 +297,13 @@ Ensure your batch calling campaigns comply with local regulations:
 
   <Accordion title="What happens if my credits run out mid-batch?">
     The batch will pause when credits are insufficient. Add credits and restart the batch to continue.
+  </Accordion>
+
+  <Accordion title="How do recurring batches work?">
+    Recurring batches use a parent-child model. The parent stores your config and recipients template. Each run creates a child batch that calls all recipients. When a run completes, the next one is automatically scheduled based on your frequency settings.
+  </Accordion>
+
+  <Accordion title="Can I pause a recurring series?">
+    Yes, use the Pause Series button in the batch detail modal. Currently running calls will finish, but no new runs will start until you resume.
   </Accordion>
 </AccordionGroup>
