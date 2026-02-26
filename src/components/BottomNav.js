@@ -1313,6 +1313,7 @@ window.submitContactForm = async function(event) {
     try {
       new BroadcastChannel('support-tickets').postMessage({
         ticket_ref: result.ticket_ref,
+        thread_id: result.thread_id,
         subject: category ? `[${category}] ${subject}` : subject,
         from_name: cachedUserData?.name || '',
         from_email: cachedUserData?.email || '',
