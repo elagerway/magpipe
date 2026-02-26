@@ -286,9 +286,11 @@ export const supportTabMethods = {
       if (!t) return;
       const list = document.querySelector('#support-tickets-list .tl-list');
       if (!list) return;
+      const threadId = t.thread_id;
+      if (!threadId) return;
       const row = document.createElement('div');
       row.className = 'tl-item tl-item-new';
-      row.dataset.threadId = 'new';
+      row.dataset.threadId = threadId;
       row.dataset.ticketStatus = 'open';
       row.innerHTML = `
         <div class="tl-item-left">
@@ -310,6 +312,8 @@ export const supportTabMethods = {
             <span class="ticket-status-badge ticket-status-open">open</span>
           </div>
         </div>`;
+      row.style.cursor = 'pointer';
+      row.addEventListener('click', () => this.openSupportThread(threadId, 'open'));
       list.prepend(row);
     };
 
