@@ -711,6 +711,30 @@ p {
     transition: width 0.3s ease;
   }
 
+  .nav-feedback-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    width: calc(100% - 24px);
+    margin: 0 12px 0.5rem 12px;
+    padding: 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    background: var(--bg-secondary);
+    border: none;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-sizing: border-box;
+  }
+
+  .nav-feedback-btn:hover {
+    background: rgba(99, 102, 241, 0.1);
+    color: var(--primary-color);
+  }
+
   .nav-plan-upgrade-btn {
     display: flex;
     align-items: center;

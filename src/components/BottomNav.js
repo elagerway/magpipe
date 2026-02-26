@@ -364,6 +364,12 @@ function updateNavPlanSection(userData) {
   }
 
   planSection.innerHTML = `
+    <button class="nav-feedback-btn" onclick="openContactModal()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+      </svg>
+      Give Feedback
+    </button>
     <div class="nav-plan-card">
       <div class="nav-plan-header">
         <span class="nav-plan-title">Monthly Consumption</span>
@@ -642,6 +648,15 @@ function generateNavHtml(currentPath) {
           </div>
           <form id="contact-form" onsubmit="submitContactForm(event)">
             <div class="contact-modal-body">
+              <div class="form-group">
+                <label for="contact-category">Category</label>
+                <select id="contact-category" name="category" required class="form-input">
+                  <option value="">Select a category...</option>
+                  <option value="Feature Request">Feature Request</option>
+                  <option value="Bug/Design Improvement">Bug/Design Improvement</option>
+                  <option value="Help Onboarding">Help Onboarding</option>
+                </select>
+              </div>
               <div class="form-group">
                 <label for="contact-subject">Subject</label>
                 <input type="text" id="contact-subject" name="subject" required placeholder="What can we help you with?">
@@ -1018,6 +1033,15 @@ export function renderBottomNav(currentPath = '/inbox') {
           <form id="contact-form" onsubmit="submitContactForm(event)">
             <div class="contact-modal-body">
               <div class="form-group">
+                <label for="contact-category">Category</label>
+                <select id="contact-category" name="category" required class="form-input">
+                  <option value="">Select a category...</option>
+                  <option value="Feature Request">Feature Request</option>
+                  <option value="Bug/Design Improvement">Bug/Design Improvement</option>
+                  <option value="Help Onboarding">Help Onboarding</option>
+                </select>
+              </div>
+              <div class="form-group">
                 <label for="contact-subject">Subject</label>
                 <input type="text" id="contact-subject" name="subject" required placeholder="What can we help you with?">
               </div>
@@ -1252,10 +1276,11 @@ window.submitContactForm = async function(event) {
   event.preventDefault();
 
   const submitBtn = document.getElementById('contact-submit-btn');
+  const category = document.getElementById('contact-category').value;
   const subject = document.getElementById('contact-subject').value.trim();
   const message = document.getElementById('contact-message').value.trim();
 
-  if (!subject || !message) return;
+  if (!category || !subject || !message) return;
 
   // Disable button and show loading
   submitBtn.disabled = true;
@@ -1271,7 +1296,7 @@ window.submitContactForm = async function(event) {
         'Content-Type': 'application/json',
         'Authorization': session ? `Bearer ${session.access_token}` : '',
       },
-      body: JSON.stringify({ subject, message })
+      body: JSON.stringify({ subject, message, category })
     });
 
     const result = await response.json();
@@ -1283,6 +1308,17 @@ window.submitContactForm = async function(event) {
     // Success - close modal and show notification
     closeContactModal();
     showToast('Message sent! We\'ll get back to you soon.', 'success');
+
+    // Notify any open support tab to prepend the new ticket
+    try {
+      new BroadcastChannel('support-tickets').postMessage({
+        ticket_ref: result.ticket_ref,
+        subject: category ? `[${category}] ${subject}` : subject,
+        from_name: cachedUserData?.name || '',
+        from_email: cachedUserData?.email || '',
+        category,
+      });
+    } catch(e) {}
 
   } catch (error) {
     console.error('Error sending contact message:', error);

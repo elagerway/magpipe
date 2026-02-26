@@ -278,6 +278,41 @@ export const supportTabMethods = {
 
     this.attachSupportListeners();
 
+    // Listen for new tickets from feedback form (works across browser tabs)
+    if (this._supportBroadcast) this._supportBroadcast.close();
+    this._supportBroadcast = new BroadcastChannel('support-tickets');
+    this._supportBroadcast.onmessage = (e) => {
+      const t = e.data;
+      if (!t) return;
+      const list = document.querySelector('#support-tickets-list .tl-list');
+      if (!list) return;
+      const row = document.createElement('div');
+      row.className = 'tl-item tl-item-new';
+      row.dataset.threadId = 'new';
+      row.dataset.ticketStatus = 'open';
+      row.innerHTML = `
+        <div class="tl-item-left">
+          <span class="priority-badge priority-medium">medium</span>
+          <span class="tl-item-ref">#${this.escapeHtml(t.ticket_ref || 'NEW')}</span>
+        </div>
+        <div class="tl-item-main">
+          <div class="tl-item-top">
+            <span class="tl-new-badge">NEW</span>
+            <span class="tl-item-subject">${this.escapeHtml(t.subject || '(no subject)')}</span>
+          </div>
+          <div class="tl-item-bottom">
+            <span class="tl-item-from">${this.escapeHtml(t.from_name || t.from_email || 'Unknown')}</span>
+          </div>
+        </div>
+        <div class="tl-item-right">
+          <span class="tl-item-time">just now</span>
+          <div class="tl-item-badges">
+            <span class="ticket-status-badge ticket-status-open">open</span>
+          </div>
+        </div>`;
+      list.prepend(row);
+    };
+
     // Render pre-fetched tickets if available, otherwise load fresh
     if (this._supportTicketsData) {
       this.renderSupportTicketsList(this._supportTicketsData);
@@ -285,6 +320,7 @@ export const supportTabMethods = {
     } else {
       this.loadSupportTickets();
     }
+
 
     // Populate assignee filter dropdown with pre-fetched data
     if (this.supportAssignees) {
