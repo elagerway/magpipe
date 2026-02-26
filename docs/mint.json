@@ -66,6 +66,7 @@
       "pages": [
         "features/agents",
         "features/agent-memory",
+        "features/agent-notifications",
         "features/system-functions",
         "features/custom-functions",
         "features/phone-numbers",
