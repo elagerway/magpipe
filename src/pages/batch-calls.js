@@ -224,7 +224,7 @@ export default class BatchCallsPage {
                         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                       </div>
                       <div class="upload-text">Choose a csv or drag & drop it here.</div>
-                      <div class="upload-hint">Up to 50 MB</div>
+                      <div class="upload-hint">Up to 50 MB &middot; max 500 recipients</div>
                     </div>
                     <input type="file" class="csv-file-input" id="csv-file-input" accept=".csv">
                   </div>
@@ -338,7 +338,7 @@ export default class BatchCallsPage {
                   </div>
                   <div class="concurrency-info">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
-                    <span>Concurrency allocated to batch calling: <strong id="batch-concurrency-value">15</strong></span>
+                    <span>Concurrency allocated to batch calling: <strong id="batch-concurrency-value">5</strong> <span style="font-weight: 400; font-size: 0.75rem;">(max 5)</span></span>
                   </div>
                 </div>
 
@@ -369,9 +369,7 @@ export default class BatchCallsPage {
 
         <!-- History View -->
         <div id="batch-history-view" style="display: ${this.currentView === 'history' ? 'block' : 'none'};">
-          <div style="display: flex; justify-content: flex-end; margin-bottom: 0.75rem;">
-            <button class="btn-send enabled" id="btn-new-batch" style="opacity: 1; pointer-events: auto; font-size: 0.85rem; padding: 0.5rem 1rem;">+ New Batch</button>
-          </div>
+          <div style="display: flex; justify-content: flex-end; margin-bottom: 0.75rem;"></div>
           <div class="batch-card">
             <div id="batch-history-content">
               <div class="recipients-empty">Loading batches...</div>
@@ -396,14 +394,6 @@ export default class BatchCallsPage {
         this.switchToView(tab.dataset.view);
       });
     });
-
-    // New Batch button
-    const newBatchBtn = document.getElementById('btn-new-batch');
-    if (newBatchBtn) {
-      newBatchBtn.addEventListener('click', () => {
-        this.switchToView('create');
-      });
-    }
 
     // CSV template download
     const downloadTemplate = document.getElementById('download-template');
@@ -647,8 +637,9 @@ export default class BatchCallsPage {
     this.reservedConcurrency = Math.max(0, Math.min(20, this.reservedConcurrency + delta));
     const valueEl = document.getElementById('concurrency-value');
     if (valueEl) valueEl.textContent = this.reservedConcurrency;
+    const batchConcurrency = Math.min(5, Math.max(0, 20 - this.reservedConcurrency));
     const batchValue = document.getElementById('batch-concurrency-value');
-    if (batchValue) batchValue.textContent = Math.max(0, 20 - this.reservedConcurrency);
+    if (batchValue) batchValue.textContent = batchConcurrency;
   }
 
   async loadAgents() {
@@ -780,6 +771,12 @@ export default class BatchCallsPage {
         recipients.push({ name, phone_number: phone, sort_order: i - 1, _source: 'csv' });
       }
 
+      // Check recipient limit
+      if (recipients.length > 500) {
+        showToast(`CSV has ${recipients.length} recipients — maximum is 500`, 'error');
+        return;
+      }
+
       // Merge with any manual recipients
       const manualRecipients = this.recipients.filter(r => r._source === 'manual');
       this.recipients = [...recipients, ...manualRecipients.map((r, i) => ({ ...r, sort_order: recipients.length + i }))];
@@ -890,6 +887,7 @@ export default class BatchCallsPage {
     const windowStart = document.getElementById('window-start')?.value || '00:00';
     const windowEnd = document.getElementById('window-end')?.value || '23:59';
 
+    const batchConcurrency = Math.min(5, Math.max(1, 20 - this.reservedConcurrency));
     const formData = {
       name,
       caller_id: callerId,
@@ -900,6 +898,7 @@ export default class BatchCallsPage {
       window_end_time: windowEnd,
       window_days: this.windowDays,
       reserved_concurrency: this.reservedConcurrency,
+      max_concurrency: batchConcurrency,
       recipients: this.recipients.map(({ _source, ...r }) => r)
     };
 
@@ -922,6 +921,7 @@ export default class BatchCallsPage {
     if (!data.agent_id) { showToast('Please select an agent', 'warning'); return false; }
     if (!data.caller_id) { showToast('Please select a from number', 'warning'); return false; }
     if (data.recipients.length === 0) { showToast('Please upload recipients', 'warning'); return false; }
+    if (data.recipients.length > 500) { showToast('Maximum 500 recipients per batch', 'error'); return false; }
     if (!data.send_now && !data.scheduled_at) { showToast('Please select a schedule time', 'warning'); return false; }
     return true;
   }
@@ -975,6 +975,7 @@ export default class BatchCallsPage {
       window_end_time: data.window_end_time,
       window_days: data.window_days,
       reserved_concurrency: data.reserved_concurrency,
+      max_concurrency: data.max_concurrency,
       total_recipients: data.recipients.length
     };
 
@@ -1224,14 +1225,28 @@ export default class BatchCallsPage {
     const cancelBtn = document.getElementById('cancel-batch-btn');
     if (cancelBtn) {
       cancelBtn.addEventListener('click', async () => {
-        const { error } = await supabase
-          .from('batch_calls')
-          .update({ status: 'cancelled' })
-          .eq('id', batchId);
-        if (!error) {
+        const confirmed = await showConfirmModal({
+          title: 'Cancel Batch',
+          message: `Cancel "${batch.name}"? Pending recipients will be skipped.`,
+          confirmText: 'Cancel Batch',
+          confirmStyle: 'danger'
+        });
+        if (!confirmed) return;
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/batch-calls`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+            body: JSON.stringify({ action: 'cancel', batch_id: batchId })
+          });
+          const result = await resp.json();
+          if (!resp.ok) throw new Error(result.error || 'Failed to cancel');
           document.getElementById('batch-detail-modal').style.display = 'none';
+          if (this.recipientSubscription) { this.recipientSubscription.unsubscribe(); this.recipientSubscription = null; }
           showToast('Batch cancelled', 'info');
           await this.loadBatches();
+        } catch (err) {
+          showToast('Failed to cancel batch: ' + err.message, 'error');
         }
       });
     }
@@ -1607,7 +1622,7 @@ export default class BatchCallsPage {
       const valueEl = document.getElementById('concurrency-value');
       if (valueEl) valueEl.textContent = this.reservedConcurrency;
       const batchValue = document.getElementById('batch-concurrency-value');
-      if (batchValue) batchValue.textContent = Math.max(0, 20 - this.reservedConcurrency);
+      if (batchValue) batchValue.textContent = Math.min(5, Math.max(0, 20 - this.reservedConcurrency));
     }
   }
 
@@ -1697,7 +1712,7 @@ export default class BatchCallsPage {
     const valueEl = document.getElementById('concurrency-value');
     if (valueEl) valueEl.textContent = this.reservedConcurrency;
     const batchValue = document.getElementById('batch-concurrency-value');
-    if (batchValue) batchValue.textContent = Math.max(0, 20 - this.reservedConcurrency);
+    if (batchValue) batchValue.textContent = Math.min(5, Math.max(0, 20 - this.reservedConcurrency));
 
     // Reset recipients panel + send button
     this.renderRecipients();

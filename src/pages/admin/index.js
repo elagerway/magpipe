@@ -77,6 +77,7 @@ class AdminPage {
         { id: 'kpi', label: 'KPIs', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>' },
         { id: 'notifications', label: 'Notifications', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>' },
         { id: 'marketing', label: 'Marketing', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>' },
+        { id: 'batches', label: 'Batches', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>' },
       ],
       activeTab: 'support',
       onTabChange: (tabId) => this.switchTab(tabId),
@@ -105,7 +106,7 @@ class AdminPage {
     // Check URL params for tab auto-switch (e.g. post-OAuth redirect)
     const urlParams = new URLSearchParams(window.location.search);
     const tabParam = urlParams.get('tab');
-    const validTabs = ['analytics', 'kpi', 'support', 'notifications', 'marketing'];
+    const validTabs = ['analytics', 'kpi', 'support', 'notifications', 'marketing', 'batches'];
     // Redirect old bookmarks (blog/directories/reviews/monitor → marketing subtab)
     // Redirect old bookmarks to their new parent tabs
     const legacyMarketingSubtabs = { blog: 'blog', directories: 'directories', reviews: 'reviews', monitor: 'monitor' };
@@ -208,6 +209,12 @@ class AdminPage {
   }
 
   async switchTab(tabName) {
+    // Batches tab navigates to its own page
+    if (tabName === 'batches') {
+      navigateTo('/admin/batches');
+      return;
+    }
+
     this.activeTab = tabName;
     // Marketing tab manages its own URL via switchMarketingSubtab
     if (tabName !== 'marketing') {

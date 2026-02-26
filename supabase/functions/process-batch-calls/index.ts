@@ -10,7 +10,8 @@ import { corsHeaders, handleCors } from '../_shared/cors.ts'
 import { getServiceClient } from '../_shared/supabase-client.ts'
 
 const CHUNK_SIZE = 5 // Process this many recipients per invocation
-const CALL_DELAY_MS = 500 // Small stagger between recipients to avoid SignalWire rate limits
+const CALL_DELAY_MS = 1200 // Each recipient fires 2 API calls (agent + PSTN), 1200ms keeps us under SignalWire's 1 CPS limit
+const MAX_CONCURRENCY_CEILING = 5 // Hard ceiling regardless of user setting
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return handleCors()
@@ -289,7 +290,7 @@ async function processBatch(client: any, batchId: string) {
     .eq('batch_id', batchId)
     .eq('status', 'calling')
 
-  const maxConcurrent = Math.max(1, (batch.max_concurrency || 1))
+  const maxConcurrent = Math.min(MAX_CONCURRENCY_CEILING, Math.max(1, (batch.max_concurrency || 1)))
   const availableSlots = maxConcurrent - (activeCalls || 0)
 
   if (availableSlots <= 0) {

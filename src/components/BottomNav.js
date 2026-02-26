@@ -104,7 +104,7 @@ async function fetchNavUserData() {
 
       const { data: profile } = await supabase
         .from('users')
-        .select('name, avatar_url, logo_url, favicon_url, favicon_white_bg, plan, credits_balance, stripe_current_period_end, created_at')
+        .select('name, avatar_url, logo_url, favicon_url, favicon_white_bg, plan, credits_balance, stripe_current_period_end, created_at, role')
         .eq('id', user.id)
         .single();
 
@@ -201,6 +201,7 @@ async function fetchNavUserData() {
         favicon_url: profile?.favicon_url || null,
         favicon_white_bg: profile?.favicon_white_bg || false,
         plan: profile?.plan || 'free',
+        role: profile?.role || null,
         creditsBalance: parseFloat(profile?.credits_balance) || 0,
         minutesUsed,
         messagesUsed,
@@ -386,6 +387,14 @@ function updateNavPlanSection(userData) {
 }
 
 // Update the user section in the DOM after data is fetched
+function updateAdminNavItems(userData) {
+  if (!userData) return;
+  const isAdmin = userData.role === 'admin' || userData.role === 'god';
+  document.querySelectorAll('.admin-only-nav').forEach(el => {
+    el.style.display = isAdmin ? '' : 'none';
+  });
+}
+
 function updateNavUserSection(userData) {
   const userSection = document.getElementById('nav-user-section');
   if (!userSection || !userData) return;
@@ -495,6 +504,13 @@ const NAV_ITEMS = [
     mobileOnly: true
   },
   {
+    path: '/admin/batches',
+    icon: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>`,
+    label: 'Batches',
+    desktopOnly: true,
+    adminOnly: true
+  },
+  {
     path: '/agent',
     hidden: true, // Hidden until ready for customers
     icon: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="12" rx="2" stroke-width="1.5"/><circle cx="9" cy="10" r="1.5" fill="currentColor"/><circle cx="15" cy="10" r="1.5" fill="currentColor"/><path stroke-linecap="round" stroke-width="1.5" d="M9 14h6"/><path stroke-linecap="round" stroke-width="1.5" d="M12 16v3"/><path stroke-linecap="round" stroke-width="1.5" d="M8 19h8"/><path stroke-linecap="round" stroke-width="1.5" d="M2 8h2M20 8h2M12 2v2"/></svg>`,
@@ -513,8 +529,9 @@ function generateNavHtml(currentPath) {
         ${NAV_ITEMS.filter(item => !item.hidden).map(item => `
           <button
             id="${item.isPhone ? 'phone-nav-btn' : (item.path === '/agent' ? 'agent-nav-btn' : '')}"
-            class="bottom-nav-item ${currentPath === item.path ? 'active' : ''}${item.desktopOnly ? ' desktop-only' : ''}${item.mobileOnly ? ' mobile-only' : ''}"
+            class="bottom-nav-item ${currentPath === item.path ? 'active' : ''}${item.desktopOnly ? ' desktop-only' : ''}${item.mobileOnly ? ' mobile-only' : ''}${item.adminOnly ? ' admin-only-nav' : ''}"
             onclick="navigateTo('${item.path}')"
+            ${item.adminOnly ? 'style="display: none;"' : ''}
           >
             <span class="nav-icon-wrapper">
               ${item.icon}
@@ -771,6 +788,7 @@ export function renderBottomNav(currentPath = '/inbox') {
         const userData = await fetchNavUserData();
         if (userData) {
           updateNavPlanSection(userData);
+          updateAdminNavItems(userData);
         }
       }, 0);
       return ''; // Return empty - nav already exists
@@ -785,6 +803,7 @@ export function renderBottomNav(currentPath = '/inbox') {
           updateNavLogoSection(userData);
           updateNavPlanSection(userData);
           updateNavUserSection(userData);
+          updateAdminNavItems(userData);
         }
       }, 0);
       setTimeout(() => initUnreadTracking(), 100);
@@ -852,6 +871,13 @@ export function renderBottomNav(currentPath = '/inbox') {
       icon: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>`,
       label: 'Knowledge',
       desktopOnly: true
+    },
+    {
+      path: '/admin/batches',
+      icon: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>`,
+      label: 'Batches',
+      desktopOnly: true,
+      adminOnly: true
     }
   ];
 
@@ -872,6 +898,7 @@ export function renderBottomNav(currentPath = '/inbox') {
       updateNavLogoSection(userData);
       updateNavPlanSection(userData);
       updateNavUserSection(userData);
+      updateAdminNavItems(userData);
     }
   }, 0);
 
@@ -884,8 +911,9 @@ export function renderBottomNav(currentPath = '/inbox') {
         ${navItems.filter(item => !item.hidden).map(item => `
           <button
             id="${item.isPhone ? 'phone-nav-btn' : (item.path === '/agent' ? 'agent-nav-btn' : '')}"
-            class="bottom-nav-item ${currentPath === item.path ? 'active' : ''}${item.desktopOnly ? ' desktop-only' : ''}${item.mobileOnly ? ' mobile-only' : ''}"
+            class="bottom-nav-item ${currentPath === item.path ? 'active' : ''}${item.desktopOnly ? ' desktop-only' : ''}${item.mobileOnly ? ' mobile-only' : ''}${item.adminOnly ? ' admin-only-nav' : ''}"
             onclick="navigateTo('${item.path}')"
+            ${item.adminOnly ? 'style="display: none;"' : ''}
           >
             <span class="nav-icon-wrapper">
               ${item.icon}

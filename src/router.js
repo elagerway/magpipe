@@ -53,6 +53,7 @@ export class Router {
 
     // Admin routes (role-protected)
     this.addRoute('/admin', () => import('./pages/admin.js'), true, ['admin', 'support', 'god']);
+    this.addRoute('/admin/batches', () => import('./pages/admin-batches.js'), true, ['admin', 'god']);
 
     // Agents routes (multi-agent support)
     this.addRoute('/agents', () => import('./pages/agents.js'), true);
