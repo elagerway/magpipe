@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { corsHeaders, handleCors } from '../_shared/cors.ts'
+import { CANADA_SENDER_NUMBER } from '../_shared/sms-compliance.ts'
 
 Deno.serve(async (req) => {
   // Handle CORS preflight
@@ -75,21 +76,9 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Get a service number to use as sender
-    const { data: serviceNumber } = await supabase
-      .from('service_numbers')
-      .select('phone_number')
-      .eq('is_active', true)
-      .limit(1)
-      .single()
-
-    if (!serviceNumber) {
-      console.error('No service number found for SMS')
-      return new Response(JSON.stringify({ success: true }), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
-    }
+    // Use dedicated Canadian sender number for signup notifications
+    // (Erik's cell +16045628647 is Canadian, so always use Canadian sender)
+    const serviceNumber = { phone_number: CANADA_SENDER_NUMBER }
 
     // Get location info from DB (in case we just updated it)
     let locationInfo = ''

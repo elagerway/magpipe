@@ -5,11 +5,9 @@
 
 import { SupabaseClient } from 'npm:@supabase/supabase-js@2'
 
-// USA Campaign phone number for SignalWire
-export const USA_CAMPAIGN_NUMBER = '+16503912711'
-
-// Enable/disable USA campaign routing (set to false until campaign number is configured in SignalWire)
-const USE_CAMPAIGN_NUMBER = Deno.env.get('USE_USA_CAMPAIGN_NUMBER') === 'true'
+// Dedicated sender numbers for notifications/system SMS
+export const USA_SENDER_NUMBER = '+14152518686'      // San Francisco — US destinations only
+export const CANADA_SENDER_NUMBER = '+16042431596'    // Vancouver — Canadian + international
 
 // Opt-out keywords (case insensitive)
 const OPT_OUT_KEYWORDS = ['stop', 'stopall', 'unsubscribe', 'cancel', 'end', 'quit']
@@ -226,35 +224,27 @@ export async function recordOptIn(
 
 /**
  * Get appropriate sender number based on recipient location
- * US service numbers need to be in a campaign, so always use campaign number for US recipients
- * Canadian numbers can be used directly for Canadian recipients
+ * US recipients → USA_SENDER_NUMBER (+14152518686) for 10DLC compliance
+ * Canadian/international → defaultNumber (or CANADA_SENDER_NUMBER if not provided)
  */
 export async function getSenderNumber(
   recipientNumber: string,
   defaultNumber: string,
   supabase: SupabaseClient
 ): Promise<string> {
-  // Check if campaign routing is enabled
-  const useCampaignNumber = Deno.env.get('USE_USA_CAMPAIGN_NUMBER') === 'true'
-
-  // If campaign routing is disabled, always use default number
-  if (!useCampaignNumber) {
-    console.log('USA campaign routing disabled, using default number')
-    return defaultNumber
-  }
-
   // Check if recipient is US
   const recipientIsUS = await isUSNumber(recipientNumber, supabase)
 
-  // For US recipients, always use campaign number (ensures 10DLC compliance)
+  // For US recipients, always use US sender number (10DLC compliance)
   if (recipientIsUS) {
-    console.log(`Recipient ${recipientNumber} is US, using campaign number ${USA_CAMPAIGN_NUMBER}`)
-    return USA_CAMPAIGN_NUMBER
+    console.log(`Recipient ${recipientNumber} is US, using US sender ${USA_SENDER_NUMBER}`)
+    return USA_SENDER_NUMBER
   }
 
-  // For non-US recipients, use service number
-  console.log(`Recipient ${recipientNumber} is non-US, using service number ${defaultNumber}`)
-  return defaultNumber
+  // For non-US recipients, use provided default or Canadian sender
+  const sender = defaultNumber || CANADA_SENDER_NUMBER
+  console.log(`Recipient ${recipientNumber} is non-US, using sender ${sender}`)
+  return sender
 }
 
 /**

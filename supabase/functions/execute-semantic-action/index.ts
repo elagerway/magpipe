@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { getSenderNumber, CANADA_SENDER_NUMBER } from '../_shared/sms-compliance.ts'
 
 const APP_URL = 'https://magpipe.ai'
 
@@ -281,36 +282,9 @@ async function fireSms(config: any, data: any, userId: string, agentId: string, 
   const signalwireApiToken = Deno.env.get('SIGNALWIRE_API_TOKEN')!
   const signalwireSpaceUrl = Deno.env.get('SIGNALWIRE_SPACE_URL')!
 
-  // +16042101966 is voice-only — never use for outbound SMS
-  let fromNumber: string | null = null
-  const { data: agentNumber } = await supabase
-    .from('service_numbers')
-    .select('phone_number')
-    .eq('user_id', userId)
-    .eq('agent_id', agentId)
-    .eq('is_active', true)
-    .neq('phone_number', '+16042101966')
-    .limit(1)
-    .single()
-
-  if (agentNumber) {
-    fromNumber = agentNumber.phone_number
-  } else {
-    const { data: fallback } = await supabase
-      .from('service_numbers')
-      .select('phone_number')
-      .eq('user_id', userId)
-      .eq('is_active', true)
-      .neq('phone_number', '+16042101966')
-      .limit(1)
-      .single()
-    if (fallback) fromNumber = fallback.phone_number
-  }
-
-  if (!fromNumber) {
-    console.error('No SMS-capable service number found')
-    return false
-  }
+  // Use dedicated sender numbers based on recipient country
+  // Canadian/international → +16042431596, US → +14152518686
+  const fromNumber = await getSenderNumber(phone, CANADA_SENDER_NUMBER, supabase)
 
   // SMS: compact format (160 char segments)
   const lines = [
