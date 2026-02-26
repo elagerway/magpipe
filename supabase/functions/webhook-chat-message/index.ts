@@ -1039,6 +1039,12 @@ You can create support tickets for visitors when they describe issues, problems,
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseKey}` },
         body: JSON.stringify(notificationData)
       }).catch(err => console.error('Failed to send push notification for chat:', err))
+
+      fetch(`${supabaseUrl}/functions/v1/send-notification-slack`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseKey}` },
+        body: JSON.stringify(notificationData)
+      }).catch(err => console.error('Failed to send Slack notification for chat:', err))
     }
 
     // Log chat exchange to HubSpot as a note (if connected and we have visitor email)

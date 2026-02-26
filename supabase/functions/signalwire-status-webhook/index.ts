@@ -364,18 +364,42 @@ async function sendSlackCallNotification(
       headerText += ` • Sentiment: ${sentimentEmoji} ${sentiment}`
     }
 
-    // Find a channel
-    const channelsResponse = await fetch(
-      'https://slack.com/api/conversations.list?types=public_channel&limit=10',
-      { headers: { 'Authorization': `Bearer ${integration.access_token}` } }
-    )
-    const channelsResult = await channelsResponse.json()
+    // Resolve channel: user's notification_preferences.slack_channel → config.notification_channel → fallback
+    let channelId: string | null = null
 
-    let channelId = integration.config?.notification_channel
-    if (!channelId && channelsResult.ok && channelsResult.channels?.length > 0) {
-      const magpipeChannel = channelsResult.channels.find((c: any) => c.name === 'magpipe-notifications')
-      const generalChannel = channelsResult.channels.find((c: any) => c.name === 'general')
-      channelId = magpipeChannel?.id || generalChannel?.id || channelsResult.channels[0].id
+    const { data: notifPrefs } = await supabase
+      .from('notification_preferences')
+      .select('slack_channel')
+      .eq('user_id', userId)
+      .single()
+
+    if (notifPrefs?.slack_channel) {
+      const name = notifPrefs.slack_channel.replace(/^#/, '').toLowerCase()
+      const listResp = await fetch(
+        'https://slack.com/api/conversations.list?types=public_channel&limit=200&exclude_archived=true',
+        { headers: { 'Authorization': `Bearer ${integration.access_token}` } }
+      )
+      const listResult = await listResp.json()
+      if (listResult.ok && listResult.channels) {
+        const found = listResult.channels.find((c: any) => c.name.toLowerCase() === name)
+        if (found) channelId = found.id
+      }
+    }
+
+    if (!channelId) {
+      channelId = integration.config?.notification_channel
+    }
+    if (!channelId) {
+      const channelsResponse = await fetch(
+        'https://slack.com/api/conversations.list?types=public_channel&limit=10',
+        { headers: { 'Authorization': `Bearer ${integration.access_token}` } }
+      )
+      const channelsResult = await channelsResponse.json()
+      if (channelsResult.ok && channelsResult.channels?.length > 0) {
+        const magpipeChannel = channelsResult.channels.find((c: any) => c.name === 'magpipe-notifications')
+        const generalChannel = channelsResult.channels.find((c: any) => c.name === 'general')
+        channelId = magpipeChannel?.id || generalChannel?.id || channelsResult.channels[0].id
+      }
     }
 
     if (!channelId) return
