@@ -65,7 +65,7 @@
 | `/knowledge` | `knowledge.js` | Knowledge base management | `knowledge_sources`, `knowledge_chunks` | `knowledge-source-add`, `knowledge-source-delete`, `knowledge-source-sync`, `knowledge-source-manual` |
 | `/apps` | `apps.js` | Integrations & MCP servers | `user_integrations`, `mcp_servers`, `user_mcp_configs` | `integration-oauth-start`, `mcp-catalog-refresh`, `mcp-test-connection` |
 | `/analytics` | `analytics.js` | Org-wide analytics dashboard | None directly | `org-analytics` |
-| `/settings` | `settings.js` | Profile, Billing, Branding, Notifications, API | `users`, `notification_preferences`, `service_numbers`, `organizations` | Stripe functions, Cal.com functions |
+| `/settings` | `settings.js` | Profile, Billing, Branding, Notifications (Email/SMS/Slack/Push), API | `users`, `notification_preferences`, `service_numbers`, `organizations`, `user_integrations` | Stripe functions, Cal.com functions, `send-notification-slack`, `integration-oauth-start` |
 | `/team` | `team.js` | Team member management | `organization_members`, `organizations` | `send-team-invitation` |
 | `/select-number` | `select-number.js` | Phone number purchase | `service_numbers` | `search-phone-numbers`, `provision-phone-number` |
 | `/manage-numbers` | `manage-numbers.js` | Number management (mobile) | `service_numbers`, `numbers_to_delete`, `agent_configs` | `queue-number-deletion`, `cancel-number-deletion`, `configure-signalwire-number`, `fix-number-capabilities` |
@@ -193,6 +193,10 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 | `create-user-sip-endpoint` | JWT | `users`, `user_sip_endpoints` | SignalWire | SIP config |
 | `save-push-subscription` | JWT | `push_subscriptions` | None | notification setup |
 | `delete-push-subscription` | JWT | `push_subscriptions` | None | settings |
+| `send-notification-email` | Service role | `notification_preferences` | Postmark | webhooks (fire & forget) |
+| `send-notification-sms` | Service role | `notification_preferences`, `service_numbers` | SignalWire | webhooks (fire & forget) |
+| `send-notification-push` | Service role | `notification_preferences`, `push_subscriptions` | Web Push (VAPID) | webhooks (fire & forget) |
+| `send-notification-slack` | Service role / JWT / API key | `notification_preferences`, `user_integrations` | Slack API | webhooks (fire & forget), settings page (list_channels) |
 | `access-code-update` | JWT/API key | `users`, `sms_confirmations` | Postmark | phone admin |
 
 ### Call Management
@@ -486,7 +490,7 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 | **Gmail API** | Email inbox send/receive (OAuth), Pub/Sub watch | `send-email`, `poll-gmail-inbox`, `gmail-push-webhook`, `gmail-watch-renew`, `poll-gmail-tickets`, `support-tickets-api` |
 | **Google Cloud Pub/Sub** | Gmail push notifications | `gmail-push-webhook` (receiver) |
 | **Firecrawl** | Web scraping for KB | `knowledge-source-add`, `knowledge-source-sync`, `knowledge-crawl-process` |
-| **Slack** | Notifications, integration | `admin-agent-chat`, `admin-send-notification`, `webhook-inbound-sms` (mirror) |
+| **Slack** | Notifications, integration | `admin-agent-chat`, `admin-send-notification`, `send-notification-slack`, `webhook-inbound-sms` (mirror), `webhook-call-status`, `sip-call-status`, `signalwire-status-webhook` |
 | **Cal.com** | Calendar booking | `cal-com-*` functions, agent.py tools |
 | **Apollo.io** | Contact enrichment | `contact-lookup` |
 | **HubSpot** | CRM | `mcp-execute` (native tools) |
