@@ -37,6 +37,8 @@ Deno.serve(async (req) => {
         return await handleUpdateConfig(supabase, body)
       case 'test_channel':
         return await handleTestChannel(supabase, body)
+      case 'list_slack_channels':
+        return await handleListSlackChannels(supabase)
       default:
         return errorResponse(`Unknown action: ${action}`)
     }
@@ -166,22 +168,13 @@ async function handleTestChannel(supabase: any, body: any) {
 
 // --- Channel senders (same as admin-send-notification) ---
 
-async function sendTestSms(supabase: any, phone: string, message: string) {
+async function sendTestSms(_supabase: any, phone: string, message: string) {
   const signalwireProjectId = Deno.env.get('SIGNALWIRE_PROJECT_ID')!
   const signalwireApiToken = Deno.env.get('SIGNALWIRE_API_TOKEN')!
   const signalwireSpaceUrl = Deno.env.get('SIGNALWIRE_SPACE_URL')!
 
-  const { data: serviceNumber } = await supabase
-    .from('service_numbers')
-    .select('phone_number')
-    .eq('is_active', true)
-    .limit(1)
-    .single()
-
-  if (!serviceNumber) throw new Error('No service number available for SMS')
-
   const smsData = new URLSearchParams({
-    From: serviceNumber.phone_number,
+    From: '+16042431596',
     To: phone,
     Body: message.substring(0, 160),
   })
@@ -199,7 +192,10 @@ async function sendTestSms(supabase: any, phone: string, message: string) {
     }
   )
 
-  if (!resp.ok) throw new Error(`SMS failed: HTTP ${resp.status}`)
+  const respBody = await resp.json()
+  if (!resp.ok || respBody.error_code) {
+    throw new Error(`SMS failed: ${respBody.error_message || `HTTP ${resp.status}`}`)
+  }
 }
 
 
@@ -249,7 +245,7 @@ async function sendTestSlack(supabase: any, channelName: string, title: string, 
   let channelId = channelName
   if (channelName.startsWith('#') || !channelName.startsWith('C')) {
     const name = channelName.replace(/^#/, '').toLowerCase()
-    const listResp = await fetch('https://slack.com/api/conversations.list?types=public_channel,private_channel&limit=200', {
+    const listResp = await fetch('https://slack.com/api/conversations.list?types=public_channel&limit=200&exclude_archived=true', {
       headers: { 'Authorization': `Bearer ${integration.access_token}` },
     })
     const listResult = await listResp.json()
@@ -287,6 +283,37 @@ async function sendTestSlack(supabase: any, channelName: string, title: string, 
 
   const result = await resp.json()
   if (!result.ok) throw new Error(`Slack error: ${result.error}`)
+}
+
+
+async function handleListSlackChannels(supabase: any) {
+  const { data: integration } = await supabase
+    .from('user_integrations')
+    .select('access_token, integration_providers!inner(slug)')
+    .eq('integration_providers.slug', 'slack')
+    .eq('status', 'connected')
+    .not('access_token', 'is', null)
+    .limit(1)
+    .single()
+
+  if (!integration?.access_token) {
+    return errorResponse('No Slack integration connected', 400)
+  }
+
+  const resp = await fetch('https://slack.com/api/conversations.list?types=public_channel&limit=200&exclude_archived=true', {
+    headers: { 'Authorization': `Bearer ${integration.access_token}` },
+  })
+  const result = await resp.json()
+
+  if (!result.ok) {
+    return errorResponse(`Slack API error: ${result.error}`, 500)
+  }
+
+  const channels = (result.channels || [])
+    .map((c: any) => ({ id: c.id, name: c.name, is_private: c.is_private }))
+    .sort((a: any, b: any) => a.name.localeCompare(b.name))
+
+  return successResponse({ channels })
 }
 
 

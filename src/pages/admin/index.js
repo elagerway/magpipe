@@ -120,9 +120,13 @@ class AdminPage {
       initialTab = validTabs.includes(tabParam) ? tabParam : 'support';
     }
 
-    if (urlParams.get('integration_connected') === 'google_email') {
+    const connectedIntegration = urlParams.get('integration_connected');
+    if (connectedIntegration === 'google_email') {
       showToast('Gmail connected successfully!', 'success');
-      // Clean URL but preserve tab param
+    } else if (connectedIntegration === 'slack') {
+      showToast('Slack connected successfully!', 'success');
+    }
+    if (connectedIntegration) {
       const cleanUrl = new URL(window.location.href);
       cleanUrl.searchParams.delete('integration_connected');
       window.history.replaceState({}, '', cleanUrl.toString());

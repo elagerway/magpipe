@@ -102,25 +102,13 @@ function jsonResponse(data: any, status = 200) {
 }
 
 
-async function sendSms(supabase: any, phone: string, message: string) {
+async function sendSms(_supabase: any, phone: string, message: string) {
   const signalwireProjectId = Deno.env.get('SIGNALWIRE_PROJECT_ID')!
   const signalwireApiToken = Deno.env.get('SIGNALWIRE_API_TOKEN')!
   const signalwireSpaceUrl = Deno.env.get('SIGNALWIRE_SPACE_URL')!
 
-  // Use an active service number as sender
-  const { data: serviceNumber } = await supabase
-    .from('service_numbers')
-    .select('phone_number')
-    .eq('is_active', true)
-    .limit(1)
-    .single()
-
-  if (!serviceNumber) {
-    throw new Error('No service number available for SMS')
-  }
-
   const smsData = new URLSearchParams({
-    From: serviceNumber.phone_number,
+    From: '+16042431596',
     To: phone,
     Body: message.substring(0, 160),
   })
@@ -138,8 +126,9 @@ async function sendSms(supabase: any, phone: string, message: string) {
     }
   )
 
-  if (!resp.ok) {
-    throw new Error(`SMS failed: HTTP ${resp.status}`)
+  const respBody = await resp.json()
+  if (!resp.ok || respBody.error_code) {
+    throw new Error(`SMS failed: ${respBody.error_message || `HTTP ${resp.status}`}`)
   }
 }
 
@@ -197,7 +186,7 @@ async function sendSlack(supabase: any, channelName: string, title: string, body
   let channelId = channelName
   if (channelName.startsWith('#') || !channelName.startsWith('C')) {
     const name = channelName.replace(/^#/, '').toLowerCase()
-    const listResp = await fetch('https://slack.com/api/conversations.list?types=public_channel,private_channel&limit=200', {
+    const listResp = await fetch('https://slack.com/api/conversations.list?types=public_channel&limit=200&exclude_archived=true', {
       headers: { 'Authorization': `Bearer ${integration.access_token}` },
     })
     const listResult = await listResp.json()

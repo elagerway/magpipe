@@ -118,10 +118,17 @@ export const notificationsTabMethods = {
                   ${slackConfigured ? `Connected${this.slackWorkspace ? ` (${this.slackWorkspace})` : ''}` : this.slackConnected ? 'No channel set' : 'Not connected'}
                 </span>
               </div>
-              <button class="btn btn-secondary notif-test-btn" data-channel="slack" title="Send test Slack message">Test</button>
+              ${this.slackConnected ? `<button class="btn btn-secondary notif-test-btn" data-channel="slack" title="Send test Slack message">Test</button>` : ''}
             </div>
             <div class="notif-channel-body">
-              <input type="text" id="notif-slack-channel" class="form-input" placeholder="#admin-alerts" value="${cfg.slack_channel || ''}">
+              ${this.slackConnected ? `
+                <select id="notif-slack-channel" class="form-input">
+                  <option value="">Select a channel...</option>
+                  ${cfg.slack_channel ? `<option value="${cfg.slack_channel}" selected>${cfg.slack_channel}</option>` : ''}
+                </select>
+              ` : `
+                <button class="btn btn-primary" id="notif-connect-slack" style="width: 100%;">Connect Slack</button>
+              `}
             </div>
           </div>
         </div>
@@ -275,7 +282,7 @@ export const notificationsTabMethods = {
 
     // Auto-save: text inputs save on blur with debounce
     let debounceTimer = null;
-    ['notif-sms-phone', 'notif-email-address', 'notif-slack-channel'].forEach(id => {
+    ['notif-sms-phone', 'notif-email-address'].forEach(id => {
       const input = document.getElementById(id);
       if (!input) return;
       input.addEventListener('input', () => {
@@ -287,6 +294,77 @@ export const notificationsTabMethods = {
         this._notifSaveConfig();
       });
     });
+
+    // Slack channel dropdown: fetch channels on focus, save on change
+    const slackSelect = document.getElementById('notif-slack-channel');
+    if (slackSelect && slackSelect.tagName === 'SELECT') {
+      let channelsFetched = false;
+      slackSelect.addEventListener('focus', async () => {
+        if (channelsFetched) return;
+        channelsFetched = true;
+        try {
+          const response = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-notifications-api`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${this.session.access_token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ action: 'list_slack_channels' }),
+            }
+          );
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || 'Failed to load channels');
+          const currentVal = slackSelect.value;
+          slackSelect.innerHTML = '<option value="">Select a channel...</option>';
+          (data.channels || []).forEach(ch => {
+            const opt = document.createElement('option');
+            opt.value = `#${ch.name}`;
+            opt.textContent = `#${ch.name}${ch.is_private ? ' (private)' : ''}`;
+            if (`#${ch.name}` === currentVal) opt.selected = true;
+            slackSelect.appendChild(opt);
+          });
+        } catch (err) {
+          showToast('Error loading Slack channels: ' + err.message, 'error');
+          channelsFetched = false;
+        }
+      });
+      slackSelect.addEventListener('change', () => this._notifSaveConfig());
+    }
+
+    // Connect Slack button
+    const connectSlackBtn = document.getElementById('notif-connect-slack');
+    if (connectSlackBtn) {
+      connectSlackBtn.addEventListener('click', async () => {
+        connectSlackBtn.disabled = true;
+        connectSlackBtn.textContent = 'Connecting...';
+        try {
+          const response = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/integration-oauth-start`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${this.session.access_token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ provider: 'slack', redirect_path: '/admin?tab=notifications' }),
+            }
+          );
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || 'Failed to start Slack OAuth');
+          if (data.url) {
+            window.location.href = data.url;
+          } else {
+            throw new Error('No OAuth URL returned');
+          }
+        } catch (error) {
+          showToast('Error: ' + error.message, 'error');
+          connectSlackBtn.disabled = false;
+          connectSlackBtn.textContent = 'Connect Slack';
+        }
+      });
+    }
 
     // Test buttons
     document.querySelectorAll('.notif-test-btn').forEach(btn => {
