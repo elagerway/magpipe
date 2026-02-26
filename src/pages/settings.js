@@ -6,17 +6,9 @@ import { User, Organization } from '../models/index.js';
 import { getCurrentUser, signOut, supabase } from '../lib/supabase.js';
 import { renderBottomNav, clearNavUserCache } from '../components/BottomNav.js';
 import { createAccessCodeSettings, addAccessCodeSettingsStyles } from '../components/AccessCodeSettings.js';
-import { createKnowledgeSourceManager, addKnowledgeSourceManagerStyles } from '../components/KnowledgeSourceManager.js';
+import { addKnowledgeSourceManagerStyles } from '../components/KnowledgeSourceManager.js';
 import { createExternalTrunkSettings, addExternalTrunkSettingsStyles } from '../components/ExternalTrunkSettings.js';
 import { showToast } from '../lib/toast.js';
-import {
-  isPushSupported,
-  getPermissionStatus,
-  subscribeToPush,
-  unsubscribeFromPush,
-  isSubscribed,
-  showTestNotification
-} from '../services/pushNotifications.js';
 
 export default class SettingsPage {
   constructor() {
@@ -44,16 +36,15 @@ export default class SettingsPage {
 
     // Use cached data if fetched within last 30 seconds
     const now = Date.now();
-    let profile, billingInfo, notifPrefs, serviceNumbers, organization;
+    let profile, billingInfo, serviceNumbers, organization;
 
     if (this.cachedData && (now - this.lastFetchTime) < 30000) {
-      ({ profile, billingInfo, notifPrefs, serviceNumbers, organization } = this.cachedData);
+      ({ profile, billingInfo, serviceNumbers, organization } = this.cachedData);
     } else {
       // Fetch all data in parallel for speed
-      const [profileResult, billingResult, notifResult, numbersResult, calComResult, orgResult, referralResult, slackIntegrationResult] = await Promise.all([
+      const [profileResult, billingResult, numbersResult, calComResult, orgResult, referralResult, slackIntegrationResult] = await Promise.all([
         User.getProfile(user.id),
         supabase.from('users').select('plan, stripe_customer_id, stripe_subscription_id, stripe_subscription_status, stripe_current_period_end, credits_balance, credits_used_this_period, has_payment_method, received_signup_bonus, auto_recharge_enabled, auto_recharge_amount, auto_recharge_threshold, cc_bonus_claimed, recharge_bonus_claimed, referral_code').eq('id', user.id).single(),
-        supabase.from('notification_preferences').select('*').eq('user_id', user.id).single(),
         supabase.from('service_numbers').select('phone_number, is_active').eq('user_id', user.id).order('is_active', { ascending: false }),
         supabase.from('users').select('cal_com_access_token, cal_com_user_id').eq('id', user.id).single(),
         Organization.getForUser(user.id),
@@ -63,7 +54,6 @@ export default class SettingsPage {
 
       profile = profileResult.profile;
       billingInfo = billingResult.data;
-      notifPrefs = notifResult.data;
       serviceNumbers = numbersResult.data;
       organization = orgResult.organization;
 
@@ -80,7 +70,7 @@ export default class SettingsPage {
       this.slackConnected = !!slackIntegrationResult.data;
 
       // Cache the data
-      this.cachedData = { profile, billingInfo, notifPrefs, serviceNumbers, organization };
+      this.cachedData = { profile, billingInfo, serviceNumbers, organization };
       this.lastFetchTime = now;
     }
 
@@ -118,7 +108,6 @@ export default class SettingsPage {
     if (integrationConnected === 'slack') {
       showToast('Slack connected successfully!', 'success');
       this.slackConnected = true;
-      this.activeTab = 'notifications';
       const cleanUrl = new URL(window.location.href);
       cleanUrl.searchParams.delete('integration_connected');
       window.history.replaceState({}, '', cleanUrl.toString());
@@ -133,7 +122,6 @@ export default class SettingsPage {
     this.profile = profile;
     this.user = user;
     this.billingInfo = billingInfo;
-    this.notifPrefs = notifPrefs;
     this.serviceNumbers = serviceNumbers;
     this.activeNumbers = activeNumbers;
     this.inactiveNumbers = inactiveNumbers;
@@ -141,7 +129,7 @@ export default class SettingsPage {
 
     // Check URL for tab param
     const tabParam = urlParams.get('tab');
-    if (tabParam && ['profile', 'billing', 'branding', 'notifications', 'account', 'api'].includes(tabParam)) {
+    if (tabParam && ['profile', 'billing', 'branding', 'account', 'api'].includes(tabParam)) {
       this.activeTab = tabParam;
     }
     // Auto-switch to billing tab if coming from billing/credits/payment callback
@@ -204,7 +192,6 @@ export default class SettingsPage {
             <button class="settings-tab ${this.activeTab === 'profile' ? 'active' : ''}" data-tab="profile">Profile</button>
             <button class="settings-tab ${this.activeTab === 'billing' ? 'active' : ''}" data-tab="billing">Billing</button>
             <button class="settings-tab ${this.activeTab === 'branding' ? 'active' : ''}" data-tab="branding">Branding</button>
-            <button class="settings-tab ${this.activeTab === 'notifications' ? 'active' : ''}" data-tab="notifications">Notifications</button>
             <button class="settings-tab ${this.activeTab === 'account' ? 'active' : ''}" data-tab="account">Account</button>
             <button class="settings-tab ${this.activeTab === 'api' ? 'active' : ''}" data-tab="api">API</button>
           </div>
@@ -214,26 +201,6 @@ export default class SettingsPage {
         <div id="settings-tab-content" class="settings-tab-content">
           ${this.renderActiveTab()}
         </div>
-
-      <!-- Push Notifications Help Modal -->
-      <div id="push-help-modal" class="modal-overlay hidden">
-        <div class="modal-content" style="max-width: 500px;">
-          <div class="modal-header">
-            <h2 style="margin: 0;">Enable Push Notifications</h2>
-            <button class="modal-close-btn" id="close-push-help-modal">
-              <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-              </svg>
-            </button>
-          </div>
-          <div id="push-help-content">
-            <!-- Content populated by JS based on platform -->
-          </div>
-          <div style="margin-top: 1.5rem;">
-            <button class="btn btn-primary" id="push-help-done-btn" style="width: 100%;">Got it</button>
-          </div>
-        </div>
-      </div>
 
       <style>
         .settings-tabs-container {
@@ -333,8 +300,6 @@ export default class SettingsPage {
         return this.renderBillingTab();
       case 'branding':
         return this.renderBrandingTab();
-      case 'notifications':
-        return this.renderNotificationsTab();
       case 'account':
         return this.renderAccountTab();
       case 'api':
@@ -383,9 +348,6 @@ export default class SettingsPage {
         break;
       case 'branding':
         this.attachBrandingTabListeners();
-        break;
-      case 'notifications':
-        this.attachNotificationsTabListeners();
         break;
       case 'account':
         this.attachAccountTabListeners();
@@ -917,6 +879,83 @@ export default class SettingsPage {
             </p>
           </div>
 
+          <!-- Transaction History -->
+          <div style="border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem; margin-top: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; gap: 0.75rem; flex-wrap: wrap;">
+              <h3 style="margin: 0; font-size: 1rem;">Transaction History</h3>
+              <input type="text" id="transactions-search" class="form-input" placeholder="Search description or reference..." style="max-width: 250px; font-size: 0.8125rem; padding: 0.375rem 0.625rem;" />
+            </div>
+            <div id="transactions-container">
+              <div id="transactions-loading" style="text-align: center; padding: 1rem; color: var(--text-secondary); font-size: 0.875rem;">
+                Loading transactions...
+              </div>
+              <div id="transactions-table" style="display: none;">
+                <div style="overflow-x: auto;">
+                  <table style="width: 100%; border-collapse: collapse; font-size: 0.8125rem;">
+                    <thead>
+                      <tr style="border-bottom: 1px solid var(--border-color);">
+                        <th style="text-align: left; padding: 0.5rem 0.5rem; color: var(--text-secondary); font-weight: 500;">Date</th>
+                        <th style="text-align: left; padding: 0.5rem 0.5rem; color: var(--text-secondary); font-weight: 500;">Description</th>
+                        <th style="text-align: left; padding: 0.5rem 0.5rem; color: var(--text-secondary); font-weight: 500;">Reference</th>
+                        <th style="text-align: right; padding: 0.5rem 0.5rem; color: var(--text-secondary); font-weight: 500;">Amount</th>
+                        <th style="text-align: right; padding: 0.5rem 0.5rem; color: var(--text-secondary); font-weight: 500;">Balance</th>
+                      </tr>
+                    </thead>
+                    <tbody id="transactions-tbody"></tbody>
+                  </table>
+                </div>
+                <div id="transactions-pagination" style="display: none; margin-top: 0.75rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                  <button class="btn btn-secondary btn-sm" id="tx-prev-btn" disabled>&larr; Prev</button>
+                  <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <span id="tx-page-info" style="font-size: 0.8125rem; color: var(--text-secondary);"></span>
+                    <select id="tx-page-size" class="form-input" style="font-size: 0.75rem; padding: 0.25rem 0.375rem; width: auto;">
+                      <option value="10">10</option>
+                      <option value="25" selected>25</option>
+                      <option value="50">50</option>
+                      <option value="100">100</option>
+                    </select>
+                    <span style="font-size: 0.75rem; color: var(--text-secondary);">per page</span>
+                  </div>
+                  <button class="btn btn-secondary btn-sm" id="tx-next-btn">Next &rarr;</button>
+                </div>
+              </div>
+              <div id="transactions-empty" style="display: none; text-align: center; padding: 1rem; color: var(--text-secondary); font-size: 0.875rem;">
+                No transactions found.
+              </div>
+            </div>
+          </div>
+
+          ${this.profile?.stripe_customer_id ? `
+          <!-- Receipts & Invoices -->
+          <div style="border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem; margin-top: 1rem;">
+            <h3 style="margin: 0 0 0.75rem 0; font-size: 1rem;">Receipts & Invoices</h3>
+            <div id="receipts-container">
+              <div id="receipts-loading" style="text-align: center; padding: 1rem; color: var(--text-secondary); font-size: 0.875rem;">
+                Loading receipts...
+              </div>
+              <div id="receipts-table" style="display: none;">
+                <div style="overflow-x: auto;">
+                  <table style="width: 100%; border-collapse: collapse; font-size: 0.8125rem;">
+                    <thead>
+                      <tr style="border-bottom: 1px solid var(--border-color);">
+                        <th style="text-align: left; padding: 0.5rem 0.5rem; color: var(--text-secondary); font-weight: 500;">Date</th>
+                        <th style="text-align: left; padding: 0.5rem 0.5rem; color: var(--text-secondary); font-weight: 500;">Description</th>
+                        <th style="text-align: right; padding: 0.5rem 0.5rem; color: var(--text-secondary); font-weight: 500;">Amount</th>
+                        <th style="text-align: center; padding: 0.5rem 0.5rem; color: var(--text-secondary); font-weight: 500;">Status</th>
+                        <th style="text-align: center; padding: 0.5rem 0.5rem; color: var(--text-secondary); font-weight: 500;">Receipt</th>
+                      </tr>
+                    </thead>
+                    <tbody id="receipts-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+              <div id="receipts-empty" style="display: none; text-align: center; padding: 1rem; color: var(--text-secondary); font-size: 0.875rem;">
+                No receipts yet.
+              </div>
+            </div>
+          </div>
+          ` : ''}
+
           ${this.profile?.stripe_customer_id ? `
             <div style="margin-top: 1rem;">
               <button class="btn btn-secondary btn-sm" id="manage-billing-btn">
@@ -1286,6 +1325,202 @@ export default class SettingsPage {
         }
       });
     }
+
+    // --- Transaction History ---
+    this.txPage = 0;
+    this.txPageSize = 25;
+    this.txSearch = '';
+    this.loadTransactions();
+
+    const txSearchInput = document.getElementById('transactions-search');
+    let txSearchTimer;
+    if (txSearchInput) {
+      txSearchInput.addEventListener('input', () => {
+        clearTimeout(txSearchTimer);
+        txSearchTimer = setTimeout(() => {
+          this.txSearch = txSearchInput.value.trim();
+          this.txPage = 0;
+          this.loadTransactions();
+        }, 300);
+      });
+    }
+
+    const txPrevBtn = document.getElementById('tx-prev-btn');
+    const txNextBtn = document.getElementById('tx-next-btn');
+    const txPageSize = document.getElementById('tx-page-size');
+    if (txPrevBtn) {
+      txPrevBtn.addEventListener('click', () => {
+        if (this.txPage > 0) {
+          this.txPage--;
+          this.loadTransactions();
+        }
+      });
+    }
+    if (txNextBtn) {
+      txNextBtn.addEventListener('click', () => {
+        this.txPage++;
+        this.loadTransactions();
+      });
+    }
+    if (txPageSize) {
+      txPageSize.addEventListener('change', () => {
+        this.txPageSize = parseInt(txPageSize.value);
+        this.txPage = 0;
+        this.loadTransactions();
+      });
+    }
+
+    // --- Receipts & Invoices ---
+    if (this.profile?.stripe_customer_id) {
+      this.loadReceipts();
+    }
+  }
+
+  async loadTransactions() {
+    const pageSize = this.txPageSize || 25;
+    try {
+      const { user } = await getCurrentUser();
+      const from = this.txPage * pageSize;
+      const to = from + pageSize - 1;
+
+      let query = supabase
+        .from('credit_transactions')
+        .select('*', { count: 'exact' })
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (this.txSearch) {
+        query = query.or(`description.ilike.%${this.txSearch}%,reference_id.ilike.%${this.txSearch}%`);
+      }
+
+      const { data, error, count } = await query.range(from, to);
+      if (error) throw error;
+
+      const loading = document.getElementById('transactions-loading');
+      const table = document.getElementById('transactions-table');
+      const empty = document.getElementById('transactions-empty');
+      const tbody = document.getElementById('transactions-tbody');
+      const pagination = document.getElementById('transactions-pagination');
+      const prevBtn = document.getElementById('tx-prev-btn');
+      const nextBtn = document.getElementById('tx-next-btn');
+      const pageInfo = document.getElementById('tx-page-info');
+
+      if (loading) loading.style.display = 'none';
+
+      if (!data || data.length === 0) {
+        if (table) table.style.display = 'none';
+        if (empty) empty.style.display = 'block';
+        return;
+      }
+
+      if (empty) empty.style.display = 'none';
+      if (table) table.style.display = 'block';
+
+      const rows = data.map(tx => {
+        const date = new Date(tx.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        const isPositive = tx.amount > 0;
+        const amountColor = isPositive ? '#22c55e' : '#ef4444';
+        const amountPrefix = isPositive ? '+' : '';
+        const refId = tx.reference_id ? tx.reference_id.slice(0, 8) + '...' : '—';
+        const refCell = tx.reference_id
+          ? `<span class="tx-ref-copy" data-ref="${tx.reference_id}" title="Click to copy: ${tx.reference_id}" style="cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px;">${refId}</span>`
+          : '—';
+        return `
+          <tr style="border-bottom: 1px solid var(--border-color);">
+            <td style="padding: 0.5rem; white-space: nowrap; color: var(--text-secondary);">${date}</td>
+            <td style="padding: 0.5rem; color: var(--text-primary);">${tx.description || tx.transaction_type}</td>
+            <td style="padding: 0.5rem; color: var(--text-secondary); font-family: monospace; font-size: 0.75rem;">${refCell}</td>
+            <td style="padding: 0.5rem; text-align: right; font-weight: 600; color: ${amountColor};">${amountPrefix}$${Math.abs(tx.amount).toFixed(2)}</td>
+            <td style="padding: 0.5rem; text-align: right; color: var(--text-secondary);">$${Number(tx.balance_after).toFixed(2)}</td>
+          </tr>
+        `;
+      }).join('');
+
+      if (tbody) tbody.innerHTML = rows;
+
+      // Click-to-copy reference IDs (delegate once)
+      if (tbody && !tbody.dataset.copyBound) {
+        tbody.dataset.copyBound = 'true';
+        tbody.addEventListener('click', async (e) => {
+          const el = e.target.closest('.tx-ref-copy');
+          if (!el) return;
+          const ref = el.dataset.ref;
+          try {
+            await navigator.clipboard.writeText(ref);
+            const orig = el.textContent;
+            el.textContent = 'Copied!';
+            setTimeout(() => { el.textContent = orig; }, 1500);
+          } catch {
+            showToast('Failed to copy', 'error');
+          }
+        });
+      }
+
+      // Pagination controls
+      const totalPages = Math.ceil((count || 0) / pageSize);
+      if (pagination) pagination.style.display = totalPages > 1 ? 'flex' : 'none';
+      if (prevBtn) prevBtn.disabled = this.txPage === 0;
+      if (nextBtn) nextBtn.disabled = this.txPage >= totalPages - 1;
+      if (pageInfo) pageInfo.textContent = `Page ${this.txPage + 1} of ${totalPages}`;
+    } catch (error) {
+      console.error('Load transactions error:', error);
+      const loading = document.getElementById('transactions-loading');
+      if (loading) loading.textContent = 'Failed to load transactions.';
+    }
+  }
+
+  async loadReceipts() {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/stripe-create-portal`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'list_invoices' })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to load receipts');
+
+      const loading = document.getElementById('receipts-loading');
+      const table = document.getElementById('receipts-table');
+      const empty = document.getElementById('receipts-empty');
+      const tbody = document.getElementById('receipts-tbody');
+
+      if (loading) loading.style.display = 'none';
+
+      if (!data.invoices || data.invoices.length === 0) {
+        if (empty) empty.style.display = 'block';
+        return;
+      }
+
+      if (table) table.style.display = 'block';
+
+      const rows = data.invoices.map(inv => {
+        const date = new Date(inv.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        const statusBadge = inv.status === 'succeeded'
+          ? '<span style="background: #dcfce7; color: #166534; padding: 0.125rem 0.5rem; border-radius: 9999px; font-size: 0.75rem;">Paid</span>'
+          : `<span style="background: var(--bg-secondary); color: var(--text-secondary); padding: 0.125rem 0.5rem; border-radius: 9999px; font-size: 0.75rem;">${inv.status}</span>`;
+        const receiptLink = inv.receipt_url
+          ? `<a href="${inv.receipt_url}" target="_blank" rel="noopener" style="color: var(--primary); font-size: 0.8125rem; text-decoration: none;">View Receipt</a>`
+          : '—';
+        return `
+          <tr style="border-bottom: 1px solid var(--border-color);">
+            <td style="padding: 0.5rem; white-space: nowrap; color: var(--text-secondary);">${date}</td>
+            <td style="padding: 0.5rem; color: var(--text-primary);">${inv.description}</td>
+            <td style="padding: 0.5rem; text-align: right; font-weight: 600; color: var(--text-primary);">$${inv.amount.toFixed(2)}</td>
+            <td style="padding: 0.5rem; text-align: center;">${statusBadge}</td>
+            <td style="padding: 0.5rem; text-align: center;">${receiptLink}</td>
+          </tr>
+        `;
+      }).join('');
+
+      if (tbody) tbody.innerHTML = rows;
+    } catch (error) {
+      console.error('Load receipts error:', error);
+      const loading = document.getElementById('receipts-loading');
+      if (loading) loading.textContent = 'Failed to load receipts.';
+    }
   }
 
   renderBrandingTab() {
@@ -1571,317 +1806,6 @@ export default class SettingsPage {
     }
   }
 
-  renderNotificationsTab() {
-    return `
-      <div class="card" style="margin-bottom: 1rem;">
-        <h2>Notifications</h2>
-        <p class="text-muted" style="margin-bottom: 1.5rem;">Receive alerts for missed calls and new messages</p>
-
-        <!-- Email Notifications -->
-        <div style="border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1rem;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-            <div>
-              <h3 style="margin: 0; font-size: 1rem;">Email Notifications</h3>
-              <p class="text-muted" style="margin: 0.25rem 0 0 0; font-size: 0.875rem;">Get alerts sent to your email</p>
-            </div>
-            <label class="toggle-switch">
-              <input type="checkbox" id="email-enabled" ${this.notifPrefs?.email_enabled ? 'checked' : ''} />
-              <span class="toggle-slider"></span>
-            </label>
-          </div>
-          <div class="form-group">
-            <label for="email-address">Email Address</label>
-            <input type="email" id="email-address" class="form-input" value="${this.notifPrefs?.email_address || this.user.email}" placeholder="your@email.com" />
-          </div>
-          <div style="display: flex; flex-direction: column; gap: 0.5rem; padding-left: 0.5rem;">
-            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
-              <input type="checkbox" id="email-inbound-calls" ${this.notifPrefs?.email_inbound_calls ? 'checked' : ''} />
-              <span>Inbound calls</span>
-            </label>
-            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
-              <input type="checkbox" id="email-all-calls" ${this.notifPrefs?.email_all_calls ? 'checked' : ''} />
-              <span>All calls</span>
-            </label>
-            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
-              <input type="checkbox" id="email-inbound-messages" ${this.notifPrefs?.email_inbound_messages ? 'checked' : ''} />
-              <span>Inbound messages</span>
-            </label>
-            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
-              <input type="checkbox" id="email-all-messages" ${this.notifPrefs?.email_all_messages ? 'checked' : ''} />
-              <span>All messages</span>
-            </label>
-          </div>
-        </div>
-
-        <!-- SMS Notifications -->
-        <div style="border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1rem;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-            <div>
-              <h3 style="margin: 0; font-size: 1rem;">SMS Notifications</h3>
-              <p class="text-muted" style="margin: 0.25rem 0 0 0; font-size: 0.875rem;">Get alerts sent to your phone</p>
-            </div>
-            <label class="toggle-switch">
-              <input type="checkbox" id="sms-enabled" ${this.notifPrefs?.sms_enabled ? 'checked' : ''} />
-              <span class="toggle-slider"></span>
-            </label>
-          </div>
-          <div class="form-group">
-            <label for="sms-phone-number">Phone Number</label>
-            <input type="tel" id="sms-phone-number" class="form-input" value="${this.notifPrefs?.sms_phone_number || this.profile?.phone_number || ''}" placeholder="+1 (555) 123-4567" />
-          </div>
-          <div style="display: flex; flex-direction: column; gap: 0.5rem; padding-left: 0.5rem;">
-            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
-              <input type="checkbox" id="sms-inbound-calls" ${this.notifPrefs?.sms_inbound_calls ? 'checked' : ''} />
-              <span>Inbound calls</span>
-            </label>
-            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
-              <input type="checkbox" id="sms-all-calls" ${this.notifPrefs?.sms_all_calls ? 'checked' : ''} />
-              <span>All calls</span>
-            </label>
-            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
-              <input type="checkbox" id="sms-inbound-messages" ${this.notifPrefs?.sms_inbound_messages ? 'checked' : ''} />
-              <span>Inbound messages</span>
-            </label>
-            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
-              <input type="checkbox" id="sms-all-messages" ${this.notifPrefs?.sms_all_messages ? 'checked' : ''} />
-              <span>All messages</span>
-            </label>
-          </div>
-        </div>
-
-        <!-- Slack Notifications -->
-        <div style="border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1rem;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-            <div>
-              <h3 style="margin: 0; font-size: 1rem;">Slack Notifications</h3>
-              <p class="text-muted" style="margin: 0.25rem 0 0 0; font-size: 0.875rem;">Get alerts sent to a Slack channel</p>
-            </div>
-            ${this.slackConnected ? `
-              <label class="toggle-switch">
-                <input type="checkbox" id="slack-enabled" ${this.notifPrefs?.slack_enabled ? 'checked' : ''} />
-                <span class="toggle-slider"></span>
-              </label>
-            ` : ''}
-          </div>
-          ${this.slackConnected ? `
-            <div class="form-group">
-              <label for="slack-channel">Channel</label>
-              <select id="slack-channel" class="form-input">
-                <option value="">Select a channel...</option>
-                ${this.notifPrefs?.slack_channel ? `<option value="${this.notifPrefs.slack_channel}" selected>${this.notifPrefs.slack_channel}</option>` : ''}
-              </select>
-            </div>
-            <div style="display: flex; flex-direction: column; gap: 0.5rem; padding-left: 0.5rem;">
-              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
-                <input type="checkbox" id="slack-inbound-calls" ${this.notifPrefs?.slack_inbound_calls ? 'checked' : ''} />
-                <span>Inbound calls</span>
-              </label>
-              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
-                <input type="checkbox" id="slack-all-calls" ${this.notifPrefs?.slack_all_calls ? 'checked' : ''} />
-                <span>All calls</span>
-              </label>
-              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
-                <input type="checkbox" id="slack-inbound-messages" ${this.notifPrefs?.slack_inbound_messages ? 'checked' : ''} />
-                <span>Inbound messages</span>
-              </label>
-              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
-                <input type="checkbox" id="slack-all-messages" ${this.notifPrefs?.slack_all_messages ? 'checked' : ''} />
-                <span>All messages</span>
-              </label>
-            </div>
-          ` : `
-            <button class="btn btn-primary" id="connect-slack-btn" style="width: 100%;">
-              Connect Slack
-            </button>
-          `}
-        </div>
-
-        <!-- Push Notifications -->
-        <div style="border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1rem;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-            <div>
-              <h3 style="margin: 0; font-size: 1rem;">Push Notifications</h3>
-              <p class="text-muted" style="margin: 0.25rem 0 0 0; font-size: 0.875rem;">Get instant alerts on this device</p>
-            </div>
-            <label class="toggle-switch">
-              <input type="checkbox" id="push-enabled" ${this.notifPrefs?.push_enabled ? 'checked' : ''} />
-              <span class="toggle-slider"></span>
-            </label>
-          </div>
-          <div id="push-status" style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
-            Checking push notification support...
-          </div>
-          <div id="push-options" style="display: ${this.notifPrefs?.push_enabled ? 'block' : 'none'};">
-            <div style="display: flex; flex-direction: column; gap: 0.5rem; padding-left: 0.5rem;">
-              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
-                <input type="checkbox" id="push-inbound-calls" ${this.notifPrefs?.push_inbound_calls !== false ? 'checked' : ''} />
-                <span>Inbound calls</span>
-              </label>
-              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
-                <input type="checkbox" id="push-all-calls" ${this.notifPrefs?.push_all_calls ? 'checked' : ''} />
-                <span>All calls</span>
-              </label>
-              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
-                <input type="checkbox" id="push-inbound-messages" ${this.notifPrefs?.push_inbound_messages !== false ? 'checked' : ''} />
-                <span>Inbound messages</span>
-              </label>
-              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
-                <input type="checkbox" id="push-all-messages" ${this.notifPrefs?.push_all_messages ? 'checked' : ''} />
-                <span>All messages</span>
-              </label>
-            </div>
-            <button class="btn btn-sm btn-secondary" id="test-push-btn" style="margin-top: 0.75rem;">
-              Send Test Notification
-            </button>
-          </div>
-        </div>
-
-        <button class="btn btn-primary" id="save-notifications-btn">
-          Save Notification Settings
-        </button>
-      </div>
-
-      <!-- Knowledge Base (Mobile Only) -->
-      <div class="card mobile-only">
-        <h2>Knowledge Base</h2>
-        <p class="text-muted">Add URLs to your assistant's knowledge base so it can reference your website content during conversations</p>
-        <div id="knowledge-source-container"></div>
-      </div>
-    `;
-  }
-
-  attachNotificationsTabListeners() {
-    const saveNotificationsBtn = document.getElementById('save-notifications-btn');
-
-    // Push notifications setup
-    this.initPushNotificationUI();
-
-    // Save notifications
-    if (saveNotificationsBtn) {
-      saveNotificationsBtn.addEventListener('click', async () => {
-        saveNotificationsBtn.disabled = true;
-        saveNotificationsBtn.textContent = 'Saving...';
-        try {
-          const { user } = await getCurrentUser();
-          const preferences = {
-            user_id: user.id,
-            email_enabled: document.getElementById('email-enabled').checked,
-            email_address: document.getElementById('email-address').value,
-            email_inbound_calls: document.getElementById('email-inbound-calls').checked,
-            email_all_calls: document.getElementById('email-all-calls').checked,
-            email_inbound_messages: document.getElementById('email-inbound-messages').checked,
-            email_all_messages: document.getElementById('email-all-messages').checked,
-            sms_enabled: document.getElementById('sms-enabled').checked,
-            sms_phone_number: document.getElementById('sms-phone-number').value,
-            sms_inbound_calls: document.getElementById('sms-inbound-calls').checked,
-            sms_all_calls: document.getElementById('sms-all-calls').checked,
-            sms_inbound_messages: document.getElementById('sms-inbound-messages').checked,
-            sms_all_messages: document.getElementById('sms-all-messages').checked,
-            slack_enabled: document.getElementById('slack-enabled')?.checked || false,
-            slack_channel: document.getElementById('slack-channel')?.value || '',
-            slack_inbound_calls: document.getElementById('slack-inbound-calls')?.checked || false,
-            slack_all_calls: document.getElementById('slack-all-calls')?.checked || false,
-            slack_inbound_messages: document.getElementById('slack-inbound-messages')?.checked || false,
-            slack_all_messages: document.getElementById('slack-all-messages')?.checked || false,
-            push_enabled: document.getElementById('push-enabled').checked,
-            push_inbound_calls: document.getElementById('push-inbound-calls').checked,
-            push_all_calls: document.getElementById('push-all-calls').checked,
-            push_inbound_messages: document.getElementById('push-inbound-messages').checked,
-            push_all_messages: document.getElementById('push-all-messages').checked,
-            updated_at: new Date().toISOString()
-          };
-          const { error } = await supabase.from('notification_preferences').upsert(preferences, { onConflict: 'user_id' });
-          if (error) throw error;
-          showToast('Notification settings saved successfully', 'success');
-        } catch (error) {
-          console.error('Save notifications error:', error);
-          showToast('Failed to save notification settings. Please try again.', 'error');
-        } finally {
-          saveNotificationsBtn.disabled = false;
-          saveNotificationsBtn.textContent = 'Save Notification Settings';
-        }
-      });
-    }
-
-    // Slack: Connect button
-    const connectSlackBtn = document.getElementById('connect-slack-btn');
-    if (connectSlackBtn) {
-      connectSlackBtn.addEventListener('click', async () => {
-        connectSlackBtn.disabled = true;
-        connectSlackBtn.textContent = 'Connecting...';
-        try {
-          const { session } = await import('../lib/supabase.js').then(m => m.getCurrentSession());
-          const response = await fetch(
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/integration-oauth-start`,
-            {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${session.access_token}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({ provider: 'slack', redirect_path: '/settings?tab=notifications' }),
-            }
-          );
-          const data = await response.json();
-          if (!response.ok) throw new Error(data.error || 'Failed to start Slack OAuth');
-          if (data.url) {
-            window.location.href = data.url;
-          } else {
-            throw new Error('No OAuth URL returned');
-          }
-        } catch (error) {
-          showToast('Error: ' + error.message, 'error');
-          connectSlackBtn.disabled = false;
-          connectSlackBtn.textContent = 'Connect Slack';
-        }
-      });
-    }
-
-    // Slack: Channel dropdown — fetch channels on focus
-    const slackChannelSelect = document.getElementById('slack-channel');
-    if (slackChannelSelect) {
-      let channelsFetched = false;
-      slackChannelSelect.addEventListener('focus', async () => {
-        if (channelsFetched) return;
-        channelsFetched = true;
-        try {
-          const { session } = await import('../lib/supabase.js').then(m => m.getCurrentSession());
-          const response = await fetch(
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-notification-slack`,
-            {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${session.access_token}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({ action: 'list_channels' }),
-            }
-          );
-          const data = await response.json();
-          if (!response.ok) throw new Error(data.error || 'Failed to load channels');
-          const currentVal = slackChannelSelect.value;
-          slackChannelSelect.innerHTML = '<option value="">Select a channel...</option>';
-          (data.channels || []).forEach(ch => {
-            const opt = document.createElement('option');
-            opt.value = `#${ch.name}`;
-            opt.textContent = `#${ch.name}`;
-            if (`#${ch.name}` === currentVal) opt.selected = true;
-            slackChannelSelect.appendChild(opt);
-          });
-        } catch (err) {
-          showToast('Error loading Slack channels: ' + err.message, 'error');
-          channelsFetched = false;
-        }
-      });
-    }
-
-    // Initialize knowledge source manager (mobile only)
-    const knowledgeContainer = document.getElementById('knowledge-source-container');
-    if (knowledgeContainer && window.innerWidth <= 768) {
-      this.knowledgeManager = createKnowledgeSourceManager(knowledgeContainer);
-    }
-  }
-
   renderApiTab() {
     return `
       <div class="card" style="margin-bottom: 1rem;">
@@ -2083,47 +2007,49 @@ export default class SettingsPage {
       }
 
       listContainer.innerHTML = `
-        <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
-          <thead>
-            <tr style="text-align: left; border-bottom: 1px solid var(--border-color);">
-              <th style="padding: 0.5rem 0.5rem 0.5rem 0;">Name</th>
-              <th style="padding: 0.5rem;">Key</th>
-              <th style="padding: 0.5rem;" class="desktop-only">Webhook</th>
-              <th style="padding: 0.5rem;" class="desktop-only">Created</th>
-              <th style="padding: 0.5rem;" class="desktop-only">Last Used</th>
-              <th style="padding: 0.5rem; text-align: right;"></th>
-            </tr>
-          </thead>
-          <tbody>
-            ${keys.map(key => `
-              <tr style="border-bottom: 1px solid var(--border-color);">
-                <td style="padding: 0.5rem 0.5rem 0.5rem 0; font-weight: 500;">${this.escapeHtml(key.name)}</td>
-                <td style="padding: 0.5rem;">
-                  <code style="font-size: 0.8rem; background: var(--bg-secondary); padding: 0.15rem 0.35rem; border-radius: 3px;">${key.key_prefix}...</code>
-                </td>
-                <td style="padding: 0.5rem; color: var(--text-secondary);" class="desktop-only">
-                  ${key.is_active ? (key.webhook_url
-                    ? `<span style="font-size: 0.8rem; max-width: 180px; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;" title="${this.escapeHtml(key.webhook_url)}">${this.escapeHtml(key.webhook_url)}</span>
-                       <button class="btn btn-secondary api-key-edit-webhook-btn" data-key-id="${key.id}" data-webhook-url="${this.escapeHtml(key.webhook_url)}" data-webhook-secret="${this.escapeHtml(key.webhook_secret || '')}" style="font-size: 0.7rem; padding: 0.15rem 0.35rem; margin-left: 0.25rem; vertical-align: middle;">Edit</button>`
-                    : `<button class="btn btn-secondary api-key-edit-webhook-btn" data-key-id="${key.id}" data-webhook-url="" data-webhook-secret="" style="font-size: 0.7rem; padding: 0.15rem 0.35rem;">+ Add</button>`
-                  ) : '<span style="font-size: 0.75rem;">—</span>'}
-                </td>
-                <td style="padding: 0.5rem; color: var(--text-secondary);" class="desktop-only">
-                  ${new Date(key.created_at).toLocaleDateString()}
-                </td>
-                <td style="padding: 0.5rem; color: var(--text-secondary);" class="desktop-only">
-                  ${key.last_used_at ? new Date(key.last_used_at).toLocaleDateString() : 'Never'}
-                </td>
-                <td style="padding: 0.5rem; text-align: right;">
-                  ${key.is_active
-                    ? `<button class="btn btn-secondary api-key-revoke-btn" data-key-id="${key.id}" data-key-name="${this.escapeHtml(key.name)}" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">Revoke</button>`
-                    : `<span style="color: var(--text-secondary); font-size: 0.75rem;">Revoked</span>`
-                  }
-                </td>
+        <div style="overflow-x: auto;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+            <thead>
+              <tr style="text-align: left; border-bottom: 2px solid var(--border-color);">
+                <th style="padding: 0.5rem 0.5rem 0.5rem 0; white-space: nowrap;">Name</th>
+                <th style="padding: 0.5rem; white-space: nowrap;">Key</th>
+                <th style="padding: 0.5rem; white-space: nowrap;" class="api-keys-extra">Webhook</th>
+                <th style="padding: 0.5rem; white-space: nowrap;" class="api-keys-extra">Created</th>
+                <th style="padding: 0.5rem; white-space: nowrap;" class="api-keys-extra">Last Used</th>
+                <th style="padding: 0.5rem; text-align: right; white-space: nowrap;"></th>
               </tr>
-            `).join('')}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              ${keys.map(key => `
+                <tr style="border-bottom: 1px solid var(--border-color);">
+                  <td style="padding: 0.5rem 0.5rem 0.5rem 0; font-weight: 500; white-space: nowrap;">${this.escapeHtml(key.name)}</td>
+                  <td style="padding: 0.5rem; white-space: nowrap;">
+                    <code style="font-size: 0.8rem; background: var(--bg-secondary); padding: 0.15rem 0.35rem; border-radius: 3px;">${key.key_prefix}...</code>
+                  </td>
+                  <td style="padding: 0.5rem; color: var(--text-secondary); white-space: nowrap;" class="api-keys-extra">
+                    ${key.is_active ? (key.webhook_url
+                      ? `<span style="font-size: 0.8rem; max-width: 180px; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;" title="${this.escapeHtml(key.webhook_url)}">${this.escapeHtml(key.webhook_url)}</span>
+                         <button class="btn btn-secondary api-key-edit-webhook-btn" data-key-id="${key.id}" data-webhook-url="${this.escapeHtml(key.webhook_url)}" data-webhook-secret="${this.escapeHtml(key.webhook_secret || '')}" style="font-size: 0.7rem; padding: 0.15rem 0.35rem; margin-left: 0.25rem; vertical-align: middle;">Edit</button>`
+                      : `<button class="btn btn-secondary api-key-edit-webhook-btn" data-key-id="${key.id}" data-webhook-url="" data-webhook-secret="" style="font-size: 0.7rem; padding: 0.15rem 0.35rem;">+ Add</button>`
+                    ) : '<span style="font-size: 0.75rem;">—</span>'}
+                  </td>
+                  <td style="padding: 0.5rem; color: var(--text-secondary); white-space: nowrap;" class="api-keys-extra">
+                    ${new Date(key.created_at).toLocaleDateString()}
+                  </td>
+                  <td style="padding: 0.5rem; color: var(--text-secondary); white-space: nowrap;" class="api-keys-extra">
+                    ${key.last_used_at ? new Date(key.last_used_at).toLocaleDateString() : 'Never'}
+                  </td>
+                  <td style="padding: 0.5rem; text-align: right; white-space: nowrap;">
+                    ${key.is_active
+                      ? `<button class="btn btn-secondary api-key-revoke-btn" data-key-id="${key.id}" data-key-name="${this.escapeHtml(key.name)}" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">Revoke</button>`
+                      : `<span style="color: var(--text-secondary); font-size: 0.75rem;">Revoked</span>`
+                    }
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
       `;
 
       // Attach revoke listeners
@@ -2590,213 +2516,6 @@ export default class SettingsPage {
   attachEventListeners() {
     // Add component styles (called once on page load)
     // Tab-specific listeners are handled by attachTabContentListeners
-    this.setupPushHelpModal();
   }
 
-  /**
-   * Initialize push notification UI and event handlers
-   */
-  async initPushNotificationUI() {
-    const pushStatus = document.getElementById('push-status');
-    const pushEnabled = document.getElementById('push-enabled');
-    const pushOptions = document.getElementById('push-options');
-    const testPushBtn = document.getElementById('test-push-btn');
-
-    // Check if push is supported
-    if (!isPushSupported()) {
-      pushStatus.textContent = 'Push notifications are not supported on this device/browser.';
-      pushEnabled.disabled = true;
-      return;
-    }
-
-    // Check permission status
-    const permission = getPermissionStatus();
-    const subscribed = await isSubscribed();
-
-    if (permission === 'denied') {
-      pushStatus.innerHTML = 'Push notifications are blocked. <a href="javascript:void(0)" onclick="alert(\'Open your browser settings and allow notifications for this site.\')">Learn how to enable</a>';
-      pushEnabled.disabled = true;
-    } else if (subscribed) {
-      pushStatus.textContent = 'Push notifications are active on this device.';
-      pushEnabled.checked = true;
-      pushOptions.style.display = 'block';
-    } else if (permission === 'granted') {
-      pushStatus.textContent = 'Push notifications are available. Enable above to receive alerts.';
-    } else {
-      pushStatus.textContent = 'Enable push notifications to receive instant alerts on this device.';
-    }
-
-    // Handle push toggle change
-    pushEnabled.addEventListener('change', async () => {
-      const isEnabled = pushEnabled.checked;
-      pushOptions.style.display = isEnabled ? 'block' : 'none';
-
-      if (isEnabled) {
-        // Try to subscribe
-        pushStatus.textContent = 'Setting up push notifications...';
-        const result = await subscribeToPush();
-
-        if (result.success) {
-          pushStatus.textContent = 'Push notifications are now active on this device.';
-          showToast('Push notifications enabled successfully!', 'success');
-        } else {
-          pushStatus.textContent = result.error || 'Failed to enable push notifications.';
-          pushEnabled.checked = false;
-          pushOptions.style.display = 'none';
-          // Show help modal for permission errors
-          if (result.error?.includes('permission') || result.error?.includes('blocked')) {
-            this.showPushHelpModal();
-          } else {
-            showToast(result.error || 'Failed to enable push notifications.', 'error');
-          }
-        }
-      } else {
-        // Unsubscribe
-        pushStatus.textContent = 'Disabling push notifications...';
-        const result = await unsubscribeFromPush();
-
-        if (result.success) {
-          pushStatus.textContent = 'Push notifications disabled.';
-        } else {
-          pushStatus.textContent = result.error || 'Failed to disable push notifications.';
-        }
-      }
-    });
-
-    // Handle test notification button
-    testPushBtn.addEventListener('click', async () => {
-      testPushBtn.disabled = true;
-      testPushBtn.textContent = 'Sending...';
-
-      try {
-        await showTestNotification();
-        showToast('Test notification sent!', 'success');
-      } catch (error) {
-        console.error('Test notification error:', error);
-        // Show help modal for permission errors
-        if (error.message?.includes('permission') || error.message?.includes('blocked')) {
-          this.showPushHelpModal();
-        } else {
-          showToast(error.message || 'Failed to send test notification.', 'error');
-        }
-      } finally {
-        testPushBtn.disabled = false;
-        testPushBtn.textContent = 'Send Test Notification';
-      }
-    });
-
-    // Setup push help modal
-    this.setupPushHelpModal();
-  }
-
-  /**
-   * Setup push help modal event listeners
-   */
-  setupPushHelpModal() {
-    const modal = document.getElementById('push-help-modal');
-    const closeBtn = document.getElementById('close-push-help-modal');
-    const doneBtn = document.getElementById('push-help-done-btn');
-
-    const closeModal = () => modal.classList.add('hidden');
-
-    closeBtn?.addEventListener('click', closeModal);
-    doneBtn?.addEventListener('click', closeModal);
-    modal?.addEventListener('click', (e) => {
-      if (e.target === modal) closeModal();
-    });
-  }
-
-  /**
-   * Show the push notifications help modal with platform-specific instructions
-   */
-  showPushHelpModal() {
-    const modal = document.getElementById('push-help-modal');
-    const content = document.getElementById('push-help-content');
-
-    if (!modal || !content) return;
-
-    // Detect platform
-    const ua = navigator.userAgent;
-    const isIOS = /iPhone|iPad|iPod/.test(ua);
-    const isAndroid = /Android/.test(ua);
-    const isMac = /Macintosh/.test(ua);
-    const isWindows = /Windows/.test(ua);
-    const isSafari = /Safari/.test(ua) && !/Chrome/.test(ua);
-    const isChrome = /Chrome/.test(ua);
-    const isFirefox = /Firefox/.test(ua);
-
-    let instructions = '';
-
-    if (isIOS) {
-      instructions = `
-        <p style="margin-bottom: 1rem;">To enable push notifications on iOS:</p>
-        <ol style="margin: 0; padding-left: 1.25rem; line-height: 1.8;">
-          <li>Open <strong>Settings</strong> on your iPhone/iPad</li>
-          <li>Scroll down and tap <strong>Safari</strong> (or your browser)</li>
-          <li>Tap <strong>Notifications</strong></li>
-          <li>Enable <strong>Allow Notifications</strong></li>
-          <li>Return here and try again</li>
-        </ol>
-        <p style="margin-top: 1rem; color: var(--text-secondary); font-size: 0.875rem;">
-          Note: iOS requires Safari 16.4+ or the app installed to Home Screen for push notifications.
-        </p>
-      `;
-    } else if (isAndroid) {
-      instructions = `
-        <p style="margin-bottom: 1rem;">To enable push notifications on Android:</p>
-        <ol style="margin: 0; padding-left: 1.25rem; line-height: 1.8;">
-          <li>Tap the <strong>lock icon</strong> in the address bar</li>
-          <li>Tap <strong>Permissions</strong> or <strong>Site settings</strong></li>
-          <li>Find <strong>Notifications</strong> and set to <strong>Allow</strong></li>
-          <li>Return here and try again</li>
-        </ol>
-        <p style="margin-top: 1rem; color: var(--text-secondary); font-size: 0.875rem;">
-          You may also need to check your phone's Settings > Apps > ${isChrome ? 'Chrome' : 'Browser'} > Notifications.
-        </p>
-      `;
-    } else if (isMac) {
-      const browser = isSafari ? 'Safari' : isChrome ? 'Chrome' : isFirefox ? 'Firefox' : 'your browser';
-      instructions = `
-        <p style="margin-bottom: 1rem;">To enable push notifications on Mac:</p>
-        <ol style="margin: 0; padding-left: 1.25rem; line-height: 1.8;">
-          <li>Open <strong>System Settings</strong> (Apple menu)</li>
-          <li>Click <strong>Notifications</strong></li>
-          <li>Find <strong>${browser}</strong> in the list</li>
-          <li>Enable <strong>Allow Notifications</strong></li>
-          <li>Set alert style to <strong>Banners</strong> or <strong>Alerts</strong></li>
-          <li>Return here and try again</li>
-        </ol>
-        <p style="margin-top: 1rem; color: var(--text-secondary); font-size: 0.875rem;">
-          Also check the lock icon in the address bar to ensure this site can send notifications.
-        </p>
-      `;
-    } else if (isWindows) {
-      instructions = `
-        <p style="margin-bottom: 1rem;">To enable push notifications on Windows:</p>
-        <ol style="margin: 0; padding-left: 1.25rem; line-height: 1.8;">
-          <li>Click the <strong>lock icon</strong> in the address bar</li>
-          <li>Find <strong>Notifications</strong> and set to <strong>Allow</strong></li>
-          <li>If blocked, go to browser settings and reset permissions for this site</li>
-          <li>Return here and try again</li>
-        </ol>
-        <p style="margin-top: 1rem; color: var(--text-secondary); font-size: 0.875rem;">
-          Also check Windows Settings > System > Notifications to ensure browser notifications are enabled.
-        </p>
-      `;
-    } else {
-      instructions = `
-        <p style="margin-bottom: 1rem;">To enable push notifications:</p>
-        <ol style="margin: 0; padding-left: 1.25rem; line-height: 1.8;">
-          <li>Click the <strong>lock icon</strong> in your browser's address bar</li>
-          <li>Find <strong>Notifications</strong> in the permissions</li>
-          <li>Change it from "Block" to <strong>Allow</strong></li>
-          <li>Check your device's system notification settings</li>
-          <li>Return here and try again</li>
-        </ol>
-      `;
-    }
-
-    content.innerHTML = instructions;
-    modal.classList.remove('hidden');
-  }
 }

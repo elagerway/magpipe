@@ -364,14 +364,28 @@ async function sendSlackCallNotification(
       headerText += ` • Sentiment: ${sentimentEmoji} ${sentiment}`
     }
 
-    // Resolve channel: user's notification_preferences.slack_channel → config.notification_channel → fallback
+    // Resolve channel: per-agent notification_preferences.slack_channel → user-level → config.notification_channel → fallback
     let channelId: string | null = null
 
-    const { data: notifPrefs } = await supabase
-      .from('notification_preferences')
-      .select('slack_channel')
-      .eq('user_id', userId)
-      .single()
+    let notifPrefs = null
+    if (agentId) {
+      const { data: agentPrefs } = await supabase
+        .from('notification_preferences')
+        .select('slack_channel')
+        .eq('user_id', userId)
+        .eq('agent_id', agentId)
+        .maybeSingle()
+      notifPrefs = agentPrefs
+    }
+    if (!notifPrefs) {
+      const { data: userPrefs } = await supabase
+        .from('notification_preferences')
+        .select('slack_channel')
+        .eq('user_id', userId)
+        .is('agent_id', null)
+        .maybeSingle()
+      notifPrefs = userPrefs
+    }
 
     if (notifPrefs?.slack_channel) {
       const name = notifPrefs.slack_channel.replace(/^#/, '').toLowerCase()

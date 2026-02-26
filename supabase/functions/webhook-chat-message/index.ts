@@ -1023,6 +1023,7 @@ You can create support tickets for visitors when they describe issues, problems,
     if (message && !requestGreeting) {
       const notificationData = {
         userId: widget.user_id,
+        agentId: widget.agent_id,
         type: 'new_chat',
         title: 'Website Chat',
         body: `${session.visitor_name || 'Visitor'}: ${message.substring(0, 100)}${message.length > 100 ? '...' : ''}`,

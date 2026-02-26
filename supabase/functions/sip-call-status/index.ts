@@ -134,7 +134,8 @@ Deno.serve(async (req) => {
               callRecord.phone_number,
               callRecord.direction || 'outbound',
               dbStatus,
-              duration
+              duration,
+              svcNum?.agent_id || null
             ).catch(err => console.error('Failed to send Slack call notification:', err));
           }
 
@@ -270,7 +271,8 @@ async function sendSlackCallNotification(
   phoneNumber: string,
   direction: string,
   status: string,
-  durationSeconds: number
+  durationSeconds: number,
+  agentId: string | null = null
 ) {
   try {
     // Get Slack provider ID
@@ -314,14 +316,28 @@ async function sendSlackCallNotification(
     const directionText = isInbound ? 'Inbound call from' : 'Outbound call to';
     const statusText = status === 'completed' ? `Duration: ${durationStr}` : `Status: ${status}`;
 
-    // Resolve channel: user's notification_preferences.slack_channel → config.notification_channel → fallback
+    // Resolve channel: per-agent notification_preferences.slack_channel → user-level → config.notification_channel → fallback
     let channelId: string | null = null;
 
-    const { data: notifPrefs } = await supabase
-      .from('notification_preferences')
-      .select('slack_channel')
-      .eq('user_id', userId)
-      .single();
+    let notifPrefs = null;
+    if (agentId) {
+      const { data: agentPrefs } = await supabase
+        .from('notification_preferences')
+        .select('slack_channel')
+        .eq('user_id', userId)
+        .eq('agent_id', agentId)
+        .maybeSingle();
+      notifPrefs = agentPrefs;
+    }
+    if (!notifPrefs) {
+      const { data: userPrefs } = await supabase
+        .from('notification_preferences')
+        .select('slack_channel')
+        .eq('user_id', userId)
+        .is('agent_id', null)
+        .maybeSingle();
+      notifPrefs = userPrefs;
+    }
 
     if (notifPrefs?.slack_channel) {
       const name = notifPrefs.slack_channel.replace(/^#/, '').toLowerCase();

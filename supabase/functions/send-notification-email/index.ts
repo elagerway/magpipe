@@ -2,7 +2,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 
 Deno.serve(async (req) => {
   try {
-    const { userId, type, data } = await req.json()
+    const { userId, agentId, type, data } = await req.json()
 
     if (!userId || !type) {
       return new Response(JSON.stringify({ error: 'Missing required fields' }), {
@@ -16,14 +16,28 @@ Deno.serve(async (req) => {
     const postmarkApiKey = Deno.env.get('POSTMARK_API_KEY')!
     const supabase = createClient(supabaseUrl, supabaseKey)
 
-    // Get user's notification preferences
-    const { data: prefs, error: prefsError } = await supabase
-      .from('notification_preferences')
-      .select('*')
-      .eq('user_id', userId)
-      .single()
+    // Get user's notification preferences (per-agent first, fallback to user-level)
+    let prefs = null
+    if (agentId) {
+      const { data: agentPrefs } = await supabase
+        .from('notification_preferences')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('agent_id', agentId)
+        .maybeSingle()
+      prefs = agentPrefs
+    }
+    if (!prefs) {
+      const { data: userPrefs } = await supabase
+        .from('notification_preferences')
+        .select('*')
+        .eq('user_id', userId)
+        .is('agent_id', null)
+        .maybeSingle()
+      prefs = userPrefs
+    }
 
-    if (prefsError || !prefs || !prefs.email_enabled) {
+    if (!prefs || !prefs.email_enabled) {
       console.log('Email notifications not enabled for user:', userId)
       return new Response(JSON.stringify({ message: 'Notifications not enabled' }), {
         status: 200,

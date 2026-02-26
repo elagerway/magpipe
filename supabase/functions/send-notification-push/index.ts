@@ -245,7 +245,7 @@ async function sendSimplePush(
 
 Deno.serve(async (req) => {
   try {
-    const { userId, type, title, body, data } = await req.json() as NotificationPayload
+    const { userId, agentId, type, title, body, data } = await req.json() as NotificationPayload & { agentId?: string }
 
     if (!userId || !type) {
       return new Response(JSON.stringify({ error: 'Missing required fields: userId, type' }), {
@@ -270,14 +270,28 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseKey)
 
-    // Get user's notification preferences
-    const { data: prefs, error: prefsError } = await supabase
-      .from('notification_preferences')
-      .select('push_enabled, push_inbound_calls, push_all_calls, push_inbound_messages, push_all_messages')
-      .eq('user_id', userId)
-      .single()
+    // Get user's notification preferences (per-agent first, fallback to user-level)
+    let prefs = null
+    if (agentId) {
+      const { data: agentPrefs } = await supabase
+        .from('notification_preferences')
+        .select('push_enabled, push_inbound_calls, push_all_calls, push_inbound_messages, push_all_messages')
+        .eq('user_id', userId)
+        .eq('agent_id', agentId)
+        .maybeSingle()
+      prefs = agentPrefs
+    }
+    if (!prefs) {
+      const { data: userPrefs } = await supabase
+        .from('notification_preferences')
+        .select('push_enabled, push_inbound_calls, push_all_calls, push_inbound_messages, push_all_messages')
+        .eq('user_id', userId)
+        .is('agent_id', null)
+        .maybeSingle()
+      prefs = userPrefs
+    }
 
-    if (prefsError || !prefs || !prefs.push_enabled) {
+    if (!prefs || !prefs.push_enabled) {
       console.log('Push notifications not enabled for user:', userId)
       return new Response(JSON.stringify({ message: 'Push notifications not enabled' }), {
         status: 200,
