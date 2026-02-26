@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { corsHeaders, handleCors } from '../_shared/cors.ts'
+import { CANADA_SENDER_NUMBER } from '../_shared/sms-compliance.ts'
 
 Deno.serve(async (req) => {
   // Handle CORS preflight
@@ -8,7 +9,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { subject, message } = await req.json()
+    const { subject, message, category } = await req.json()
 
     if (!subject || !message) {
       return new Response(JSON.stringify({ error: 'Subject and message are required' }), {
@@ -47,11 +48,47 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Create support ticket first so we can include the ref in the email
+    const ticketSupabase = createClient(supabaseUrl, supabaseKey)
+    const ticketSubject = category ? `[${category}] ${subject}` : subject
+    const threadId = `contact-${crypto.randomUUID()}`
+    let ticketRef: string | null = null
+    try {
+      const { data: seqVal } = await ticketSupabase.rpc('nextval_ticket_ref')
+      ticketRef = seqVal ? `TKT-${String(seqVal).padStart(6, '0')}` : null
+      const { data: ticket, error: ticketError } = await ticketSupabase
+        .from('support_tickets')
+        .insert({
+          thread_id: threadId,
+          ticket_ref: ticketRef,
+          from_email: userEmail,
+          from_name: userName || null,
+          subject: ticketSubject,
+          body_text: message,
+          direction: 'inbound',
+          status: 'open',
+          priority: 'medium',
+          tags: category ? [category] : [],
+        })
+        .select('id, ticket_ref')
+        .single()
+
+      if (ticketError) {
+        console.error('Failed to create support ticket:', ticketError)
+      } else {
+        console.log('Support ticket created:', ticket.id, ticket.ticket_ref)
+      }
+    } catch (ticketErr) {
+      console.error('Error creating support ticket:', ticketErr)
+    }
+
     // Build email content
     const htmlBody = `
       <h2>Contact Form Submission</h2>
+      ${ticketRef ? `<p><strong>Ticket:</strong> ${ticketRef}</p>` : ''}
       <p><strong>From:</strong> ${userName ? `${userName} (${userEmail})` : userEmail}</p>
       ${userId ? `<p><strong>User ID:</strong> ${userId}</p>` : ''}
+      ${category ? `<p><strong>Category:</strong> ${category}</p>` : ''}
       <p><strong>Subject:</strong> ${subject}</p>
       <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid #ccc;">
       <p><strong>Message:</strong></p>
@@ -60,7 +97,11 @@ Deno.serve(async (req) => {
       <p style="color: #666; font-size: 0.875rem;">Sent from MAGPIPE contact form</p>
     `
 
-    const textBody = `Contact Form Submission\n\nFrom: ${userName ? `${userName} (${userEmail})` : userEmail}\n${userId ? `User ID: ${userId}\n` : ''}Subject: ${subject}\n\nMessage:\n${message}\n\n---\nSent from MAGPIPE contact form`
+    const textBody = `Contact Form Submission\n\n${ticketRef ? `Ticket: ${ticketRef}\n` : ''}From: ${userName ? `${userName} (${userEmail})` : userEmail}\n${userId ? `User ID: ${userId}\n` : ''}${category ? `Category: ${category}\n` : ''}Subject: ${subject}\n\nMessage:\n${message}\n\n---\nSent from MAGPIPE contact form`
+
+    const emailSubject = ticketRef
+      ? `[${ticketRef}]${category ? ` [${category}]` : ''} ${subject}`
+      : (category ? `[${category}] ${subject}` : `[Contact] ${subject}`)
 
     // Send email via Postmark
     const emailResponse = await fetch('https://api.postmarkapp.com/email', {
@@ -74,7 +115,7 @@ Deno.serve(async (req) => {
         From: 'help@magpipe.ai',
         To: 'help@magpipe.ai',
         ReplyTo: userEmail !== 'Unknown' ? userEmail : 'help@magpipe.ai',
-        Subject: `[Contact] ${subject}`,
+        Subject: emailSubject,
         HtmlBody: htmlBody,
         TextBody: textBody,
         MessageStream: 'outbound'
@@ -97,43 +138,31 @@ Deno.serve(async (req) => {
         const signalwireApiToken = Deno.env.get('SIGNALWIRE_API_TOKEN')!
         const signalwireSpaceUrl = Deno.env.get('SIGNALWIRE_SPACE_URL')!
 
-        // Get the first service number to use as sender
-        const supabase = createClient(supabaseUrl, supabaseKey)
-        const { data: serviceNumber } = await supabase
-          .from('service_numbers')
-          .select('phone_number')
-          .eq('is_active', true)
-          .limit(1)
-          .single()
+        const smsBody = `New Custom Plan Request\n${userName ? `From: ${userName}` : `Email: ${userEmail}`}\n${subject.replace('Custom Plan Request', '').replace(' - ', '').trim() || ''}\n\nCheck email for details.`
 
-        if (serviceNumber) {
-          // Build concise SMS summary
-          const smsBody = `New Custom Plan Request\n${userName ? `From: ${userName}` : `Email: ${userEmail}`}\n${subject.replace('Custom Plan Request', '').replace(' - ', '').trim() || ''}\n\nCheck email for details.`
+        const smsData = new URLSearchParams({
+          From: CANADA_SENDER_NUMBER,
+          To: '+16045628647',
+          Body: smsBody.substring(0, 160),
+        })
 
-          const smsData = new URLSearchParams({
-            From: serviceNumber.phone_number,
-            To: '+16045628647',
-            Body: smsBody.substring(0, 160), // Keep SMS short
-          })
-
-          const auth = btoa(`${signalwireProjectId}:${signalwireApiToken}`)
-          const smsResponse = await fetch(
-            `https://${signalwireSpaceUrl}/api/laml/2010-04-01/Accounts/${signalwireProjectId}/Messages`,
-            {
-              method: 'POST',
-              headers: {
-                'Authorization': `Basic ${auth}`,
-                'Content-Type': 'application/x-www-form-urlencoded',
-              },
-              body: smsData.toString(),
-            }
-          )
-
-          if (smsResponse.ok) {
-            console.log('SMS notification sent for upgrade request')
-          } else {
-            console.error('SMS send failed:', await smsResponse.text())
+        const auth = btoa(`${signalwireProjectId}:${signalwireApiToken}`)
+        const smsResponse = await fetch(
+          `https://${signalwireSpaceUrl}/api/laml/2010-04-01/Accounts/${signalwireProjectId}/Messages`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Basic ${auth}`,
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: smsData.toString(),
           }
+        )
+
+        if (smsResponse.ok) {
+          console.log('SMS notification sent for upgrade request')
+        } else {
+          console.error('SMS send failed:', await smsResponse.text())
         }
       } catch (smsError) {
         // Don't fail the whole request if SMS fails
@@ -141,7 +170,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    return new Response(JSON.stringify({ success: true }), {
+    return new Response(JSON.stringify({ success: true, ticket_ref: ticketRef }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
