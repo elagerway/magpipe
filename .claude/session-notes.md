@@ -2,6 +2,20 @@
 
 ## Date: 2026-02-26
 
+### Remove Redundant `agent_id` Column from `agent_configs`
+- Dropped `agent_id` column and `idx_agent_configs_agent_id` index from `agent_configs` table
+- The column was redundant — every FK references the PK `id`, not `agent_id`
+- Fixed agent detail page to display `id` (PK) instead of `agent_id`
+- Removed dead `getByAgentId()` method from `AgentConfig.js`
+- Fixed `realtime-omni-token` edge function (was selecting/returning removed column)
+- Fixed `admin-list-agents` edge function (was selecting removed column)
+- Both edge functions redeployed
+- Updated Mintlify docs (`create-agent.mdx`) to remove `agent_id` from response schema
+- Migration: `supabase/migrations/20260226_drop_agent_id_column.sql`
+- Commit: `a18517b`
+
+---
+
 ### RLS Security Hardening
 - Enabled RLS on 13 tables (3 with existing policies, 10 system-only)
 - Dropped 10 misconfigured policies (labeled "service role" but assigned to `{public}`)
