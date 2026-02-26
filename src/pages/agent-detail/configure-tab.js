@@ -397,11 +397,11 @@ export const configureTabMethods = {
         <div class="form-group">
           <label class="form-label">AI Model</label>
           <select id="ai-model" class="form-select">
-            <option value="gpt-4o" ${this.agent.ai_model === 'gpt-4o' ? 'selected' : ''}>GPT-4o (Recommended)</option>
-            <option value="gpt-4o-mini" ${this.agent.ai_model === 'gpt-4o-mini' ? 'selected' : ''}>GPT-4o Mini (Faster)</option>
-            <option value="gpt-4.1" ${this.agent.ai_model === 'gpt-4.1' ? 'selected' : ''}>GPT-4.1</option>
-            <option value="claude-3.5-sonnet" ${this.agent.ai_model === 'claude-3.5-sonnet' ? 'selected' : ''}>Claude 3.5 Sonnet</option>
-            <option value="claude-3-haiku" ${this.agent.ai_model === 'claude-3-haiku' ? 'selected' : ''}>Claude 3 Haiku (Faster)</option>
+            <option value="gpt-4.1" ${this.agent.llm_model === 'gpt-4.1' ? 'selected' : ''}>GPT-4.1 (Recommended)</option>
+            <option value="gpt-4o" ${this.agent.llm_model === 'gpt-4o' ? 'selected' : ''}>GPT-4o</option>
+            <option value="gpt-4o-mini" ${this.agent.llm_model === 'gpt-4o-mini' ? 'selected' : ''}>GPT-4o Mini (Faster)</option>
+            <option value="claude-3.5-sonnet" ${this.agent.llm_model === 'claude-3.5-sonnet' ? 'selected' : ''}>Claude 3.5 Sonnet</option>
+            <option value="claude-3-haiku" ${this.agent.llm_model === 'claude-3-haiku' ? 'selected' : ''}>Claude 3 Haiku (Faster)</option>
           </select>
         </div>
 
@@ -703,7 +703,7 @@ export const configureTabMethods = {
     const aiModel = document.getElementById('ai-model');
     if (aiModel) {
       aiModel.addEventListener('change', () => {
-        this.scheduleAutoSave({ ai_model: aiModel.value });
+        this.scheduleAutoSave({ llm_model: aiModel.value });
       });
     }
 
