@@ -83,7 +83,7 @@
 | `/admin/batches` | `admin-batches.js` | Batch management — view/cancel any user's batches (admin/god only) |
 
 Admin tab modules in `src/pages/admin/`:
-- `support-tab.js` — Support tickets (real-time thread updates via Supabase subscriptions), Users, Global Agent, Chat, Settings (sub-tabs)
+- `support-tab.js` — Support tickets (BroadcastChannel live-prepend from feedback form, real-time thread updates via Supabase subscriptions), Users, Global Agent, Chat, Settings (sub-tabs)
 - `analytics-tab.js` — Usage analytics dashboard
 - `kpi-tab.js` — KPI/metrics display
 - `notifications-tab.js` — Notification channel settings (SMS, email, Slack)
@@ -105,7 +105,7 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 
 | File | Purpose | DB/API Dependency |
 |------|---------|-------------------|
-| `BottomNav.js` | Mobile bottom nav with unread badges | `sms_messages`, `call_records` |
+| `BottomNav.js` | Mobile bottom nav / desktop sidebar with unread badges, "Give Feedback" button, contact modal (category dropdown → `send-contact-email` → support ticket creation, BroadcastChannel live update to support tab) | `sms_messages`, `call_records` |
 | `AdminChatInterface.js` | Admin AI chat (agent page) | Multiple tables + edge functions |
 | `OmniChatInterface.js` | Omni-channel chat | Multiple tables + edge functions |
 | `AdminHeader.js` | Admin portal header | None |
@@ -188,7 +188,7 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 | `send-password-reset` | No JWT | None | Supabase Auth | forgot-password page |
 | `notify-signup` | Service role | `users` | Postmark, Slack | signup (fire & forget) |
 | `send-team-invitation` | JWT | `users` | Postmark | team page |
-| `send-contact-email` | JWT | None | Postmark | contact form (sends to help@magpipe.ai) |
+| `send-contact-email` | No JWT | `support_tickets` | Postmark, SignalWire (SMS) | contact/feedback form — creates support ticket (TKT-XXXXXX), sends email to help@magpipe.ai with ticket ref, SMS notification for upgrade requests |
 | `send-custom-plan-inquiry` | No JWT | None | Postmark | custom-plan page |
 | `manage-api-keys` | JWT | `api_keys`, `webhook_deliveries` | None | settings page (generate/list/revoke/update with webhook URLs) |
 | `create-user-sip-endpoint` | JWT | `users`, `user_sip_endpoints` | SignalWire | SIP config |
