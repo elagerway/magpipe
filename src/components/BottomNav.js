@@ -504,13 +504,6 @@ const NAV_ITEMS = [
     mobileOnly: true
   },
   {
-    path: '/admin/batches',
-    icon: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>`,
-    label: 'Batches',
-    desktopOnly: true,
-    adminOnly: true
-  },
-  {
     path: '/agent',
     hidden: true, // Hidden until ready for customers
     icon: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="12" rx="2" stroke-width="1.5"/><circle cx="9" cy="10" r="1.5" fill="currentColor"/><circle cx="15" cy="10" r="1.5" fill="currentColor"/><path stroke-linecap="round" stroke-width="1.5" d="M9 14h6"/><path stroke-linecap="round" stroke-width="1.5" d="M12 16v3"/><path stroke-linecap="round" stroke-width="1.5" d="M8 19h8"/><path stroke-linecap="round" stroke-width="1.5" d="M2 8h2M20 8h2M12 2v2"/></svg>`,
