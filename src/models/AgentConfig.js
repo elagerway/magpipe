@@ -98,24 +98,6 @@ export class AgentConfig {
     return { config: data, error: null };
   }
 
-  /**
-   * Get agent configuration by agent_id (the unique agent identifier)
-   * @param {string} agentId - Agent's unique UUID (agent_id column)
-   * @returns {Promise<{config: Object|null, error: Error|null}>}
-   */
-  static async getByAgentId(agentId) {
-    const { data, error } = await supabase
-      .from('agent_configs')
-      .select('*')
-      .eq('agent_id', agentId)
-      .single();
-
-    if (error) {
-      return { config: null, error };
-    }
-
-    return { config: data, error: null };
-  }
 
   /**
    * Update agent configuration by user ID (legacy, updates default agent)
