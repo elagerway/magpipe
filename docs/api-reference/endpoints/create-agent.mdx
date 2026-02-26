@@ -243,10 +243,6 @@ Returns the full agent object wrapped in an `agent` key.
       Unique identifier (UUID) for the agent config row.
     </ResponseField>
 
-    <ResponseField name="agent_id" type="string">
-      Unique agent identifier (UUID) used for dispatch and assignment.
-    </ResponseField>
-
     <ResponseField name="name" type="string">
       Agent display name.
     </ResponseField>
@@ -340,7 +336,6 @@ print(response.json()['agent'])
 {
   "agent": {
     "id": "c72ea2b8-1234-5678-9abc-def012345678",
-    "agent_id": "a1b2c3d4-5678-9abc-def0-123456789abc",
     "name": "Reception Agent",
     "greeting": "Hello, thanks for calling! How can I help you today?",
     "system_prompt": "You are a friendly receptionist. Be helpful and professional.",
