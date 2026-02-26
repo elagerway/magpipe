@@ -60,19 +60,24 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Lookup country from area code table
-    const areaCode = phoneNumber.substring(2, 5) // Extract area code from +1XXX format
-    const { data: areaCodeData } = await supabase
-      .from('area_codes')
-      .select('country')
-      .eq('area_code', areaCode)
-      .single()
+    // Determine sender number based on destination country
+    // Default: Canadian number +16042566768 for all SMS
+    // US destinations: +14152518686
+    // NOTE: International SMS requires SignalWire account-level enablement (error 30006 until enabled)
+    let fromNumber = '+16042566768'
 
-    // Use verification number based on country
-    // These must be actual numbers purchased in SignalWire
-    const fromNumber = areaCodeData?.country === 'Canada'
-      ? '+16042566768'  // Canadian number (Vancouver)
-      : '+16283032555'  // US number
+    if (phoneNumber.startsWith('+1')) {
+      const areaCode = phoneNumber.substring(2, 5)
+      const { data: areaCodeData } = await supabase
+        .from('area_codes')
+        .select('country')
+        .eq('area_code', areaCode)
+        .single()
+
+      if (areaCodeData?.country !== 'Canada') {
+        fromNumber = '+14152518686' // US number for US destinations
+      }
+    }
 
     // Send SMS via SignalWire
     const signalwireProjectId = Deno.env.get('SIGNALWIRE_PROJECT_ID')
@@ -81,8 +86,11 @@ Deno.serve(async (req) => {
 
     const signalwireUrl = `https://${signalwireSpaceUrl}/api/laml/2010-04-01/Accounts/${signalwireProjectId}/Messages.json`
 
-    // Add USA SMS compliance text
-    const message = `Your Maggie verification code is: ${verificationCode}. This code expires in 10 minutes.\n\nSTOP to opt out`
+    // Only add STOP opt-out text for US destinations (10DLC compliance)
+    const baseMessage = `Your Maggie verification code is: ${verificationCode}. This code expires in 10 minutes.`
+    const message = fromNumber === '+14152518686'
+      ? `${baseMessage}\n\nSTOP to opt out`
+      : baseMessage
 
     const body = new URLSearchParams({
       From: fromNumber,
@@ -102,8 +110,43 @@ Deno.serve(async (req) => {
     if (!signalwireResponse.ok) {
       const errorText = await signalwireResponse.text()
       console.error('SignalWire error:', errorText)
+
+      // Parse error details from SignalWire response
+      let errorCode = ''
+      let errorDetail = ''
+      try {
+        const errorJson = JSON.parse(errorText)
+        errorCode = String(errorJson.code || errorJson.error_code || signalwireResponse.status)
+        errorDetail = errorJson.message || errorJson.error_message || errorText
+      } catch {
+        errorCode = String(signalwireResponse.status)
+        errorDetail = errorText
+      }
+
+      // Log to system_error_logs
+      const { error: logError } = await supabase
+        .from('system_error_logs')
+        .insert({
+          error_type: 'sms_verification',
+          error_code: errorCode,
+          error_message: errorDetail,
+          user_id: user.id,
+          metadata: {
+            phone_number: phoneNumber,
+            from_number: fromNumber,
+            edge_function: 'verify-phone-send',
+            signalwire_status: signalwireResponse.status,
+          },
+        })
+      if (logError) console.error('Failed to log error:', logError)
+
+      // Return a user-friendly message
+      const userMessage = errorCode === '30006' || errorDetail.includes('Unrouteable')
+        ? `SMS delivery failed to ${phoneNumber} — your country may not be supported yet. Please contact support.`
+        : `SMS delivery failed to ${phoneNumber}. Please try again or contact support.`
+
       return new Response(
-        JSON.stringify({ error: 'Failed to send SMS' }),
+        JSON.stringify({ error: userMessage }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }

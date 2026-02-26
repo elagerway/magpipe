@@ -118,6 +118,7 @@ export const supportTabMethods = {
         <button class="support-subtab ${this.supportSubTab === 'global-agent' ? 'active' : ''}" data-support-subtab="global-agent">Global Agent</button>
         <button class="support-subtab ${this.supportSubTab === 'chat' ? 'active' : ''}" data-support-subtab="chat">Chat</button>
         <button class="support-subtab ${this.supportSubTab === 'settings' ? 'active' : ''}" data-support-subtab="settings">Settings</button>
+        <button class="support-subtab ${this.supportSubTab === 'errors' ? 'active' : ''}" data-support-subtab="errors">Errors</button>
       </div>
 
       <!-- Tickets sub-tab -->
@@ -240,13 +241,18 @@ export const supportTabMethods = {
 
       </div>
 
+      <!-- Errors sub-tab -->
+      <div id="support-subtab-errors" class="support-subtab-content" style="display: ${this.supportSubTab === 'errors' ? 'block' : 'none'};">
+        <div class="loading-spinner">Loading errors...</div>
+      </div>
+
       <!-- Thread View (hidden initially) -->
       <div id="support-thread-view" class="thread-view" style="display: none;"></div>
     `;
 
     // Sub-tab switching
     this._supportLazyLoaded = {};
-    const allSupportPanes = ['tickets', 'users', 'global-agent', 'chat', 'settings'];
+    const allSupportPanes = ['tickets', 'users', 'global-agent', 'chat', 'settings', 'errors'];
     container.querySelectorAll('.support-subtab').forEach(btn => {
       btn.addEventListener('click', async () => {
         this.supportSubTab = btn.dataset.supportSubtab;
@@ -319,6 +325,8 @@ export const supportTabMethods = {
         await this.renderGlobalAgentTab();
       } else if (subtab === 'chat') {
         await this.renderChatTab();
+      } else if (subtab === 'errors') {
+        await this.renderErrorsTab();
       }
     } finally {
       // Restore IDs
@@ -1623,6 +1631,167 @@ export const supportTabMethods = {
         this._renderNewTicketImagePreviews();
       });
     });
+  },
+
+  // ── Errors sub-tab ──────────────────────────────────────────────
+
+  async renderErrorsTab() {
+    const content = document.getElementById('admin-tab-content');
+    if (!content) return;
+
+    this._errorsPage = 1;
+    this._errorsPerPage = 25;
+
+    content.innerHTML = `
+      <div class="support-section">
+        <div class="tl-toolbar" style="margin-bottom: 1rem;">
+          <h3 style="margin: 0;">System Error Logs</h3>
+          <select id="errors-type-filter" class="form-input form-select" style="max-width: 200px; font-size: 0.85rem;">
+            <option value="">All Types</option>
+            <option value="sms_verification">SMS Verification</option>
+            <option value="sms_notification">SMS Notification</option>
+          </select>
+        </div>
+        <div id="errors-table-container">
+          <div class="loading-spinner">Loading errors...</div>
+        </div>
+      </div>
+    `;
+
+    // Filter change handler
+    document.getElementById('errors-type-filter')?.addEventListener('change', () => {
+      this._errorsPage = 1;
+      this._loadErrorLogs();
+    });
+
+    await this._loadErrorLogs();
+  },
+
+  async _loadErrorLogs() {
+    const container = document.getElementById('errors-table-container');
+    if (!container) return;
+
+    container.innerHTML = '<div class="loading-spinner">Loading errors...</div>';
+
+    try {
+      const typeFilter = document.getElementById('errors-type-filter')?.value || '';
+      const from = (this._errorsPage - 1) * this._errorsPerPage;
+      const to = from + this._errorsPerPage - 1;
+
+      let query = supabase
+        .from('system_error_logs')
+        .select('*, users(email, phone_number)', { count: 'exact' })
+        .order('created_at', { ascending: false })
+        .range(from, to);
+
+      if (typeFilter) {
+        query = query.eq('error_type', typeFilter);
+      }
+
+      const { data: errors, error, count } = await query;
+
+      if (error) throw error;
+
+      if (!errors || errors.length === 0) {
+        container.innerHTML = `
+          <div class="detail-placeholder" style="padding: 2rem; text-align: center; color: var(--text-muted);">
+            No errors found.
+          </div>
+        `;
+        return;
+      }
+
+      const totalPages = Math.ceil((count || 0) / this._errorsPerPage);
+
+      container.innerHTML = `
+        <div style="overflow-x: auto;">
+          <table class="data-table" style="width: 100%; font-size: 0.85rem;">
+            <thead>
+              <tr>
+                <th style="white-space: nowrap;">Date</th>
+                <th>Type</th>
+                <th>Code</th>
+                <th>Message</th>
+                <th>Phone</th>
+                <th>User</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${errors.map(err => {
+                const date = new Date(err.created_at);
+                const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                const phone = err.metadata?.phone_number || '';
+                const userEmail = err.users?.email || '';
+                const typeBadge = this._errorTypeBadge(err.error_type);
+                return `
+                  <tr>
+                    <td style="white-space: nowrap; color: var(--text-muted);">${dateStr}<br><span style="font-size: 0.75rem;">${timeStr}</span></td>
+                    <td>${typeBadge}</td>
+                    <td style="font-family: monospace; font-size: 0.8rem;">${this.escapeHtml(err.error_code || '')}</td>
+                    <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis;" title="${this.escapeHtml(err.error_message)}">${this.escapeHtml(err.error_message)}</td>
+                    <td style="font-family: monospace; font-size: 0.8rem; white-space: nowrap;">${this.escapeHtml(phone)}</td>
+                    <td>${err.user_id ? `<a href="#" class="error-user-link" data-user-id="${err.user_id}" style="font-size: 0.8rem;">${this.escapeHtml(userEmail || 'View user')}</a>` : '<span style="color: var(--text-muted);">—</span>'}</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+        ${totalPages > 1 ? `
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; padding: 0.5rem 0;">
+            <span style="font-size: 0.8rem; color: var(--text-muted);">Page ${this._errorsPage} of ${totalPages} (${count} total)</span>
+            <div style="display: flex; gap: 0.5rem;">
+              <button class="btn btn-secondary" id="errors-prev-btn" style="font-size: 0.8rem; padding: 0.3rem 0.75rem;" ${this._errorsPage <= 1 ? 'disabled' : ''}>Prev</button>
+              <button class="btn btn-secondary" id="errors-next-btn" style="font-size: 0.8rem; padding: 0.3rem 0.75rem;" ${this._errorsPage >= totalPages ? 'disabled' : ''}>Next</button>
+            </div>
+          </div>
+        ` : ''}
+      `;
+
+      // Pagination handlers
+      document.getElementById('errors-prev-btn')?.addEventListener('click', () => {
+        if (this._errorsPage > 1) {
+          this._errorsPage--;
+          this._loadErrorLogs();
+        }
+      });
+      document.getElementById('errors-next-btn')?.addEventListener('click', () => {
+        if (this._errorsPage < totalPages) {
+          this._errorsPage++;
+          this._loadErrorLogs();
+        }
+      });
+
+      // User link handlers — navigate to Users sub-tab
+      container.querySelectorAll('.error-user-link').forEach(link => {
+        link.addEventListener('click', (e) => {
+          e.preventDefault();
+          const userId = link.dataset.userId;
+          // Switch to users sub-tab
+          this.supportSubTab = 'users';
+          this._supportLazyLoaded['users'] = false; // Force reload
+          this.renderSupportContent();
+        });
+      });
+
+    } catch (err) {
+      console.error('Error loading error logs:', err);
+      container.innerHTML = `
+        <div class="detail-placeholder" style="padding: 2rem; text-align: center; color: var(--error-color);">
+          Failed to load error logs: ${this.escapeHtml(err.message)}
+        </div>
+      `;
+    }
+  },
+
+  _errorTypeBadge(type) {
+    const badges = {
+      sms_verification: { label: 'SMS Verify', bg: '#fef3c7', color: '#92400e' },
+      sms_notification: { label: 'SMS Notif', bg: '#fee2e2', color: '#991b1b' },
+    };
+    const badge = badges[type] || { label: type, bg: '#f3f4f6', color: '#374151' };
+    return `<span style="display: inline-block; padding: 0.15rem 0.5rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; background: ${badge.bg}; color: ${badge.color}; white-space: nowrap;">${badge.label}</span>`;
   },
 
   escapeHtml(text) {
