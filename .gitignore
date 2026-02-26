@@ -49,6 +49,9 @@ check-*.js
 place-test-call.sh
 test-bridged-call.sh
 
+# Claude Code
+CLAUDE.md
+
 # Screenshots
 *.png
 !docs/images/*.png
