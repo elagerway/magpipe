@@ -318,6 +318,18 @@ p {
   to { opacity: 0; }
 }
 
+/* API Keys table - hide extra columns on mobile */
+@media (max-width: 768px) {
+  .api-keys-extra {
+    display: none !important;
+  }
+}
+
+/* Tooltip */
+.tooltip-wrap:hover .tooltip-text {
+  display: block !important;
+}
+
 /* Utility Classes */
 .text-center {
   text-align: center;
@@ -356,6 +368,7 @@ p {
 .mobile-only {
   display: none !important;
 }
+
 
 .back-btn {
   display: flex;
@@ -1379,6 +1392,7 @@ p {
   .mobile-only {
     display: block !important;
   }
+
 }
 
 /* Contacts Page */
