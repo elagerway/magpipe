@@ -24,6 +24,7 @@ import { knowledgeTabMethods } from './knowledge-tab.js';
 import { memoryTabMethods } from './memory-tab.js';
 import { functionsTabMethods } from './functions-tab.js';
 import { deploymentTabMethods } from './deployment-tab.js';
+import { notificationsTabMethods } from './notifications-tab.js';
 import { scheduleTabMethods } from './schedule-tab.js';
 import { analyticsTabMethods } from './analytics-tab.js';
 import { modalsMethods, ELEVENLABS_VOICES, OPENAI_VOICES } from './modals.js';
@@ -235,6 +236,7 @@ export default class AgentDetailPage {
             <button class="agent-tab" data-tab="knowledge">Knowledge</button>
             <button class="agent-tab" data-tab="memory">Memory</button>
             <button class="agent-tab" data-tab="functions">Functions</button>
+            <button class="agent-tab" data-tab="notifications">Notifications</button>
             <button class="agent-tab" data-tab="schedule">Schedule</button>
             <button class="agent-tab" data-tab="deployment">Deployment</button>
             <button class="agent-tab" data-tab="analytics">Analytics</button>
@@ -497,6 +499,10 @@ export default class AgentDetailPage {
         tabContent.innerHTML = this.renderFunctionsTab();
         this.attachFunctionsTabListeners();
         break;
+      case 'notifications':
+        tabContent.innerHTML = this.renderNotificationsTab();
+        this.attachNotificationsTabListeners();
+        break;
       case 'deployment':
         tabContent.innerHTML = this.renderDeploymentTab();
         this.attachDeploymentTabListeners();
@@ -611,6 +617,7 @@ Object.assign(AgentDetailPage.prototype,
   knowledgeTabMethods,
   memoryTabMethods,
   functionsTabMethods,
+  notificationsTabMethods,
   deploymentTabMethods,
   scheduleTabMethods,
   analyticsTabMethods,

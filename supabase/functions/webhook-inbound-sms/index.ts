@@ -200,6 +200,7 @@ Deno.serve(async (req) => {
 
       const notificationData = {
         userId: serviceNumber.user_id,
+        agentId: agentId,
         type: 'new_message',
         data: {
           senderNumber: from,

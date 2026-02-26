@@ -3,9 +3,9 @@ import { getSenderNumber, isOptedOut } from '../_shared/sms-compliance.ts'
 
 Deno.serve(async (req) => {
   try {
-    const { userId, type, data } = await req.json()
+    const { userId, agentId, type, data } = await req.json()
 
-    console.log('SMS notification request:', { userId, type })
+    console.log('SMS notification request:', { userId, type, agentId })
 
     if (!userId || !type) {
       return new Response(JSON.stringify({ error: 'Missing required fields' }), {
@@ -21,14 +21,28 @@ Deno.serve(async (req) => {
     const signalwireSpaceUrl = Deno.env.get('SIGNALWIRE_SPACE_URL')!
     const supabase = createClient(supabaseUrl, supabaseKey)
 
-    // Get user's notification preferences
-    const { data: prefs, error: prefsError } = await supabase
-      .from('notification_preferences')
-      .select('*')
-      .eq('user_id', userId)
-      .single()
+    // Get user's notification preferences (per-agent first, fallback to user-level)
+    let prefs = null
+    if (agentId) {
+      const { data: agentPrefs } = await supabase
+        .from('notification_preferences')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('agent_id', agentId)
+        .maybeSingle()
+      prefs = agentPrefs
+    }
+    if (!prefs) {
+      const { data: userPrefs } = await supabase
+        .from('notification_preferences')
+        .select('*')
+        .eq('user_id', userId)
+        .is('agent_id', null)
+        .maybeSingle()
+      prefs = userPrefs
+    }
 
-    if (prefsError || !prefs || !prefs.sms_enabled) {
+    if (!prefs || !prefs.sms_enabled) {
       console.log('SMS notifications not enabled for user:', userId)
       return new Response(JSON.stringify({ message: 'Notifications not enabled' }), {
         status: 200,

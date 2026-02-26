@@ -73,7 +73,7 @@ async function handleListChannels(req: Request, _body: any) {
 
 
 async function handleSendNotification(body: any) {
-  const { userId, type, data } = body
+  const { userId, agentId, type, data } = body
 
   if (!userId || !type) {
     return jsonResponse({ error: 'Missing required fields' }, 400)
@@ -83,14 +83,28 @@ async function handleSendNotification(body: any) {
   const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   const supabase = createClient(supabaseUrl, supabaseKey)
 
-  // Get user's notification preferences
-  const { data: prefs, error: prefsError } = await supabase
-    .from('notification_preferences')
-    .select('slack_enabled, slack_channel, slack_inbound_calls, slack_all_calls, slack_inbound_messages, slack_all_messages')
-    .eq('user_id', userId)
-    .single()
+  // Get user's notification preferences (per-agent first, fallback to user-level)
+  let prefs = null
+  if (agentId) {
+    const { data: agentPrefs } = await supabase
+      .from('notification_preferences')
+      .select('slack_enabled, slack_channel, slack_inbound_calls, slack_all_calls, slack_inbound_messages, slack_all_messages')
+      .eq('user_id', userId)
+      .eq('agent_id', agentId)
+      .maybeSingle()
+    prefs = agentPrefs
+  }
+  if (!prefs) {
+    const { data: userPrefs } = await supabase
+      .from('notification_preferences')
+      .select('slack_enabled, slack_channel, slack_inbound_calls, slack_all_calls, slack_inbound_messages, slack_all_messages')
+      .eq('user_id', userId)
+      .is('agent_id', null)
+      .maybeSingle()
+    prefs = userPrefs
+  }
 
-  if (prefsError || !prefs || !prefs.slack_enabled) {
+  if (!prefs || !prefs.slack_enabled) {
     console.log('Slack notifications not enabled for user:', userId)
     return jsonResponse({ message: 'Notifications not enabled' })
   }

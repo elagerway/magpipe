@@ -17,7 +17,7 @@ Deno.serve(async (req) => {
     // First, get the call record to know user_id and phone info
     const { data: callRecord } = await supabase
       .from('call_records')
-      .select('id, user_id, caller_number, contact_phone, direction')
+      .select('id, user_id, caller_number, contact_phone, direction, agent_id')
       .or(`vendor_call_id.eq.${callSid},call_sid.eq.${callSid}`)
       .single()
 
@@ -79,7 +79,8 @@ Deno.serve(async (req) => {
           phoneNumber,
           callRecord.direction || 'inbound',
           callStatus.toLowerCase(),
-          durationSeconds
+          durationSeconds,
+          callRecord.agent_id || null
         ).catch(err => console.error('Failed to send Slack call notification:', err))
       }
 
@@ -88,6 +89,7 @@ Deno.serve(async (req) => {
       const notificationType = isMissed ? 'missed_call' : 'completed_call'
       const notificationData = {
         userId: callRecord.user_id,
+        agentId: callRecord.agent_id,
         type: notificationType,
         data: {
           callerNumber: phoneNumber,
@@ -210,7 +212,8 @@ async function sendSlackCallNotification(
   phoneNumber: string,
   direction: string,
   status: string,
-  durationSeconds: number
+  durationSeconds: number,
+  agentId: string | null = null
 ) {
   try {
     // Get Slack provider ID
@@ -254,15 +257,29 @@ async function sendSlackCallNotification(
     const directionText = isInbound ? 'Inbound call from' : 'Outbound call to'
     const statusText = status === 'completed' ? `Duration: ${durationStr}` : `Status: ${status}`
 
-    // Resolve channel: user's notification_preferences.slack_channel → config.notification_channel → fallback
+    // Resolve channel: per-agent notification_preferences.slack_channel → user-level → config.notification_channel → fallback
     let channelId: string | null = null
 
-    // Check user's notification preferences first
-    const { data: notifPrefs } = await supabase
-      .from('notification_preferences')
-      .select('slack_channel')
-      .eq('user_id', userId)
-      .single()
+    // Check notification preferences (per-agent first, then user-level fallback)
+    let notifPrefs = null
+    if (agentId) {
+      const { data: agentPrefs } = await supabase
+        .from('notification_preferences')
+        .select('slack_channel')
+        .eq('user_id', userId)
+        .eq('agent_id', agentId)
+        .maybeSingle()
+      notifPrefs = agentPrefs
+    }
+    if (!notifPrefs) {
+      const { data: userPrefs } = await supabase
+        .from('notification_preferences')
+        .select('slack_channel')
+        .eq('user_id', userId)
+        .is('agent_id', null)
+        .maybeSingle()
+      notifPrefs = userPrefs
+    }
 
     if (notifPrefs?.slack_channel) {
       // Resolve channel name (e.g. #general) to ID

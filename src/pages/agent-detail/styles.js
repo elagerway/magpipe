@@ -201,7 +201,6 @@ export const stylesMethods = {
 
       .agent-tabs {
         display: flex;
-        gap: 0.25rem;
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
         scrollbar-width: none;
@@ -236,17 +235,19 @@ export const stylesMethods = {
       }
 
       .agent-tab {
-        padding: 0.75rem 1rem;
+        flex: 1;
+        padding: 0.75rem 0.25rem;
         border: none;
         background: none;
         color: var(--text-secondary);
-        font-size: 0.9rem;
+        font-size: 0.875rem;
         font-weight: 500;
         cursor: pointer;
         white-space: nowrap;
         border-bottom: 2px solid transparent;
         margin-bottom: -1px;
         transition: all 0.2s;
+        text-align: center;
       }
 
       .agent-tab:hover {
@@ -1947,8 +1948,10 @@ export const stylesMethods = {
         }
 
         .agent-tab {
+          flex: none;
           padding: 0.6rem 0.75rem;
           font-size: 0.8rem;
+          text-align: left;
         }
 
         /* Memory Tab Mobile */

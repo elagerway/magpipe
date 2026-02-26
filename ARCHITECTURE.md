@@ -57,7 +57,7 @@
 | `/inbox` | `inbox/index.js` | Main messaging UI — SMS, calls, chat, email. Email filter pill, email threads grouped by thread_id, email thread view with reply, compose with WYSIWYG toolbar, Email/Agent Email options in new message dropdown. Real-time subscriptions. Split into `call-interface.js`, `listeners.js`, `messaging.js`, `views.js`, `voice-loader.js` | `sms_messages`, `call_records`, `chat_sessions`, `contacts`, `service_numbers`, `agent_configs`, `email_messages` | `send-email` (real-time subs) |
 | `/agent` | `agent.js` | Admin chat interface for AI agent | `sms_messages` | None |
 | `/agents` | `agents.js` | Multi-agent list with type-selection creation modal (5 types: inbound_voice, outbound_voice, text, email, chat_widget) | `agent_configs`, `service_numbers` | None |
-| `/agents/:id` | `agent-detail/index.js` | Agent config detail. Split into `configure-tab.js`, `prompt-tab.js`, `functions-tab.js`, `knowledge-tab.js`, `memory-tab.js`, `analytics-tab.js`, `deployment-tab.js`, `schedule-tab.js`, `modals.js`, `styles.js` | `agent_configs`, `service_numbers`, `knowledge_sources`, `dynamic_variables`, `custom_functions`, `transfer_numbers` | `preview-voice`, `clone-voice`, `fetch-agent-avatar` |
+| `/agents/:id` | `agent-detail/index.js` | Agent config detail. Split into `configure-tab.js`, `prompt-tab.js`, `functions-tab.js`, `knowledge-tab.js`, `memory-tab.js`, `notifications-tab.js`, `analytics-tab.js`, `deployment-tab.js`, `schedule-tab.js`, `modals.js`, `styles.js` | `agent_configs`, `service_numbers`, `knowledge_sources`, `dynamic_variables`, `custom_functions`, `transfer_numbers`, `notification_preferences` | `preview-voice`, `clone-voice`, `fetch-agent-avatar` |
 | `/phone` | `phone/index.js` | Phone number management. Split into `call-handler.js`, `dialpad.js`, `number-management.js` | `service_numbers`, `external_sip_numbers`, `agent_configs` | `cancel-number-deletion`, `submit-cnam-request`, `fix-number-capabilities`, `sync-external-capabilities` |
 | `/contacts` | `contacts.js` | Contact list with CSV import | `contacts` | `contact-lookup` |
 | `/calls` | `calls.js` | Call history | `call_records` | None |
@@ -65,7 +65,7 @@
 | `/knowledge` | `knowledge.js` | Knowledge base management | `knowledge_sources`, `knowledge_chunks` | `knowledge-source-add`, `knowledge-source-delete`, `knowledge-source-sync`, `knowledge-source-manual` |
 | `/apps` | `apps.js` | Integrations & MCP servers | `user_integrations`, `mcp_servers`, `user_mcp_configs` | `integration-oauth-start`, `mcp-catalog-refresh`, `mcp-test-connection` |
 | `/analytics` | `analytics.js` | Org-wide analytics dashboard | None directly | `org-analytics` |
-| `/settings` | `settings.js` | Profile, Billing, Branding, Notifications (Email/SMS/Slack/Push), API | `users`, `notification_preferences`, `service_numbers`, `organizations`, `user_integrations` | Stripe functions, Cal.com functions, `send-notification-slack`, `integration-oauth-start` |
+| `/settings` | `settings.js` | Profile, Billing, Branding, API | `users`, `service_numbers`, `organizations`, `user_integrations` | Stripe functions, Cal.com functions, `integration-oauth-start` |
 | `/team` | `team.js` | Team member management | `organization_members`, `organizations` | `send-team-invitation` |
 | `/select-number` | `select-number.js` | Phone number purchase | `service_numbers` | `search-phone-numbers`, `provision-phone-number` |
 | `/manage-numbers` | `manage-numbers.js` | Number management (mobile) | `service_numbers`, `numbers_to_delete`, `agent_configs` | `queue-number-deletion`, `cancel-number-deletion`, `configure-signalwire-number`, `fix-number-capabilities` |
@@ -193,10 +193,10 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 | `create-user-sip-endpoint` | JWT | `users`, `user_sip_endpoints` | SignalWire | SIP config |
 | `save-push-subscription` | JWT | `push_subscriptions` | None | notification setup |
 | `delete-push-subscription` | JWT | `push_subscriptions` | None | settings |
-| `send-notification-email` | Service role | `notification_preferences` | Postmark | webhooks (fire & forget) |
-| `send-notification-sms` | Service role | `notification_preferences`, `service_numbers` | SignalWire | webhooks (fire & forget) |
-| `send-notification-push` | Service role | `notification_preferences`, `push_subscriptions` | Web Push (VAPID) | webhooks (fire & forget) |
-| `send-notification-slack` | Service role / JWT / API key | `notification_preferences`, `user_integrations` | Slack API | webhooks (fire & forget), settings page (list_channels) |
+| `send-notification-email` | Service role | `notification_preferences` | Postmark | webhooks (fire & forget). Per-agent prefs with user-level fallback |
+| `send-notification-sms` | Service role | `notification_preferences`, `service_numbers` | SignalWire | webhooks (fire & forget). Per-agent prefs with user-level fallback |
+| `send-notification-push` | Service role | `notification_preferences`, `push_subscriptions` | Web Push (VAPID) | webhooks (fire & forget). Per-agent prefs with user-level fallback |
+| `send-notification-slack` | Service role / JWT / API key | `notification_preferences`, `user_integrations` | Slack API | webhooks (fire & forget). Per-agent prefs with user-level fallback |
 | `access-code-update` | JWT/API key | `users`, `sms_confirmations` | Postmark | phone admin |
 
 ### Call Management
@@ -427,7 +427,7 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 `batch_calls` (includes recurrence columns: `recurrence_type`, `recurrence_interval`, `recurrence_end_date`, `recurrence_max_runs`, `recurrence_run_count`, `parent_batch_id`, `occurrence_number`), `batch_call_recipients`
 
 ### Other
-`notification_preferences`, `push_subscriptions`, `webhook_logs`, `scheduled_actions`, `sms_templates`, `voices`, `temp_state`, `call_state_logs`, `collected_call_data`, `transfer_numbers`, `outbound_call_templates`, `cloned_voices`
+`notification_preferences` (per-agent: `UNIQUE(user_id, agent_id)`, fallback row where `agent_id IS NULL`), `push_subscriptions`, `webhook_logs`, `scheduled_actions`, `sms_templates`, `voices`, `temp_state`, `call_state_logs`, `collected_call_data`, `transfer_numbers`, `outbound_call_templates`, `cloned_voices`
 
 ---
 

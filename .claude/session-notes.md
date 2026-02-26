@@ -1096,8 +1096,134 @@ Implemented repeating batch calls (hourly/daily/weekly/monthly) using a parent-c
 7. Cancel series → parent + all children cancelled, `cancelled_children: 1` ✅
 8. Send-now recurring batch → parent `recurring`, first child `running` ✅
 
-### Not Yet Tested
-- End-to-end with real calls (would need to push to master for Render deploy)
-- Frontend UI on localhost (user should test the batch-calls page)
-- Automatic next-child spawning after child completion (requires real call to complete)
+### Bug Fix: Batch stuck in "running" when all recipients fail in-function
+- **Root cause**: When all recipients fail within `process-batch-calls` (e.g., unroutable number), SignalWire status callbacks never fire, so `outbound-call-status` never marks batch completed
+- **Fix**: After processing chunk, if `morePending === 0`, also check `stillActive === 0` — if both zero, mark batch completed + trigger recurring check
+- Added ~20 lines to end of `processBatch()` in `process-batch-calls/index.ts`
 
+### Spawn Chain Verified (fake numbers)
+- Parent `Spawn Test - Daily x3` with `max_runs: 3`
+- Run #1 → completed → spawned Run #2 → completed → spawned Run #3 → completed → parent completed (max_runs hit, no Run #4) ✅
+
+### Real Call Test
+- Parent `Real Spawn Test - Daily x2` with `max_runs: 2`, Erik's cell (+16045628647)
+- Run #1 → call connected (PSTN leg OK, but agent didn't join conference — hold music only, pre-existing issue)
+- After hangup: Run #1 → completed, Run #2 → scheduled (auto-spawned) ✅
+- Full recurring spawn chain working end-to-end with real calls
+
+### Committed & Pushed
+- `ed01824` — Add recurring batch calls: parent-child model with hourly/daily/weekly/monthly scheduling
+
+### Admin Notifications — SMS, Email, Slack Fixed
+
+**SMS Fix**:
+- Root cause: Edge function picked `+16042101966` as From number — DB said SMS-capable but SignalWire rejected it (error 21601)
+- Fix: Hardcoded `+16042431596` as the admin notification SMS sender in both `admin-notifications-api` and `admin-send-notification`
+- Added SignalWire `error_code` checking in response (was returning `success: true` on silent failures)
+- Fixed `+16042101966` capabilities in DB (`sms: false`)
+
+**Slack Fix**:
+- Replaced text input with dropdown that fetches channels from Slack API on focus
+- Added `list_slack_channels` action to `admin-notifications-api`
+- Fixed `missing_scope` error: changed `conversations.list` to use `public_channel` only (token lacks `groups:read` for private channels)
+- Same fix applied to `sendTestSlack()` in both edge functions
+- Added "Connect Slack" button when Slack not connected (triggers OAuth flow via `integration-oauth-start`)
+- Added `integration_connected=slack` handling in admin index for success toast after OAuth redirect
+- Slack OAuth was already fully implemented — just needed wiring in notifications tab
+
+**Email**: Already working, no changes needed.
+
+**All toggles tested end-to-end**:
+- Signups (SMS ON + Email ON) → both delivered ✅
+- Tickets (Email ON + Slack ON) → both sent ✅
+- Vendor Status (Email ON only) → email sent, SMS/Slack skipped ✅
+- Social Listening (Email ON only) → email sent ✅
+
+### Committed & Pushed
+- `ed01824` — Add recurring batch calls: parent-child model with hourly/daily/weekly/monthly scheduling
+- `57eaab2` — Fix admin notifications: SMS from number, Slack channel dropdown, scope fix
+
+### Still TODO
+- Frontend UI testing on localhost (batch calls recurring UI)
+- Agent not joining batch call conference bridge (pre-existing issue, not related to recurrence)
+
+---
+
+## Date: 2026-02-25
+
+### Slack Notifications in User Settings
+
+**Added Slack to `/settings?tab=notifications`** — users can now configure Slack notifications alongside Email, SMS, and Push.
+
+**DB Migration** (`20260225_slack_notification_preferences.sql`):
+- Added 6 columns to `notification_preferences`: `slack_enabled`, `slack_channel`, `slack_inbound_calls`, `slack_all_calls`, `slack_inbound_messages`, `slack_all_messages`
+
+**New Edge Function** (`send-notification-slack`):
+- Dual-mode: `list_channels` action for settings page (user auth via `resolveUser()`), notification sending for webhooks (service role key)
+- Checks all user toggles before sending (master toggle + per-event-type)
+- Resolves channel name to ID via Slack API
+
+**Frontend** (`settings.js`):
+- Slack card between SMS and Push sections
+- If not connected: "Connect Slack" button → OAuth flow
+- If connected: toggle, channel dropdown (lazy-loaded), 4 event checkboxes
+- Channel dropdown fetches from `send-notification-slack` on focus
+
+**Webhook Wiring**:
+- Added `send-notification-slack` fire-and-forget dispatch to `webhook-call-status`, `webhook-inbound-sms`, `webhook-chat-message`
+
+**Fixed Pre-existing Hardcoded Slack Channels**:
+- Updated 4 files with hardcoded Slack channel fallback logic to check `notification_preferences.slack_channel` first:
+  - `webhook-call-status/index.ts`
+  - `sip-call-status/index.ts`
+  - `signalwire-status-webhook/index.ts`
+  - `webhook-inbound-sms/notifications.ts`
+
+**All 8 test scenarios passed**: toggle logic, master enable/disable, channel routing, per-event-type filtering.
+
+### Committed & Pushed
+- `282b60e` — Add Slack to user notification settings + wire webhook dispatchers
+
+
+---
+
+## Session: 2026-02-25 (Night) — Per-Agent Notifications
+
+### Overview
+Moved notification preferences from global (Settings page) to per-agent (Agent Detail → Notifications tab). Each agent now has independent Email/SMS/Push notification settings + App Notification cards (Slack/HubSpot).
+
+### DB Migration (`20260225_per_agent_notifications.sql`)
+- Added `agent_id UUID` column to `notification_preferences` (FK → `agent_configs.id`)
+- Replaced `UNIQUE(user_id)` with `UNIQUE(user_id, agent_id)`
+- Added index on `(user_id, agent_id)`
+- Migrated existing rows: duplicated per agent, kept original as user-level fallback (`agent_id IS NULL`)
+
+### New File: `notifications-tab.js`
+- Per-agent Notifications tab with Email, SMS, Push sections
+- App Notifications section (Slack/HubSpot cards) — moved from Functions tab "Dynamic Data Flow"
+- Auto-save with 500ms debounce, upsert on `(user_id, agent_id)`
+- Push notification setup (subscribe/unsubscribe, test notification)
+- Loads per-agent prefs first, falls back to user-level row
+
+### Modified Files
+- `agent-detail/index.js` — Added Notifications tab button + switch case
+- `agent-detail/functions-tab.js` — Removed Dynamic Data Flow section render/listeners
+- `agent-detail/styles.js` — Tabs use `flex: 1` to fill container width on desktop
+- `settings.js` — Removed entire Notifications tab (HTML, listeners, push UI, imports)
+- 4 `send-notification-*` edge functions — Per-agent prefs query with user-level fallback
+- 5 webhook functions — Pass `agentId` in notification data
+
+### Removed
+- Dedicated Slack Notifications section (redundant with Slack app card in App Notifications)
+- Notifications tab from Settings page entirely
+
+### Tests (`tests/notifications-tab.spec.js`)
+All 12 Playwright tests pass:
+- Tab exists + renders all sections (Email, SMS, Push, App Notifications)
+- Email/SMS/Push controls are interactive
+- App Notification cards render (Slack/HubSpot)
+- Auto-save persists after reload
+- Different agents have independent prefs
+- Functions tab no longer has Dynamic Data Flow
+- Settings page no longer has Notifications tab
+- Tab ordering correct, URL params work, direct navigation works
