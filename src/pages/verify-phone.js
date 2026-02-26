@@ -7,9 +7,108 @@ import { getCurrentUser, supabase } from '../lib/supabase.js';
 import { isPushSupported, subscribeToPush } from '../services/pushNotifications.js';
 import { showToast } from '../lib/toast.js';
 
+// Country codes for the dropdown — US/CA first, then alphabetical
+const COUNTRY_CODES = [
+  { code: '+1', flag: '\u{1F1FA}\u{1F1F8}', name: 'United States' },
+  { code: '+1', flag: '\u{1F1E8}\u{1F1E6}', name: 'Canada' },
+  { code: '+93', flag: '\u{1F1E6}\u{1F1EB}', name: 'Afghanistan' },
+  { code: '+355', flag: '\u{1F1E6}\u{1F1F1}', name: 'Albania' },
+  { code: '+213', flag: '\u{1F1E9}\u{1F1FF}', name: 'Algeria' },
+  { code: '+54', flag: '\u{1F1E6}\u{1F1F7}', name: 'Argentina' },
+  { code: '+61', flag: '\u{1F1E6}\u{1F1FA}', name: 'Australia' },
+  { code: '+43', flag: '\u{1F1E6}\u{1F1F9}', name: 'Austria' },
+  { code: '+973', flag: '\u{1F1E7}\u{1F1ED}', name: 'Bahrain' },
+  { code: '+880', flag: '\u{1F1E7}\u{1F1E9}', name: 'Bangladesh' },
+  { code: '+32', flag: '\u{1F1E7}\u{1F1EA}', name: 'Belgium' },
+  { code: '+55', flag: '\u{1F1E7}\u{1F1F7}', name: 'Brazil' },
+  { code: '+359', flag: '\u{1F1E7}\u{1F1EC}', name: 'Bulgaria' },
+  { code: '+855', flag: '\u{1F1F0}\u{1F1ED}', name: 'Cambodia' },
+  { code: '+56', flag: '\u{1F1E8}\u{1F1F1}', name: 'Chile' },
+  { code: '+86', flag: '\u{1F1E8}\u{1F1F3}', name: 'China' },
+  { code: '+57', flag: '\u{1F1E8}\u{1F1F4}', name: 'Colombia' },
+  { code: '+506', flag: '\u{1F1E8}\u{1F1F7}', name: 'Costa Rica' },
+  { code: '+385', flag: '\u{1F1ED}\u{1F1F7}', name: 'Croatia' },
+  { code: '+357', flag: '\u{1F1E8}\u{1F1FE}', name: 'Cyprus' },
+  { code: '+420', flag: '\u{1F1E8}\u{1F1FF}', name: 'Czech Republic' },
+  { code: '+45', flag: '\u{1F1E9}\u{1F1F0}', name: 'Denmark' },
+  { code: '+593', flag: '\u{1F1EA}\u{1F1E8}', name: 'Ecuador' },
+  { code: '+20', flag: '\u{1F1EA}\u{1F1EC}', name: 'Egypt' },
+  { code: '+503', flag: '\u{1F1F8}\u{1F1FB}', name: 'El Salvador' },
+  { code: '+372', flag: '\u{1F1EA}\u{1F1EA}', name: 'Estonia' },
+  { code: '+251', flag: '\u{1F1EA}\u{1F1F9}', name: 'Ethiopia' },
+  { code: '+358', flag: '\u{1F1EB}\u{1F1EE}', name: 'Finland' },
+  { code: '+33', flag: '\u{1F1EB}\u{1F1F7}', name: 'France' },
+  { code: '+49', flag: '\u{1F1E9}\u{1F1EA}', name: 'Germany' },
+  { code: '+233', flag: '\u{1F1EC}\u{1F1ED}', name: 'Ghana' },
+  { code: '+30', flag: '\u{1F1EC}\u{1F1F7}', name: 'Greece' },
+  { code: '+502', flag: '\u{1F1EC}\u{1F1F9}', name: 'Guatemala' },
+  { code: '+504', flag: '\u{1F1ED}\u{1F1F3}', name: 'Honduras' },
+  { code: '+852', flag: '\u{1F1ED}\u{1F1F0}', name: 'Hong Kong' },
+  { code: '+36', flag: '\u{1F1ED}\u{1F1FA}', name: 'Hungary' },
+  { code: '+354', flag: '\u{1F1EE}\u{1F1F8}', name: 'Iceland' },
+  { code: '+91', flag: '\u{1F1EE}\u{1F1F3}', name: 'India' },
+  { code: '+62', flag: '\u{1F1EE}\u{1F1E9}', name: 'Indonesia' },
+  { code: '+98', flag: '\u{1F1EE}\u{1F1F7}', name: 'Iran' },
+  { code: '+964', flag: '\u{1F1EE}\u{1F1F6}', name: 'Iraq' },
+  { code: '+353', flag: '\u{1F1EE}\u{1F1EA}', name: 'Ireland' },
+  { code: '+972', flag: '\u{1F1EE}\u{1F1F1}', name: 'Israel' },
+  { code: '+39', flag: '\u{1F1EE}\u{1F1F9}', name: 'Italy' },
+  { code: '+81', flag: '\u{1F1EF}\u{1F1F5}', name: 'Japan' },
+  { code: '+962', flag: '\u{1F1EF}\u{1F1F4}', name: 'Jordan' },
+  { code: '+7', flag: '\u{1F1F0}\u{1F1FF}', name: 'Kazakhstan' },
+  { code: '+254', flag: '\u{1F1F0}\u{1F1EA}', name: 'Kenya' },
+  { code: '+82', flag: '\u{1F1F0}\u{1F1F7}', name: 'South Korea' },
+  { code: '+965', flag: '\u{1F1F0}\u{1F1FC}', name: 'Kuwait' },
+  { code: '+371', flag: '\u{1F1F1}\u{1F1FB}', name: 'Latvia' },
+  { code: '+961', flag: '\u{1F1F1}\u{1F1E7}', name: 'Lebanon' },
+  { code: '+370', flag: '\u{1F1F1}\u{1F1F9}', name: 'Lithuania' },
+  { code: '+352', flag: '\u{1F1F1}\u{1F1FA}', name: 'Luxembourg' },
+  { code: '+60', flag: '\u{1F1F2}\u{1F1FE}', name: 'Malaysia' },
+  { code: '+356', flag: '\u{1F1F2}\u{1F1F9}', name: 'Malta' },
+  { code: '+52', flag: '\u{1F1F2}\u{1F1FD}', name: 'Mexico' },
+  { code: '+212', flag: '\u{1F1F2}\u{1F1E6}', name: 'Morocco' },
+  { code: '+31', flag: '\u{1F1F3}\u{1F1F1}', name: 'Netherlands' },
+  { code: '+64', flag: '\u{1F1F3}\u{1F1FF}', name: 'New Zealand' },
+  { code: '+234', flag: '\u{1F1F3}\u{1F1EC}', name: 'Nigeria' },
+  { code: '+47', flag: '\u{1F1F3}\u{1F1F4}', name: 'Norway' },
+  { code: '+968', flag: '\u{1F1F4}\u{1F1F2}', name: 'Oman' },
+  { code: '+92', flag: '\u{1F1F5}\u{1F1F0}', name: 'Pakistan' },
+  { code: '+507', flag: '\u{1F1F5}\u{1F1E6}', name: 'Panama' },
+  { code: '+595', flag: '\u{1F1F5}\u{1F1FE}', name: 'Paraguay' },
+  { code: '+51', flag: '\u{1F1F5}\u{1F1EA}', name: 'Peru' },
+  { code: '+63', flag: '\u{1F1F5}\u{1F1ED}', name: 'Philippines' },
+  { code: '+48', flag: '\u{1F1F5}\u{1F1F1}', name: 'Poland' },
+  { code: '+351', flag: '\u{1F1F5}\u{1F1F9}', name: 'Portugal' },
+  { code: '+974', flag: '\u{1F1F6}\u{1F1E6}', name: 'Qatar' },
+  { code: '+40', flag: '\u{1F1F7}\u{1F1F4}', name: 'Romania' },
+  { code: '+7', flag: '\u{1F1F7}\u{1F1FA}', name: 'Russia' },
+  { code: '+966', flag: '\u{1F1F8}\u{1F1E6}', name: 'Saudi Arabia' },
+  { code: '+65', flag: '\u{1F1F8}\u{1F1EC}', name: 'Singapore' },
+  { code: '+421', flag: '\u{1F1F8}\u{1F1F0}', name: 'Slovakia' },
+  { code: '+386', flag: '\u{1F1F8}\u{1F1EE}', name: 'Slovenia' },
+  { code: '+27', flag: '\u{1F1FF}\u{1F1E6}', name: 'South Africa' },
+  { code: '+34', flag: '\u{1F1EA}\u{1F1F8}', name: 'Spain' },
+  { code: '+94', flag: '\u{1F1F1}\u{1F1F0}', name: 'Sri Lanka' },
+  { code: '+46', flag: '\u{1F1F8}\u{1F1EA}', name: 'Sweden' },
+  { code: '+41', flag: '\u{1F1E8}\u{1F1ED}', name: 'Switzerland' },
+  { code: '+886', flag: '\u{1F1F9}\u{1F1FC}', name: 'Taiwan' },
+  { code: '+66', flag: '\u{1F1F9}\u{1F1ED}', name: 'Thailand' },
+  { code: '+90', flag: '\u{1F1F9}\u{1F1F7}', name: 'Turkey' },
+  { code: '+256', flag: '\u{1F1FA}\u{1F1EC}', name: 'Uganda' },
+  { code: '+380', flag: '\u{1F1FA}\u{1F1E6}', name: 'Ukraine' },
+  { code: '+971', flag: '\u{1F1E6}\u{1F1EA}', name: 'United Arab Emirates' },
+  { code: '+44', flag: '\u{1F1EC}\u{1F1E7}', name: 'United Kingdom' },
+  { code: '+598', flag: '\u{1F1FA}\u{1F1FE}', name: 'Uruguay' },
+  { code: '+58', flag: '\u{1F1FB}\u{1F1EA}', name: 'Venezuela' },
+  { code: '+84', flag: '\u{1F1FB}\u{1F1F3}', name: 'Vietnam' },
+  { code: '+260', flag: '\u{1F1FF}\u{1F1F2}', name: 'Zambia' },
+  { code: '+263', flag: '\u{1F1FF}\u{1F1FC}', name: 'Zimbabwe' },
+];
+
 export default class VerifyPhonePage {
   constructor() {
     this.codeSent = false;
+    this.selectedCountryCode = '+1';
   }
 
   async render() {
@@ -51,9 +150,16 @@ export default class VerifyPhonePage {
 
           <div id="phone-entry-form">
             <div class="form-group">
-              <label class="form-label" for="phone">Phone Number (USA/Canada)</label>
+              <label class="form-label" for="phone">Phone Number</label>
               <div style="display: flex; gap: 0.5rem; align-items: center;">
-                <span style="padding: 0.5rem 0.75rem; background: #f3f4f6; border: 1px solid #d1d5db; border-radius: 0.375rem; font-weight: 500; color: #6b7280;">+1</span>
+                <div style="position: relative; flex-shrink: 0;">
+                  <select id="country-code" style="position: absolute; inset: 0; opacity: 0; cursor: pointer; font-size: 1rem;">
+                    ${COUNTRY_CODES.map((c, i) =>
+                      `<option value="${c.code}" data-index="${i}"${i === 0 ? ' selected' : ''}>${c.flag} ${c.name} (${c.code})</option>`
+                    ).join('')}
+                  </select>
+                  <span id="country-code-display" style="display: inline-flex; align-items: center; padding: 0.5rem 0.75rem; background: #f3f4f6; border: 1px solid #d1d5db; border-radius: 0.375rem; font-weight: 500; color: #374151; font-size: 0.95rem; white-space: nowrap; pointer-events: none;">${COUNTRY_CODES[0].flag} ${COUNTRY_CODES[0].code} ▾</span>
+                </div>
                 <input
                   type="tel"
                   id="phone"
@@ -61,11 +167,11 @@ export default class VerifyPhonePage {
                   placeholder="555-123-4567"
                   required
                   autocomplete="tel"
-                  maxlength="12"
+                  maxlength="15"
                   style="flex: 1;"
                 />
               </div>
-              <p class="form-help">Enter your 10-digit phone number (currently available for USA and Canada only)</p>
+              <p class="form-help" id="phone-help">Enter your phone number to receive a verification code via SMS</p>
             </div>
 
             <button class="btn btn-primary btn-full" id="send-code-btn">
@@ -107,26 +213,54 @@ export default class VerifyPhonePage {
 
   setupPhoneFormatting() {
     const phoneInput = document.getElementById('phone');
-    if (!phoneInput) return;
+    const countryCodeSelect = document.getElementById('country-code');
+    if (!phoneInput || !countryCodeSelect) return;
+
+    const displaySpan = document.getElementById('country-code-display');
+
+    // Track selected country code
+    countryCodeSelect.addEventListener('change', (e) => {
+      const country = COUNTRY_CODES[e.target.selectedIndex];
+      this.selectedCountryCode = country.code;
+      const isNorthAmerican = this.selectedCountryCode === '+1';
+
+      // Update the visible display
+      if (displaySpan) {
+        displaySpan.textContent = `${country.flag} ${country.code} ▾`;
+      }
+
+      // Update placeholder and maxlength based on country
+      phoneInput.placeholder = isNorthAmerican ? '555-123-4567' : 'Phone number';
+      phoneInput.maxLength = isNorthAmerican ? 12 : 15;
+
+      // Re-format existing input when switching countries
+      phoneInput.value = '';
+      phoneInput.focus();
+    });
 
     phoneInput.addEventListener('input', (e) => {
       let value = e.target.value.replace(/\D/g, ''); // Remove non-digits
 
-      // Remove leading '1' if present (from +1 in autocomplete)
-      if (value.startsWith('1') && value.length === 11) {
-        value = value.slice(1);
-      }
-
-      // Limit to 10 digits
-      if (value.length > 10) {
-        value = value.slice(0, 10);
-      }
-
-      // Format as XXX-XXX-XXXX
-      if (value.length > 6) {
-        value = `${value.slice(0, 3)}-${value.slice(3, 6)}-${value.slice(6)}`;
-      } else if (value.length > 3) {
-        value = `${value.slice(0, 3)}-${value.slice(3)}`;
+      if (this.selectedCountryCode === '+1') {
+        // North American formatting: XXX-XXX-XXXX
+        // Remove leading '1' if present (from autocomplete)
+        if (value.startsWith('1') && value.length === 11) {
+          value = value.slice(1);
+        }
+        if (value.length > 10) {
+          value = value.slice(0, 10);
+        }
+        if (value.length > 6) {
+          value = `${value.slice(0, 3)}-${value.slice(3, 6)}-${value.slice(6)}`;
+        } else if (value.length > 3) {
+          value = `${value.slice(0, 3)}-${value.slice(3)}`;
+        }
+      } else {
+        // International: just digits, limit to 15 total (E.164 max)
+        const maxDigits = 15 - this.selectedCountryCode.replace('+', '').length;
+        if (value.length > maxDigits) {
+          value = value.slice(0, maxDigits);
+        }
       }
 
       e.target.value = value;
@@ -145,8 +279,8 @@ export default class VerifyPhonePage {
       const phoneInput = document.getElementById('phone');
       const phoneNumber = this.sanitizePhoneNumber(phoneInput.value);
 
-      if (!this.isValidNorthAmericanNumber(phoneNumber)) {
-        showToast('Please enter a valid 10-digit phone number', 'error');
+      if (!this.isValidPhoneNumber(phoneNumber)) {
+        showToast('Please enter a valid phone number', 'error');
         return;
       }
 
@@ -327,20 +461,16 @@ export default class VerifyPhonePage {
   }
 
   sanitizePhoneNumber(phone) {
-    // Remove all non-digit characters except leading +
-    let cleaned = phone.replace(/[^\d+]/g, '');
+    // Remove all non-digit characters
+    const digits = phone.replace(/\D/g, '');
 
-    // Ensure E.164 format
-    if (!cleaned.startsWith('+')) {
-      cleaned = '+1' + cleaned; // Assume US/Canada
-    }
-
-    return cleaned;
+    // Prepend selected country code
+    return this.selectedCountryCode + digits;
   }
 
-  isValidNorthAmericanNumber(phone) {
-    // North American format: +1 followed by 10 digits
-    return /^\+1\d{10}$/.test(phone);
+  isValidPhoneNumber(phone) {
+    // E.164 format: + followed by 7-15 digits
+    return /^\+[1-9]\d{6,14}$/.test(phone);
   }
 
   async sendVerificationCode(phoneNumber) {
