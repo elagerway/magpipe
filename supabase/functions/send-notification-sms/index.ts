@@ -1,5 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { getSenderNumber, isOptedOut } from '../_shared/sms-compliance.ts'
+import { getSenderNumber, isOptedOut, isUSNumber, CANADA_SENDER_NUMBER } from '../_shared/sms-compliance.ts'
 
 Deno.serve(async (req) => {
   try {
@@ -78,24 +78,28 @@ Deno.serve(async (req) => {
     // Generate notification ID for tracking
     const notificationId = crypto.randomUUID()
 
+    // Only add STOP opt-out text for US destinations (10DLC compliance)
+    const recipientIsUS = await isUSNumber(prefs.sms_phone_number, supabase)
+    const optOutSuffix = recipientIsUS ? '\n\nSTOP to opt out' : ''
+
     // Build SMS content based on notification type
     let smsBody = ''
 
     switch (type) {
       case 'missed_call':
-        smsBody = `Missed call from ${data.callerNumber || 'Unknown'} at ${new Date(data.timestamp).toLocaleString()}\n\nNotification ID: ${notificationId}\n\nSTOP to opt out`
+        smsBody = `Missed call from ${data.callerNumber || 'Unknown'} at ${new Date(data.timestamp).toLocaleString()}\n\nNotification ID: ${notificationId}${optOutSuffix}`
         break
 
       case 'completed_call':
-        smsBody = `Call ${data.successful ? 'completed' : 'ended'} with ${data.callerNumber || 'Unknown'} at ${new Date(data.timestamp).toLocaleString()}${data.duration ? ` (${data.duration}s)` : ''}\n\nNotification ID: ${notificationId}\n\nSTOP to opt out`
+        smsBody = `Call ${data.successful ? 'completed' : 'ended'} with ${data.callerNumber || 'Unknown'} at ${new Date(data.timestamp).toLocaleString()}${data.duration ? ` (${data.duration}s)` : ''}\n\nNotification ID: ${notificationId}${optOutSuffix}`
         break
 
       case 'new_message':
-        smsBody = `New message from ${data.senderNumber || 'Unknown'}: ${data.content}\n\nNotification ID: ${notificationId}\n\nSTOP to opt out`
+        smsBody = `New message from ${data.senderNumber || 'Unknown'}: ${data.content}\n\nNotification ID: ${notificationId}${optOutSuffix}`
         break
 
       case 'outbound_message':
-        smsBody = `Message sent to ${data.recipientNumber || 'Unknown'}: ${data.content}\n\nNotification ID: ${notificationId}\n\nSTOP to opt out`
+        smsBody = `Message sent to ${data.recipientNumber || 'Unknown'}: ${data.content}\n\nNotification ID: ${notificationId}${optOutSuffix}`
         break
 
       default:
@@ -116,25 +120,9 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Get user's service number to use as sender
-    const { data: serviceNumbers, error: serviceError } = await supabase
-      .from('service_numbers')
-      .select('phone_number')
-      .eq('user_id', userId)
-      .eq('is_active', true)
-      .limit(1)
-      .single()
-
-    if (!serviceNumbers) {
-      console.error('No service number found for user:', userId)
-      return new Response(JSON.stringify({ error: 'No service number found' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      })
-    }
-
-    // Use USA campaign number for US recipients, otherwise use service number
-    const fromNumber = await getSenderNumber(prefs.sms_phone_number, serviceNumbers.phone_number, supabase)
+    // Use dedicated notification sender numbers based on recipient country
+    // Canadian/international → +16042431596, US → +14152518686
+    const fromNumber = await getSenderNumber(prefs.sms_phone_number, CANADA_SENDER_NUMBER, supabase)
 
     // Send SMS via SignalWire
     const smsData = new URLSearchParams({
