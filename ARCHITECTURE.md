@@ -70,7 +70,7 @@
 | `/select-number` | `select-number.js` | Phone number purchase | `service_numbers` | `search-phone-numbers`, `provision-phone-number` |
 | `/manage-numbers` | `manage-numbers.js` | Number management (mobile) | `service_numbers`, `numbers_to_delete`, `agent_configs` | `queue-number-deletion`, `cancel-number-deletion`, `configure-signalwire-number`, `fix-number-capabilities` |
 | `/bulk-calling` | `bulk-calling.js` | Outbound bulk calling (legacy) | `service_numbers`, `contacts` | None (legacy) |
-| `/batch-calls` | `batch-calls.js` | Batch outbound calls — CSV upload, scheduling, concurrency, real-time status via Supabase Realtime, conference bridge calling, recurring batches (hourly/daily/weekly/monthly with parent-child model) | `batch_calls`, `batch_call_recipients`, `service_numbers`, `agent_configs` | `batch-calls`, `process-batch-calls`, `batch-call-cxml` |
+| `/batch-calls` | `batch-calls.js` | Batch outbound calls — CSV upload (max 500 recipients), scheduling, concurrency (max 5), real-time status via Supabase Realtime, conference bridge calling, recurring batches (hourly/daily/weekly/monthly with parent-child model) | `batch_calls`, `batch_call_recipients`, `service_numbers`, `agent_configs` | `batch-calls`, `process-batch-calls`, `batch-call-cxml` |
 | `/verify-phone` | `verify-phone.js` | Phone verification OTP | `users`, `service_numbers` | `verify-phone-send`, `verify-phone-check` |
 | `/agent-config` | `agent-config.js` | Legacy global agent config | `agent_configs`, `outbound_templates` | `fetch-agent-avatar`, `preview-voice`, `clone-voice` |
 | `/chat-widget/:id` | `chat-widget-settings.js` | Chat widget config | `chat_widgets` | None |
@@ -79,7 +79,8 @@
 
 | Route | File | Purpose |
 |-------|------|---------|
-| `/admin` | `admin/index.js` | Admin portal — split into tab modules. Tabs: Support (default), Analytics, KPIs, Notifications, Marketing |
+| `/admin` | `admin/index.js` | Admin portal — split into tab modules. Tabs: Support (default), Analytics, KPIs, Notifications, Marketing, Batches |
+| `/admin/batches` | `admin-batches.js` | Batch management — view/cancel any user's batches (admin/god only) |
 
 Admin tab modules in `src/pages/admin/`:
 - `support-tab.js` — Support tickets (real-time thread updates via Supabase subscriptions), Users, Global Agent, Chat, Settings (sub-tabs)
