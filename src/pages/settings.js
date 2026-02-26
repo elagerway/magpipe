@@ -50,14 +50,15 @@ export default class SettingsPage {
       ({ profile, billingInfo, notifPrefs, serviceNumbers, organization } = this.cachedData);
     } else {
       // Fetch all data in parallel for speed
-      const [profileResult, billingResult, notifResult, numbersResult, calComResult, orgResult, referralResult] = await Promise.all([
+      const [profileResult, billingResult, notifResult, numbersResult, calComResult, orgResult, referralResult, slackIntegrationResult] = await Promise.all([
         User.getProfile(user.id),
         supabase.from('users').select('plan, stripe_customer_id, stripe_subscription_id, stripe_subscription_status, stripe_current_period_end, credits_balance, credits_used_this_period, has_payment_method, received_signup_bonus, auto_recharge_enabled, auto_recharge_amount, auto_recharge_threshold, cc_bonus_claimed, recharge_bonus_claimed, referral_code').eq('id', user.id).single(),
         supabase.from('notification_preferences').select('*').eq('user_id', user.id).single(),
         supabase.from('service_numbers').select('phone_number, is_active').eq('user_id', user.id).order('is_active', { ascending: false }),
         supabase.from('users').select('cal_com_access_token, cal_com_user_id').eq('id', user.id).single(),
         Organization.getForUser(user.id),
-        supabase.from('referral_rewards').select('threshold_met').eq('referrer_id', user.id).eq('threshold_met', true).limit(1)
+        supabase.from('referral_rewards').select('threshold_met').eq('referrer_id', user.id).eq('threshold_met', true).limit(1),
+        supabase.from('user_integrations').select('id, status, external_workspace_id, integration_providers!inner(slug)').eq('user_id', user.id).eq('integration_providers.slug', 'slack').eq('status', 'connected').maybeSingle(),
       ]);
 
       profile = profileResult.profile;
@@ -74,6 +75,9 @@ export default class SettingsPage {
 
       // Add referral completion status
       profile.has_completed_referral = (referralResult.data?.length || 0) > 0;
+
+      // Store Slack connection status
+      this.slackConnected = !!slackIntegrationResult.data;
 
       // Cache the data
       this.cachedData = { profile, billingInfo, notifPrefs, serviceNumbers, organization };
@@ -107,6 +111,23 @@ export default class SettingsPage {
     const bonusClaimed = urlParams.get('bonus_claimed');
     const calConnected = urlParams.get('cal_connected');
     const calError = urlParams.get('cal_error');
+    const integrationConnected = urlParams.get('integration_connected');
+    const integrationError = urlParams.get('integration_error');
+
+    // Handle integration OAuth redirects
+    if (integrationConnected === 'slack') {
+      showToast('Slack connected successfully!', 'success');
+      this.slackConnected = true;
+      this.activeTab = 'notifications';
+      const cleanUrl = new URL(window.location.href);
+      cleanUrl.searchParams.delete('integration_connected');
+      window.history.replaceState({}, '', cleanUrl.toString());
+    } else if (integrationError) {
+      showToast('Failed to connect integration: ' + integrationError, 'error');
+      const cleanUrl = new URL(window.location.href);
+      cleanUrl.searchParams.delete('integration_error');
+      window.history.replaceState({}, '', cleanUrl.toString());
+    }
 
     // Store data for tab rendering
     this.profile = profile;
@@ -1628,6 +1649,53 @@ export default class SettingsPage {
           </div>
         </div>
 
+        <!-- Slack Notifications -->
+        <div style="border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <div>
+              <h3 style="margin: 0; font-size: 1rem;">Slack Notifications</h3>
+              <p class="text-muted" style="margin: 0.25rem 0 0 0; font-size: 0.875rem;">Get alerts sent to a Slack channel</p>
+            </div>
+            ${this.slackConnected ? `
+              <label class="toggle-switch">
+                <input type="checkbox" id="slack-enabled" ${this.notifPrefs?.slack_enabled ? 'checked' : ''} />
+                <span class="toggle-slider"></span>
+              </label>
+            ` : ''}
+          </div>
+          ${this.slackConnected ? `
+            <div class="form-group">
+              <label for="slack-channel">Channel</label>
+              <select id="slack-channel" class="form-input">
+                <option value="">Select a channel...</option>
+                ${this.notifPrefs?.slack_channel ? `<option value="${this.notifPrefs.slack_channel}" selected>${this.notifPrefs.slack_channel}</option>` : ''}
+              </select>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 0.5rem; padding-left: 0.5rem;">
+              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
+                <input type="checkbox" id="slack-inbound-calls" ${this.notifPrefs?.slack_inbound_calls ? 'checked' : ''} />
+                <span>Inbound calls</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
+                <input type="checkbox" id="slack-all-calls" ${this.notifPrefs?.slack_all_calls ? 'checked' : ''} />
+                <span>All calls</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
+                <input type="checkbox" id="slack-inbound-messages" ${this.notifPrefs?.slack_inbound_messages ? 'checked' : ''} />
+                <span>Inbound messages</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
+                <input type="checkbox" id="slack-all-messages" ${this.notifPrefs?.slack_all_messages ? 'checked' : ''} />
+                <span>All messages</span>
+              </label>
+            </div>
+          ` : `
+            <button class="btn btn-primary" id="connect-slack-btn" style="width: 100%;">
+              Connect Slack
+            </button>
+          `}
+        </div>
+
         <!-- Push Notifications -->
         <div style="border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1rem;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
@@ -1709,6 +1777,12 @@ export default class SettingsPage {
             sms_all_calls: document.getElementById('sms-all-calls').checked,
             sms_inbound_messages: document.getElementById('sms-inbound-messages').checked,
             sms_all_messages: document.getElementById('sms-all-messages').checked,
+            slack_enabled: document.getElementById('slack-enabled')?.checked || false,
+            slack_channel: document.getElementById('slack-channel')?.value || '',
+            slack_inbound_calls: document.getElementById('slack-inbound-calls')?.checked || false,
+            slack_all_calls: document.getElementById('slack-all-calls')?.checked || false,
+            slack_inbound_messages: document.getElementById('slack-inbound-messages')?.checked || false,
+            slack_all_messages: document.getElementById('slack-all-messages')?.checked || false,
             push_enabled: document.getElementById('push-enabled').checked,
             push_inbound_calls: document.getElementById('push-inbound-calls').checked,
             push_all_calls: document.getElementById('push-all-calls').checked,
@@ -1725,6 +1799,78 @@ export default class SettingsPage {
         } finally {
           saveNotificationsBtn.disabled = false;
           saveNotificationsBtn.textContent = 'Save Notification Settings';
+        }
+      });
+    }
+
+    // Slack: Connect button
+    const connectSlackBtn = document.getElementById('connect-slack-btn');
+    if (connectSlackBtn) {
+      connectSlackBtn.addEventListener('click', async () => {
+        connectSlackBtn.disabled = true;
+        connectSlackBtn.textContent = 'Connecting...';
+        try {
+          const { session } = await import('../lib/supabase.js').then(m => m.getCurrentSession());
+          const response = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/integration-oauth-start`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${session.access_token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ provider: 'slack', redirect_path: '/settings?tab=notifications' }),
+            }
+          );
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || 'Failed to start Slack OAuth');
+          if (data.url) {
+            window.location.href = data.url;
+          } else {
+            throw new Error('No OAuth URL returned');
+          }
+        } catch (error) {
+          showToast('Error: ' + error.message, 'error');
+          connectSlackBtn.disabled = false;
+          connectSlackBtn.textContent = 'Connect Slack';
+        }
+      });
+    }
+
+    // Slack: Channel dropdown — fetch channels on focus
+    const slackChannelSelect = document.getElementById('slack-channel');
+    if (slackChannelSelect) {
+      let channelsFetched = false;
+      slackChannelSelect.addEventListener('focus', async () => {
+        if (channelsFetched) return;
+        channelsFetched = true;
+        try {
+          const { session } = await import('../lib/supabase.js').then(m => m.getCurrentSession());
+          const response = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-notification-slack`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${session.access_token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ action: 'list_channels' }),
+            }
+          );
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || 'Failed to load channels');
+          const currentVal = slackChannelSelect.value;
+          slackChannelSelect.innerHTML = '<option value="">Select a channel...</option>';
+          (data.channels || []).forEach(ch => {
+            const opt = document.createElement('option');
+            opt.value = `#${ch.name}`;
+            opt.textContent = `#${ch.name}`;
+            if (`#${ch.name}` === currentVal) opt.selected = true;
+            slackChannelSelect.appendChild(opt);
+          });
+        } catch (err) {
+          showToast('Error loading Slack channels: ' + err.message, 'error');
+          channelsFetched = false;
         }
       });
     }

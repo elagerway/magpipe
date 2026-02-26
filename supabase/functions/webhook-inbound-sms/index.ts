@@ -227,6 +227,12 @@ Deno.serve(async (req) => {
         body: JSON.stringify(notificationData)
       }).catch(err => console.error('Failed to send push notification:', err))
 
+      fetch(`${supabaseUrl}/functions/v1/send-notification-slack`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseKey}` },
+        body: JSON.stringify(notificationData)
+      }).catch(err => console.error('Failed to send Slack notification:', err))
+
       // Check if user has credits before generating AI reply
       const { allowed: hasCreditsForReply } = await checkBalance(supabase, serviceNumber.user_id)
       if (!hasCreditsForReply) {

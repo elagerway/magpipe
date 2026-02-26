@@ -207,34 +207,38 @@ export async function sendSlackNotification(
 
     const senderName = contact?.name || senderPhone
 
-    // Get notification channel from config, default to DM
-    const notificationChannel = integration.config?.notification_channel
+    // Resolve channel: user's notification_preferences.slack_channel → config.notification_channel → fallback
+    let channelId: string | null = null
 
-    let channelId = notificationChannel
+    const { data: notifPrefs } = await supabase
+      .from('notification_preferences')
+      .select('slack_channel')
+      .eq('user_id', userId)
+      .single()
 
-    // If no channel configured, send as DM to the user
-    if (!channelId) {
-      // Get the Slack user ID for the bot owner (open DM with self)
-      const authResponse = await fetch('https://slack.com/api/auth.test', {
-        headers: { 'Authorization': `Bearer ${integration.access_token}` }
-      })
-      const authResult = await authResponse.json()
-
-      if (!authResult.ok) {
-        console.error('Slack auth.test failed:', authResult.error)
-        return null
+    if (notifPrefs?.slack_channel) {
+      const name = notifPrefs.slack_channel.replace(/^#/, '').toLowerCase()
+      const listResp = await fetch(
+        'https://slack.com/api/conversations.list?types=public_channel&limit=200&exclude_archived=true',
+        { headers: { 'Authorization': `Bearer ${integration.access_token}` } }
+      )
+      const listResult = await listResp.json()
+      if (listResult.ok && listResult.channels) {
+        const found = listResult.channels.find((c: any) => c.name.toLowerCase() === name)
+        if (found) channelId = found.id
       }
+    }
 
-      // Open a DM - we'll use a special channel for notifications
-      // For now, post to #general or first available channel
+    if (!channelId) {
+      channelId = integration.config?.notification_channel
+    }
+    if (!channelId) {
       const channelsResponse = await fetch(
         'https://slack.com/api/conversations.list?types=public_channel&limit=10',
         { headers: { 'Authorization': `Bearer ${integration.access_token}` } }
       )
       const channelsResult = await channelsResponse.json()
-
       if (channelsResult.ok && channelsResult.channels?.length > 0) {
-        // Look for a magpipe-notifications channel, otherwise use general
         const magpipeChannel = channelsResult.channels.find((c: any) => c.name === 'magpipe-notifications')
         const generalChannel = channelsResult.channels.find((c: any) => c.name === 'general')
         channelId = magpipeChannel?.id || generalChannel?.id || channelsResult.channels[0].id
