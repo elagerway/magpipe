@@ -418,11 +418,17 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 `phone_verifications`, `sms_opt_outs`, `access_code_attempts`, `sms_confirmations`, `oauth_states`, `api_keys`, `webhook_deliveries`, `twitter_oauth_tokens`, `twitter_oauth_state`
 
 ### Row Level Security (RLS)
-- **All public tables have RLS enabled** — no exceptions
+- **All public tables have RLS enabled** — no exceptions (migration: `20260226_rls_security_hardening.sql`)
 - **Edge functions** use `SUPABASE_SERVICE_ROLE_KEY` which bypasses RLS entirely
 - **API key (`mgp_`) endpoints** resolve to service role client via `resolveUser()` — also bypasses RLS
 - **Frontend** uses anon key + user JWT — subject to RLS policies scoped by `user_id = auth.uid()` or `has_org_access()`
-- **System-only tables** (no user policies, service role access only): `twitter_oauth_tokens`, `twitter_oauth_state`, `phone_number_pool`, `admin_notification_config`, `support_email_config`, `support_tickets`, `support_ticket_notes`, `campaign_registrations`, `directory_submissions`, `temp_state`, `sms_opt_outs`, `monthly_billing_log`
+
+**Tables changed in RLS hardening (23 total):**
+- **RLS enabled, existing user policies** (3): `service_numbers`, `sms_messages`, `voices`
+- **RLS enabled, system-only** (10 — no user policies, service role access only): `twitter_oauth_tokens`, `twitter_oauth_state`, `phone_number_pool`, `admin_notification_config`, `support_email_config`, `support_tickets`, `support_ticket_notes`, `campaign_registrations`, `directory_submissions`, `temp_state`
+- **Overly permissive `{public} ALL` policy dropped** (5): `sms_opt_outs`, `chat_messages`, `chat_sessions`, `area_codes`, `monthly_billing_log`
+- **Overly permissive `{public} INSERT` policy dropped** (4): `collected_call_data`, `credit_transactions`, `usage_history`, `admin_audit_log`
+- **INSERT policy tightened to `id = auth.uid()`** (1): `users`
 
 ### Social Listening
 `social_listening_keywords`, `social_listening_results`
