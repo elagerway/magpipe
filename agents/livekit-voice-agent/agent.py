@@ -2322,7 +2322,33 @@ async def entrypoint(ctx: JobContext):
                     room_metadata["agent_id"] = agent_id
                     logger.info(f"Looked up user_id: {user_id}, agent_id: {agent_id} from service_numbers")
                 else:
-                    logger.info(f"Looked up user_id from service_numbers: {user_id} (no specific agent)")
+                    # No agent assigned to number — fall back to user's default agent
+                    logger.info(f"No agent assigned to number, looking up default agent for user: {user_id}")
+                    default_resp = supabase.table("agent_configs") \
+                        .select("id") \
+                        .eq("user_id", user_id) \
+                        .eq("is_default", True) \
+                        .limit(1) \
+                        .execute()
+                    if default_resp.data and len(default_resp.data) > 0:
+                        fallback_agent_id = default_resp.data[0]["id"]
+                        room_metadata["agent_id"] = fallback_agent_id
+                        logger.info(f"Using user's default agent: {fallback_agent_id}")
+                    else:
+                        # Last resort: get any active agent for this user
+                        any_resp = supabase.table("agent_configs") \
+                            .select("id") \
+                            .eq("user_id", user_id) \
+                            .eq("is_active", True) \
+                            .order("created_at", desc=False) \
+                            .limit(1) \
+                            .execute()
+                        if any_resp.data and len(any_resp.data) > 0:
+                            fallback_agent_id = any_resp.data[0]["id"]
+                            room_metadata["agent_id"] = fallback_agent_id
+                            logger.info(f"Using user's first active agent as fallback: {fallback_agent_id}")
+                        else:
+                            logger.warning(f"No agents found for user {user_id}")
             else:
                 # Not found in service_numbers - check external_sip_numbers (Twilio, etc.)
                 logger.info(f"Number not in service_numbers, checking external_sip_numbers: {service_number}")

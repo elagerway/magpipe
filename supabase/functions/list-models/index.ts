@@ -5,27 +5,43 @@ import { corsHeaders, handleCors } from '../_shared/cors.ts'
 // Available LLM models for voice agents
 const LLM_MODELS = [
   {
-    id: "gpt-4.1-nano",
-    name: "GPT-4.1 Nano",
+    id: "gpt-4.1",
+    name: "GPT-4.1",
     provider: "openai",
-    description: "Fastest response time, optimized for voice",
-    latency: "lowest",
+    description: "Latest and most capable, recommended for voice agents",
+    latency: "low",
     is_default: true
+  },
+  {
+    id: "gpt-4o",
+    name: "GPT-4o",
+    provider: "openai",
+    description: "Highly capable, great for complex conversations",
+    latency: "low",
+    is_default: false
   },
   {
     id: "gpt-4o-mini",
     name: "GPT-4o Mini",
     provider: "openai",
     description: "Fast and cost-effective",
+    latency: "lowest",
+    is_default: false
+  },
+  {
+    id: "claude-3.5-sonnet",
+    name: "Claude 3.5 Sonnet",
+    provider: "anthropic",
+    description: "Highly capable, great for complex conversations",
     latency: "low",
     is_default: false
   },
   {
-    id: "gpt-4o",
-    name: "GPT-4o",
-    provider: "openai",
-    description: "Most capable, higher latency",
-    latency: "medium",
+    id: "claude-3-haiku",
+    name: "Claude 3 Haiku",
+    provider: "anthropic",
+    description: "Fast and cost-effective",
+    latency: "lowest",
     is_default: false
   },
 ];

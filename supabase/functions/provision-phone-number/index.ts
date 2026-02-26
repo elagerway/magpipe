@@ -166,9 +166,21 @@ Deno.serve(async (req) => {
       }
     }
 
-    // System agent for unassigned numbers (fixed UUID)
+    // Determine agent to assign: explicit > user's default > system agent
     const SYSTEM_AGENT_ID = '00000000-0000-0000-0000-000000000002'
-    const assignAgentId = body.agent_id || SYSTEM_AGENT_ID
+    let assignAgentId = body.agent_id
+    if (!assignAgentId) {
+      // Look up user's default agent so new numbers work immediately
+      const { data: defaultAgent } = await supabase
+        .from('agent_configs')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('is_default', true)
+        .limit(1)
+        .single()
+      assignAgentId = defaultAgent?.id || SYSTEM_AGENT_ID
+      console.log('Auto-assigned agent:', assignAgentId, defaultAgent ? '(user default)' : '(system agent)')
+    }
 
     // Step 3: Save the service number to service_numbers table
     const { error: insertError } = await supabase
