@@ -415,7 +415,14 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 `referral_rewards`
 
 ### Security
-`phone_verifications`, `sms_opt_outs`, `access_code_attempts`, `sms_confirmations`, `oauth_states`, `api_keys`, `webhook_deliveries`
+`phone_verifications`, `sms_opt_outs`, `access_code_attempts`, `sms_confirmations`, `oauth_states`, `api_keys`, `webhook_deliveries`, `twitter_oauth_tokens`, `twitter_oauth_state`
+
+### Row Level Security (RLS)
+- **All public tables have RLS enabled** — no exceptions
+- **Edge functions** use `SUPABASE_SERVICE_ROLE_KEY` which bypasses RLS entirely
+- **API key (`mgp_`) endpoints** resolve to service role client via `resolveUser()` — also bypasses RLS
+- **Frontend** uses anon key + user JWT — subject to RLS policies scoped by `user_id = auth.uid()` or `has_org_access()`
+- **System-only tables** (no user policies, service role access only): `twitter_oauth_tokens`, `twitter_oauth_state`, `phone_number_pool`, `admin_notification_config`, `support_email_config`, `support_tickets`, `support_ticket_notes`, `campaign_registrations`, `directory_submissions`, `temp_state`, `sms_opt_outs`, `monthly_billing_log`
 
 ### Social Listening
 `social_listening_keywords`, `social_listening_results`

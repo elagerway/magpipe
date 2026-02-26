@@ -1,5 +1,18 @@
 # Session Notes - MAGPIPE Rebrand
 
+## Date: 2026-02-26
+
+### RLS Security Hardening
+- Enabled RLS on 13 tables (3 with existing policies, 10 system-only)
+- Dropped 10 misconfigured policies (labeled "service role" but assigned to `{public}`)
+- Tightened `users` INSERT policy from `with_check=true` to `id = auth.uid()`
+- All edge functions unaffected (service_role bypasses RLS)
+- All `mgp_` API key endpoints unaffected (resolve to service_role client)
+- Migration: `supabase/migrations/20260226_rls_security_hardening.sql`
+- Verified: 0 public tables with RLS disabled, all frontend pages load, system-only tables blocked
+
+---
+
 ## Date: 2026-02-02
 
 ## Revert Point
