@@ -47,6 +47,8 @@ Deno.serve(async (req: Request) => {
         return await handleStart(serviceClient, user.id, params)
       case 'cancel':
         return await handleCancel(serviceClient, user.id, params)
+      case 'admin_list':
+        return await handleAdminList(serviceClient, user.id, params)
       case 'pause_series':
         return await handlePauseSeries(serviceClient, user.id, params)
       case 'resume_series':
@@ -164,7 +166,7 @@ async function spawnChildBatch(client: any, parent: any, occurrenceNumber: numbe
 async function handleCreate(client: any, userId: string, params: any) {
   const { name, caller_id, agent_id, status, send_now, scheduled_at,
     window_start_time, window_end_time, window_days,
-    reserved_concurrency, template_id, purpose, goal, recipients,
+    max_concurrency, reserved_concurrency, template_id, purpose, goal, recipients,
     recurrence_type, recurrence_interval, recurrence_end_date, recurrence_max_runs } = params
 
   if (!name || !caller_id) {
@@ -173,6 +175,10 @@ async function handleCreate(client: any, userId: string, params: any) {
 
   if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
     return jsonResponse({ error: 'recipients array is required and must not be empty' }, 400)
+  }
+
+  if (recipients.length > 500) {
+    return jsonResponse({ error: 'Maximum 500 recipients per batch' }, 400)
   }
 
   // Validate caller_id belongs to user
@@ -205,6 +211,7 @@ async function handleCreate(client: any, userId: string, params: any) {
         window_start_time: window_start_time || '00:00',
         window_end_time: window_end_time || '23:59',
         window_days: window_days || [0, 1, 2, 3, 4, 5, 6],
+        max_concurrency: Math.min(5, Math.max(1, max_concurrency || 1)),
         reserved_concurrency: reserved_concurrency ?? 5,
         template_id: template_id || null,
         purpose: purpose || null,
@@ -274,6 +281,7 @@ async function handleCreate(client: any, userId: string, params: any) {
       window_start_time: window_start_time || '00:00',
       window_end_time: window_end_time || '23:59',
       window_days: window_days || [0, 1, 2, 3, 4, 5, 6],
+      max_concurrency: Math.min(5, Math.max(1, max_concurrency || 1)),
       reserved_concurrency: reserved_concurrency ?? 5,
       template_id: template_id || null,
       purpose: purpose || null,
@@ -342,6 +350,62 @@ async function handleList(client: any, userId: string, params: any) {
   }
 
   return jsonResponse({ batches: data || [] })
+}
+
+async function handleAdminList(client: any, userId: string, params: any) {
+  // Verify caller is admin/god
+  const { data: userProfile } = await client
+    .from('users')
+    .select('role')
+    .eq('id', userId)
+    .single()
+
+  if (!userProfile || (userProfile.role !== 'admin' && userProfile.role !== 'god')) {
+    return jsonResponse({ error: 'Admin access required' }, 403)
+  }
+
+  const { status: filterStatus, limit = 50, offset = 0 } = params || {}
+
+  let query = client
+    .from('batch_calls')
+    .select('*')
+    .is('parent_batch_id', null)
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1)
+
+  if (filterStatus) {
+    if (filterStatus === 'active') {
+      query = query.in('status', ['running', 'scheduled', 'recurring'])
+    } else {
+      query = query.eq('status', filterStatus)
+    }
+  }
+
+  const { data, error } = await query
+
+  if (error) {
+    return jsonResponse({ error: error.message }, 500)
+  }
+
+  // Look up user emails for the batches
+  const userIds = [...new Set((data || []).map((b: any) => b.user_id))]
+  const emailMap: Record<string, string> = {}
+  if (userIds.length > 0) {
+    const { data: users } = await client
+      .from('users')
+      .select('id, email')
+      .in('id', userIds)
+    if (users) {
+      for (const u of users) emailMap[u.id] = u.email
+    }
+  }
+
+  const batches = (data || []).map((b: any) => ({
+    ...b,
+    user_email: emailMap[b.user_id] || 'Unknown'
+  }))
+
+  return jsonResponse({ batches })
 }
 
 async function handleListRuns(client: any, userId: string, params: any) {
@@ -536,13 +600,22 @@ async function handleCancel(client: any, userId: string, params: any) {
     return jsonResponse({ error: 'batch_id is required' }, 400)
   }
 
-  // Check if this is a recurring parent
-  const { data: batch } = await client
+  // Check if user is admin/god (can cancel any user's batch)
+  const { data: userProfile } = await client
+    .from('users')
+    .select('role')
+    .eq('id', userId)
+    .single()
+  const isAdmin = userProfile?.role === 'admin' || userProfile?.role === 'god'
+
+  // Build query — admins skip ownership check
+  let batchQuery = client
     .from('batch_calls')
     .select('status, recurrence_type')
     .eq('id', batch_id)
-    .eq('user_id', userId)
-    .single()
+  if (!isAdmin) batchQuery = batchQuery.eq('user_id', userId)
+
+  const { data: batch } = await batchQuery.single()
 
   if (!batch) {
     return jsonResponse({ error: 'Batch not found' }, 404)
@@ -550,11 +623,12 @@ async function handleCancel(client: any, userId: string, params: any) {
 
   if (batch.status === 'recurring' || (batch.recurrence_type && batch.recurrence_type !== 'none')) {
     // Cancel recurring parent
-    await client
+    let cancelParentQuery = client
       .from('batch_calls')
       .update({ status: 'cancelled', updated_at: new Date().toISOString() })
       .eq('id', batch_id)
-      .eq('user_id', userId)
+    if (!isAdmin) cancelParentQuery = cancelParentQuery.eq('user_id', userId)
+    await cancelParentQuery
 
     // Cancel all scheduled/running children
     const { data: activeChildren } = await client
@@ -582,13 +656,15 @@ async function handleCancel(client: any, userId: string, params: any) {
     return jsonResponse({ success: true, message: 'Recurring series cancelled', cancelled_children: activeChildren?.length || 0 })
   }
 
-  // Non-recurring: original logic
-  const { error: batchErr } = await client
+  // Non-recurring: cancel batch
+  let cancelQuery = client
     .from('batch_calls')
     .update({ status: 'cancelled', updated_at: new Date().toISOString() })
     .eq('id', batch_id)
-    .eq('user_id', userId)
     .in('status', ['draft', 'scheduled', 'running', 'paused'])
+  if (!isAdmin) cancelQuery = cancelQuery.eq('user_id', userId)
+
+  const { error: batchErr } = await cancelQuery
 
   if (batchErr) {
     return jsonResponse({ error: batchErr.message }, 500)
