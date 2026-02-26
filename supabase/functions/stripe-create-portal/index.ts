@@ -102,9 +102,31 @@ Deno.serve(async (req) => {
       console.log('Created Stripe customer:', customerId)
     }
 
-    // Parse request body for return URL
+    // Parse request body
     const body = await req.json().catch(() => ({}))
-    const returnUrl = body.returnUrl || 'http://localhost:3000/settings'
+    const { action, returnUrl = 'http://localhost:3000/settings' } = body
+
+    // List Stripe charges (receipts/invoices)
+    if (action === 'list_invoices') {
+      const charges = await stripe.charges.list({
+        customer: customerId,
+        limit: 20
+      })
+
+      const invoices = charges.data.map(charge => ({
+        id: charge.id,
+        date: new Date(charge.created * 1000).toISOString(),
+        amount: charge.amount / 100,
+        description: charge.description || 'Credit purchase',
+        status: charge.status,
+        receipt_url: charge.receipt_url
+      }))
+
+      return new Response(JSON.stringify({ invoices }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
 
     // Create billing portal session
     const session = await stripe.billingPortal.sessions.create({

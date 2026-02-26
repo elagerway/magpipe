@@ -561,6 +561,38 @@ Deno.serve(async (req) => {
       })
     }
 
+    // Duplicate guard: skip if this reference_id was already billed
+    if (referenceId) {
+      const { data: existing } = await supabase
+        .from('credit_transactions')
+        .select('id')
+        .eq('reference_id', referenceId)
+        .eq('transaction_type', 'deduction')
+        .limit(1)
+        .single()
+
+      if (existing) {
+        console.log(`Duplicate deduction skipped for reference_id: ${referenceId}`)
+        // Return the current balance so callers still get a valid response
+        const { data: user } = await supabase
+          .from('users')
+          .select('credits_balance')
+          .eq('id', userId)
+          .single()
+
+        return new Response(JSON.stringify({
+          success: true,
+          duplicate: true,
+          cost: 0,
+          description: 'Duplicate deduction skipped',
+          balanceAfter: user?.credits_balance ?? 0
+        }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        })
+      }
+    }
+
     // Deduct credits using the database function
     const { data: result, error: deductError } = await supabase.rpc('deduct_credits', {
       p_user_id: userId,
