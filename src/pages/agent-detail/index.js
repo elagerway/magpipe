@@ -210,8 +210,8 @@ export default class AgentDetailPage {
             <div>
               <input type="text" id="agent-name-input" class="agent-name-input" value="${this.agent.name || ''}" placeholder="Agent Name" />
               <div class="agent-detail-meta">
-                <span class="agent-id" onclick="navigator.clipboard.writeText('${this.agent.agent_id}'); this.textContent='Copied!'; setTimeout(() => this.textContent='ID: ${this.agent.agent_id?.substring(0, 8)}...', 1500);">
-                  ID: ${this.agent.agent_id?.substring(0, 8)}...
+                <span class="agent-id" onclick="navigator.clipboard.writeText('${this.agent.id}'); this.textContent='Copied!'; setTimeout(() => this.textContent='ID: ${this.agent.id?.substring(0, 8)}...', 1500);">
+                  ID: ${this.agent.id?.substring(0, 8)}...
                 </span>
               </div>
             </div>

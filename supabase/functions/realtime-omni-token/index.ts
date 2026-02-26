@@ -57,7 +57,7 @@ Deno.serve(async (req) => {
     // Fetch agent config
     const { data: agentConfig, error: agentError } = await supabase
       .from('agent_configs')
-      .select('id, agent_id, name, system_prompt, voice_id, user_id')
+      .select('id, name, system_prompt, voice_id, user_id')
       .eq('id', agent_id)
       .single();
 
@@ -135,7 +135,7 @@ Deno.serve(async (req) => {
         model: 'gpt-4o-realtime-preview-2024-12-17',
         agentConfig: {
           id: agentConfig.id,
-          agent_id: agentConfig.agent_id,
+          agent_id: agentConfig.id,
           agent_name: agentConfig.name,
           system_prompt: processedPrompt,
           voice_id: openaiVoice,

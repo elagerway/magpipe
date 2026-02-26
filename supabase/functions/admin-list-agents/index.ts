@@ -49,7 +49,6 @@ Deno.serve(async (req) => {
       .from('agent_configs')
       .select(`
         id,
-        agent_id,
         name,
         voice_id,
         system_prompt,
@@ -72,7 +71,7 @@ Deno.serve(async (req) => {
     // Format response - put global agent first
     const formattedAgents = (agents || []).map(agent => ({
       id: agent.id,
-      agent_id: agent.agent_id,
+      agent_id: agent.id,
       name: agent.is_global ? `⭐ ${agent.name || 'Global Agent'} (Platform)` : (agent.name || 'Unnamed Agent'),
       voice_id: agent.voice_id,
       user_id: agent.user_id,
