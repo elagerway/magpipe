@@ -51,6 +51,10 @@ test-bridged-call.sh
 
 # Claude Code
 CLAUDE.md
+.claude/settings.local.json
+
+# Internal docs
+docs/
 
 # Screenshots
 *.png
