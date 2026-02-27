@@ -104,7 +104,7 @@ async function fetchNavUserData() {
 
       const { data: profile } = await supabase
         .from('users')
-        .select('name, avatar_url, logo_url, favicon_url, favicon_white_bg, plan, credits_balance, stripe_current_period_end, created_at, role')
+        .select('name, avatar_url, logo_url, favicon_url, favicon_white_bg, plan, credits_balance, credits_used_this_period, stripe_current_period_end, created_at, role')
         .eq('id', user.id)
         .single();
 
@@ -152,29 +152,7 @@ async function fetchNavUserData() {
 
       messagesUsed = messageCount || 0;
 
-      // Get actual costs from credit_transactions (more accurate than recalculating)
-      let voiceCost = 0;
-      let messageCost = 0;
-
-      const { data: transactions } = await supabase
-        .from('credit_transactions')
-        .select('amount, reference_type')
-        .eq('user_id', user.id)
-        .in('reference_type', ['call', 'sms'])
-        .gte('created_at', periodStart.toISOString());
-
-      if (transactions) {
-        for (const tx of transactions) {
-          const amount = Math.abs(parseFloat(tx.amount) || 0);
-          if (tx.reference_type === 'call') {
-            voiceCost += amount;
-          } else if (tx.reference_type === 'sms') {
-            messageCost += amount;
-          }
-        }
-      }
-
-      const totalCost = voiceCost + messageCost;
+      const totalCost = parseFloat(profile?.credits_used_this_period) || 0;
 
       // Get per-minute rate for display purposes
       let voiceRate = VOICE_RATES.default;
@@ -206,8 +184,6 @@ async function fetchNavUserData() {
         minutesUsed,
         messagesUsed,
         perMinuteRate,
-        voiceCost,
-        messageCost,
         totalCost
       };
 
