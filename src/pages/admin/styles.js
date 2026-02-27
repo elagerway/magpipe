@@ -1451,10 +1451,25 @@ export const stylesMethods = {
 
       /* ── Support Tab ── */
       .support-tab {
+        display: flex;
+        flex-direction: column;
         flex: 1;
-        overflow-y: auto;
+        overflow: hidden;
         padding: 1.5rem 2rem;
-        max-width: 900px;
+      }
+
+      .support-subtab-content {
+        flex-direction: column;
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+      }
+
+      /* Constrain narrow-content subtabs; full-width subtabs (users, chat, global-agent) use viewport width */
+      #support-subtab-tickets,
+      #support-subtab-settings,
+      #support-subtab-errors {
+        max-width: 860px;
       }
 
       .support-subtabs {

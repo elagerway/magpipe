@@ -58,7 +58,12 @@ Deno.serve(async (req) => {
         banned_at,
         banned_reason,
         created_at,
-        updated_at
+        updated_at,
+        credits_balance,
+        credits_used_this_period,
+        signup_ip,
+        signup_city,
+        signup_country
       `)
       .eq('id', userId)
       .single()
