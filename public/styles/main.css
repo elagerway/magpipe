@@ -756,6 +756,61 @@ p {
     background: rgba(99, 102, 241, 0.2);
   }
 
+  /* What's New card */
+  .nav-whats-new {
+    margin: 0 12px 8px;
+    padding: 0.6rem 0.75rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+  }
+
+  .nav-whats-new-header {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-bottom: 0.3rem;
+  }
+
+  .nav-whats-new-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #10b981;
+    flex-shrink: 0;
+  }
+
+  .nav-whats-new-label {
+    flex: 1;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-size: 0.68rem;
+  }
+
+  .nav-whats-new-dismiss {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 1rem;
+    padding: 0;
+    line-height: 1;
+  }
+
+  .nav-whats-new-title {
+    display: block;
+    color: var(--text-color);
+    text-decoration: none;
+    line-height: 1.35;
+  }
+
+  .nav-whats-new-title:hover {
+    color: var(--primary-color);
+  }
+
   /* User Profile Section */
   .nav-user-section {
     display: block;

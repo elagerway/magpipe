@@ -115,22 +115,25 @@ function stripHtml(html: string): string {
 }
 
 /**
- * Build tweet text: excerpt (or stripped content), truncated, + blog URL
+ * Build tweet text: title + excerpt (or stripped content), truncated, + blog URL
  */
 function buildTweetText(post: { title: string; slug: string; excerpt?: string; content?: string }): string {
   const url = `${BLOG_BASE_URL}/${post.slug}`
   // URL always takes 23 chars on Twitter (t.co wrapping) + 2 for \n\n = 25
   const maxTextLen = 280 - 25
 
-  let text = post.excerpt || stripHtml(post.content || '')
+  const title = post.title
+  let body = post.excerpt || stripHtml(post.content || '')
 
-  if (!text) {
-    text = post.title
+  // Combine title + body; truncate body if needed to fit total within limit
+  // title + \n\n + body
+  const titlePart = `${title}\n\n`
+  const remaining = maxTextLen - titlePart.length
+  if (body.length > remaining) {
+    body = body.substring(0, remaining - 1) + '\u2026'
   }
 
-  if (text.length > maxTextLen) {
-    text = text.substring(0, maxTextLen - 1) + '\u2026'
-  }
+  const text = body ? `${titlePart}${body}` : title
 
   return `${text}\n\n${url}`
 }
