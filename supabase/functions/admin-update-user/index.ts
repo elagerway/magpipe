@@ -13,8 +13,10 @@ import {
 interface UpdateUserRequest {
   userId: string
   role?: 'user' | 'viewer' | 'editor' | 'support' | 'admin' | 'god'
-  action?: 'suspend' | 'ban' | 'reactivate'
+  action?: 'suspend' | 'ban' | 'reactivate' | 'set_phone'
   reason?: string
+  phone_number?: string | null
+  phone_verified?: boolean
 }
 
 Deno.serve(async (req) => {
@@ -129,6 +131,11 @@ Deno.serve(async (req) => {
           updates.suspended_reason = null
           updates.banned_at = null
           updates.banned_reason = null
+          break
+
+        case 'set_phone':
+          updates.phone_number = body.phone_number ?? null
+          updates.phone_verified = body.phone_verified ?? false
           break
 
         default:

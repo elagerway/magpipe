@@ -122,7 +122,7 @@ export const supportTabMethods = {
       </div>
 
       <!-- Tickets sub-tab -->
-      <div id="support-subtab-tickets" class="support-subtab-content" style="display: ${this.supportSubTab === 'tickets' ? 'block' : 'none'};">
+      <div id="support-subtab-tickets" class="support-subtab-content" style="display: ${this.supportSubTab === 'tickets' ? 'flex' : 'none'};">
         <div class="support-section">
           <div class="tl-toolbar">
             <div class="tl-filter-group">
@@ -156,22 +156,22 @@ export const supportTabMethods = {
       </div>
 
       <!-- Users sub-tab -->
-      <div id="support-subtab-users" class="support-subtab-content" style="display: ${this.supportSubTab === 'users' ? 'block' : 'none'};">
+      <div id="support-subtab-users" class="support-subtab-content" style="display: ${this.supportSubTab === 'users' ? 'flex' : 'none'};">
         <div class="loading-spinner">Loading users...</div>
       </div>
 
       <!-- Global Agent sub-tab -->
-      <div id="support-subtab-global-agent" class="support-subtab-content" style="display: ${this.supportSubTab === 'global-agent' ? 'block' : 'none'};">
+      <div id="support-subtab-global-agent" class="support-subtab-content" style="display: ${this.supportSubTab === 'global-agent' ? 'flex' : 'none'};">
         <div class="loading-spinner">Loading...</div>
       </div>
 
       <!-- Chat sub-tab -->
-      <div id="support-subtab-chat" class="support-subtab-content" style="display: ${this.supportSubTab === 'chat' ? 'block' : 'none'};">
+      <div id="support-subtab-chat" class="support-subtab-content" style="display: ${this.supportSubTab === 'chat' ? 'flex' : 'none'};">
         <div class="loading-spinner">Loading...</div>
       </div>
 
       <!-- Settings sub-tab -->
-      <div id="support-subtab-settings" class="support-subtab-content" style="display: ${this.supportSubTab === 'settings' ? 'block' : 'none'};">
+      <div id="support-subtab-settings" class="support-subtab-content" style="display: ${this.supportSubTab === 'settings' ? 'flex' : 'none'};">
         <!-- AI Agent Settings -->
         <div class="support-section">
           <h3>AI Agent</h3>
@@ -242,7 +242,7 @@ export const supportTabMethods = {
       </div>
 
       <!-- Errors sub-tab -->
-      <div id="support-subtab-errors" class="support-subtab-content" style="display: ${this.supportSubTab === 'errors' ? 'block' : 'none'};">
+      <div id="support-subtab-errors" class="support-subtab-content" style="display: ${this.supportSubTab === 'errors' ? 'flex' : 'none'};">
         <div class="loading-spinner">Loading errors...</div>
       </div>
 
@@ -259,10 +259,11 @@ export const supportTabMethods = {
         container.querySelectorAll('.support-subtab').forEach(b =>
           b.classList.toggle('active', b.dataset.supportSubtab === this.supportSubTab)
         );
+        this.updateUrl({ tab: 'support', subtab: this.supportSubTab });
         // Hide all, show active
         allSupportPanes.forEach(p => {
           const el = document.getElementById(`support-subtab-${p}`);
-          if (el) el.style.display = p === this.supportSubTab ? 'block' : 'none';
+          if (el) el.style.display = p === this.supportSubTab ? 'flex' : 'none';
         });
 
         // Destroy omniChat when leaving chat sub-tab
@@ -935,7 +936,7 @@ export const supportTabMethods = {
         }
         threadView.style.display = 'none';
         document.querySelector('.support-subtabs').style.display = '';
-        document.getElementById('support-subtab-tickets').style.display = 'block';
+        document.getElementById('support-subtab-tickets').style.display = 'flex';
         this.supportSubTab = 'tickets';
         this.updateUrl({ tab: 'support' });
         this.loadSupportTickets(); // supportPage is preserved

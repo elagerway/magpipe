@@ -8,7 +8,7 @@ import { isPushSupported, subscribeToPush } from '../services/pushNotifications.
 import { showToast } from '../lib/toast.js';
 
 // Country codes for the dropdown — US/CA first, then alphabetical
-const COUNTRY_CODES = [
+export const COUNTRY_CODES = [
   { code: '+1', flag: '\u{1F1FA}\u{1F1F8}', name: 'United States' },
   { code: '+1', flag: '\u{1F1E8}\u{1F1E6}', name: 'Canada' },
   { code: '+93', flag: '\u{1F1E6}\u{1F1EB}', name: 'Afghanistan' },
