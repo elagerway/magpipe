@@ -590,6 +590,24 @@ export default class AgentDetailPage {
     await this.saveAgent({ [field]: value });
   }
 
+  async refreshDeploymentTab() {
+    const [serviceNumbersResult, externalSipResult] = await Promise.all([
+      supabase.from('service_numbers')
+        .select('id, phone_number, friendly_name, agent_id, text_agent_id, termination_uri')
+        .eq('user_id', this.userId).eq('is_active', true).order('created_at', { ascending: true }),
+      supabase.from('external_sip_numbers')
+        .select('id, phone_number, friendly_name, agent_id, trunk_id, external_sip_trunks(name)')
+        .eq('user_id', this.userId).eq('is_active', true).order('created_at', { ascending: true }),
+    ]);
+
+    const regularNumbers = (serviceNumbersResult.data || []).map(n => ({ ...n, isSipTrunk: false }));
+    const sipNumbers = (externalSipResult.data || []).map(n => ({
+      ...n, isSipTrunk: true, trunkName: n.external_sip_trunks?.name || null,
+    }));
+    this.serviceNumbers = [...regularNumbers, ...sipNumbers];
+    this.switchTab('deployment');
+  }
+
   async setAsDefault() {
     try {
       const { error } = await AgentConfig.setDefault(this.agentId);
