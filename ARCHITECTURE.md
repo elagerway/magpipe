@@ -248,7 +248,7 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 
 | Function | Auth | Tables | External APIs | Called By |
 |----------|------|--------|---------------|----------|
-| `webhook-inbound-sms` | **No JWT** | `sms_messages`, `service_numbers`, `agent_configs`, `contacts`, `conversation_contexts`, `knowledge_chunks`, `sms_opt_outs` | OpenAI (GPT-4o-mini), SignalWire, Slack | SignalWire webhook. Routes via `text_agent_id` first, falls back to `agent_id` |
+| `webhook-inbound-sms` | **No JWT** | `sms_messages`, `service_numbers`, `agent_configs`, `contacts`, `conversation_contexts`, `knowledge_chunks`, `sms_opt_outs` | OpenAI (GPT-4o-mini), SignalWire, Slack | SignalWire webhook. Only routes to `agent_type = 'text'` agents. Priority: `text_agent_id` on service number → user's default text agent → any text agent for user. Voice agents (`inbound_voice`) are never used for SMS. Loop detection: if same message body received >2 times in a conversation, silently skips AI reply until sender sends a different message. Unassigned numbers: sends auto-reply exactly once per sender+number pair, then silent. |
 | `send-user-sms` | JWT | `sms_messages`, `service_numbers` | SignalWire | messages UI |
 | `webhook-sms-status` | **No JWT** | `sms_messages` | None | SignalWire webhook |
 | `schedule-sms` | JWT | `scheduled_actions` | None | scheduling UI |
@@ -471,6 +471,13 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 2. Agent connects → Fetches config → Loads caller memory + semantic context + shared agent memories → Builds single system prompt
 3. During call → Function tools: transfer, warm transfer, SMS, calendar, data collection, custom webhooks
 4. Call ends → Summary → Update memory → Deduct credits → Check semantic actions → Delete room
+
+### Voice Pipeline & Latency
+- **Silero VAD**: Pre-warmed at worker startup (eliminates cold-start delay on first call)
+- **Deepgram STT**: `no_delay=True`, `endpointing_ms=100` (faster end-of-speech detection)
+- **ElevenLabs TTS**: `auto_mode=True` (replaces manual chunk schedule for lower latency streaming)
+- **AgentSession**: `min_endpointing_delay=0.1`, `max_endpointing_delay=1.5`, `preemptive_generation=True`, `min_interruption_duration=0.3`
+- **Thinking fillers**: When a custom function tool is called, agent speaks a filler phrase ("Let me look that up", etc.) via a shared mutable ref (`say_filler_ref`) wired to `session.say` after session creation. Replaces the old timer-based `agent_state_changed` approach.
 
 ### Type-Specific Architecture
 - 5 agent types: `inbound_voice`, `outbound_voice`, `text`, `email`, `chat_widget`
