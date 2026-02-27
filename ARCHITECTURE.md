@@ -57,7 +57,7 @@
 | `/inbox` | `inbox/index.js` | Main messaging UI — SMS, calls, chat, email. Email filter pill, email threads grouped by thread_id, email thread view with reply, compose with WYSIWYG toolbar, Email/Agent Email options in new message dropdown. Real-time subscriptions. Split into `call-interface.js`, `listeners.js`, `messaging.js`, `views.js`, `voice-loader.js` | `sms_messages`, `call_records`, `chat_sessions`, `contacts`, `service_numbers`, `agent_configs`, `email_messages` | `send-email` (real-time subs) |
 | `/agent` | `agent.js` | Admin chat interface for AI agent | `sms_messages` | None |
 | `/agents` | `agents.js` | Multi-agent list with type-selection creation modal (5 types: inbound_voice, outbound_voice, text, email, chat_widget) | `agent_configs`, `service_numbers` | None |
-| `/agents/:id` | `agent-detail/index.js` | Agent config detail. Split into `configure-tab.js`, `prompt-tab.js`, `functions-tab.js`, `knowledge-tab.js`, `memory-tab.js`, `notifications-tab.js`, `analytics-tab.js`, `deployment-tab.js`, `schedule-tab.js`, `modals.js`, `styles.js` | `agent_configs`, `service_numbers`, `knowledge_sources`, `dynamic_variables`, `custom_functions`, `transfer_numbers`, `notification_preferences` | `preview-voice`, `clone-voice`, `fetch-agent-avatar` |
+| `/agents/:id` | `agent-detail/index.js` | Agent config detail. Split into `configure-tab.js`, `prompt-tab.js`, `functions-tab.js`, `knowledge-tab.js`, `memory-tab.js`, `notifications-tab.js`, `analytics-tab.js`, `deployment-tab.js` (includes inline buy-number modal: search → select → provision without leaving the page; `refreshDeploymentTab()` re-queries DB and re-renders), `schedule-tab.js`, `modals.js`, `styles.js` | `agent_configs`, `service_numbers`, `knowledge_sources`, `dynamic_variables`, `custom_functions`, `transfer_numbers`, `notification_preferences` | `preview-voice`, `clone-voice`, `fetch-agent-avatar`, `search-phone-numbers`, `provision-phone-number` |
 | `/phone` | `phone/index.js` | Phone number management. Split into `call-handler.js`, `dialpad.js`, `number-management.js` | `service_numbers`, `external_sip_numbers`, `agent_configs` | `cancel-number-deletion`, `submit-cnam-request`, `fix-number-capabilities`, `sync-external-capabilities` |
 | `/contacts` | `contacts.js` | Contact list with CSV import | `contacts` | `contact-lookup` |
 | `/calls` | `calls.js` | Call history | `call_records` | None |
@@ -294,8 +294,8 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 
 | Function | Auth | Tables | External APIs | Called By |
 |----------|------|--------|---------------|----------|
-| `search-phone-numbers` | JWT / API key | None | SignalWire | select-number page, API |
-| `provision-phone-number` | JWT / API key | `service_numbers`, `users`, `monthly_billing_log` | SignalWire | select-number page, API |
+| `search-phone-numbers` | JWT / API key | None | SignalWire | select-number page, deployment tab (inline modal), API |
+| `provision-phone-number` | JWT / API key | `service_numbers`, `users`, `monthly_billing_log` | SignalWire | select-number page, deployment tab (inline modal, auto-assigns `agent_id`), API |
 | `release-phone-number` | JWT / API key | `service_numbers`, `numbers_to_delete` | None | number management, API |
 | `queue-number-deletion` | JWT | `numbers_to_delete` | None | number release |
 | `cancel-number-deletion` | JWT | `numbers_to_delete` | None | deletion management |

@@ -74,6 +74,7 @@ pat/
 │   │   │   ├── functions-tab.js
 │   │   │   ├── knowledge-tab.js
 │   │   │   ├── memory-tab.js
+│   │   │   ├── deployment-tab.js # Phone number assignment + inline buy-number modal
 │   │   │   └── ...
 │   │   ├── inbox/                # Inbox (split from inbox.js)
 │   │   │   ├── index.js
