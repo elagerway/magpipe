@@ -56,6 +56,9 @@ CLAUDE.md
 # Internal docs
 docs/
 
+# Specify (internal planning docs)
+.specify/
+
 # Screenshots
 *.png
 !docs/images/*.png
