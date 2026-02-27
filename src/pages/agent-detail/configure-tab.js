@@ -30,10 +30,13 @@ export const configureTabMethods = {
         </div>
 
         <div class="form-group">
-          <label class="form-label">Agent Role</label>
-          <textarea id="agent-role" class="form-textarea" rows="4"
-                    placeholder="e.g., You are a helpful, courteous assistant for ACME Corp. Your duty is to route calls, take messages and book appointments for John Smith.">${this.agent.agent_role || ''}</textarea>
-          <p class="form-help">Define your agent's role and responsibilities. Use <code>&lt;role&gt;</code> in prompts to insert this.</p>
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.35rem;">
+            <label class="form-label" style="margin-bottom:0;">Agent Role</label>
+            <button type="button" class="btn btn-sm btn-secondary" id="insert-role-template-btn">Insert template</button>
+          </div>
+          <textarea id="agent-role" class="form-textarea" rows="5"
+                    placeholder="Describe your agent's role, who they represent, and what they should do on calls.">${this.agent.agent_role || ''}</textarea>
+          <p class="form-help">This becomes your agent's core identity. Fill in all bracketed fields after inserting the template.</p>
         </div>
       </div>
 
@@ -481,6 +484,37 @@ export const configureTabMethods = {
     if (agentRole) {
       agentRole.addEventListener('input', () => {
         this.onIdentityFieldChange('agent_role', agentRole.value);
+      });
+    }
+
+    // Insert role template button
+    const insertRoleTemplateBtn = document.getElementById('insert-role-template-btn');
+    if (insertRoleTemplateBtn) {
+      insertRoleTemplateBtn.addEventListener('click', () => {
+        const org = document.getElementById('organization-name')?.value.trim() || '[Organization Name]';
+        const owner = document.getElementById('owner-name')?.value.trim() || '[Owner Name]';
+        const agentName = this.agent.name || 'Maggie';
+        const typeLabel = {
+          inbound_voice: 'handle incoming calls',
+          outbound_voice: 'make outbound calls',
+          text: 'handle SMS conversations',
+          email: 'draft and respond to emails',
+          chat_widget: 'assist website visitors',
+        }[this.agent.agent_type] || 'handle communications';
+
+        const template =
+`You are ${agentName}, a professional AI assistant for ${org}. You work on behalf of ${owner}.
+
+Your responsibilities:
+- ${typeLabel.charAt(0).toUpperCase() + typeLabel.slice(1)} professionally and courteously
+- Take messages and relay them to ${owner}
+- [Add any specific tasks, e.g. book appointments, answer FAQs, transfer urgent calls]
+
+Always represent ${org} professionally. Do not share sensitive information.`;
+
+        agentRole.value = template;
+        agentRole.focus();
+        this.onIdentityFieldChange('agent_role', template);
       });
     }
 
