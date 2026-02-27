@@ -20,13 +20,13 @@ export const deploymentTabMethods = {
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
           <h3 style="margin: 0;">${isTextAgent ? 'Text Numbers' : 'Phone Numbers'}</h3>
           <div style="display: flex; gap: 0.5rem; align-items: center;">
-            <a href="#" onclick="navigateTo('/select-number'); return false;" class="btn btn-sm btn-secondary" style="display: flex; align-items: center;">
+            <button id="buy-number-btn" class="btn btn-sm btn-secondary" style="display: flex; align-items: center;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.4rem;">
                 <line x1="12" y1="5" x2="12" y2="19"></line>
                 <line x1="5" y1="12" x2="19" y2="12"></line>
               </svg>
               Add Number
-            </a>
+            </button>
             ${availableNumbers.length > 0 ? `
               <button class="btn btn-primary btn-sm" id="assign-numbers-btn" style="display: flex; align-items: center;">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.4rem;">
@@ -64,7 +64,7 @@ export const deploymentTabMethods = {
         ${this.serviceNumbers.length === 0 ? `
           <div class="no-numbers-available">
             <p>You don't have any phone numbers yet.</p>
-            <a href="#" onclick="navigateTo('/select-number'); return false;" class="btn btn-primary">Get a Phone Number</a>
+            <button class="btn btn-primary" id="get-phone-number-btn">Get a Phone Number</button>
           </div>
         ` : ''}
       </div>
@@ -161,6 +161,13 @@ export const deploymentTabMethods = {
         this.showAssignNumbersModal();
       });
     }
+
+    // Buy number buttons - open inline purchase modal
+    const buyNumberBtn = document.getElementById('buy-number-btn');
+    if (buyNumberBtn) { buyNumberBtn.addEventListener('click', () => this.showBuyNumberModal()); }
+
+    const getPhoneNumberBtn = document.getElementById('get-phone-number-btn');
+    if (getPhoneNumberBtn) { getPhoneNumberBtn.addEventListener('click', () => this.showBuyNumberModal()); }
 
     // Chat Widget buttons
     const createWidgetBtn = document.getElementById('create-widget-btn');
@@ -645,6 +652,301 @@ export const deploymentTabMethods = {
         document.body.removeChild(modal);
       }
     });
+  },
+
+  showBuyNumberModal() {
+    document.getElementById('buy-number-modal-overlay')?.remove();
+
+    let step = 'search';
+    let searchResults = [];
+    let selectedNumber = null;
+    let provisionedNumber = null;
+    let errorMessage = '';
+    let selectedCountry = 'US';
+    let selectedType = 'local';
+
+    const overlay = document.createElement('div');
+    overlay.className = 'contact-modal-overlay';
+    overlay.id = 'buy-number-modal-overlay';
+
+    const closeModal = () => overlay.remove();
+
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay && step !== 'provisioning') closeModal();
+    });
+
+    const getModalHTML = () => {
+      if (step === 'search') {
+        return `
+          <div class="contact-modal" style="max-width: 460px;" onclick="event.stopPropagation()">
+            <div class="contact-modal-header">
+              <h3>Get a Phone Number</h3>
+              <button class="close-modal-btn" id="buy-num-close">&times;</button>
+            </div>
+            <div class="contact-modal-body">
+              <div class="form-group">
+                <label class="form-label">Country</label>
+                <div style="display: flex; gap: 0.5rem;">
+                  <button id="country-us" class="btn btn-sm btn-primary">US</button>
+                  <button id="country-ca" class="btn btn-sm btn-secondary">Canada</button>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Number Type</label>
+                <div style="display: flex; gap: 0.5rem;">
+                  <button id="type-local" class="btn btn-sm btn-primary">Local</button>
+                  <button id="type-tollfree" class="btn btn-sm btn-secondary">Toll-Free</button>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Area Code</label>
+                <input type="text" id="buy-num-area-code" class="form-input" placeholder="e.g. 604" maxlength="3" />
+              </div>
+              <div id="buy-num-error" style="display:none; color: #ef4444; font-size: 0.875rem; margin-top: 0.25rem;"></div>
+            </div>
+            <div class="contact-modal-footer">
+              <button class="btn btn-secondary" id="buy-num-cancel">Cancel</button>
+              <button class="btn btn-primary" id="buy-num-search">Search</button>
+            </div>
+          </div>
+        `;
+      }
+
+      if (step === 'results') {
+        const rows = searchResults.length === 0
+          ? `<div style="text-align:center; padding: 2rem; color: var(--text-secondary);">No numbers found. Try a different area code.</div>`
+          : searchResults.map(n => `
+            <div class="buy-num-result-row" data-number="${n.phone_number}" style="
+              display: flex; align-items: center; gap: 0.75rem;
+              padding: 0.75rem; border: 1px solid var(--border-color);
+              border-radius: 8px; cursor: pointer; transition: background 0.15s;
+            ">
+              <input type="radio" name="buy-num-select" value="${n.phone_number}" style="width:18px;height:18px;cursor:pointer;flex-shrink:0;" />
+              <div style="flex:1;">
+                <div style="font-weight:600;">${this.formatPhoneNumber(n.phone_number)}</div>
+                <div style="font-size:0.8rem; color:var(--text-secondary);">${[n.locality, n.region].filter(Boolean).join(', ')}</div>
+              </div>
+              <div style="display:flex; gap:0.25rem; flex-shrink:0;">
+                ${n.capabilities?.voice ? `<span style="font-size:0.7rem;padding:0.15rem 0.4rem;background:rgba(34,197,94,0.1);color:rgb(34,197,94);border-radius:4px;">Voice</span>` : ''}
+                ${n.capabilities?.sms ? `<span style="font-size:0.7rem;padding:0.15rem 0.4rem;background:rgba(59,130,246,0.1);color:rgb(59,130,246);border-radius:4px;">SMS</span>` : ''}
+              </div>
+            </div>
+          `).join('');
+
+        return `
+          <div class="contact-modal" style="max-width: 460px;" onclick="event.stopPropagation()">
+            <div class="contact-modal-header">
+              <h3>Choose a Number</h3>
+              <button class="close-modal-btn" id="buy-num-close">&times;</button>
+            </div>
+            <div class="contact-modal-body scrollable">
+              <div style="display:flex; flex-direction:column; gap:0.5rem;">${rows}</div>
+            </div>
+            <div class="contact-modal-footer">
+              <button class="btn btn-secondary" id="buy-num-back">Back</button>
+              <button class="btn btn-primary" id="buy-num-get" disabled>Get This Number</button>
+            </div>
+          </div>
+        `;
+      }
+
+      if (step === 'provisioning') {
+        return `
+          <div class="contact-modal" style="max-width: 360px;" onclick="event.stopPropagation()">
+            <div class="contact-modal-body" style="text-align:center; padding: 2.5rem 1.5rem;">
+              <div class="spinner" style="margin: 0 auto 1rem;"></div>
+              <p style="margin:0; color:var(--text-secondary);">Setting up your number...</p>
+            </div>
+          </div>
+        `;
+      }
+
+      if (step === 'success') {
+        return `
+          <div class="contact-modal" style="max-width: 360px;" onclick="event.stopPropagation()">
+            <div class="contact-modal-body" style="text-align:center; padding: 2.5rem 1.5rem;">
+              <div style="width:52px;height:52px;border-radius:50%;background:#dcfce7;display:flex;align-items:center;justify-content:center;margin:0 auto 1rem;">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              </div>
+              <h3 style="margin:0 0 0.5rem;">Your number is ready!</h3>
+              <p style="margin:0; color:var(--text-secondary);">${this.formatPhoneNumber(provisionedNumber)}</p>
+            </div>
+            <div class="contact-modal-footer" style="justify-content:center;">
+              <button class="btn btn-primary" id="buy-num-done">Done</button>
+            </div>
+          </div>
+        `;
+      }
+
+      if (step === 'error') {
+        return `
+          <div class="contact-modal" style="max-width: 360px;" onclick="event.stopPropagation()">
+            <div class="contact-modal-body" style="text-align:center; padding: 2.5rem 1.5rem;">
+              <div style="width:52px;height:52px;border-radius:50%;background:#fee2e2;display:flex;align-items:center;justify-content:center;margin:0 auto 1rem;">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2.5">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="12" y1="8" x2="12" y2="12"></line>
+                  <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+              </div>
+              <h3 style="margin:0 0 0.5rem;">Something went wrong</h3>
+              <p style="margin:0; color:var(--text-secondary); font-size:0.875rem;">${errorMessage}</p>
+            </div>
+            <div class="contact-modal-footer" style="justify-content:center; gap:0.75rem;">
+              <button class="btn btn-secondary" id="buy-num-close">Close</button>
+              <button class="btn btn-primary" id="buy-num-try-again">Try Again</button>
+            </div>
+          </div>
+        `;
+      }
+    };
+
+    const attachStepListeners = () => {
+      overlay.querySelector('#buy-num-close')?.addEventListener('click', closeModal);
+
+      if (step === 'search') {
+        const btnUS = overlay.querySelector('#country-us');
+        const btnCA = overlay.querySelector('#country-ca');
+        const btnLocal = overlay.querySelector('#type-local');
+        const btnTollFree = overlay.querySelector('#type-tollfree');
+
+        const syncCountryBtns = () => {
+          btnUS.className = `btn btn-sm ${selectedCountry === 'US' ? 'btn-primary' : 'btn-secondary'}`;
+          btnCA.className = `btn btn-sm ${selectedCountry === 'CA' ? 'btn-primary' : 'btn-secondary'}`;
+        };
+        const syncTypeBtns = () => {
+          btnLocal.className = `btn btn-sm ${selectedType === 'local' ? 'btn-primary' : 'btn-secondary'}`;
+          btnTollFree.className = `btn btn-sm ${selectedType === 'tollFree' ? 'btn-primary' : 'btn-secondary'}`;
+        };
+
+        btnUS.addEventListener('click', () => { selectedCountry = 'US'; syncCountryBtns(); });
+        btnCA.addEventListener('click', () => { selectedCountry = 'CA'; syncCountryBtns(); });
+        btnLocal.addEventListener('click', () => { selectedType = 'local'; syncTypeBtns(); });
+        btnTollFree.addEventListener('click', () => { selectedType = 'tollFree'; syncTypeBtns(); });
+
+        overlay.querySelector('#buy-num-cancel').addEventListener('click', closeModal);
+
+        const searchBtn = overlay.querySelector('#buy-num-search');
+        const areaCodeInput = overlay.querySelector('#buy-num-area-code');
+        const errorDiv = overlay.querySelector('#buy-num-error');
+
+        areaCodeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { searchBtn.click(); } });
+        areaCodeInput.focus();
+
+        searchBtn.addEventListener('click', async () => {
+          const areaCode = areaCodeInput.value.trim();
+          if (!areaCode) {
+            errorDiv.textContent = 'Please enter an area code.';
+            errorDiv.style.display = 'block';
+            return;
+          }
+          errorDiv.style.display = 'none';
+          searchBtn.disabled = true;
+          searchBtn.textContent = 'Searching...';
+
+          try {
+            const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+            const { data: { session } } = await supabase.auth.getSession();
+            const response = await fetch(`${supabaseUrl}/functions/v1/search-phone-numbers`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+              body: JSON.stringify({ areaCode, country: selectedCountry, numberType: selectedType }),
+            });
+            if (!response.ok) {
+              const err = await response.json();
+              throw new Error(err.error || 'Search failed');
+            }
+            const result = await response.json();
+            searchResults = result.numbers || [];
+            step = 'results';
+            renderStep();
+          } catch (err) {
+            searchBtn.disabled = false;
+            searchBtn.textContent = 'Search';
+            errorDiv.textContent = err.message || 'Failed to search. Please try again.';
+            errorDiv.style.display = 'block';
+          }
+        });
+      }
+
+      if (step === 'results') {
+        const getBtn = overlay.querySelector('#buy-num-get');
+
+        overlay.querySelectorAll('.buy-num-result-row').forEach(row => {
+          const radio = row.querySelector('input[type="radio"]');
+          row.addEventListener('click', () => {
+            overlay.querySelectorAll('.buy-num-result-row').forEach(r => {
+              r.style.background = '';
+              r.querySelector('input[type="radio"]').checked = false;
+            });
+            row.style.background = 'rgba(99,102,241,0.08)';
+            radio.checked = true;
+            selectedNumber = row.dataset.number;
+            getBtn.disabled = false;
+          });
+          row.addEventListener('mouseenter', () => { if (row.dataset.number !== selectedNumber) { row.style.background = 'rgba(99,102,241,0.04)'; } });
+          row.addEventListener('mouseleave', () => { if (row.dataset.number !== selectedNumber) { row.style.background = ''; } });
+        });
+
+        overlay.querySelector('#buy-num-back').addEventListener('click', () => {
+          step = 'search';
+          selectedNumber = null;
+          renderStep();
+        });
+
+        getBtn.addEventListener('click', async () => {
+          if (!selectedNumber) { return; }
+          step = 'provisioning';
+          renderStep();
+
+          try {
+            const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+            const { data: { session } } = await supabase.auth.getSession();
+            const response = await fetch(`${supabaseUrl}/functions/v1/provision-phone-number`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+              body: JSON.stringify({ phone_number: selectedNumber, agent_id: this.agent.id }),
+            });
+            if (!response.ok) {
+              const err = await response.json();
+              throw new Error(err.message || err.error || 'Provisioning failed');
+            }
+            const result = await response.json();
+            provisionedNumber = result.phoneNumber || selectedNumber;
+            step = 'success';
+            renderStep();
+          } catch (err) {
+            errorMessage = err.message || 'Failed to provision number. Please try again.';
+            step = 'error';
+            renderStep();
+          }
+        });
+      }
+
+      if (step === 'success') {
+        overlay.querySelector('#buy-num-done').addEventListener('click', () => {
+          closeModal();
+          this.refreshDeploymentTab();
+        });
+      }
+
+      if (step === 'error') {
+        overlay.querySelector('#buy-num-try-again').addEventListener('click', () => {
+          step = 'search';
+          selectedNumber = null;
+          errorMessage = '';
+          renderStep();
+        });
+      }
+    };
+
+    const renderStep = () => {
+      overlay.innerHTML = getModalHTML();
+      attachStepListeners();
+    };
+
+    document.body.appendChild(overlay);
+    renderStep();
   },
 
   async assignMultipleNumbers(numberIds) {
