@@ -13,6 +13,7 @@ import hmac
 import json
 import logging
 import os
+import random
 import re
 import sys
 import threading
@@ -79,6 +80,18 @@ logging.getLogger("h2").setLevel(logging.WARNING)
 logging.getLogger("h11").setLevel(logging.WARNING)
 logging.getLogger("livekit").setLevel(logging.INFO)
 logging.getLogger("livekit.agents").setLevel(logging.INFO)
+
+# Filler phrases spoken at the start of a custom function call so callers
+# aren't met with silence while the agent looks something up.
+THINKING_FILLERS = [
+    "Let me look that up.",
+    "One sec, let me check on that.",
+    "Hmm, let me check.",
+    "Give me just a moment.",
+    "Let me find that for you.",
+    "Sure, one sec.",
+    "Let me pull that up.",
+]
 
 # Log immediately on module load to verify script is running
 print("=" * 80, flush=True)
@@ -1904,11 +1917,14 @@ def extract_json_path(data: dict, path: str):
         return None
 
 
-def create_custom_function_tool(func_config: dict, webhook_secret: str = None):
+def create_custom_function_tool(func_config: dict, webhook_secret: str = None, say_filler_ref: list = None):
     """Create a LiveKit function_tool from custom function configuration.
 
     Uses raw_schema for proper typed parameters (like Retell AI's approach).
     Falls back to name= FunctionTool if raw_schema isn't supported.
+
+    say_filler_ref: mutable list containing a coroutine function `async (phrase) -> None`
+    that speaks a filler phrase. Set after session creation; None until then.
     """
     func_name = func_config['name']
     func_description = func_config['description']
@@ -1923,6 +1939,12 @@ def create_custom_function_tool(func_config: dict, webhook_secret: str = None):
     async def _execute_custom_function(params: dict) -> str:
         """Shared execution logic for custom function HTTP calls."""
         logger.info(f"🔧 Custom function '{func_name}' executing with params: {params}")
+
+        # Speak a thinking filler so the caller isn't met with silence
+        if say_filler_ref and say_filler_ref[0]:
+            phrase = random.choice(THINKING_FILLERS)
+            logger.info(f"🤔 [FILLER] '{func_name}' called, saying: '{phrase}'")
+            asyncio.create_task(say_filler_ref[0](phrase))
 
         try:
             # Validate required parameters
@@ -2136,11 +2158,12 @@ def create_custom_function_tool(func_config: dict, webhook_secret: str = None):
 
 async def prewarm(proc: JobProcess):
     """
-    Prewarm function for explicit agent dispatch.
-    This is called when the agent receives an explicit dispatch request.
+    Prewarm function - pre-loads the Silero VAD model so it's ready on first call.
+    Without this, the ML model is loaded on each call's first use (~200-500ms delay).
     """
-    logger.info(f"🔥 PREWARM CALLED - Agent received explicit dispatch")
-    # Keep the process running until shutdown
+    logger.info("🔥 PREWARM: Loading Silero VAD model...")
+    proc.userdata["vad"] = silero.VAD.load()
+    logger.info("🔥 PREWARM: Silero VAD model ready")
     await proc.wait_for_shutdown()
 
 
@@ -2999,6 +3022,10 @@ AFTER-HOURS CONTEXT:
     _sdk_ver = getattr(llm, '__version__', None) or getattr(AgentSession, '__module__', 'unknown')
     log_call_state(ctx.room.name, "debug_6_custom_funcs", "agent", {"code_version": "CUSTOM-FN-V2", "sdk_version": str(_sdk_ver)})
 
+    # Shared mutable ref — set to session.say after AgentSession is created so that
+    # custom function tools can speak a filler phrase before the webhook call.
+    say_filler_ref: list = [None]
+
     # Load custom functions for this agent
     custom_tools = []
     if agent_id:
@@ -3010,7 +3037,7 @@ AFTER-HOURS CONTEXT:
             loaded_names = []
             for func_config in custom_function_configs:
                 try:
-                    tool = create_custom_function_tool(func_config, webhook_secret)
+                    tool = create_custom_function_tool(func_config, webhook_secret, say_filler_ref=say_filler_ref)
                     custom_tools.append(tool)
                     loaded_names.append(f"{func_config['name']}(type={type(tool).__name__},id={tool.info.name})")
                     logger.info(f"🔧 Registered custom function: {func_config['name']} as {type(tool).__name__} with id={tool.info.name}")
@@ -3183,9 +3210,14 @@ AFTER-HOURS CONTEXT:
     try:
         # VAD settings from agent config (with sensible defaults)
         vad_silence = float(user_config.get("vad_silence_duration", 0.0) or 0.0)
-        vad_speech = float(user_config.get("vad_speech_duration", 0.15) or 0.15)
+        vad_speech = float(user_config.get("vad_speech_duration", 0.08) or 0.08)  # Reduced from 0.15 → 0.08 (saves 70ms)
         vad_threshold = float(user_config.get("vad_activation_threshold", 0.6) or 0.6)
         logger.info(f"🎚️ VAD settings: silence={vad_silence}, speech={vad_speech}, threshold={vad_threshold}")
+
+        # Use pre-warmed VAD model if available (avoids ML model load on first call)
+        prewarmed_vad = ctx.proc.userdata.get("vad") if hasattr(ctx, "proc") and ctx.proc else None
+        if prewarmed_vad:
+            logger.info("🔥 Using pre-warmed Silero VAD model")
 
         session = AgentSession(
             vad=silero.VAD.load(
@@ -3197,6 +3229,8 @@ AFTER-HOURS CONTEXT:
                 model=stt_model,
                 language=stt_language,
                 api_key=os.getenv("DEEPGRAM_API_KEY"),
+                no_delay=True,       # Send audio immediately, don't buffer
+                endpointing_ms=100,  # Wait 100ms of silence before finalizing transcript
             ),
             llm=lkopenai.LLM(
                 model=llm_model,
@@ -3207,8 +3241,13 @@ AFTER-HOURS CONTEXT:
                 model="eleven_flash_v2_5",  # Fastest ElevenLabs model
                 voice_id=tts_voice_id,
                 api_key=os.getenv("ELEVENLABS_API_KEY") or os.getenv("ELEVEN_API_KEY"),
-                chunk_length_schedule=[50, 80, 120, 150],  # Smaller chunks for faster first audio
+                auto_mode=True,  # Auto-manages chunk buffering for lowest latency
             ),
+            # --- Latency tuning ---
+            min_endpointing_delay=0.1,    # Start responding 100ms after user stops (default was 500ms — saves ~400ms)
+            max_endpointing_delay=1.5,    # Don't wait more than 1.5s for slow speakers (default 3.0s)
+            preemptive_generation=True,   # Begin LLM generation while user is still speaking (saves LLM TTFT)
+            min_interruption_duration=0.3, # Allow barge-in after 300ms of speech (default 500ms)
         )
     except Exception as e:
         log_call_state(ctx.room.name, "debug_session_error", "agent", {"error": str(e)})
@@ -3216,6 +3255,10 @@ AFTER-HOURS CONTEXT:
         raise
 
     log_call_state(ctx.room.name, "debug_10_session_created", "agent", {})
+
+    # Wire up filler injection now that session exists.
+    # Custom function tools call say_filler_ref[0](phrase) before their webhook.
+    say_filler_ref[0] = session.say
 
     # Latency tracking
     latency_start_time = None
