@@ -171,20 +171,18 @@ async function fetchNavUserData() {
       }
       const perMinuteRate = voiceRate + llmRate + TELEPHONY_RATE;
 
-      // Fetch What's New posts (published since user's previous login)
+      // Fetch What's New posts — latest Magpipe Updates post within the last 14 days
       let newPosts = [];
-      const prevLastLoginAt = sessionStorage.getItem('prev_last_login_at');
-      if (prevLastLoginAt) {
-        const { data: posts } = await supabase
-          .from('blog_posts')
-          .select('id, title, slug, excerpt, tweet_id, published_at')
-          .eq('status', 'published')
-          .contains('tags', ['Magpipe Updates'])
-          .gt('published_at', prevLastLoginAt)
-          .order('published_at', { ascending: false })
-          .limit(3);
-        newPosts = posts || [];
-      }
+      const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: posts } = await supabase
+        .from('blog_posts')
+        .select('id, title, slug, excerpt, tweet_id, published_at')
+        .eq('status', 'published')
+        .contains('tags', ['Magpipe Updates'])
+        .gt('published_at', fourteenDaysAgo)
+        .order('published_at', { ascending: false })
+        .limit(3);
+      newPosts = posts || [];
 
       cachedUserData = {
         name: profile?.name || null,
