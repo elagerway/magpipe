@@ -171,6 +171,21 @@ async function fetchNavUserData() {
       }
       const perMinuteRate = voiceRate + llmRate + TELEPHONY_RATE;
 
+      // Fetch What's New posts (published since user's previous login)
+      let newPosts = [];
+      const prevLastLoginAt = sessionStorage.getItem('prev_last_login_at');
+      if (prevLastLoginAt) {
+        const { data: posts } = await supabase
+          .from('blog_posts')
+          .select('id, title, slug, excerpt, tweet_id, published_at')
+          .eq('status', 'published')
+          .contains('tags', ['Magpipe Updates'])
+          .gt('published_at', prevLastLoginAt)
+          .order('published_at', { ascending: false })
+          .limit(3);
+        newPosts = posts || [];
+      }
+
       cachedUserData = {
         name: profile?.name || null,
         email: user.email,
@@ -184,7 +199,8 @@ async function fetchNavUserData() {
         minutesUsed,
         messagesUsed,
         perMinuteRate,
-        totalCost
+        totalCost,
+        newPosts
       };
 
       return cachedUserData;
@@ -339,7 +355,26 @@ function updateNavPlanSection(userData) {
     usageLevelClass = 'usage-very-high';
   }
 
-  planSection.innerHTML = `
+  // What's New card — show most recent post not yet dismissed
+  const dismissed = (localStorage.getItem('whats_new_dismissed') || '').split(',').filter(Boolean);
+  const visiblePosts = (userData.newPosts || []).filter(p => !dismissed.includes(p.id));
+  let whatsNewHtml = '';
+  if (visiblePosts.length > 0) {
+    const post = visiblePosts[0];
+    const xUrl = post.tweet_id
+      ? `https://x.com/i/web/status/${post.tweet_id}`
+      : `https://magpipe.ai/blog/${post.slug}`;
+    whatsNewHtml = `<div class="nav-whats-new" id="nav-whats-new" data-post-id="${post.id}">
+      <div class="nav-whats-new-header">
+        <span class="nav-whats-new-dot"></span>
+        <span class="nav-whats-new-label">What's New</span>
+        <button class="nav-whats-new-dismiss" onclick="dismissWhatsNew('${post.id}')">×</button>
+      </div>
+      <a href="${xUrl}" target="_blank" rel="noopener" class="nav-whats-new-title">${post.title}</a>
+    </div>`;
+  }
+
+  planSection.innerHTML = whatsNewHtml + `
     <button class="nav-feedback-btn" onclick="openContactModal()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
@@ -1206,6 +1241,14 @@ window.handleLogout = async function() {
   const { signOut } = await import('../lib/supabase.js');
   await signOut();
   navigateTo('/login');
+};
+
+// Dismiss What's New card and persist to localStorage
+window.dismissWhatsNew = function(postId) {
+  const dismissed = (localStorage.getItem('whats_new_dismissed') || '').split(',').filter(Boolean);
+  dismissed.push(postId);
+  localStorage.setItem('whats_new_dismissed', dismissed.join(','));
+  document.getElementById('nav-whats-new')?.remove();
 };
 
 // Contact modal functions

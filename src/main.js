@@ -154,6 +154,12 @@ class App {
       const { User } = await import('./models/User.js');
       const { profile } = await User.getProfile(session.user.id);
 
+      // Save previous last_login_at so nav can show posts since LAST login
+      const prevLastLoginAt = profile?.last_login_at || null;
+      sessionStorage.setItem('prev_last_login_at', prevLastLoginAt || '');
+      // Update last_login_at (fire and forget — don't block navigation)
+      supabase.from('users').update({ last_login_at: new Date().toISOString() }).eq('id', session.user.id);
+
       if (!profile) {
         // Profile doesn't exist yet, create it (new OAuth user)
         const name = session.user.user_metadata?.name || session.user.user_metadata?.full_name || 'User';
