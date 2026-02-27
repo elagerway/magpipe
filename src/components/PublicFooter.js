@@ -33,6 +33,7 @@ export function renderPublicFooter() {
           </div>
           <div class="footer-column">
             <h4>Company</h4>
+            <a href="/blog" onclick="event.preventDefault(); navigateTo('/blog');">Blog</a>
             <a href="/custom-plan" onclick="event.preventDefault(); navigateTo('/custom-plan');">Contact Sales</a>
           </div>
           <div class="footer-column">

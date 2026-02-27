@@ -20,6 +20,7 @@ export default defineConfig({
     port: 3000,
     strictPort: true,
     open: true,
+    host: true,
   },
   resolve: {
     alias: {

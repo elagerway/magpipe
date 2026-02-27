@@ -75,18 +75,24 @@ export default class BlogListPage {
   }
 
   renderPage(appElement) {
-    const postsHtml = this.posts.length > 0
-      ? `
-        <div class="blog-list-grid">
-          ${this.posts.map(post => this.renderCard(post)).join('')}
-        </div>
-      `
-      : `
+    let postsHtml;
+    if (this.posts.length === 0) {
+      postsHtml = `
         <div class="blog-empty-state">
           <h2>Coming Soon</h2>
           <p>We're working on great content. Check back soon!</p>
         </div>
       `;
+    } else {
+      const featuredHtml = this.renderFeaturedCard(this.posts[0]);
+      const gridPosts = this.posts.slice(1);
+      const gridHtml = gridPosts.length > 0 ? `
+        <div class="blog-list-grid">
+          ${gridPosts.map(post => this.renderCard(post)).join('')}
+        </div>
+      ` : '';
+      postsHtml = featuredHtml + gridHtml;
+    }
 
     appElement.innerHTML = `
       <div class="blog-page">
@@ -126,19 +132,49 @@ export default class BlogListPage {
     `;
   }
 
+  renderFeaturedCard(post) {
+    const date = post.published_at
+      ? new Date(post.published_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+      : '';
+    const excerpt = post.excerpt || post.meta_description || '';
+    const tags = post.tags || [];
+    const firstTag = tags[0] || '';
+
+    const imageHtml = post.featured_image_url
+      ? `<img class="blog-featured-card-image" src="${this.escapeAttr(post.featured_image_url)}" alt="${this.escapeAttr(post.title)}" loading="lazy">`
+      : `<div class="blog-featured-card-gradient">
+          ${firstTag ? `<span class="blog-card-tag">${this.escape(firstTag)}</span>` : ''}
+        </div>`;
+
+    return `
+      <article class="blog-featured-card" onclick="navigateTo('/blog/${this.escapeAttr(post.slug)}')">
+        ${imageHtml}
+        <div class="blog-featured-card-body">
+          <div class="blog-featured-card-meta">
+            ${firstTag ? `<span class="blog-card-tag">${this.escape(firstTag)}</span>` : ''}
+            ${firstTag && date ? `<span class="blog-card-meta-dot"></span>` : ''}
+            ${date ? `<span>${date}</span>` : ''}
+          </div>
+          <h2>${this.escape(post.title)}</h2>
+          ${excerpt ? `<p class="blog-featured-card-excerpt">${this.escape(excerpt)}</p>` : ''}
+          <span class="blog-card-readmore">Read More &rarr;</span>
+        </div>
+      </article>
+    `;
+  }
+
   renderCard(post) {
     const date = post.published_at
       ? new Date(post.published_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
       : '';
     const excerpt = post.excerpt || post.meta_description || '';
     const tags = post.tags || [];
+    const firstTag = tags[0] || '';
 
     const imageHtml = post.featured_image_url
       ? `<img class="blog-card-image" src="${this.escapeAttr(post.featured_image_url)}" alt="${this.escapeAttr(post.title)}" loading="lazy">`
-      : `<div class="blog-card-image-placeholder">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
-          </svg>
+      : `<div class="blog-card-gradient-band">
+          ${firstTag ? `<span class="blog-card-tag">${this.escape(firstTag)}</span>` : ''}
         </div>`;
 
     return `
@@ -146,8 +182,6 @@ export default class BlogListPage {
         ${imageHtml}
         <div class="blog-card-body">
           <div class="blog-card-meta">
-            <span>${this.escape(post.author_name || 'Magpipe Team')}</span>
-            <span class="blog-card-meta-dot"></span>
             <span>${date}</span>
           </div>
           <h2>${this.escape(post.title)}</h2>
@@ -157,7 +191,7 @@ export default class BlogListPage {
               ${tags.slice(0, 3).map(t => `<span class="blog-card-tag">${this.escape(t)}</span>`).join('')}
             </div>
           ` : ''}
-          <span class="blog-card-readmore">Read More &rarr;</span>
+          <span class="blog-card-readmore">Read &rarr;</span>
         </div>
       </article>
     `;

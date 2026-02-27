@@ -2881,6 +2881,46 @@ export const stylesMethods = {
         gap: 0.5rem;
       }
 
+      .blog-image-field {
+        display: flex;
+        gap: 0.5rem;
+        align-items: stretch;
+      }
+
+      .blog-image-field .form-input {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .blog-gen-image-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
+        white-space: nowrap;
+        flex-shrink: 0;
+        font-size: 0.8rem;
+        padding: 0 0.75rem;
+      }
+
+      .blog-image-preview {
+        margin-top: 0.625rem;
+        border-radius: 8px;
+        overflow: hidden;
+        border: 1px solid var(--border-color);
+      }
+
+      .blog-image-preview img {
+        display: block;
+        width: 100%;
+        height: auto;
+        max-height: 180px;
+        object-fit: cover;
+      }
+
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+
       .btn-block {
         display: block;
         width: 100%;
