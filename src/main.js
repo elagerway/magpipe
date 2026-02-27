@@ -159,9 +159,12 @@ class App {
         const name = session.user.user_metadata?.name || session.user.user_metadata?.full_name || 'User';
         await User.createProfile(session.user.id, session.user.email, name);
 
-        // Send signup notification (fire and forget) - skip for impersonation sessions
+        // Send signup notification (fire and forget) - skip for impersonation or if
+        // signup.js already sent it (email/password path sets this flag to avoid duplicates)
         const isImpersonating = sessionStorage.getItem('isImpersonating') === 'true';
-        if (!isImpersonating) {
+        const alreadyNotified = sessionStorage.getItem('signup_notified') === 'true';
+        sessionStorage.removeItem('signup_notified');
+        if (!isImpersonating && !alreadyNotified) {
           fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/notify-signup`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
