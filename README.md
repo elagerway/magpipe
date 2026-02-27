@@ -200,6 +200,10 @@ Inbound calls hit a SignalWire number, which triggers a LiveKit room. The AI age
 ### Intelligent SMS
 Inbound SMS triggers a webhook that retrieves conversation context (with vector embeddings), generates a context-aware AI response, and sends it via SignalWire. Full conversation history is maintained per contact.
 
+Only `agent_type = 'text'` agents handle SMS. Voice agents are never routed inbound SMS. Agent selection priority: explicit `text_agent_id` on the service number → user's default text agent → any text agent belonging to the user. If no text agent is found, a one-time auto-reply is sent to the sender and subsequent messages from that number are silently ignored.
+
+Loop detection prevents runaway back-and-forth: if the same message body arrives more than twice in a conversation thread, the AI reply is skipped silently. Normal replies resume as soon as the sender sends a different message.
+
 ### Email AI
 Gmail integration via OAuth and Pub/Sub push notifications. The agent can operate in draft mode (generates replies for review) or auto mode (sends replies autonomously). Emails are threaded and visible in the unified inbox.
 
