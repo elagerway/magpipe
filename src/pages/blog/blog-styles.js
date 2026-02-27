@@ -286,6 +286,30 @@ export function getBlogStyles() {
     }
 
     /* ── Single Post Article ── */
+    .blog-back-bar {
+      max-width: 780px;
+      margin: 0 auto;
+      padding: 5rem 1.5rem 0;
+    }
+
+    .blog-back-btn {
+      background: none;
+      border: none;
+      color: #6366f1;
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      transition: color 0.15s;
+    }
+
+    .blog-back-btn:hover {
+      color: #4f46e5;
+    }
+
     .blog-article-header {
       position: relative;
       padding: 10rem 1.5rem 3rem;

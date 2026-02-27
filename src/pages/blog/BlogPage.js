@@ -86,6 +86,10 @@ export default class BlogPage {
       <div class="blog-page">
         ${renderPublicHeader({ activePage: 'blog' })}
 
+        <div class="blog-back-bar">
+          <button class="blog-back-btn" onclick="navigateTo('/blog')">← Back to Blog</button>
+        </div>
+
         <header class="blog-article-header">
           <div class="blog-article-header-content">
             <h1>${this.escape(post.title)}</h1>

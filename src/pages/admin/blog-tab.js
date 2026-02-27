@@ -630,6 +630,31 @@ export const blogTabMethods = {
       submitBtn.disabled = true;
       submitBtn.textContent = 'Saving...';
 
+      // Auto-generate featured image for new posts without one
+      if (!id && !postData.featured_image_url) {
+        submitBtn.textContent = 'Generating image…';
+        try {
+          const imgRes = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-blog-image`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${this.session.access_token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ title, tags, excerpt: postData.excerpt }),
+            }
+          );
+          const imgData = await imgRes.json();
+          if (imgRes.ok && imgData.url) {
+            postData.featured_image_url = imgData.url;
+          }
+        } catch {
+          // Non-fatal — post saves without image
+        }
+        submitBtn.textContent = 'Saving...';
+      }
+
       if (id) {
         await this.blogApiCall('update_post', { id, ...postData });
         showToast('Post updated', 'success');
