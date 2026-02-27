@@ -5,6 +5,7 @@
 import { renderPublicFooter, getPublicFooterStyles } from '../components/PublicFooter.js';
 import { renderPublicHeader, getPublicHeaderStyles } from '../components/PublicHeader.js';
 import { injectSEO, cleanupSEO, buildOrganizationSchema, buildProductSchema } from '../lib/seo.js';
+import { supabase } from '../lib/supabase.js';
 
 // Store the install prompt for later use
 let deferredPrompt = null;
@@ -43,6 +44,54 @@ window._installApp = async () => {
 export default class HomePage {
   async render() {
     const appElement = document.getElementById('app');
+
+    // Fetch recent blog posts for "From the Blog" section
+    const { data: recentPosts } = await supabase
+      .from('blog_posts')
+      .select('slug, title, excerpt, published_at, tags')
+      .eq('status', 'published')
+      .order('published_at', { ascending: false })
+      .limit(3);
+
+    const blogPreviewHtml = (() => {
+      if (!recentPosts || recentPosts.length === 0) return '';
+      const esc = (str) => {
+        if (!str) return '';
+        const d = document.createElement('div');
+        d.textContent = str;
+        return d.innerHTML;
+      };
+      const cards = recentPosts.map(post => {
+        const tag = esc(post.tags?.[0] || '');
+        const title = esc(post.title);
+        const excerpt = post.excerpt ? esc(post.excerpt) : '';
+        const date = post.published_at
+          ? new Date(post.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+          : '';
+        const slug = (post.slug || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+        return `
+          <article class="bp-card" onclick="navigateTo('/blog/${slug}')">
+            ${tag ? `<div class="bp-card-tag">${tag}</div>` : ''}
+            <h3>${title}</h3>
+            ${excerpt ? `<p>${excerpt}</p>` : ''}
+            ${date ? `<span class="bp-card-date">${date}</span>` : ''}
+          </article>
+        `;
+      }).join('');
+      return `
+        <section class="blog-preview-section">
+          <div class="blog-preview-inner">
+            <div class="blog-preview-header">
+              <h2>From the Blog</h2>
+              <a href="/blog" onclick="event.preventDefault(); navigateTo('/blog');">View all posts &rarr;</a>
+            </div>
+            <div class="blog-preview-grid">
+              ${cards}
+            </div>
+          </div>
+        </section>
+      `;
+    })();
 
     injectSEO({
       title: 'Magpipe — AI Voice, Email & SMS for Business',
@@ -282,6 +331,8 @@ export default class HomePage {
             </button>
           </div>
         </section>
+
+        ${blogPreviewHtml}
 
         <!-- CTA Section -->
         <section class="landing-cta">
@@ -817,6 +868,100 @@ export default class HomePage {
           justify-content: center;
         }
 
+        /* Blog Preview Section */
+        .blog-preview-section {
+          background: #f8fafc;
+          padding: 5rem 1.5rem;
+        }
+
+        .blog-preview-inner {
+          max-width: 1100px;
+          margin: 0 auto;
+        }
+
+        .blog-preview-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 2.5rem;
+          flex-wrap: wrap;
+          gap: 1rem;
+        }
+
+        .blog-preview-header h2 {
+          font-size: 2rem;
+          font-weight: 700;
+          color: var(--text-primary);
+          margin: 0;
+        }
+
+        .blog-preview-header a {
+          color: #4f46e5;
+          text-decoration: none;
+          font-weight: 600;
+          font-size: 0.95rem;
+          transition: color 0.15s;
+        }
+
+        .blog-preview-header a:hover {
+          color: #3730a3;
+        }
+
+        .blog-preview-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 1.5rem;
+        }
+
+        .bp-card {
+          background: white;
+          border: 1px solid #e2e8f0;
+          border-radius: 12px;
+          padding: 1.5rem;
+          cursor: pointer;
+          transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .bp-card:hover {
+          transform: translateY(-3px);
+          box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
+        }
+
+        .bp-card-tag {
+          display: inline-block;
+          font-size: 0.7rem;
+          font-weight: 600;
+          padding: 0.2rem 0.5rem;
+          border-radius: 999px;
+          background: #eef2ff;
+          color: #4f46e5;
+          margin-bottom: 0.75rem;
+        }
+
+        .bp-card h3 {
+          font-size: 1.1rem;
+          font-weight: 700;
+          color: #0f172a;
+          margin: 0 0 0.5rem;
+          line-height: 1.4;
+        }
+
+        .bp-card p {
+          font-size: 0.9rem;
+          color: #64748b;
+          line-height: 1.6;
+          margin: 0 0 0.75rem;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+
+        .bp-card-date {
+          font-size: 0.8rem;
+          color: #94a3b8;
+        }
+
         /* Footer */
         ${getPublicFooterStyles()}
 
@@ -918,11 +1063,13 @@ export default class HomePage {
           .features-header h2,
           .how-header h2,
           .pricing-preview-content h2,
-          .landing-cta h2 {
+          .landing-cta h2,
+          .blog-preview-header h2 {
             font-size: 1.75rem;
           }
 
-          .features-grid {
+          .features-grid,
+          .blog-preview-grid {
             grid-template-columns: 1fr;
           }
 

@@ -415,8 +415,17 @@ export const blogTabMethods = {
               </div>
 
               <div class="form-group">
-                <label for="blog-featured-image">Featured Image URL</label>
-                <input type="url" id="blog-featured-image" class="form-input" placeholder="https://..." value="${this.blogEscape(featuredImage)}">
+                <label for="blog-featured-image">Featured Image</label>
+                <div class="blog-image-field">
+                  <input type="url" id="blog-featured-image" class="form-input" placeholder="https://..." value="${this.blogEscape(featuredImage)}">
+                  <button type="button" class="btn btn-secondary blog-gen-image-btn" id="blog-gen-image-btn" onclick="window.adminPage.blogGenerateImage()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.88 5.76a2 2 0 0 0 1.9 1.38h6.05l-4.9 3.56a2 2 0 0 0-.73 2.24l1.88 5.76-4.9-3.56a2 2 0 0 0-2.36 0L6.83 21.7l1.88-5.76a2 2 0 0 0-.73-2.24L3.08 10.14h6.05a2 2 0 0 0 1.9-1.38L12 3z"/></svg>
+                    Generate with AI
+                  </button>
+                </div>
+                <div class="blog-image-preview" id="blog-image-preview" style="${featuredImage ? '' : 'display:none;'}">
+                  ${featuredImage ? `<img src="${this.blogEscape(featuredImage)}" alt="Featured image preview">` : ''}
+                </div>
               </div>
 
               ${isEdit && post.status === 'published' ? `
@@ -493,6 +502,20 @@ export const blogTabMethods = {
         schedHint.textContent = 'Scheduled for ' + new Date(schedInput.value).toLocaleString();
       } else {
         schedHint.textContent = 'Post will auto-publish at this time';
+      }
+    });
+
+    // Featured image URL → live preview
+    const featuredImageInput = document.getElementById('blog-featured-image');
+    featuredImageInput.addEventListener('input', () => {
+      const url = featuredImageInput.value.trim();
+      const preview = document.getElementById('blog-image-preview');
+      if (url) {
+        preview.innerHTML = `<img src="${url}" alt="Featured image preview">`;
+        preview.style.display = 'block';
+      } else {
+        preview.innerHTML = '';
+        preview.style.display = 'none';
       }
     });
 
@@ -646,6 +669,61 @@ export const blogTabMethods = {
         },
       }
     );
+  },
+
+  async blogGenerateImage() {
+    const title = document.getElementById('blog-title').value.trim();
+    if (!title) {
+      showToast('Add a title first', 'error');
+      return;
+    }
+
+    const tagsStr = document.getElementById('blog-tags').value.trim();
+    const excerpt = document.getElementById('blog-excerpt').value.trim();
+    const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(Boolean) : [];
+
+    const btn = document.getElementById('blog-gen-image-btn');
+    btn.disabled = true;
+    btn.innerHTML = `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+      Generating…
+    `;
+
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-blog-image`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ title, tags, excerpt }),
+        }
+      );
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Generation failed');
+
+      // Populate the URL field
+      const input = document.getElementById('blog-featured-image');
+      input.value = data.url;
+
+      // Show preview
+      const preview = document.getElementById('blog-image-preview');
+      preview.innerHTML = `<img src="${data.url}" alt="Generated featured image">`;
+      preview.style.display = 'block';
+
+      showToast('Image generated!', 'success');
+    } catch (error) {
+      showToast('Failed to generate image: ' + error.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.88 5.76a2 2 0 0 0 1.9 1.38h6.05l-4.9 3.56a2 2 0 0 0-.73 2.24l1.88 5.76-4.9-3.56a2 2 0 0 0-2.36 0L6.83 21.7l1.88-5.76a2 2 0 0 0-.73-2.24L3.08 10.14h6.05a2 2 0 0 0 1.9-1.38L12 3z"/></svg>
+        Generate with AI
+      `;
+    }
   },
 
   blogBackToList() {
