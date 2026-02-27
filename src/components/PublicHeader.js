@@ -24,7 +24,6 @@ export function renderPublicHeader(options = {}) {
         <nav class="public-header-nav">
           <a href="/pricing" class="nav-link ${isActive('pricing')}" onclick="event.preventDefault(); navigateTo('/pricing');">Pricing</a>
           <a href="/custom-plan" class="nav-link ${isActive('enterprise')}" onclick="event.preventDefault(); navigateTo('/custom-plan');">Enterprise</a>
-          <a href="/blog" class="nav-link ${isActive('blog')}" onclick="event.preventDefault(); navigateTo('/blog');">Blog</a>
           <a href="https://docs.magpipe.ai" class="nav-link" target="_blank" rel="noopener">Docs</a>
           <a href="/login" class="btn btn-ghost" onclick="event.preventDefault(); navigateTo('/login');">Sign In</a>
           <a href="/signup" class="btn btn-primary" onclick="event.preventDefault(); navigateTo('/signup');">Get Started</a>
@@ -43,7 +42,6 @@ export function renderPublicHeader(options = {}) {
       <div class="public-header-mobile-menu">
         <a href="/pricing" class="${isActive('pricing')}" onclick="event.preventDefault(); document.querySelector('.public-header-mobile-menu').classList.remove('open'); navigateTo('/pricing');">Pricing</a>
         <a href="/custom-plan" class="${isActive('enterprise')}" onclick="event.preventDefault(); document.querySelector('.public-header-mobile-menu').classList.remove('open'); navigateTo('/custom-plan');">Enterprise</a>
-        <a href="/blog" class="${isActive('blog')}" onclick="event.preventDefault(); document.querySelector('.public-header-mobile-menu').classList.remove('open'); navigateTo('/blog');">Blog</a>
         <a href="https://docs.magpipe.ai" target="_blank" rel="noopener">Docs</a>
         <a href="https://github.com/elagerway/magpipe" target="_blank" rel="noopener">GitHub</a>
         <a href="/login" onclick="event.preventDefault(); document.querySelector('.public-header-mobile-menu').classList.remove('open'); navigateTo('/login');">Sign In</a>
