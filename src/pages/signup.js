@@ -578,6 +578,8 @@ export default class SignupPage {
         // No need to call User.createProfile() here
 
         // Send signup notification (don't await - fire and forget)
+        // Set flag so main.js auth handler doesn't fire a duplicate
+        sessionStorage.setItem('signup_notified', 'true');
         fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/notify-signup`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
