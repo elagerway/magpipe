@@ -37,8 +37,10 @@ export async function renderLowBalanceBanner() {
   if (sessionStorage.getItem('low-balance-dismissed')) return;
 
   // Don't show on public pages
-  const publicPaths = ['/', '/login', '/signup', '/verify-email', '/forgot-password', '/reset-password', '/pricing', '/privacy', '/terms'];
-  if (publicPaths.includes(window.location.pathname)) return;
+  const path = window.location.pathname;
+  const publicExact = ['/', '/login', '/signup', '/verify-email', '/forgot-password', '/reset-password', '/pricing', '/privacy', '/terms', '/custom-plan', '/enterprise', '/docs', '/impersonate'];
+  const publicPrefixes = ['/blog', '/docs'];
+  if (publicExact.includes(path) || publicPrefixes.some(p => path.startsWith(p))) return;
 
   const balance = await fetchBalance();
   if (balance === null) return;
