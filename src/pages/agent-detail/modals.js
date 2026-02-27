@@ -240,11 +240,8 @@ export const modalsMethods = {
     this.agent[field] = value;
     this.scheduleAutoSave({ [field]: value });
 
-    // If prompt is empty or user hasn't customized it much, auto-regenerate
-    const hasCustomPrompt = this.agent.system_prompt && this.agent.system_prompt.length > 100;
-    if (!hasCustomPrompt) {
-      this.regeneratePrompts();
-    }
+    // Always regenerate the prompt when identity fields change
+    this.regeneratePrompts();
   },
 
   async startRecording() {
