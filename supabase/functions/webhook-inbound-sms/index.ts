@@ -16,6 +16,34 @@ import { processAndReplySMS } from './ai-reply.ts'
 import { sendSMS, deductSmsCredits } from './sms-delivery.ts'
 import { autoEnrichContact, sendSlackNotification } from './notifications.ts'
 
+/**
+ * Detect a content loop: the sender has sent this exact message more than twice
+ * already in this conversation. Stop responding until they send something different.
+ * Called AFTER logging the current inbound message so the stored count is accurate.
+ */
+async function isContentLoop(supabase: any, from: string, to: string, body: string): Promise<boolean> {
+  const normalized = body.trim().toLowerCase()
+  if (!normalized) return false
+
+  const { data: recentInbound } = await supabase
+    .from('sms_messages')
+    .select('content')
+    .eq('sender_number', from)
+    .eq('recipient_number', to)
+    .eq('direction', 'inbound')
+    .order('created_at', { ascending: false })
+    .limit(20)
+
+  if (!recentInbound || recentInbound.length === 0) return false
+
+  const matchCount = recentInbound.filter(
+    (m: any) => m.content && m.content.trim().toLowerCase() === normalized
+  ).length
+
+  // More than 2 identical messages stored → loop
+  return matchCount > 2
+}
+
 Deno.serve(async (req) => {
   try {
     const formData = await req.formData()
@@ -50,36 +78,41 @@ Deno.serve(async (req) => {
 
     console.log('Number is active, processing SMS for user:', serviceNumber.users.email)
 
-    // Get agent config - prefer text-specific agent, then fall back to voice agent (backward compat)
+    // Get agent config — only route to text agents (agent_type = 'text').
+    // Voice agents are NEVER used for SMS even if assigned to the number.
     let agentConfig = null
 
-    const smsAgentId = serviceNumber.text_agent_id || serviceNumber.agent_id
-
-    if (smsAgentId) {
-      console.log('Routing SMS to agent:', smsAgentId, serviceNumber.text_agent_id ? '(text_agent_id)' : '(agent_id fallback)')
+    // 1. Explicit text agent assigned to this number
+    if (serviceNumber.text_agent_id) {
+      console.log('Routing SMS to assigned text_agent_id:', serviceNumber.text_agent_id)
       const { data: assignedAgent } = await supabase
         .from('agent_configs')
         .select('*')
-        .eq('id', smsAgentId)
+        .eq('id', serviceNumber.text_agent_id)
+        .eq('agent_type', 'text')
         .single()
       agentConfig = assignedAgent
     }
 
+    // 2. Default text agent for this user
     if (!agentConfig) {
       const { data: defaultAgent } = await supabase
         .from('agent_configs')
         .select('*')
         .eq('user_id', serviceNumber.user_id)
+        .eq('agent_type', 'text')
         .eq('is_default', true)
         .single()
       agentConfig = defaultAgent
     }
 
+    // 3. Any text agent for this user
     if (!agentConfig) {
       const { data: anyAgent } = await supabase
         .from('agent_configs')
         .select('*')
         .eq('user_id', serviceNumber.user_id)
+        .eq('agent_type', 'text')
         .order('created_at', { ascending: true })
         .limit(1)
         .single()
@@ -89,11 +122,9 @@ Deno.serve(async (req) => {
     const agentId = agentConfig?.id || null
     console.log('Using agent for SMS:', agentId, agentConfig?.name || 'None')
 
-    // Check if this is the system agent or no agent — auto-reply and stop
+    // Check if this is the system agent or no text agent assigned — auto-reply once and stop
     const SYSTEM_AGENT_ID = '00000000-0000-0000-0000-000000000002'
     if (!agentConfig || agentConfig.id === SYSTEM_AGENT_ID) {
-      console.log('No real agent assigned for SMS on', to, '- sending auto-reply')
-
       // Save the inbound message
       await supabase.from('sms_messages').insert({
         user_id: serviceNumber.user_id,
@@ -106,9 +137,21 @@ Deno.serve(async (req) => {
         sent_at: new Date().toISOString(),
       })
 
-      // Send auto-reply
-      const autoReply = 'This number is not currently assigned to an agent. Visit magpipe.ai to set up your messaging agent.'
-      sendSMS(serviceNumber.user_id, from, to, autoReply, supabase, false)
+      // Only send the auto-reply once — check if we've already replied to this sender on this number
+      const { count } = await supabase
+        .from('sms_messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('sender_number', to)
+        .eq('recipient_number', from)
+        .eq('direction', 'outbound')
+
+      if ((count ?? 0) === 0) {
+        console.log('No text agent on', to, '- sending one-time auto-reply to', from)
+        const autoReply = 'This number is not currently assigned to an agent. Visit magpipe.ai to set up your messaging agent.'
+        sendSMS(serviceNumber.user_id, from, to, autoReply, supabase, false)
+      } else {
+        console.log('No text agent on', to, '- auto-reply already sent to', from, ', staying silent')
+      }
 
       const twiml = `<?xml version="1.0" encoding="UTF-8"?><Response></Response>`
       return new Response(twiml, {
@@ -234,23 +277,30 @@ Deno.serve(async (req) => {
         body: JSON.stringify(notificationData)
       }).catch(err => console.error('Failed to send Slack notification:', err))
 
-      // Check if user has credits before generating AI reply
-      const { allowed: hasCreditsForReply } = await checkBalance(supabase, serviceNumber.user_id)
-      if (!hasCreditsForReply) {
-        console.log(`Skipping AI SMS reply for user ${serviceNumber.user_id}: insufficient credits`)
+      // Content loop detection: if this exact message has been received more than twice
+      // already, we're in a bot-to-bot loop. Stop responding until a different message arrives.
+      const looping = await isContentLoop(supabase, from, to, body)
+      if (looping) {
+        console.log(`Content loop detected from ${from}: message repeated >2 times, not responding`)
       } else {
-        const slackSmsEnabled = shouldNotify(agentConfig?.functions, 'slack', 'sms')
-        if (slackSmsEnabled) {
-          sendSlackNotification(serviceNumber.user_id, from, body, supabase)
-            .then(slackThread => {
-              processAndReplySMS(serviceNumber.user_id, from, to, body, supabase, agentConfig, slackThread)
-            })
-            .catch(err => {
-              console.error('Failed to send Slack notification:', err)
-              processAndReplySMS(serviceNumber.user_id, from, to, body, supabase, agentConfig, null)
-            })
+        // Check if user has credits before generating AI reply
+        const { allowed: hasCreditsForReply } = await checkBalance(supabase, serviceNumber.user_id)
+        if (!hasCreditsForReply) {
+          console.log(`Skipping AI SMS reply for user ${serviceNumber.user_id}: insufficient credits`)
         } else {
-          processAndReplySMS(serviceNumber.user_id, from, to, body, supabase, agentConfig, null)
+          const slackSmsEnabled = shouldNotify(agentConfig?.functions, 'slack', 'sms')
+          if (slackSmsEnabled) {
+            sendSlackNotification(serviceNumber.user_id, from, body, supabase)
+              .then(slackThread => {
+                processAndReplySMS(serviceNumber.user_id, from, to, body, supabase, agentConfig, slackThread)
+              })
+              .catch(err => {
+                console.error('Failed to send Slack notification:', err)
+                processAndReplySMS(serviceNumber.user_id, from, to, body, supabase, agentConfig, null)
+              })
+          } else {
+            processAndReplySMS(serviceNumber.user_id, from, to, body, supabase, agentConfig, null)
+          }
         }
       }
     }
