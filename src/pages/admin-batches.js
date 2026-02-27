@@ -4,7 +4,7 @@
  */
 
 import { getCurrentUser, supabase } from '../lib/supabase.js';
-import { renderBottomNav } from '../components/BottomNav.js';
+import AdminHeader from '../components/AdminHeader.js';
 import { showToast } from '../lib/toast.js';
 import { showConfirmModal } from '../components/ConfirmModal.js';
 
@@ -31,16 +31,44 @@ export default class AdminBatchesPage {
       return;
     }
 
+    // Hide the main app nav
+    const persistentNav = document.getElementById('persistent-nav');
+    if (persistentNav) persistentNav.style.display = 'none';
+
+    const adminHeader = new AdminHeader({
+      title: 'Admin Portal',
+      backPath: '/admin',
+      role: profile.role,
+      tabs: [
+        { id: 'support', label: 'Support', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 7L2 7"/></svg>' },
+        { id: 'analytics', label: 'Analytics', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>' },
+        { id: 'kpi', label: 'KPIs', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>' },
+        { id: 'notifications', label: 'Notifications', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>' },
+        { id: 'marketing', label: 'Marketing', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>' },
+        { id: 'batches', label: 'Batches', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>' },
+      ],
+      activeTab: 'batches',
+      onTabChange: (tabId) => {
+        if (tabId === 'batches') return;
+        navigateTo(`/admin?tab=${tabId}`);
+      },
+    });
+
     const appElement = document.getElementById('app');
+    // Inject admin styles if not already present
+    if (!document.getElementById('admin-styles')) {
+      const style = document.createElement('style');
+      style.id = 'admin-styles';
+      style.textContent = AdminHeader.getStyles() + `
+        .admin-container { display: flex; flex-direction: column; height: 100vh; background: var(--bg-secondary); }
+      `;
+      document.head.appendChild(style);
+    }
+
     appElement.innerHTML = `
       <style>
-        .admin-batches-page { padding: 1.5rem; flex: 1; min-width: 0; box-sizing: border-box; max-width: 1000px; }
-        .admin-batches-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 0.75rem; }
-        .admin-batches-header h1 { margin: 0; font-size: 1.5rem; font-weight: 600; color: var(--text-primary); }
-        .admin-batches-header-left { display: flex; align-items: center; gap: 1rem; }
-        .admin-batches-back { background: none; border: none; cursor: pointer; color: var(--text-secondary); padding: 0.25rem; display: flex; align-items: center; }
-        .admin-batches-back:hover { color: var(--text-primary); }
-        .admin-batches-filters { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+        .admin-batches-page { padding: 1.5rem; flex: 1; min-width: 0; box-sizing: border-box; max-width: 1000px; overflow-y: auto; }
+        .admin-batches-filters { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
         .admin-filter-btn { padding: 0.4rem 0.85rem; border: 1px solid rgba(128,128,128,0.2); border-radius: 8px; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 0.8rem; transition: all 0.15s; }
         .admin-filter-btn.active { background: var(--primary-color, #6366f1); color: white; border-color: var(--primary-color, #6366f1); }
         .admin-batches-card { background: var(--bg-primary, white); border: 1px solid rgba(128,128,128,0.15); border-radius: 12px; overflow: hidden; }
@@ -71,14 +99,10 @@ export default class AdminBatchesPage {
         }
       </style>
 
-      <div class="admin-batches-page container with-bottom-nav">
-        <div class="admin-batches-header">
-          <div class="admin-batches-header-left">
-            <button class="admin-batches-back" onclick="navigateTo('/admin')" title="Back to Admin">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-            </button>
-            <h1>Batch Management</h1>
-          </div>
+      <div class="admin-container">
+        ${adminHeader.render()}
+
+        <div class="admin-batches-page">
           <div class="admin-batches-filters">
             <button class="admin-filter-btn ${this.statusFilter === 'active' ? 'active' : ''}" data-filter="active">Active</button>
             <button class="admin-filter-btn ${this.statusFilter === 'running' ? 'active' : ''}" data-filter="running">Running</button>
@@ -86,24 +110,25 @@ export default class AdminBatchesPage {
             <button class="admin-filter-btn ${this.statusFilter === 'recurring' ? 'active' : ''}" data-filter="recurring">Recurring</button>
             <button class="admin-filter-btn ${this.statusFilter === '' ? 'active' : ''}" data-filter="">All</button>
           </div>
-        </div>
 
-        <div class="admin-batches-card">
-          <div class="admin-batch-header-row">
-            <span>Batch</span>
-            <span>User</span>
-            <span>Status</span>
-            <span>Progress</span>
-            <span>Started</span>
-            <span></span>
-          </div>
-          <div id="admin-batches-content">
-            <div class="admin-batches-empty">Loading...</div>
+          <div class="admin-batches-card">
+            <div class="admin-batch-header-row">
+              <span>Batch</span>
+              <span>User</span>
+              <span>Status</span>
+              <span>Progress</span>
+              <span>Started</span>
+              <span></span>
+            </div>
+            <div id="admin-batches-content">
+              <div class="admin-batches-empty">Loading...</div>
+            </div>
           </div>
         </div>
       </div>
-      ${renderBottomNav('/admin/batches')}
     `;
+
+    adminHeader.attachListeners();
 
     this.attachListeners();
     await this.loadBatches();

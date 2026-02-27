@@ -58,3 +58,4 @@ CLAUDE.md
 !docs/logo/*.png
 !public/magpipe-logo.png
 tests/screenshots/
+supabase/migrations/20260226_rls_security_hardening 2.sql

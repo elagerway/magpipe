@@ -34,6 +34,7 @@ class AdminPage {
     this.analyticsData = null;
     this.chartJsLoaded = false;
     this.charts = {};
+    this._tabsLoaded = {};
   }
 
   async render() {
@@ -94,7 +95,11 @@ class AdminPage {
 
         <!-- Tab Content -->
         <div id="admin-tab-content" class="admin-tab-content">
-          <!-- Content rendered by switchTab() -->
+          <div id="admin-pane-analytics" class="admin-tab-pane"></div>
+          <div id="admin-pane-kpi" class="admin-tab-pane"></div>
+          <div id="admin-pane-support" class="admin-tab-pane"></div>
+          <div id="admin-pane-notifications" class="admin-tab-pane"></div>
+          <div id="admin-pane-marketing" class="admin-tab-pane"></div>
         </div>
       </div>
     `;
@@ -230,19 +235,42 @@ class AdminPage {
     if (tabName !== 'support' && this.omniChat) {
       this.omniChat.destroy();
       this.omniChat = null;
+      // Mark chat subtab for re-init on return
+      if (this._supportLazyLoaded) this._supportLazyLoaded['chat'] = false;
     }
 
-    // Render appropriate content
-    if (tabName === 'analytics') {
-      await this.renderAnalyticsTab();
-    } else if (tabName === 'kpi') {
-      await this.renderKpiTab();
-    } else if (tabName === 'support') {
-      await this.renderSupportTab();
-    } else if (tabName === 'notifications') {
-      await this.renderNotificationsTab();
-    } else if (tabName === 'marketing') {
-      await this.renderMarketingTab();
+    // Show active pane, hide all others
+    document.querySelectorAll('.admin-tab-pane').forEach(pane => pane.classList.remove('active'));
+    const activePane = document.getElementById(`admin-pane-${tabName}`);
+    if (activePane) activePane.classList.add('active');
+
+    // First visit: render into the pane via ID swap
+    if (activePane && !this._tabsLoaded[tabName]) {
+      // Temporarily give the pane the ID that render methods target
+      const outer = document.getElementById('admin-tab-content');
+      outer.id = '_admin-tab-content-stash';
+      activePane.id = 'admin-tab-content';
+
+      try {
+        if (tabName === 'analytics') await this.renderAnalyticsTab();
+        else if (tabName === 'kpi') await this.renderKpiTab();
+        else if (tabName === 'support') await this.renderSupportTab();
+        else if (tabName === 'notifications') await this.renderNotificationsTab();
+        else if (tabName === 'marketing') await this.renderMarketingTab();
+      } finally {
+        // Always restore IDs, even if render threw
+        const inner = document.getElementById('admin-tab-content');
+        if (inner) inner.id = `admin-pane-${tabName}`;
+        const stash = document.getElementById('_admin-tab-content-stash');
+        if (stash) stash.id = 'admin-tab-content';
+      }
+
+      this._tabsLoaded[tabName] = true;
+    } else if (tabName === 'support' && this.supportSubTab === 'chat' && !this.omniChat) {
+      // Re-init chat if returning to support with chat subtab active
+      const chatPane = document.getElementById('support-subtab-chat');
+      if (chatPane) chatPane.innerHTML = '<div class="loading-spinner">Loading...</div>';
+      await this._loadSupportSubtab('chat');
     }
   }
 }
