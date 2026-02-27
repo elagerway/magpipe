@@ -560,6 +560,17 @@ export default class AdminHeader {
         display: flex;
         flex-direction: column;
       }
+
+      .admin-tab-pane {
+        display: none;
+      }
+
+      .admin-tab-pane.active {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        min-height: 0;
+      }
     `;
   }
 }
