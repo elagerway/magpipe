@@ -366,6 +366,80 @@ export function addAgentCardStyles() {
     @media (max-width: 600px) {
       .agents-grid {
         grid-template-columns: 1fr;
+        gap: 0.625rem;
+      }
+
+      /* Switch card to a 3-column grid: [avatar] [info] [controls] */
+      .agent-card {
+        display: grid;
+        grid-template-columns: 40px 1fr auto;
+        grid-template-rows: auto auto;
+        column-gap: 0.75rem;
+        row-gap: 0;
+        padding: 0.875rem;
+        align-items: start;
+      }
+
+      /* Dissolve the header so avatar + toggle become direct grid children */
+      .agent-card-header {
+        display: contents;
+      }
+
+      .agent-avatar {
+        grid-column: 1;
+        grid-row: 1 / 3;
+        width: 40px;
+        height: 40px;
+        font-size: 1rem;
+        align-self: center;
+      }
+
+      /* Toggle moves to top-right */
+      .agent-card-toggle {
+        grid-column: 3;
+        grid-row: 1;
+        flex-direction: column-reverse;
+        align-items: flex-end;
+        gap: 0.125rem;
+      }
+
+      .agent-card-status {
+        font-size: 0.65rem;
+      }
+
+      /* Body takes the middle column */
+      .agent-card-body {
+        grid-column: 2;
+        grid-row: 1 / 3;
+        margin-bottom: 0;
+        align-self: center;
+      }
+
+      .agent-name {
+        font-size: 0.9375rem;
+        margin-bottom: 0.25rem;
+      }
+
+      .agent-last-edited {
+        display: none;
+      }
+
+      /* Actions goes to bottom-right */
+      .agent-card-actions {
+        grid-column: 3;
+        grid-row: 2;
+        flex: none;
+        justify-content: flex-end;
+        margin-top: 0.25rem;
+      }
+
+      .agent-card-actions .agent-open-btn {
+        display: none;
+      }
+
+      .agent-card-actions .agent-delete-btn {
+        flex: 0;
+        padding: 0.375rem 0.5rem;
       }
     }
   `;

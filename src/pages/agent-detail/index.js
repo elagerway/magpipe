@@ -228,7 +228,7 @@ export default class AgentDetailPage {
           </div>
         </div>
 
-        <!-- Tabs -->
+        <!-- Tabs (desktop) -->
         <div class="agent-tabs-container">
           <div class="agent-tabs" id="agent-tabs">
             <button class="agent-tab active" data-tab="configure">Configure</button>
@@ -241,11 +241,34 @@ export default class AgentDetailPage {
             <button class="agent-tab" data-tab="deployment">Deployment</button>
             <button class="agent-tab" data-tab="analytics">Analytics</button>
           </div>
+          <div class="tabs-scroll-indicator tabs-scroll-indicator-left" id="tabs-scroll-indicator-left">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+          </div>
           <div class="tabs-scroll-indicator" id="tabs-scroll-indicator">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
               <polyline points="9 18 15 12 9 6"></polyline>
             </svg>
           </div>
+        </div>
+
+        <!-- Tab dropdown (mobile only) -->
+        <div class="tab-select-wrapper">
+          <select id="tab-select" class="tab-select">
+            <option value="configure">Configure</option>
+            <option value="prompt">Prompt</option>
+            <option value="knowledge">Knowledge</option>
+            <option value="memory">Memory</option>
+            <option value="functions">Functions</option>
+            <option value="notifications">Notifications</option>
+            <option value="schedule">Schedule</option>
+            <option value="deployment">Deployment</option>
+            <option value="analytics">Analytics</option>
+          </select>
+          <svg class="tab-select-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
         </div>
 
         <!-- Tab Content -->
@@ -353,10 +376,16 @@ export default class AgentDetailPage {
   }
 
   attachEventListeners() {
-    // Tab switching
+    // Tab switching (desktop buttons)
     document.querySelectorAll('.agent-tab').forEach(tab => {
       tab.addEventListener('click', () => this.switchTab(tab.dataset.tab));
     });
+
+    // Tab switching (mobile dropdown)
+    const tabSelect = document.getElementById('tab-select');
+    if (tabSelect) {
+      tabSelect.addEventListener('change', () => this.switchTab(tabSelect.value));
+    }
 
     // Name input - also triggers prompt regeneration since it's part of identity
     const nameInput = document.getElementById('agent-name-input');
@@ -408,28 +437,44 @@ export default class AgentDetailPage {
     // Tabs scroll indicator
     const tabsContainer = document.getElementById('agent-tabs');
     const scrollIndicator = document.getElementById('tabs-scroll-indicator');
+    const scrollIndicatorLeft = document.getElementById('tabs-scroll-indicator-left');
     if (tabsContainer && scrollIndicator) {
-      const updateScrollIndicator = () => {
-        const hasMoreToScroll = tabsContainer.scrollWidth > tabsContainer.clientWidth &&
-          tabsContainer.scrollLeft < (tabsContainer.scrollWidth - tabsContainer.clientWidth - 10);
-        scrollIndicator.classList.toggle('visible', hasMoreToScroll);
+      const updateScrollIndicators = () => {
+        const scrollLeft = tabsContainer.scrollLeft;
+        const maxScroll = tabsContainer.scrollWidth - tabsContainer.clientWidth;
+        const canScrollRight = tabsContainer.scrollWidth > tabsContainer.clientWidth &&
+          scrollLeft < maxScroll - 10;
+        const canScrollLeft = scrollLeft > 10;
+        scrollIndicator.classList.toggle('visible', canScrollRight);
+        if (scrollIndicatorLeft) {
+          scrollIndicatorLeft.classList.toggle('visible', canScrollLeft);
+        }
       };
 
       // Initial check
-      updateScrollIndicator();
+      updateScrollIndicators();
 
       // Check on scroll
-      tabsContainer.addEventListener('scroll', updateScrollIndicator);
+      tabsContainer.addEventListener('scroll', updateScrollIndicators);
 
       // Check on resize
-      window.addEventListener('resize', updateScrollIndicator);
+      window.addEventListener('resize', updateScrollIndicators);
 
-      // Click indicator to scroll right
+      // Click right indicator to scroll right
       scrollIndicator.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
         tabsContainer.scrollBy({ left: 150, behavior: 'smooth' });
       });
+
+      // Click left indicator to scroll left
+      if (scrollIndicatorLeft) {
+        scrollIndicatorLeft.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          tabsContainer.scrollBy({ left: -150, behavior: 'smooth' });
+        });
+      }
     }
 
     // Attach tab-specific listeners
@@ -474,6 +519,12 @@ export default class AgentDetailPage {
     document.querySelectorAll('.agent-tab').forEach(tab => {
       tab.classList.toggle('active', tab.dataset.tab === tabName);
     });
+
+    // Sync mobile dropdown
+    const tabSelect = document.getElementById('tab-select');
+    if (tabSelect && tabSelect.value !== tabName) {
+      tabSelect.value = tabName;
+    }
 
     // Render tab content
     const tabContent = document.getElementById('tab-content');

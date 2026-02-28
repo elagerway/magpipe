@@ -63,7 +63,7 @@ class PhonePage {
     const isMobile = window.innerWidth <= 768;
 
     if (isMobile) {
-      // Mobile: Just the dialer
+      // Mobile: Dialer + compact number controls below
       appElement.innerHTML = `
         <div style="
           display: flex;
@@ -75,9 +75,60 @@ class PhonePage {
           position: relative;
         ">
           ${this.renderDialpadContent()}
+
+          <!-- My Numbers -->
+          <div style="margin-top: 1.5rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; padding: 0 0.25rem;">
+              <h2 style="margin: 0; font-size: 1rem; font-weight: 600;">My Numbers</h2>
+              <button class="btn btn-primary btn-sm" id="add-number-btn" style="font-size: 0.8125rem; padding: 0.375rem 0.75rem;">+ Add</button>
+            </div>
+            <div id="numbers-list-container">
+              <div class="text-muted" style="text-align: center; padding: 1rem; font-size: 0.875rem;">Loading...</div>
+            </div>
+          </div>
+
+          <!-- Branded Calling -->
+          <div style="margin-top: 1rem;">
+            <div style="
+              background: var(--bg-primary);
+              border: 1px solid var(--border-color);
+              border-radius: var(--radius-lg);
+              padding: 0.875rem 1rem;
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              gap: 0.75rem;
+            ">
+              <div style="min-width: 0;">
+                <div style="font-weight: 600; font-size: 0.9375rem;">Branded Calling</div>
+                <div id="branded-calling-summary" style="font-size: 0.8125rem; color: var(--text-secondary); margin-top: 0.125rem;">Loading...</div>
+              </div>
+              <button class="btn btn-sm" id="configure-cnam-btn" style="
+                background: rgb(168, 85, 247);
+                color: white;
+                border-color: rgb(168, 85, 247);
+                white-space: nowrap;
+                flex-shrink: 0;
+                font-size: 0.8125rem;
+                padding: 0.375rem 0.75rem;
+              ">Configure</button>
+            </div>
+          </div>
+
+          <!-- External SIP Trunks -->
+          <div style="margin-top: 1rem;" id="external-trunk-settings-container"></div>
         </div>
         ${renderBottomNav('/phone')}
       `;
+
+      // Wire up mobile number controls
+      createExternalTrunkSettings('external-trunk-settings-container');
+      document.getElementById('configure-cnam-btn')?.addEventListener('click', () => {
+        this.showBrandedCallingModal();
+      });
+      // loadServiceNumbersList populates the list and calls attachNumbersEventListeners (wires add-number-btn)
+      await this.loadServiceNumbersList();
+      this.renderBrandedCallingSummary();
     } else {
       // Desktop: Two-column layout (wrapped in container that accounts for sidebar)
       appElement.innerHTML = `
