@@ -3502,3 +3502,10 @@ p {
   font-size: 0.8rem;
   padding: 0.35rem 0.75rem;
 }
+
+/* Hide portal chat widget on mobile */
+@media (max-width: 768px) {
+  #magpipe-chat-container {
+    display: none !important;
+  }
+}

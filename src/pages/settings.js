@@ -258,6 +258,13 @@ export default class SettingsPage {
             font-size: 0.8rem;
           }
         }
+
+        @media (max-width: 480px) {
+          .settings-tab {
+            padding: 0.55rem 0.625rem;
+            font-size: 0.775rem;
+          }
+        }
       </style>
       ${renderBottomNav('/settings')}
     `;
@@ -359,24 +366,9 @@ export default class SettingsPage {
   }
 
   renderProfileTab() {
-    return `
-      <!-- User ID -->
-      <div class="card" style="margin-bottom: 1rem;">
-        <div class="form-group" style="margin: 0;">
-          <strong style="display: block; margin-bottom: 0.5rem;">User ID:</strong>
-          <code style="
-            background: var(--bg-secondary);
-            padding: 0.5rem;
-            border-radius: var(--radius-sm);
-            font-size: 0.75rem;
-            color: var(--text-primary);
-            user-select: all;
-            display: block;
-            word-break: break-all;
-          ">${this.user.id}</code>
-        </div>
-      </div>
+    const pencilIcon = `<svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="flex-shrink: 0; color: var(--text-tertiary); margin-left: auto;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>`;
 
+    return `
       <div class="card" style="margin-bottom: 1rem;">
         <h2>Profile</h2>
 
@@ -396,6 +388,7 @@ export default class SettingsPage {
               font-size: 1.5rem;
               font-weight: 600;
               color: var(--text-secondary);
+              flex-shrink: 0;
             ">
               ${this.profile?.avatar_url
                 ? `<img src="${this.profile.avatar_url}" style="width: 100%; height: 100%; object-fit: cover;" />`
@@ -417,8 +410,11 @@ export default class SettingsPage {
 
         <!-- Name -->
         <div class="form-group" style="border-bottom: 1px solid var(--border-color); padding-bottom: 1rem; margin-bottom: 1rem;">
-          <label style="font-weight: 600; margin: 0 0 0.5rem 0;">Name</label>
-          <div id="name-display" style="cursor: pointer; padding: 0.5rem; border-radius: var(--radius-sm); transition: background 0.2s;" onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='transparent'">${this.profile?.name || 'Click to add'}</div>
+          <label style="font-weight: 600; margin: 0 0 0.25rem 0;">Name</label>
+          <div id="name-display" style="cursor: pointer; padding: 0.5rem; border-radius: var(--radius-sm); transition: background 0.2s; display: flex; align-items: center; min-height: 44px; gap: 0.5rem;">
+            <span style="flex: 1;">${this.profile?.name || '<span style="color: var(--text-tertiary);">Tap to add</span>'}</span>
+            ${pencilIcon}
+          </div>
           <div id="name-edit" style="display: none;">
             <input type="text" id="name-input" class="form-input" value="${this.profile?.name || ''}" style="margin-bottom: 0.5rem;" />
             <div style="display: flex; gap: 0.5rem;">
@@ -430,8 +426,11 @@ export default class SettingsPage {
 
         <!-- Email -->
         <div class="form-group" style="border-bottom: 1px solid var(--border-color); padding-bottom: 1rem; margin-bottom: 1rem;">
-          <label style="font-weight: 600; margin: 0 0 0.5rem 0;">Email</label>
-          <div id="email-display" style="cursor: pointer; padding: 0.5rem; border-radius: var(--radius-sm); transition: background 0.2s;" onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='transparent'">${this.user.email}</div>
+          <label style="font-weight: 600; margin: 0 0 0.25rem 0;">Email</label>
+          <div id="email-display" style="cursor: pointer; padding: 0.5rem; border-radius: var(--radius-sm); transition: background 0.2s; display: flex; align-items: center; min-height: 44px; gap: 0.5rem;">
+            <span style="flex: 1;">${this.user.email}</span>
+            ${pencilIcon}
+          </div>
           <div id="email-edit" style="display: none;">
             <input type="email" id="email-input" class="form-input" value="${this.user.email}" style="margin-bottom: 0.5rem;" />
             <div style="display: flex; gap: 0.5rem;">
@@ -444,10 +443,13 @@ export default class SettingsPage {
 
         <!-- Phone Number -->
         <div class="form-group" style="border-bottom: 1px solid var(--border-color); padding-bottom: 1rem; margin-bottom: 1rem;">
-          <label style="font-weight: 600; margin: 0 0 0.5rem 0;">Phone Number</label>
-          <div id="phone-display" style="cursor: pointer; padding: 0.5rem; border-radius: var(--radius-sm); transition: background 0.2s;" onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='transparent'">
-            ${this.profile?.phone_number || 'Click to add'}
-            ${this.profile?.phone_verified ? '<span style="color: var(--success-color); margin-left: 0.5rem;">✓ Verified</span>' : ''}
+          <label style="font-weight: 600; margin: 0 0 0.25rem 0;">Phone Number</label>
+          <div id="phone-display" style="cursor: pointer; padding: 0.5rem; border-radius: var(--radius-sm); transition: background 0.2s; display: flex; align-items: center; min-height: 44px; gap: 0.5rem;">
+            <span style="flex: 1;">
+              ${this.profile?.phone_number || '<span style="color: var(--text-tertiary);">Tap to add</span>'}
+              ${this.profile?.phone_verified ? '<span style="color: var(--success-color); margin-left: 0.5rem; font-size: 0.8125rem;">✓ Verified</span>' : ''}
+            </span>
+            ${pencilIcon}
           </div>
           <div id="phone-edit" style="display: none;">
             <input type="tel" id="phone-input" class="form-input" value="${this.profile?.phone_number || ''}" placeholder="+1 (555) 123-4567" style="margin-bottom: 0.5rem;" />
@@ -460,9 +462,12 @@ export default class SettingsPage {
         </div>
 
         <!-- Organization -->
-        <div class="form-group">
-          <label style="font-weight: 600; margin: 0 0 0.5rem 0;">Organization</label>
-          <div id="org-display" style="cursor: pointer; padding: 0.5rem; border-radius: var(--radius-sm); transition: background 0.2s;" onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='transparent'">${this.organization?.name || 'Click to add'}</div>
+        <div class="form-group" style="border-bottom: 1px solid var(--border-color); padding-bottom: 1rem; margin-bottom: 1rem;">
+          <label style="font-weight: 600; margin: 0 0 0.25rem 0;">Organization</label>
+          <div id="org-display" style="cursor: pointer; padding: 0.5rem; border-radius: var(--radius-sm); transition: background 0.2s; display: flex; align-items: center; min-height: 44px; gap: 0.5rem;">
+            <span style="flex: 1;">${this.organization?.name || '<span style="color: var(--text-tertiary);">Tap to add</span>'}</span>
+            ${pencilIcon}
+          </div>
           <div id="org-edit" style="display: none;">
             <input type="text" id="org-input" class="form-input" value="${this.organization?.name || ''}" style="margin-bottom: 0.5rem;" />
             <div style="display: flex; gap: 0.5rem;">
@@ -470,6 +475,21 @@ export default class SettingsPage {
               <button class="btn btn-sm btn-secondary" id="cancel-org-btn">Cancel</button>
             </div>
           </div>
+        </div>
+
+        <!-- User ID (subtle, at the bottom of the profile card) -->
+        <div class="form-group" style="margin: 0;">
+          <label style="font-weight: 600; font-size: 0.8125rem; margin: 0 0 0.375rem 0; color: var(--text-secondary);">User ID</label>
+          <code style="
+            background: var(--bg-secondary);
+            padding: 0.5rem;
+            border-radius: var(--radius-sm);
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            user-select: all;
+            display: block;
+            word-break: break-all;
+          ">${this.user.id}</code>
         </div>
       </div>
 

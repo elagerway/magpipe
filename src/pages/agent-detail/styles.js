@@ -211,19 +211,74 @@ export const stylesMethods = {
         display: none;
       }
 
+      /* Mobile tab dropdown */
+      .tab-select-wrapper {
+        display: none;
+        position: relative;
+        margin-bottom: 0.75rem;
+      }
+
+      .tab-select {
+        width: 100%;
+        appearance: none;
+        -webkit-appearance: none;
+        background: var(--bg-primary);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-md);
+        padding: 0.625rem 2.5rem 0.625rem 0.875rem;
+        font-size: 0.9375rem;
+        font-weight: 500;
+        color: var(--text-primary);
+        cursor: pointer;
+        outline: none;
+      }
+
+      .tab-select:focus {
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+      }
+
+      .tab-select-chevron {
+        position: absolute;
+        right: 0.75rem;
+        top: 50%;
+        transform: translateY(-50%);
+        pointer-events: none;
+        color: var(--text-secondary);
+      }
+
+      @media (max-width: 768px) {
+        .agent-tabs-container {
+          display: none;
+        }
+        .tab-select-wrapper {
+          display: block;
+        }
+      }
+
       .tabs-scroll-indicator {
         display: none;
         position: absolute;
         right: 0;
         top: 0;
         bottom: 0;
-        width: 40px;
-        background: linear-gradient(to right, transparent, white 50%);
+        width: 48px;
+        background: linear-gradient(to right, transparent, white 60%);
         align-items: center;
         justify-content: flex-end;
+        padding-right: 4px;
         color: var(--text-secondary);
         z-index: 5;
-        cursor: default;
+        cursor: pointer;
+      }
+
+      .tabs-scroll-indicator-left {
+        right: auto;
+        left: 0;
+        background: linear-gradient(to left, transparent, white 60%);
+        justify-content: flex-start;
+        padding-right: 0;
+        padding-left: 4px;
       }
 
       .tabs-scroll-indicator svg {
