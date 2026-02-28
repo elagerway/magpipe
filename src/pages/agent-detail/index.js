@@ -602,16 +602,25 @@ export default class AgentDetailPage {
   }
 
   scheduleAutoSave(updates) {
-    // Merge with pending updates
+    // Merge into in-memory agent state immediately
     Object.assign(this.agent, updates);
+
+    // Accumulate all pending changes so debounce doesn't lose earlier fields
+    // (e.g. organization_name save gets cancelled by regeneratePrompts calling scheduleAutoSave)
+    if (!this._pendingUpdates) this._pendingUpdates = {};
+    Object.assign(this._pendingUpdates, updates);
 
     // Clear existing timeout
     if (this.autoSaveTimeout) {
       clearTimeout(this.autoSaveTimeout);
     }
 
-    // Schedule save
-    this.autoSaveTimeout = setTimeout(() => this.saveAgent(updates), 1000);
+    // Schedule save with ALL accumulated pending changes
+    this.autoSaveTimeout = setTimeout(() => {
+      const toSave = this._pendingUpdates;
+      this._pendingUpdates = {};
+      this.saveAgent(toSave);
+    }, 1000);
   }
 
   async saveAgent(updates) {

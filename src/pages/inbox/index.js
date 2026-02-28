@@ -119,7 +119,7 @@ class InboxPage {
     if (!document.getElementById('inbox-spin-style')) {
       const spinStyle = document.createElement('style');
       spinStyle.id = 'inbox-spin-style';
-      spinStyle.textContent = `@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`;
+      spinStyle.textContent = `@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } @keyframes skeleton-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }`;
       document.head.appendChild(spinStyle);
     }
 
@@ -131,421 +131,59 @@ class InboxPage {
       console.log('Hidden conversations loaded:', Array.from(this.hiddenConversations));
     }
 
-    // Fetch profile and conversations in parallel
     const now = Date.now();
     const needsFetch = this.conversations.length === 0 || (now - this.lastFetchTime) > 30000;
-
-    const [{ profile }] = await Promise.all([
-      User.getProfile(user.id),
-      needsFetch ? this.loadConversations(user.id).then(() => { this.lastFetchTime = Date.now(); }) : Promise.resolve()
-    ]);
-
-    // Check for deep-link parameters in URL (take priority over default selection)
-    const urlParams = new URLSearchParams(window.location.search);
-    const deepLinkCallId = urlParams.get('call');
-    const deepLinkSmsPhone = urlParams.get('sms');
-    const deepLinkSmsService = urlParams.get('service');
-    const deepLinkContact = urlParams.get('contact');
-
-    if (deepLinkCallId) {
-      window.history.replaceState({}, '', '/inbox');
-      const callConv = this.conversations.find(c => c.type === 'call' && c.callId === deepLinkCallId);
-      if (callConv) {
-        this.selectedCallId = deepLinkCallId;
-        this.selectedContact = null;
-        this.selectedServiceNumber = null;
-        this.selectedChatSessionId = null;
-        this.selectedEmailThreadId = null;
-      }
-    } else if (deepLinkSmsPhone) {
-      window.history.replaceState({}, '', '/inbox');
-      const smsConv = this.conversations.find(c => c.type === 'sms' && c.phone === deepLinkSmsPhone && (!deepLinkSmsService || c.serviceNumber === deepLinkSmsService));
-      if (smsConv) {
-        this.selectedContact = smsConv.phone;
-        this.selectedServiceNumber = smsConv.serviceNumber;
-        this.selectedCallId = null;
-        this.selectedChatSessionId = null;
-        this.selectedEmailThreadId = null;
-      }
-    } else if (deepLinkContact) {
-      window.history.replaceState({}, '', '/inbox');
-      // Defer to afterRender for openNewConversation (needs DOM)
-      this._pendingContactOpen = deepLinkContact;
-    }
-
-    // Handle initial selection (skip if deep-link already set selection)
-    const hasDeepLink = deepLinkCallId || deepLinkSmsPhone;
-    const isMobile = window.innerWidth <= 768;
-    if (hasDeepLink) {
-      this._deepLinkUsed = true;
-    } else if (isMobile) {
-      // Clear selection on mobile (no item should be highlighted on first view)
-      this.selectedContact = null;
-      this.selectedServiceNumber = null;
-      this.selectedCallId = null;
-    } else {
-      // On desktop, restore last viewed conversation or select most recent
-      const lastViewedContact = localStorage.getItem('inbox_last_selected_contact');
-      const lastViewedServiceNumber = localStorage.getItem('inbox_last_selected_service_number');
-      const lastViewedCallId = localStorage.getItem('inbox_last_selected_call');
-
-      if (lastViewedCallId && this.conversations.some(c => c.type === 'call' && c.callId === lastViewedCallId)) {
-        this.selectedCallId = lastViewedCallId;
-        this.selectedContact = null;
-        this.selectedServiceNumber = null;
-      } else if (lastViewedContact && lastViewedServiceNumber &&
-                 this.conversations.some(c => c.type === 'sms' && c.phone === lastViewedContact && c.serviceNumber === lastViewedServiceNumber)) {
-        this.selectedContact = lastViewedContact;
-        this.selectedServiceNumber = lastViewedServiceNumber;
-        this.selectedCallId = null;
-      } else if (this.conversations.length > 0) {
-        // Default to most recent conversation
-        const mostRecent = this.conversations[0];
-        if (mostRecent.type === 'call') {
-          this.selectedCallId = mostRecent.callId;
-          this.selectedContact = null;
-          this.selectedServiceNumber = null;
-        } else {
-          this.selectedContact = mostRecent.phone;
-          this.selectedServiceNumber = mostRecent.serviceNumber;
-          this.selectedCallId = null;
-        }
-      }
-    }
-
     const appElement = document.getElementById('app');
 
-    appElement.innerHTML = `
-      <div class="inbox-container">
-        <!-- Conversation List Sidebar -->
-        <div class="conversation-list" id="conversation-list">
-          <div class="inbox-header" style="position: relative; margin-top: -4px;">
-            <h1 style="margin: 0; font-size: 1rem; font-weight: 600;">Inbox</h1>
-            <div id="inbox-search-container" style="display: flex; align-items: center; margin-left: auto; margin-right: 0.5rem;">
-              <button id="inbox-search-toggle" style="
-                background: none;
-                border: none;
-                padding: 0.375rem;
-                cursor: pointer;
-                display: ${this.searchQuery || this.searchExpanded ? 'none' : 'flex'};
-                align-items: center;
-                color: var(--text-secondary);
-              ">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="11" cy="11" r="8"></circle>
-                  <path d="M21 21l-4.35-4.35"></path>
-                </svg>
-              </button>
-              <div id="inbox-search-expanded" style="display: ${this.searchQuery || this.searchExpanded ? 'flex' : 'none'}; align-items: center; gap: 0.5rem;">
-                <input type="text" id="inbox-search" placeholder="Search..." value="${this.searchQuery || ''}" style="
-                  width: 120px;
-                  padding: 0.375rem 0.75rem;
-                  border: 1px solid var(--border-color);
-                  border-radius: 9999px;
-                  font-size: 0.8rem;
-                  outline: none;
-                " />
-                <select id="inbox-date-filter" style="
-                  padding: 0.375rem 0.5rem;
-                  border: 1px solid var(--border-color);
-                  border-radius: 9999px;
-                  font-size: 0.7rem;
-                  outline: none;
-                  background: var(--bg-primary);
-                  cursor: pointer;
-                ">
-                  <option value="all" ${this.dateFilter === 'all' ? 'selected' : ''}>All Time</option>
-                  <option value="today" ${this.dateFilter === 'today' ? 'selected' : ''}>Today</option>
-                  <option value="yesterday" ${this.dateFilter === 'yesterday' ? 'selected' : ''}>Yesterday</option>
-                  <option value="week" ${this.dateFilter === 'week' ? 'selected' : ''}>Last 7 Days</option>
-                  <option value="month" ${this.dateFilter === 'month' ? 'selected' : ''}>Last 30 Days</option>
-                </select>
-              </div>
-            </div>
-            <button id="new-conversation-btn" style="
-              background: white;
-              color: var(--primary-color);
-              border: 2px solid transparent;
-              background-image: linear-gradient(white, white), linear-gradient(135deg, #6366f1, #8b5cf6);
-              background-origin: padding-box, border-box;
-              background-clip: padding-box, border-box;
-              border-radius: 50%;
-              width: 29px;
-              height: 29px;
-              font-size: 1rem;
-              font-weight: 300;
-              cursor: pointer;
-              display: ${this.searchExpanded ? 'none' : 'flex'};
-              align-items: center;
-              justify-content: center;
-              line-height: 1;
-              flex-shrink: 0;
-              transition: all 0.2s ease;
-            " onmouseover="this.style.backgroundImage='linear-gradient(var(--bg-secondary), var(--bg-secondary)), linear-gradient(135deg, #6366f1, #8b5cf6)'" onmouseout="this.style.backgroundImage='linear-gradient(white, white), linear-gradient(135deg, #6366f1, #8b5cf6)'">+</button>
-            <button id="filter-toggle-btn" style="
-              background: ${this.filtersExpanded || this.hasActiveFilters() ? 'var(--primary-color)' : 'none'};
-              color: ${this.filtersExpanded || this.hasActiveFilters() ? 'white' : 'var(--text-secondary)'};
-              border: 1px solid ${this.filtersExpanded || this.hasActiveFilters() ? 'var(--primary-color)' : 'var(--border-color)'};
-              border-radius: 50%;
-              width: 29px;
-              height: 29px;
-              cursor: pointer;
-              display: ${this.searchExpanded ? 'none' : 'flex'};
-              align-items: center;
-              justify-content: center;
-              flex-shrink: 0;
-              transition: all 0.2s ease;
-            ">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
-              </svg>
-            </button>
-            <button id="edit-toggle-btn" style="
-              background: ${this.editModeExpanded ? 'var(--primary-color)' : 'none'};
-              color: ${this.editModeExpanded ? 'white' : 'var(--text-secondary)'};
-              border: 1px solid ${this.editModeExpanded ? 'var(--primary-color)' : 'var(--border-color)'};
-              border-radius: 50%;
-              width: 29px;
-              height: 29px;
-              cursor: pointer;
-              display: ${this.searchExpanded ? 'none' : 'flex'};
-              align-items: center;
-              justify-content: center;
-              flex-shrink: 0;
-              transition: all 0.2s ease;
-            ">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-              </svg>
-            </button>
+    if (needsFetch) {
+      // Render shell immediately with skeleton conversation list — don't block on data
+      appElement.innerHTML = this._renderInboxShell(true);
+      requestAnimationFrame(() => {
+        this.attachEventListeners();
+        setTimeout(() => this.subscribeToMessages(), 100);
+      });
 
-            <!-- New Message Dropdown Menu -->
-            <div id="new-message-dropdown" style="
-              display: none;
-              position: absolute;
-              top: 100%;
-              right: 0;
-              margin-top: 2px;
-              background: var(--bg-primary);
-              border: 1px solid var(--border-color);
-              border-radius: 8px;
-              box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-              min-width: 200px;
-              z-index: 100;
-              overflow: hidden;
-            ">
-              <button class="dropdown-item" data-action="new-message" style="
-                display: flex;
-                align-items: center;
-                gap: 0.75rem;
-                width: 100%;
-                padding: 0.75rem 1rem;
-                border: none;
-                background: none;
-                cursor: pointer;
-                font-size: 0.875rem;
-                color: var(--text-primary);
-                text-align: left;
-                transition: background 0.15s;
-              " onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='none'">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                </svg>
-                <span>Message</span>
-              </button>
-              <button class="dropdown-item" data-action="agent-message" style="
-                display: flex;
-                align-items: center;
-                gap: 0.75rem;
-                width: 100%;
-                padding: 0.75rem 1rem;
-                border: none;
-                background: none;
-                cursor: pointer;
-                font-size: 0.875rem;
-                color: var(--text-primary);
-                text-align: left;
-                transition: background 0.15s;
-              " onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='none'">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"></path>
-                  <circle cx="7.5" cy="14.5" r="1.5"></circle>
-                  <circle cx="16.5" cy="14.5" r="1.5"></circle>
-                </svg>
-                <span>Agent Message</span>
-              </button>
-              <button class="dropdown-item" data-action="new-email" style="
-                display: flex;
-                align-items: center;
-                gap: 0.75rem;
-                width: 100%;
-                padding: 0.75rem 1rem;
-                border: none;
-                background: none;
-                cursor: pointer;
-                font-size: 0.875rem;
-                color: var(--text-primary);
-                text-align: left;
-                transition: background 0.15s;
-              " onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='none'">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-                  <polyline points="22,6 12,13 2,6"></polyline>
-                </svg>
-                <span>Email</span>
-              </button>
-              <button class="dropdown-item" data-action="agent-email" style="
-                display: flex;
-                align-items: center;
-                gap: 0.75rem;
-                width: 100%;
-                padding: 0.75rem 1rem;
-                border: none;
-                background: none;
-                cursor: pointer;
-                font-size: 0.875rem;
-                color: var(--text-primary);
-                text-align: left;
-                transition: background 0.15s;
-              " onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='none'">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-                  <polyline points="22,6 12,13 2,6"></polyline>
-                  <circle cx="19" cy="5" r="4" fill="var(--primary-color)" stroke="var(--primary-color)"></circle>
-                  <text x="19" y="7" text-anchor="middle" font-size="6" fill="white" font-weight="bold">AI</text>
-                </svg>
-                <span>Agent Email</span>
-              </button>
-              <button class="dropdown-item" data-action="bulk-message" style="
-                display: flex;
-                align-items: center;
-                gap: 0.75rem;
-                width: 100%;
-                padding: 0.75rem 1rem;
-                border: none;
-                background: none;
-                cursor: not-allowed;
-                font-size: 0.875rem;
-                color: var(--text-primary);
-                text-align: left;
-                opacity: 0.5;
-              ">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                  <circle cx="9" cy="7" r="4"></circle>
-                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                  <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-                </svg>
-                <span>Bulk Message</span>
-                <span style="margin-left: auto; font-size: 0.7rem; background: var(--border-color); padding: 0.125rem 0.375rem; border-radius: 4px;">Soon</span>
-              </button>
-              <button class="dropdown-item" data-action="bulk-agent-message" style="
-                display: flex;
-                align-items: center;
-                gap: 0.75rem;
-                width: 100%;
-                padding: 0.75rem 1rem;
-                border: none;
-                background: none;
-                cursor: not-allowed;
-                font-size: 0.875rem;
-                color: var(--text-primary);
-                text-align: left;
-                opacity: 0.5;
-              ">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                  <circle cx="9" cy="7" r="4"></circle>
-                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                  <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-                </svg>
-                <span>Bulk Agent Message</span>
-                <span style="margin-left: auto; font-size: 0.7rem; background: var(--border-color); padding: 0.125rem 0.375rem; border-radius: 4px;">Soon</span>
-              </button>
-            </div>
-          </div>
+      // Fetch data in background
+      await Promise.all([
+        User.getProfile(user.id),
+        this.loadConversations(user.id).then(() => { this.lastFetchTime = Date.now(); }),
+      ]);
 
-          <!-- Filter Tabs -->
-          <div id="filters-container" style="display: ${this.filtersExpanded ? 'block' : 'none'};">
-            <div class="inbox-filters" id="inbox-filters" style="justify-content: center; gap: 0.5rem; border-bottom: none; padding-bottom: 0;">
-              <button class="inbox-filter-btn ${this.typeFilter === 'all' && this.directionFilter === 'all' && !this.missedFilter && this.sentimentFilter === 'all' && !this.unreadFilter ? 'active' : ''}" data-filter-type="all" data-filter-reset="true">All</button>
-              <button class="inbox-filter-btn ${this.typeFilter === 'calls' ? 'active' : ''}" data-filter-type="calls">Calls</button>
-              <button class="inbox-filter-btn ${this.typeFilter === 'texts' ? 'active' : ''}" data-filter-type="texts">Texts</button>
-              <button class="inbox-filter-btn ${this.typeFilter === 'chat' ? 'active' : ''}" data-filter-type="chat">Chat</button>
-              <button class="inbox-filter-btn ${this.typeFilter === 'email' ? 'active' : ''}" data-filter-type="email">Email</button>
-            </div>
-            <div class="inbox-filters" id="inbox-filters-status" style="justify-content: center; gap: 0.5rem; padding-top: 0.375rem; border-bottom: none; padding-bottom: 0;">
-              <button class="inbox-filter-btn ${this.directionFilter === 'inbound' ? 'active' : ''}" data-filter-direction="inbound">In</button>
-              <button class="inbox-filter-btn ${this.directionFilter === 'outbound' ? 'active' : ''}" data-filter-direction="outbound">Out</button>
-              <button class="inbox-filter-btn ${this.missedFilter ? 'active' : ''}" data-filter-missed="true">Missed</button>
-              <button class="inbox-filter-btn ${this.unreadFilter ? 'active' : ''}" data-filter-unread="true">Unread</button>
-            </div>
-            <div class="inbox-filters" id="inbox-filters-sentiment" style="justify-content: center; gap: 0.5rem; padding-top: 0.375rem;">
-              <button class="inbox-filter-btn ${this.sentimentFilter === 'positive' ? 'active' : ''}" data-filter-sentiment="positive">Positive</button>
-              <button class="inbox-filter-btn ${this.sentimentFilter === 'neutral' ? 'active' : ''}" data-filter-sentiment="neutral">Neutral</button>
-              <button class="inbox-filter-btn ${this.sentimentFilter === 'negative' ? 'active' : ''}" data-filter-sentiment="negative">Negative</button>
-            </div>
-          </div>
+      // Apply deep-link / restore selection now that data is ready
+      this._applyInitialSelection();
 
-          <!-- Edit Actions -->
-          <div id="edit-actions-container" style="display: ${this.editModeExpanded ? 'block' : 'none'};">
-            <div class="inbox-filters" style="justify-content: center; gap: 0.5rem;">
-              <button class="inbox-filter-btn" id="mark-all-read-btn" style="display: flex; align-items: center; gap: 0.375rem;">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                  <polyline points="22 4 12 14.01 9 11.01"></polyline>
-                </svg>
-                Mark All Read
-              </button>
-              <button class="inbox-filter-btn ${this.selectMode ? 'active' : ''}" id="select-delete-btn" style="display: flex; align-items: center; gap: 0.375rem;">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="3 6 5 6 21 6"></polyline>
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                </svg>
-                ${this.selectMode ? 'Cancel Selection' : 'Select to Delete'}
-              </button>
-              ${this.selectMode && this.selectedForDeletion.size > 0 ? `
-              <button class="inbox-filter-btn" id="confirm-delete-btn" style="background: #ef4444; color: white; border-color: #ef4444; display: flex; align-items: center; gap: 0.375rem;">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="3 6 5 6 21 6"></polyline>
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                </svg>
-                Delete (${this.selectedForDeletion.size})
-              </button>
-              ` : ''}
-            </div>
-          </div>
+      // Update conversation list
+      const conversationsEl = document.getElementById('conversations');
+      if (conversationsEl) {
+        conversationsEl.innerHTML = this.renderConversationList();
+        this.attachConversationListeners();
+      }
 
-          <div id="conversations">
-            ${this.renderConversationList()}
-          </div>
-        </div>
+      // Update message thread if selection resolved
+      if (this.selectedContact || this.selectedCallId || this.selectedChatSessionId || this.selectedEmailThreadId) {
+        const messageThreadEl = document.getElementById('message-thread');
+        if (messageThreadEl) {
+          messageThreadEl.innerHTML = this.renderMessageThread();
+        }
+      }
+    } else {
+      // Data already cached — apply selection (handles URL deep-links) then render
+      this._applyInitialSelection();
+      appElement.innerHTML = this._renderInboxShell(false);
+      requestAnimationFrame(() => {
+        this.attachEventListeners();
+        setTimeout(() => this.subscribeToMessages(), 100);
+      });
+    }
 
-        <!-- Message Thread -->
-        <div class="message-thread" id="message-thread">
-          ${(this.selectedContact || this.selectedCallId || this.selectedChatSessionId || this.selectedEmailThreadId) ? this.renderMessageThread() : this.renderEmptyState()}
-        </div>
-      </div>
-      ${renderBottomNav('/inbox')}
-    `;
-
-    // Sync badge with unified service (single source of truth)
     refreshUnreadBadge();
 
-    // Defer heavy operations to allow UI to be scrollable immediately
-    requestAnimationFrame(() => {
-      this.attachEventListeners();
-      // Defer subscription even more to not block
-      setTimeout(() => this.subscribeToMessages(), 100);
-    });
 
     // Refresh conversations when tab becomes visible (catches missed realtime events)
     this._visibilityHandler = async () => {
       if (!document.hidden && this.userId) {
         const timeSinceLastFetch = Date.now() - (this.lastFetchTime || 0);
         if (timeSinceLastFetch > 10000) { // Only if >10s since last fetch
-          console.log('📥 Tab visible again, refreshing inbox...');
           await this.loadConversations(this.userId);
           this.lastFetchTime = Date.now();
           const conversationsEl = document.getElementById('conversations');
@@ -1153,9 +791,9 @@ class InboxPage {
   async loadConversations(userId) {
     // Load all data in parallel for speed
     const [messagesResult, callsResult, contactsResult, chatSessionsResult, agentConfigsResult, serviceNumbersResult, emailResult] = await Promise.all([
-      supabase.from('sms_messages').select('*').eq('user_id', userId).order('sent_at', { ascending: false }),
-      supabase.from('call_records').select('*').eq('user_id', userId).order('started_at', { ascending: false }),
-      supabase.from('contacts').select('*').eq('user_id', userId),
+      supabase.from('sms_messages').select('id, user_id, sender_number, recipient_number, content, body, sent_at, created_at, direction, read, thread_id, media_url, status').eq('user_id', userId).order('sent_at', { ascending: false }).limit(500),
+      supabase.from('call_records').select('id, user_id, caller_number, recipient_number, contact_phone, started_at, ended_at, duration, direction, status, recording_url, transcript, call_summary, sentiment, missed, service_number, agent_id, phone_number, created_at').eq('user_id', userId).order('started_at', { ascending: false }).limit(300),
+      supabase.from('contacts').select('id, user_id, name, phone_number, email, first_name, last_name, company, avatar_url').eq('user_id', userId),
       ChatSession.getRecentWithPreview(userId, 50),
       supabase.from('agent_configs').select('id, translate_to, language').eq('user_id', userId),
       supabase.from('service_numbers').select('phone_number, agent_id, text_agent_id').eq('user_id', userId).eq('is_active', true),
@@ -1188,8 +826,6 @@ class InboxPage {
     const translateConfigs = agentConfigs.filter(ac => ac.translate_to);
     this.translateTo = translateConfigs.length > 0 ? translateConfigs[0].translate_to : null;
 
-    console.log('Inbox loaded:', messages?.length || 0, 'messages,', calls?.length || 0, 'calls,', chatSessions.length, 'chats');
-
     // Create a map of phone number to contact for quick lookup
     this.contactsMap = {};
     this.contactsEmailMap = {};
@@ -1201,7 +837,6 @@ class InboxPage {
         this.contactsEmailMap[contact.email.toLowerCase()] = contact;
       }
     });
-    console.log('Contacts loaded:', contacts?.length || 0);
 
     const conversationsList = [];
 
@@ -1261,8 +896,6 @@ class InboxPage {
 
     // Add each call as a separate conversation
     calls?.forEach(call => {
-      console.log('Processing call:', call);
-
       const duration = this.calculateTotalDuration(call);
       const durationText = duration > 0
         ? `${Math.floor(duration / 60)}:${String(duration % 60).padStart(2, '0')}`
@@ -1428,6 +1061,417 @@ class InboxPage {
     });
 
     // Badge is updated by refreshUnreadBadge() in render()
+  }
+
+  // Apply deep-link URL params or restore last selected conversation
+  _applyInitialSelection() {
+    // Check for deep-link parameters in URL (take priority over saved selection)
+    const urlParams = new URLSearchParams(window.location.search);
+    const deepLinkCallId = urlParams.get('call');
+    const deepLinkSmsPhone = urlParams.get('sms');
+    const deepLinkSmsService = urlParams.get('service');
+    const deepLinkContact = urlParams.get('contact');
+
+    if (deepLinkCallId) {
+      window.history.replaceState({}, '', '/inbox');
+      const callConv = this.conversations.find(c => c.type === 'call' && c.callId === deepLinkCallId);
+      if (callConv) {
+        this.selectedCallId = deepLinkCallId;
+        this.selectedContact = null;
+        this.selectedServiceNumber = null;
+        this.selectedChatSessionId = null;
+        this.selectedEmailThreadId = null;
+        this._deepLinkUsed = true;
+      }
+    } else if (deepLinkSmsPhone) {
+      window.history.replaceState({}, '', '/inbox');
+      const smsConv = this.conversations.find(c => c.type === 'sms' && c.phone === deepLinkSmsPhone && (!deepLinkSmsService || c.serviceNumber === deepLinkSmsService));
+      if (smsConv) {
+        this.selectedContact = smsConv.phone;
+        this.selectedServiceNumber = smsConv.serviceNumber;
+        this.selectedCallId = null;
+        this.selectedChatSessionId = null;
+        this.selectedEmailThreadId = null;
+        this._deepLinkUsed = true;
+      }
+    } else if (deepLinkContact) {
+      window.history.replaceState({}, '', '/inbox');
+      this._pendingContactOpen = deepLinkContact;
+    }
+
+    // Only apply default selection logic if no deep-link and no current selection
+    const hasDeepLink = deepLinkCallId || deepLinkSmsPhone || deepLinkContact;
+    const hasSelection = this.selectedContact || this.selectedCallId || this.selectedChatSessionId || this.selectedEmailThreadId;
+
+    if (!hasDeepLink && !hasSelection) {
+      const isMobile = window.innerWidth <= 768;
+      if (isMobile) {
+        // Clear selection on mobile (no item highlighted on first view)
+        this.selectedContact = null;
+        this.selectedServiceNumber = null;
+        this.selectedCallId = null;
+      } else {
+        // On desktop, restore last viewed conversation or select most recent
+        const lastViewedContact = localStorage.getItem('inbox_last_selected_contact');
+        const lastViewedServiceNumber = localStorage.getItem('inbox_last_selected_service_number');
+        const lastViewedCallId = localStorage.getItem('inbox_last_selected_call');
+
+        if (lastViewedCallId && this.conversations.some(c => c.type === 'call' && c.callId === lastViewedCallId)) {
+          this.selectedCallId = lastViewedCallId;
+          this.selectedContact = null;
+          this.selectedServiceNumber = null;
+        } else if (lastViewedContact && lastViewedServiceNumber &&
+                   this.conversations.some(c => c.type === 'sms' && c.phone === lastViewedContact && c.serviceNumber === lastViewedServiceNumber)) {
+          this.selectedContact = lastViewedContact;
+          this.selectedServiceNumber = lastViewedServiceNumber;
+          this.selectedCallId = null;
+        } else if (this.conversations.length > 0) {
+          const mostRecent = this.conversations[0];
+          if (mostRecent.type === 'call') {
+            this.selectedCallId = mostRecent.callId;
+            this.selectedContact = null;
+            this.selectedServiceNumber = null;
+          } else {
+            this.selectedContact = mostRecent.phone;
+            this.selectedServiceNumber = mostRecent.serviceNumber;
+            this.selectedCallId = null;
+          }
+        }
+      }
+    }
+  }
+
+  // Render the full inbox shell. showSkeleton=true shows pulsing placeholder rows
+  // in #conversations instead of the real list (used while data is loading).
+  _renderInboxShell(showSkeleton) {
+    return `
+      <div class="inbox-container">
+        <!-- Conversation List Sidebar -->
+        <div class="conversation-list" id="conversation-list">
+          <div class="inbox-header" style="position: relative; margin-top: -4px;">
+            <h1 style="margin: 0; font-size: 1rem; font-weight: 600;">Inbox</h1>
+            <div id="inbox-search-container" style="display: flex; align-items: center; margin-left: auto; margin-right: 0.5rem;">
+              <button id="inbox-search-toggle" style="
+                background: none;
+                border: none;
+                padding: 0.375rem;
+                cursor: pointer;
+                display: ${this.searchQuery || this.searchExpanded ? 'none' : 'flex'};
+                align-items: center;
+                color: var(--text-secondary);
+              ">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <path d="M21 21l-4.35-4.35"></path>
+                </svg>
+              </button>
+              <div id="inbox-search-expanded" style="display: ${this.searchQuery || this.searchExpanded ? 'flex' : 'none'}; align-items: center; gap: 0.5rem;">
+                <input type="text" id="inbox-search" placeholder="Search..." value="${this.searchQuery || ''}" style="
+                  width: 120px;
+                  padding: 0.375rem 0.75rem;
+                  border: 1px solid var(--border-color);
+                  border-radius: 9999px;
+                  font-size: 0.8rem;
+                  outline: none;
+                " />
+                <select id="inbox-date-filter" style="
+                  padding: 0.375rem 0.5rem;
+                  border: 1px solid var(--border-color);
+                  border-radius: 9999px;
+                  font-size: 0.7rem;
+                  outline: none;
+                  background: var(--bg-primary);
+                  cursor: pointer;
+                ">
+                  <option value="all" ${this.dateFilter === 'all' ? 'selected' : ''}>All Time</option>
+                  <option value="today" ${this.dateFilter === 'today' ? 'selected' : ''}>Today</option>
+                  <option value="yesterday" ${this.dateFilter === 'yesterday' ? 'selected' : ''}>Yesterday</option>
+                  <option value="week" ${this.dateFilter === 'week' ? 'selected' : ''}>Last 7 Days</option>
+                  <option value="month" ${this.dateFilter === 'month' ? 'selected' : ''}>Last 30 Days</option>
+                </select>
+              </div>
+            </div>
+            <button id="new-conversation-btn" style="
+              background: white;
+              color: var(--primary-color);
+              border: 2px solid transparent;
+              background-image: linear-gradient(white, white), linear-gradient(135deg, #6366f1, #8b5cf6);
+              background-origin: padding-box, border-box;
+              background-clip: padding-box, border-box;
+              border-radius: 50%;
+              width: 29px;
+              height: 29px;
+              font-size: 1rem;
+              font-weight: 300;
+              cursor: pointer;
+              display: ${this.searchExpanded ? 'none' : 'flex'};
+              align-items: center;
+              justify-content: center;
+              line-height: 1;
+              flex-shrink: 0;
+              transition: all 0.2s ease;
+            " onmouseover="this.style.backgroundImage='linear-gradient(var(--bg-secondary), var(--bg-secondary)), linear-gradient(135deg, #6366f1, #8b5cf6)'" onmouseout="this.style.backgroundImage='linear-gradient(white, white), linear-gradient(135deg, #6366f1, #8b5cf6)'">+</button>
+            <button id="filter-toggle-btn" style="
+              background: ${this.filtersExpanded || this.hasActiveFilters() ? 'var(--primary-color)' : 'none'};
+              color: ${this.filtersExpanded || this.hasActiveFilters() ? 'white' : 'var(--text-secondary)'};
+              border: 1px solid ${this.filtersExpanded || this.hasActiveFilters() ? 'var(--primary-color)' : 'var(--border-color)'};
+              border-radius: 50%;
+              width: 29px;
+              height: 29px;
+              cursor: pointer;
+              display: ${this.searchExpanded ? 'none' : 'flex'};
+              align-items: center;
+              justify-content: center;
+              flex-shrink: 0;
+              transition: all 0.2s ease;
+            ">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+              </svg>
+            </button>
+            <button id="edit-toggle-btn" style="
+              background: ${this.editModeExpanded ? 'var(--primary-color)' : 'none'};
+              color: ${this.editModeExpanded ? 'white' : 'var(--text-secondary)'};
+              border: 1px solid ${this.editModeExpanded ? 'var(--primary-color)' : 'var(--border-color)'};
+              border-radius: 50%;
+              width: 29px;
+              height: 29px;
+              cursor: pointer;
+              display: ${this.searchExpanded ? 'none' : 'flex'};
+              align-items: center;
+              justify-content: center;
+              flex-shrink: 0;
+              transition: all 0.2s ease;
+            ">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+              </svg>
+            </button>
+
+            <!-- New Message Dropdown Menu -->
+            <div id="new-message-dropdown" style="
+              display: none;
+              position: absolute;
+              top: 100%;
+              right: 0;
+              margin-top: 2px;
+              background: var(--bg-primary);
+              border: 1px solid var(--border-color);
+              border-radius: 8px;
+              box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+              min-width: 200px;
+              z-index: 100;
+              overflow: hidden;
+            ">
+              <button class="dropdown-item" data-action="new-message" style="
+                display: flex;
+                align-items: center;
+                gap: 0.75rem;
+                width: 100%;
+                padding: 0.75rem 1rem;
+                border: none;
+                background: none;
+                cursor: pointer;
+                font-size: 0.875rem;
+                color: var(--text-primary);
+                text-align: left;
+                transition: background 0.15s;
+              " onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='none'">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                </svg>
+                <span>Message</span>
+              </button>
+              <button class="dropdown-item" data-action="agent-message" style="
+                display: flex;
+                align-items: center;
+                gap: 0.75rem;
+                width: 100%;
+                padding: 0.75rem 1rem;
+                border: none;
+                background: none;
+                cursor: pointer;
+                font-size: 0.875rem;
+                color: var(--text-primary);
+                text-align: left;
+                transition: background 0.15s;
+              " onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='none'">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"></path>
+                  <circle cx="7.5" cy="14.5" r="1.5"></circle>
+                  <circle cx="16.5" cy="14.5" r="1.5"></circle>
+                </svg>
+                <span>Agent Message</span>
+              </button>
+              <button class="dropdown-item" data-action="new-email" style="
+                display: flex;
+                align-items: center;
+                gap: 0.75rem;
+                width: 100%;
+                padding: 0.75rem 1rem;
+                border: none;
+                background: none;
+                cursor: pointer;
+                font-size: 0.875rem;
+                color: var(--text-primary);
+                text-align: left;
+                transition: background 0.15s;
+              " onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='none'">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                  <polyline points="22,6 12,13 2,6"></polyline>
+                </svg>
+                <span>Email</span>
+              </button>
+              <button class="dropdown-item" data-action="agent-email" style="
+                display: flex;
+                align-items: center;
+                gap: 0.75rem;
+                width: 100%;
+                padding: 0.75rem 1rem;
+                border: none;
+                background: none;
+                cursor: pointer;
+                font-size: 0.875rem;
+                color: var(--text-primary);
+                text-align: left;
+                transition: background 0.15s;
+              " onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='none'">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                  <polyline points="22,6 12,13 2,6"></polyline>
+                  <circle cx="19" cy="5" r="4" fill="var(--primary-color)" stroke="var(--primary-color)"></circle>
+                  <text x="19" y="7" text-anchor="middle" font-size="6" fill="white" font-weight="bold">AI</text>
+                </svg>
+                <span>Agent Email</span>
+              </button>
+              <button class="dropdown-item" data-action="bulk-message" style="
+                display: flex;
+                align-items: center;
+                gap: 0.75rem;
+                width: 100%;
+                padding: 0.75rem 1rem;
+                border: none;
+                background: none;
+                cursor: not-allowed;
+                font-size: 0.875rem;
+                color: var(--text-primary);
+                text-align: left;
+                opacity: 0.5;
+              ">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="9" cy="7" r="4"></circle>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                </svg>
+                <span>Bulk Message</span>
+                <span style="margin-left: auto; font-size: 0.7rem; background: var(--border-color); padding: 0.125rem 0.375rem; border-radius: 4px;">Soon</span>
+              </button>
+              <button class="dropdown-item" data-action="bulk-agent-message" style="
+                display: flex;
+                align-items: center;
+                gap: 0.75rem;
+                width: 100%;
+                padding: 0.75rem 1rem;
+                border: none;
+                background: none;
+                cursor: not-allowed;
+                font-size: 0.875rem;
+                color: var(--text-primary);
+                text-align: left;
+                opacity: 0.5;
+              ">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="9" cy="7" r="4"></circle>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                </svg>
+                <span>Bulk Agent Message</span>
+                <span style="margin-left: auto; font-size: 0.7rem; background: var(--border-color); padding: 0.125rem 0.375rem; border-radius: 4px;">Soon</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Filter Tabs -->
+          <div id="filters-container" style="display: ${this.filtersExpanded ? 'block' : 'none'};">
+            <div class="inbox-filters" id="inbox-filters" style="justify-content: center; gap: 0.5rem; border-bottom: none; padding-bottom: 0;">
+              <button class="inbox-filter-btn ${this.typeFilter === 'all' && this.directionFilter === 'all' && !this.missedFilter && this.sentimentFilter === 'all' && !this.unreadFilter ? 'active' : ''}" data-filter-type="all" data-filter-reset="true">All</button>
+              <button class="inbox-filter-btn ${this.typeFilter === 'calls' ? 'active' : ''}" data-filter-type="calls">Calls</button>
+              <button class="inbox-filter-btn ${this.typeFilter === 'texts' ? 'active' : ''}" data-filter-type="texts">Texts</button>
+              <button class="inbox-filter-btn ${this.typeFilter === 'chat' ? 'active' : ''}" data-filter-type="chat">Chat</button>
+              <button class="inbox-filter-btn ${this.typeFilter === 'email' ? 'active' : ''}" data-filter-type="email">Email</button>
+            </div>
+            <div class="inbox-filters" id="inbox-filters-status" style="justify-content: center; gap: 0.5rem; padding-top: 0.375rem; border-bottom: none; padding-bottom: 0;">
+              <button class="inbox-filter-btn ${this.directionFilter === 'inbound' ? 'active' : ''}" data-filter-direction="inbound">In</button>
+              <button class="inbox-filter-btn ${this.directionFilter === 'outbound' ? 'active' : ''}" data-filter-direction="outbound">Out</button>
+              <button class="inbox-filter-btn ${this.missedFilter ? 'active' : ''}" data-filter-missed="true">Missed</button>
+              <button class="inbox-filter-btn ${this.unreadFilter ? 'active' : ''}" data-filter-unread="true">Unread</button>
+            </div>
+            <div class="inbox-filters" id="inbox-filters-sentiment" style="justify-content: center; gap: 0.5rem; padding-top: 0.375rem;">
+              <button class="inbox-filter-btn ${this.sentimentFilter === 'positive' ? 'active' : ''}" data-filter-sentiment="positive">Positive</button>
+              <button class="inbox-filter-btn ${this.sentimentFilter === 'neutral' ? 'active' : ''}" data-filter-sentiment="neutral">Neutral</button>
+              <button class="inbox-filter-btn ${this.sentimentFilter === 'negative' ? 'active' : ''}" data-filter-sentiment="negative">Negative</button>
+            </div>
+          </div>
+
+          <!-- Edit Actions -->
+          <div id="edit-actions-container" style="display: ${this.editModeExpanded ? 'block' : 'none'};">
+            <div class="inbox-filters" style="justify-content: center; gap: 0.5rem;">
+              <button class="inbox-filter-btn" id="mark-all-read-btn" style="display: flex; align-items: center; gap: 0.375rem;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                  <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                </svg>
+                Mark All Read
+              </button>
+              <button class="inbox-filter-btn ${this.selectMode ? 'active' : ''}" id="select-delete-btn" style="display: flex; align-items: center; gap: 0.375rem;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+                ${this.selectMode ? 'Cancel Selection' : 'Select to Delete'}
+              </button>
+              ${this.selectMode && this.selectedForDeletion.size > 0 ? `
+              <button class="inbox-filter-btn" id="confirm-delete-btn" style="background: #ef4444; color: white; border-color: #ef4444; display: flex; align-items: center; gap: 0.375rem;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+                Delete (${this.selectedForDeletion.size})
+              </button>
+              ` : ''}
+            </div>
+          </div>
+
+          <div id="conversations">
+            ${showSkeleton ? this._renderConversationSkeleton() : this.renderConversationList()}
+          </div>
+        </div>
+
+        <!-- Message Thread -->
+        <div class="message-thread" id="message-thread">
+          ${(this.selectedContact || this.selectedCallId || this.selectedChatSessionId || this.selectedEmailThreadId) ? this.renderMessageThread() : this.renderEmptyState()}
+        </div>
+      </div>
+      ${renderBottomNav('/inbox')}
+    `;
+  }
+
+  // Returns 6 pulsing placeholder rows shown while conversations are loading
+  _renderConversationSkeleton() {
+    const row = `
+      <div style="display: flex; align-items: center; gap: 0.75rem; padding: 0.625rem 0.75rem; border-radius: 8px;">
+        <div style="width: 42px; height: 42px; border-radius: 50%; background: var(--border-color); flex-shrink: 0; animation: skeleton-pulse 1.5s ease-in-out infinite;"></div>
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 0.375rem; min-width: 0;">
+          <div style="height: 13px; background: var(--border-color); border-radius: 4px; width: 55%; animation: skeleton-pulse 1.5s ease-in-out infinite;"></div>
+          <div style="height: 11px; background: var(--border-color); border-radius: 4px; width: 80%; animation: skeleton-pulse 1.5s ease-in-out infinite; animation-delay: 0.2s;"></div>
+        </div>
+        <div style="width: 36px; height: 10px; background: var(--border-color); border-radius: 4px; flex-shrink: 0; animation: skeleton-pulse 1.5s ease-in-out infinite; animation-delay: 0.1s;"></div>
+      </div>`;
+    return [row, row, row, row, row, row].join('');
   }
 
   // Helper to get consistent conversation key

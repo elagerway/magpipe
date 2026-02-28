@@ -255,8 +255,8 @@ export class Router {
 
     // Load and render page (with caching for main tabs)
     try {
-      // Don't cache inbox or dynamic routes - they need fresh instances
-      const cacheable = ['/agent', '/phone', '/contacts', '/apps', '/settings'];
+      // Cache main tab pages; dynamic routes always get fresh instances
+      const cacheable = ['/inbox', '/agent', '/phone', '/contacts', '/apps', '/settings'];
       const isDynamicRoute = Object.keys(params).length > 0;
       let page;
 
@@ -292,7 +292,7 @@ export class Router {
 
   // Preload other main tabs in background
   preloadTabs(currentPath) {
-    // Don't preload inbox - it needs fresh instances for dynamic rendering
+    // Inbox is preloaded separately and cached; preload the other main tabs here
     const tabs = ['/agent', '/phone', '/contacts', '/apps', '/settings'];
     const toPreload = tabs.filter(t => t !== currentPath && !this.pageCache.has(t));
 
