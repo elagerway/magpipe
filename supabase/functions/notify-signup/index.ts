@@ -125,46 +125,7 @@ Deno.serve(async (req) => {
       console.error('SMS send failed:', await smsResponse.text())
     }
 
-    // Send welcome email to the new user
-    const postmarkApiKey = Deno.env.get('POSTMARK_API_KEY')
-    if (postmarkApiKey) {
-      const userName = name || email.split('@')[0]
-      const appUrl = APP_URL || 'https://app.magpipe.ai'
-      const welcomeHtml = `
-        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; padding: 2rem;">
-          <h1 style="font-size: 1.5rem; color: #111827; margin-bottom: 0.5rem;">Welcome to ${APP_NAME}, ${userName}!</h1>
-          <p style="color: #374151; line-height: 1.6;">Your account is ready. Here's what you can do:</p>
-          <ul style="color: #374151; line-height: 1.8; padding-left: 1.25rem;">
-            <li><strong>AI Voice Agent</strong> — Answer calls automatically, 24/7</li>
-            <li><strong>SMS Inbox</strong> — Send and receive text messages with customers</li>
-            <li><strong>Contacts</strong> — Keep your customer list organized</li>
-            <li><strong>Analytics</strong> — Track call and message activity</li>
-          </ul>
-          <p style="margin-top: 1.5rem;">
-            <a href="${appUrl}/agents" style="display: inline-block; background: #6366f1; color: white; padding: 0.65rem 1.25rem; border-radius: 6px; text-decoration: none; font-weight: 500;">Get Started →</a>
-          </p>
-          <p style="color: #6b7280; font-size: 0.875rem; margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #e5e7eb;">
-            Questions? Reply to this email or contact us at <a href="mailto:${NOTIFICATION_EMAIL}" style="color: #6366f1;">${NOTIFICATION_EMAIL}</a>
-          </p>
-        </div>
-      `
-      fetch('https://api.postmarkapp.com/email', {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'X-Postmark-Server-Token': postmarkApiKey,
-        },
-        body: JSON.stringify({
-          From: `${APP_NAME} Onboarding <${NOTIFICATION_EMAIL}>`,
-          To: email,
-          Subject: `Welcome to ${APP_NAME} — you're all set!`,
-          HtmlBody: welcomeHtml,
-          TextBody: `Welcome to ${APP_NAME}, ${userName}!\n\nYour account is ready. Get started: ${appUrl}/agents\n\nQuestions? Email us at ${NOTIFICATION_EMAIL}`,
-          MessageStream: 'outbound',
-        }),
-      }).catch(err => console.error('Welcome email failed:', err))
-    }
+    // Welcome email is sent in verify-phone-check after phone number is verified
 
     // Also send via configurable admin notification system (fire and forget)
     fetch(`${supabaseUrl}/functions/v1/admin-send-notification`, {
