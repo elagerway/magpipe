@@ -800,6 +800,15 @@ class InboxPage {
       supabase.from('email_messages').select('*').eq('user_id', userId).order('sent_at', { ascending: false }).limit(500),
     ]);
 
+    // Log any query errors (these were previously silently swallowed)
+    if (messagesResult.error) console.error('SMS query error:', messagesResult.error);
+    if (callsResult.error) console.error('Calls query error:', callsResult.error);
+    if (contactsResult.error) console.error('Contacts query error:', contactsResult.error);
+    if (chatSessionsResult.error) console.error('Chat sessions error:', chatSessionsResult.error);
+    if (agentConfigsResult.error) console.error('Agent configs error:', agentConfigsResult.error);
+    if (serviceNumbersResult.error) console.error('Service numbers error:', serviceNumbersResult.error);
+    if (emailResult.error) console.error('Email query error:', emailResult.error);
+
     const messages = messagesResult.data;
     const calls = callsResult.data;
     const contacts = contactsResult.data;
