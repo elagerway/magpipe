@@ -86,6 +86,17 @@ All modals use the `contact-modal-*` CSS pattern. Reference implementation: `src
 Six MCP servers are configured for this project (in `~/.claude.json`):
 Supabase, Playwright, Vercel, Magpipe (`packages/mcp-server`), Stripe, Postmark
 
+## Deployment
+- **Vercel auto-deploy is NOT configured** — deploy manually: `npx vercel --prod`
+- **Edge functions**: deploy via Supabase MCP or `npx supabase functions deploy <name>`
+- **Edge function secrets** are write-only — values cannot be read back
+
+## Stripe Billing
+- **Webhook endpoint**: `https://api.magpipe.ai/functions/v1/stripe-webhook` (no-verify-jwt)
+- **Card details**: `users.card_brand` and `users.card_last4` — set by webhook on `setup_intent.succeeded`
+- **Non-card methods**: Stripe Link stores `card_brand='link'`, uses `/images/stripe-link.png` logo
+- **Billing page order**: Bonus checklist → Auto-recharge → Payment card + Manage → Balance
+
 ## Supabase Edge Functions
 
 ### Import Style
