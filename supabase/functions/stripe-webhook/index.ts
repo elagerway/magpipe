@@ -128,13 +128,31 @@ Deno.serve(async (req) => {
             .single()
 
           if (user) {
-            // Mark user as having a payment method
+            // Get card details from the payment method
+            const paymentMethodId = setupIntent.payment_method as string
+            let cardBrand: string | null = null
+            let cardLast4: string | null = null
+            if (paymentMethodId) {
+              try {
+                const pm = await stripe.paymentMethods.retrieve(paymentMethodId)
+                cardBrand = pm.card?.brand || null
+                cardLast4 = pm.card?.last4 || null
+              } catch (e) {
+                console.error('Failed to retrieve payment method details:', e)
+              }
+            }
+
+            // Mark user as having a payment method and save card details
             await supabase
               .from('users')
-              .update({ has_payment_method: true })
+              .update({
+                has_payment_method: true,
+                card_brand: cardBrand,
+                card_last4: cardLast4,
+              })
               .eq('id', user.id)
 
-            console.log(`User ${user.id} saved payment method`)
+            console.log(`User ${user.id} saved payment method${cardBrand ? ` (${cardBrand} ••••${cardLast4})` : ''}`)
 
             // Grant signup bonus if not already received
             if (!user.received_signup_bonus) {
