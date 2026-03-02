@@ -801,55 +801,7 @@ export default class SettingsPage {
           </div>
           ` : ''}
 
-          ${this.profile?.has_payment_method ? `
-          <!-- Payment Method on File -->
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-md); margin-bottom: 1rem;">
-            <div style="display: flex; align-items: center; gap: 0.75rem;">
-              ${this.profile?.card_brand === 'link' ? '<img src="/images/stripe-link.png" alt="Link" style="width: 72px; height: auto; border-radius: 6px;">' : '<div style="width: 36px; height: 24px; background: white; border: 1px solid var(--border-color); border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 0.625rem; font-weight: 700; color: #1a1f36; text-transform: uppercase;">' + (this.profile?.card_brand || 'Card') + '</div>'}
-              <div>
-                <div style="font-size: 0.875rem; font-weight: 500; color: var(--text-primary);">${this.profile?.card_last4 ? ((this.profile?.card_brand || 'Card').charAt(0).toUpperCase() + (this.profile?.card_brand || 'card').slice(1) + ' •••• ' + this.profile.card_last4) : (this.profile?.card_brand === 'link' ? 'Stripe Link' : ((this.profile?.card_brand || 'Payment method').charAt(0).toUpperCase() + (this.profile?.card_brand || 'payment method').slice(1)))}</div>
-                <div style="font-size: 0.7rem; color: var(--text-secondary);">Payment method on file</div>
-              </div>
-            </div>
-            <button class="btn btn-secondary btn-sm" id="manage-card-btn" style="font-size: 0.75rem;">Manage</button>
-          </div>
-          ` : ''}
-
           ${this.renderBonusCreditsCard()}
-
-          <!-- Credits Balance -->
-          <div class="credits-balance" style="display: flex; justify-content: space-between; align-items: center; padding: 1.25rem; background: var(--bg-secondary); border-radius: var(--radius-md); margin-bottom: 1rem;">
-            <div>
-              <div style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Current Balance</div>
-              <div style="font-weight: 700; font-size: 2rem; color: var(--text-primary);">
-                $${(this.profile?.credits_balance ?? 20).toFixed(2)}
-              </div>
-              <div style="color: var(--text-secondary); font-size: 0.75rem; margin-top: 0.25rem;">
-                Used this period: $${(this.profile?.credits_used_this_period ?? 0).toFixed(2)}
-              </div>
-            </div>
-            <button class="btn btn-primary" id="add-credits-btn">
-              Add Credits
-            </button>
-          </div>
-
-          <!-- Add Credits Options -->
-          <div id="credits-options" style="display: none; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1rem;">
-            <h3 style="margin: 0 0 1rem 0; font-size: 1rem;">Select Amount</h3>
-            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin-bottom: 1rem;">
-              <button class="btn btn-secondary credit-amount-btn" data-amount="20" style="padding: 1rem; font-size: 1rem;">$20</button>
-              <button class="btn btn-secondary credit-amount-btn" data-amount="50" style="padding: 1rem; font-size: 1rem;">$50</button>
-              <button class="btn btn-secondary credit-amount-btn" data-amount="100" style="padding: 1rem; font-size: 1rem;">$100</button>
-            </div>
-            <div class="form-group" style="margin-bottom: 0.75rem;">
-              <label for="custom-amount" style="font-size: 0.875rem;">Or enter custom amount ($10-$1000):</label>
-              <div style="display: flex; gap: 0.5rem;">
-                <input type="number" id="custom-amount" class="form-input" min="10" max="1000" step="1" placeholder="Enter amount" style="flex: 1;" />
-                <button class="btn btn-primary" id="add-custom-credits-btn">Add</button>
-              </div>
-            </div>
-            <button class="btn btn-secondary btn-sm" id="cancel-credits-btn" style="width: 100%;">Cancel</button>
-          </div>
 
           <!-- Auto-Recharge Settings -->
           <div style="border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1rem;">
@@ -893,6 +845,54 @@ export default class SettingsPage {
                 </select>
               </div>
             </div>
+          </div>
+
+          ${this.profile?.has_payment_method ? `
+          <!-- Payment Method on File -->
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-md); margin-bottom: 1rem;">
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+              ${this.profile?.card_brand === 'link' ? '<img src="/images/stripe-link.png" alt="Link" style="width: 72px; height: auto; border-radius: 6px;">' : '<div style="width: 36px; height: 24px; background: white; border: 1px solid var(--border-color); border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 0.625rem; font-weight: 700; color: #1a1f36; text-transform: uppercase;">' + (this.profile?.card_brand || 'Card') + '</div>'}
+              <div>
+                <div style="font-size: 0.875rem; font-weight: 500; color: var(--text-primary);">${this.profile?.card_last4 ? ((this.profile?.card_brand || 'Card').charAt(0).toUpperCase() + (this.profile?.card_brand || 'card').slice(1) + ' •••• ' + this.profile.card_last4) : (this.profile?.card_brand === 'link' ? 'Stripe Link' : ((this.profile?.card_brand || 'Payment method').charAt(0).toUpperCase() + (this.profile?.card_brand || 'payment method').slice(1)))}</div>
+                <div style="font-size: 0.7rem; color: var(--text-secondary);">Payment method on file</div>
+              </div>
+            </div>
+            <button class="btn btn-secondary btn-sm" id="manage-card-btn" style="font-size: 0.75rem;">Manage</button>
+          </div>
+          ` : ''}
+
+          <!-- Credits Balance -->
+          <div class="credits-balance" style="display: flex; justify-content: space-between; align-items: center; padding: 1.25rem; background: var(--bg-secondary); border-radius: var(--radius-md); margin-bottom: 1rem;">
+            <div>
+              <div style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Current Balance</div>
+              <div style="font-weight: 700; font-size: 2rem; color: var(--text-primary);">
+                $${(this.profile?.credits_balance ?? 20).toFixed(2)}
+              </div>
+              <div style="color: var(--text-secondary); font-size: 0.75rem; margin-top: 0.25rem;">
+                Used this period: $${(this.profile?.credits_used_this_period ?? 0).toFixed(2)}
+              </div>
+            </div>
+            <button class="btn btn-primary" id="add-credits-btn">
+              Add Credits
+            </button>
+          </div>
+
+          <!-- Add Credits Options -->
+          <div id="credits-options" style="display: none; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1rem;">
+            <h3 style="margin: 0 0 1rem 0; font-size: 1rem;">Select Amount</h3>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin-bottom: 1rem;">
+              <button class="btn btn-secondary credit-amount-btn" data-amount="20" style="padding: 1rem; font-size: 1rem;">$20</button>
+              <button class="btn btn-secondary credit-amount-btn" data-amount="50" style="padding: 1rem; font-size: 1rem;">$50</button>
+              <button class="btn btn-secondary credit-amount-btn" data-amount="100" style="padding: 1rem; font-size: 1rem;">$100</button>
+            </div>
+            <div class="form-group" style="margin-bottom: 0.75rem;">
+              <label for="custom-amount" style="font-size: 0.875rem;">Or enter custom amount ($10-$1000):</label>
+              <div style="display: flex; gap: 0.5rem;">
+                <input type="number" id="custom-amount" class="form-input" min="10" max="1000" step="1" placeholder="Enter amount" style="flex: 1;" />
+                <button class="btn btn-primary" id="add-custom-credits-btn">Add</button>
+              </div>
+            </div>
+            <button class="btn btn-secondary btn-sm" id="cancel-credits-btn" style="width: 100%;">Cancel</button>
           </div>
 
           <!-- Pricing Info -->
