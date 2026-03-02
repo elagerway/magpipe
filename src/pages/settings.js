@@ -801,6 +801,20 @@ export default class SettingsPage {
           </div>
           ` : ''}
 
+          ${this.profile?.has_payment_method ? `
+          <!-- Payment Method on File -->
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-md); margin-bottom: 1rem;">
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+              ${this.profile?.card_brand === 'link' ? '<img src="/images/stripe-link.png" alt="Link" style="width: 72px; height: auto; border-radius: 6px;">' : '<div style="width: 36px; height: 24px; background: white; border: 1px solid var(--border-color); border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 0.625rem; font-weight: 700; color: #1a1f36; text-transform: uppercase;">' + (this.profile?.card_brand || 'Card') + '</div>'}
+              <div>
+                <div style="font-size: 0.875rem; font-weight: 500; color: var(--text-primary);">${this.profile?.card_last4 ? ((this.profile?.card_brand || 'Card').charAt(0).toUpperCase() + (this.profile?.card_brand || 'card').slice(1) + ' •••• ' + this.profile.card_last4) : (this.profile?.card_brand === 'link' ? 'Stripe Link' : ((this.profile?.card_brand || 'Payment method').charAt(0).toUpperCase() + (this.profile?.card_brand || 'payment method').slice(1)))}</div>
+                <div style="font-size: 0.7rem; color: var(--text-secondary);">Payment method on file</div>
+              </div>
+            </div>
+            <button class="btn btn-secondary btn-sm" id="manage-card-btn" style="font-size: 0.75rem;">Manage</button>
+          </div>
+          ` : ''}
+
           ${this.renderBonusCreditsCard()}
 
           <!-- Auto-Recharge Settings -->
@@ -846,20 +860,6 @@ export default class SettingsPage {
               </div>
             </div>
           </div>
-
-          ${this.profile?.has_payment_method ? `
-          <!-- Payment Method on File -->
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-md); margin-bottom: 1rem;">
-            <div style="display: flex; align-items: center; gap: 0.75rem;">
-              ${this.profile?.card_brand === 'link' ? '<img src="/images/stripe-link.png" alt="Link" style="width: 72px; height: auto; border-radius: 6px;">' : '<div style="width: 36px; height: 24px; background: white; border: 1px solid var(--border-color); border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 0.625rem; font-weight: 700; color: #1a1f36; text-transform: uppercase;">' + (this.profile?.card_brand || 'Card') + '</div>'}
-              <div>
-                <div style="font-size: 0.875rem; font-weight: 500; color: var(--text-primary);">${this.profile?.card_last4 ? ((this.profile?.card_brand || 'Card').charAt(0).toUpperCase() + (this.profile?.card_brand || 'card').slice(1) + ' •••• ' + this.profile.card_last4) : (this.profile?.card_brand === 'link' ? 'Stripe Link' : ((this.profile?.card_brand || 'Payment method').charAt(0).toUpperCase() + (this.profile?.card_brand || 'payment method').slice(1)))}</div>
-                <div style="font-size: 0.7rem; color: var(--text-secondary);">Payment method on file</div>
-              </div>
-            </div>
-            <button class="btn btn-secondary btn-sm" id="manage-card-btn" style="font-size: 0.75rem;">Manage</button>
-          </div>
-          ` : ''}
 
           <!-- Credits Balance -->
           <div class="credits-balance" style="display: flex; justify-content: space-between; align-items: center; padding: 1.25rem; background: var(--bg-secondary); border-radius: var(--radius-md); margin-bottom: 1rem;">
@@ -1255,6 +1255,7 @@ export default class SettingsPage {
         try {
           const { user } = await getCurrentUser();
           await supabase.from('users').update({ auto_recharge_enabled: isEnabled }).eq('id', user.id);
+          this.profile.auto_recharge_enabled = isEnabled;
           showToast(isEnabled ? 'Auto-recharge enabled' : 'Auto-recharge disabled', 'success');
         } catch (error) {
           console.error('Auto-recharge toggle error:', error);
