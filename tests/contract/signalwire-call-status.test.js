@@ -4,7 +4,7 @@ describe('SignalWire Call Status Webhook Contract', () => {
   it('should validate call status webhook payload for completed call', () => {
     const statusWebhook = {
       CallSid: 'CA1234567890abcdef1234567890abcdef',
-      AccountSid: 'YOUR_TWILIO_ACCOUNT_SID',
+      AccountSid: 'test-account-sid-placeholder',
       From: '+14155551234',
       To: '+14155550000',
       CallStatus: 'completed',

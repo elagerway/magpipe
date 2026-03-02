@@ -35,7 +35,7 @@ describe('SignalWire Inbound Call Webhook Contract', () => {
     // Simulate SignalWire inbound call webhook payload
     const webhookPayload = {
       CallSid: 'CA1234567890abcdef1234567890abcdef',
-      AccountSid: 'YOUR_TWILIO_ACCOUNT_SID',
+      AccountSid: 'test-account-sid-placeholder',
       From: '+14155551234',
       To: testServiceNumber,
       CallStatus: 'ringing',

@@ -31,7 +31,7 @@ describe('SignalWire Phone Verification SMS Contract', () => {
     // Mock successful SignalWire API response
     const apiResponse = {
       sid: 'SM1234567890abcdef1234567890abcdef',
-      account_sid: 'YOUR_TWILIO_ACCOUNT_SID',
+      account_sid: 'test-account-sid-placeholder',
       from: '+14155550000',
       to: '+14155551234',
       body: 'Your Maggie verification code is: 123456',

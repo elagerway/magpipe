@@ -33,7 +33,7 @@ describe('SignalWire Inbound SMS Webhook Contract', () => {
   it('should validate inbound SMS webhook payload structure', () => {
     const webhookPayload = {
       MessageSid: 'SM1234567890abcdef1234567890abcdef',
-      AccountSid: 'YOUR_TWILIO_ACCOUNT_SID',
+      AccountSid: 'test-account-sid-placeholder',
       From: '+14155551234',
       To: testServiceNumber,
       Body: 'Hello, this is a test message.',
