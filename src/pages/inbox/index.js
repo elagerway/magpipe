@@ -791,8 +791,8 @@ class InboxPage {
   async loadConversations(userId) {
     // Load all data in parallel for speed
     const [messagesResult, callsResult, contactsResult, chatSessionsResult, agentConfigsResult, serviceNumbersResult, emailResult] = await Promise.all([
-      supabase.from('sms_messages').select('id, user_id, sender_number, recipient_number, content, body, sent_at, created_at, direction, read, thread_id, media_url, status').eq('user_id', userId).order('sent_at', { ascending: false }).limit(500),
-      supabase.from('call_records').select('id, user_id, caller_number, recipient_number, contact_phone, started_at, ended_at, duration, direction, status, recording_url, transcript, call_summary, sentiment, missed, service_number, agent_id, phone_number, created_at').eq('user_id', userId).order('started_at', { ascending: false }).limit(300),
+      supabase.from('sms_messages').select('id, user_id, sender_number, recipient_number, content, sent_at, created_at, direction, status, sentiment').eq('user_id', userId).order('sent_at', { ascending: false }).limit(500),
+      supabase.from('call_records').select('id, user_id, caller_number, contact_phone, started_at, ended_at, duration, direction, status, recording_url, transcript, call_summary, user_sentiment, service_number, agent_id, created_at').eq('user_id', userId).order('started_at', { ascending: false }).limit(300),
       supabase.from('contacts').select('id, user_id, name, phone_number, email, first_name, last_name, company, avatar_url').eq('user_id', userId),
       ChatSession.getRecentWithPreview(userId, 50),
       supabase.from('agent_configs').select('id, translate_to, language').eq('user_id', userId),
