@@ -135,7 +135,7 @@ Deno.serve(async (req) => {
             if (paymentMethodId) {
               try {
                 const pm = await stripe.paymentMethods.retrieve(paymentMethodId)
-                cardBrand = pm.card?.brand || null
+                cardBrand = pm.card?.brand || pm.type || null
                 cardLast4 = pm.card?.last4 || null
               } catch (e) {
                 console.error('Failed to retrieve payment method details:', e)
