@@ -44,7 +44,7 @@ export default class SettingsPage {
       // Fetch all data in parallel for speed
       const [profileResult, billingResult, numbersResult, calComResult, orgResult, referralResult, slackIntegrationResult] = await Promise.all([
         User.getProfile(user.id),
-        supabase.from('users').select('plan, stripe_customer_id, stripe_subscription_id, stripe_subscription_status, stripe_current_period_end, credits_balance, credits_used_this_period, has_payment_method, received_signup_bonus, auto_recharge_enabled, auto_recharge_amount, auto_recharge_threshold, cc_bonus_claimed, recharge_bonus_claimed, referral_code').eq('id', user.id).single(),
+        supabase.from('users').select('plan, stripe_customer_id, stripe_subscription_id, stripe_subscription_status, stripe_current_period_end, credits_balance, credits_used_this_period, has_payment_method, received_signup_bonus, auto_recharge_enabled, auto_recharge_amount, auto_recharge_threshold, cc_bonus_claimed, recharge_bonus_claimed, referral_code, card_brand, card_last4').eq('id', user.id).single(),
         supabase.from('service_numbers').select('phone_number, is_active').eq('user_id', user.id).order('is_active', { ascending: false }),
         supabase.from('users').select('cal_com_access_token, cal_com_user_id').eq('id', user.id).single(),
         Organization.getForUser(user.id),
@@ -801,6 +801,20 @@ export default class SettingsPage {
           </div>
           ` : ''}
 
+          ${this.profile?.has_payment_method ? `
+          <!-- Payment Method on File -->
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-md); margin-bottom: 1rem;">
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+              <div style="width: 36px; height: 24px; background: white; border: 1px solid var(--border-color); border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 0.625rem; font-weight: 700; color: #1a1f36; text-transform: uppercase;">${this.profile?.card_brand || 'Card'}</div>
+              <div>
+                <div style="font-size: 0.875rem; font-weight: 500; color: var(--text-primary);">${(this.profile?.card_brand || 'Card').charAt(0).toUpperCase() + (this.profile?.card_brand || 'card').slice(1)} •••• ${this.profile?.card_last4 || '****'}</div>
+                <div style="font-size: 0.7rem; color: var(--text-secondary);">Payment method on file</div>
+              </div>
+            </div>
+            <button class="btn btn-secondary btn-sm" id="manage-card-btn" style="font-size: 0.75rem;">Manage</button>
+          </div>
+          ` : ''}
+
           ${this.renderBonusCreditsCard()}
 
           <!-- Credits Balance -->
@@ -1097,6 +1111,7 @@ export default class SettingsPage {
     const addCustomCreditsBtn = document.getElementById('add-custom-credits-btn');
     const setupPaymentBtn = document.getElementById('setup-payment-btn');
     const manageBillingBtn = document.getElementById('manage-billing-btn');
+    const manageCardBtn = document.getElementById('manage-card-btn');
     const autoRechargeEnabled = document.getElementById('auto-recharge-enabled');
     const autoRechargeSettings = document.getElementById('auto-recharge-settings');
     const rechargeThreshold = document.getElementById('recharge-threshold');
@@ -1204,6 +1219,30 @@ export default class SettingsPage {
           showToast('Failed to open billing portal. Please try again.', 'error');
           manageBillingBtn.disabled = false;
           manageBillingBtn.textContent = 'Manage Payment Methods';
+        }
+      });
+    }
+
+    if (manageCardBtn) {
+      manageCardBtn.addEventListener('click', async () => {
+        manageCardBtn.disabled = true;
+        manageCardBtn.textContent = 'Loading...';
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session) throw new Error('Not authenticated');
+          const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/stripe-create-portal`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ returnUrl: `${window.location.origin}/settings?tab=billing` })
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || 'Failed to create portal session');
+          window.location.href = data.url;
+        } catch (error) {
+          console.error('Billing portal error:', error);
+          showToast('Failed to open billing portal. Please try again.', 'error');
+          manageCardBtn.disabled = false;
+          manageCardBtn.textContent = 'Manage';
         }
       });
     }
