@@ -144,6 +144,24 @@ supabase.auth.onAuthStateChange((event) => {
 });
 
 /**
+ * Wrap getSession() with a timeout to prevent hanging when Supabase SDK
+ * makes an internal network call (token refresh/validation) that stalls.
+ * getSession() should read from local storage (fast), but sometimes doesn't.
+ */
+export async function safeGetSession(timeoutMs = 3000) {
+  try {
+    const result = await Promise.race([
+      supabase.auth.getSession(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('getSession timeout')), timeoutMs)),
+    ]);
+    return result;
+  } catch {
+    console.warn('getSession timed out, returning null session');
+    return { data: { session: null }, error: null };
+  }
+}
+
+/**
  * Get the current authenticated user (with caching)
  * First tries local session (no network), then falls back to API
  * @param {boolean} forceRefresh - Force refresh from API
@@ -159,7 +177,7 @@ export async function getCurrentUser(forceRefresh = false) {
 
   // First try to get user from local session (no network required)
   // This is critical for cold start when network might not be ready
-  const { data: { session } } = await supabase.auth.getSession();
+  const { data: { session } } = await safeGetSession();
   if (session?.user) {
     cachedUser = session.user;
     userCacheTime = now;
@@ -196,7 +214,7 @@ export async function getCurrentSession() {
   const {
     data: { session },
     error,
-  } = await supabase.auth.getSession();
+  } = await safeGetSession();
   return { session, error };
 }
 

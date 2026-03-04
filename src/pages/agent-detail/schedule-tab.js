@@ -1,5 +1,3 @@
-import { formatPhoneNumber } from '../../lib/formatters.js';
-
 export const scheduleTabMethods = {
   renderScheduleTab() {
     const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.elagerway/magpipe",
+  "description": "Manage AI voice agents, calls, SMS, contacts, and phone numbers via Magpipe.",
+  "repository": {
+    "url": "https://github.com/elagerway/magpipe",
+    "source": "github",
+    "subfolder": "packages/mcp-server"
+  },
+  "version": "0.1.6",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "magpipe-mcp-server",
+      "version": "0.1.6",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "description": "Your Magpipe API key (starts with mgp_). Get one at https://magpipe.ai/settings → API tab.",
+          "isRequired": true,
+          "format": "string",
+          "isSecret": true,
+          "name": "MAGPIPE_API_KEY"
+        }
+      ]
+    }
+  ]
+}

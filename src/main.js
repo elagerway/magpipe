@@ -3,7 +3,7 @@
  * Handles routing, authentication state, and app initialization
  */
 
-import { supabase, getCurrentUser } from './lib/supabase.js';
+import { supabase, getCurrentUser, safeGetSession } from './lib/supabase.js';
 import { Router } from './router.js';
 import { ChatWidget } from './models/ChatWidget.js';
 import { initPushNotifications } from './services/pushNotifications.js';
@@ -18,48 +18,80 @@ class App {
   }
 
   async init() {
-    // Check if Supabase is reachable before doing anything
-    const supabaseHealthy = await this.checkSupabaseHealth();
-    if (!supabaseHealthy) {
-      const { default: MaintenancePage } = await import('./pages/maintenance.js');
-      const page = new MaintenancePage();
-      await page.render();
-      return; // Don't initialize anything else
-    }
+    let initCompleted = false;
 
-    // Check authentication state
-    await this.checkAuth();
+    // Master timeout: if init hasn't completed in 10s, force-show login page
+    const initTimeout = setTimeout(() => {
+      if (initCompleted) return;
+      initCompleted = true;
+      console.warn('App init timed out after 10s, showing login page');
+      const spinner = document.getElementById('loading-screen') || document.querySelector('.loading-screen');
+      if (spinner) spinner.style.display = 'none';
+      this.router.init();
+      window.router = this.router;
+      this.router.navigate('/login');
+    }, 10000);
 
-    // Set up auth state listener
-    supabase.auth.onAuthStateChange((event, session) => {
-      console.log('Auth state changed:', event);
-      this.handleAuthStateChange(event, session);
-    });
+    try {
+      // Check if Supabase is reachable before doing anything
+      const supabaseHealthy = await this.checkSupabaseHealth();
+      if (!supabaseHealthy) {
+        initCompleted = true;
+        clearTimeout(initTimeout);
+        const { default: MaintenancePage } = await import('./pages/maintenance.js');
+        const page = new MaintenancePage();
+        await page.render();
+        return; // Don't initialize anything else
+      }
 
-    // Initialize router
-    this.router.init();
+      // Check authentication state
+      await this.checkAuth();
 
-    // Expose router globally for navigation
-    window.router = this.router;
+      // If master timeout already fired, don't double-init
+      if (initCompleted) return;
+      initCompleted = true;
+      clearTimeout(initTimeout);
 
-    // Expose supabase for debugging
-    window.supabase = supabase;
+      // Set up auth state listener
+      supabase.auth.onAuthStateChange((event, session) => {
+        console.log('Auth state changed:', event);
+        this.handleAuthStateChange(event, session);
+      });
 
-    // Set up global dialpad function
-    this.setupGlobalDialpad();
+      // Initialize router
+      this.router.init();
 
-    // Listen for route changes to update widget visibility
-    window.addEventListener('popstate', () => this.updateWidgetVisibility());
-    // Also listen for pushstate changes (SPA navigation)
-    const originalPushState = history.pushState;
-    history.pushState = (...args) => {
-      originalPushState.apply(history, args);
-      setTimeout(() => this.updateWidgetVisibility(), 100);
-    };
+      // Expose router globally for navigation
+      window.router = this.router;
 
-    // Register service worker for PWA
-    if ('serviceWorker' in navigator) {
-      this.registerServiceWorker();
+      // Expose supabase for debugging
+      window.supabase = supabase;
+
+      // Set up global dialpad function
+      this.setupGlobalDialpad();
+
+      // Listen for route changes to update widget visibility
+      window.addEventListener('popstate', () => this.updateWidgetVisibility());
+      // Also listen for pushstate changes (SPA navigation)
+      const originalPushState = history.pushState;
+      history.pushState = (...args) => {
+        originalPushState.apply(history, args);
+        setTimeout(() => this.updateWidgetVisibility(), 100);
+      };
+
+      // Register service worker for PWA
+      if ('serviceWorker' in navigator) {
+        this.registerServiceWorker();
+      }
+    } catch (err) {
+      console.error('App init error:', err);
+      if (!initCompleted) {
+        initCompleted = true;
+        clearTimeout(initTimeout);
+        this.router.init();
+        window.router = this.router;
+        this.router.navigate('/login');
+      }
     }
   }
 
@@ -79,7 +111,7 @@ class App {
 
   async checkAuth() {
     // First try to get the existing session (restores from storage)
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    const { data: { session }, error: sessionError } = await safeGetSession();
 
     if (sessionError) {
       console.error('Error restoring session:', sessionError);

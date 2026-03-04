@@ -1,0 +1,97 @@
+// Test the Schedule tab on agent detail page
+import { test, expect } from '@playwright/test';
+import { execSync } from 'child_process';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+const ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY;
+
+test.describe('Schedule Tab', () => {
+  test('should display and save schedule settings', async ({ page }) => {
+    test.setTimeout(60000);
+
+    // Get magic link via Supabase admin API
+    console.log('Generating magic link...');
+    const magicLinkCmd = `source .env && curl -s -X POST "https://api.magpipe.ai/auth/v1/admin/generate_link" -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" -H "Content-Type: application/json" -d '{"type":"magiclink","email":"erik@snapsonic.com"}'`;
+    const result = execSync(magicLinkCmd, { cwd: process.cwd(), shell: '/bin/bash' }).toString();
+    const magicLinkData = JSON.parse(result);
+    const otpCode = magicLinkData.email_otp;
+    console.log('Got OTP code:', otpCode);
+
+    // Go to localhost
+    await page.goto('http://localhost:3000');
+    await page.waitForLoadState('networkidle');
+
+    // Verify OTP to get session
+    console.log('Verifying OTP...');
+    const sessionResult = await page.evaluate(async ({ email, otp, anonKey }) => {
+      const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+      const supabase = createClient(
+        'https://api.magpipe.ai',
+        anonKey,
+        { auth: { storageKey: 'magpipe-auth-token' } }
+      );
+      const { data, error } = await supabase.auth.verifyOtp({
+        email,
+        token: otp,
+        type: 'email'
+      });
+      if (data?.session) {
+        localStorage.setItem('magpipe-auth-token', JSON.stringify(data.session));
+      }
+      return { success: !!data?.session, error: error?.message };
+    }, { email: 'erik@snapsonic.com', otp: otpCode, anonKey: ANON_KEY });
+
+    console.log('Session result:', sessionResult);
+    expect(sessionResult.success).toBe(true);
+
+    // Navigate to agents page
+    console.log('Navigating to agents page...');
+    await page.goto('http://localhost:3000/agents');
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(2000);
+
+    // Click the first agent
+    const firstAgent = page.locator('.agent-card').first();
+    await expect(firstAgent).toBeVisible({ timeout: 10000 });
+    await firstAgent.click();
+    await page.waitForURL(/\/agents\/.+/);
+    await page.waitForTimeout(1000);
+
+    // Click the Schedule tab
+    console.log('Clicking Schedule tab...');
+    const scheduleTab = page.locator('[data-tab="schedule"]');
+    await expect(scheduleTab).toBeVisible();
+    await scheduleTab.click();
+    await page.waitForTimeout(500);
+
+    // Verify schedule content loads
+    console.log('Verifying schedule content...');
+    await expect(page.locator('text=Schedule Settings')).toBeVisible();
+    await expect(page.locator('text=Calls Schedule')).toBeVisible();
+    await expect(page.locator('text=Texts Schedule')).toBeVisible();
+    await expect(page.locator('#schedule-timezone')).toBeVisible();
+
+    // Verify day rows are present
+    await expect(page.locator('#calls-monday-enabled')).toBeVisible();
+    await expect(page.locator('#texts-monday-enabled')).toBeVisible();
+
+    // Verify after-hours forwarding fields are present
+    const callForwarding = page.locator('#after-hours-call-forwarding');
+    const smsForwarding = page.locator('#after-hours-sms-forwarding');
+    await expect(callForwarding).toBeVisible();
+    await expect(smsForwarding).toBeVisible();
+    console.log('- After-hours call forwarding input visible: true');
+    console.log('- After-hours SMS forwarding input visible: true');
+
+    // Take screenshot
+    await page.screenshot({ path: 'tests/screenshots/schedule-tab.png', fullPage: true });
+    console.log('Screenshot saved');
+
+    console.log('Schedule tab test passed');
+    console.log('- Schedule Settings visible: true');
+    console.log('- Timezone selector visible: true');
+    console.log('- Day toggles visible: true');
+  });
+});

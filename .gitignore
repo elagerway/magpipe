@@ -7,6 +7,7 @@ node_modules/
 .env.local
 .env.*.local
 .npmrc
+.mcpregistry_*
 
 # Build output
 dist/
@@ -63,7 +64,4 @@ CLAUDE.md
 !docs/logo/*.png
 !public/magpipe-logo.png
 tests/screenshots/
-# Archive (macOS duplicate files)
-archive/
-
 docs/jwt-rotation-plan.md
