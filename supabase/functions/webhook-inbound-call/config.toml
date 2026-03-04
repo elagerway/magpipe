@@ -1,0 +1,2 @@
+[webhook-inbound-call]
+verify_jwt = false

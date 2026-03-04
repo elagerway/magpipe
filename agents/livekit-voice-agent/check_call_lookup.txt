@@ -1,0 +1,7 @@
+Looking for these log lines in Render:
+1. "Call SID: ..." - to see what call_sid value we're using
+2. "Looking up call by call_sid: ..." - confirms first lookup attempt
+3. "Looking up call by service_number: ..." - confirms fallback lookup
+4. "Found call_record by ..." - to see which method worked
+
+Need to see the full error context to understand which lookup failed.

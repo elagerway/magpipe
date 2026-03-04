@@ -1,0 +1,19 @@
+version: 1.0.0
+sections:
+  main:
+    # This SWML script bridges incoming calls from LiveKit to phone numbers
+    # LiveKit will send calls to this SIP domain, which then routes to the actual phone
+    - connect:
+        answer_on_bridge: true
+        # Use the caller ID from LiveKit (the service number)
+        from: "%{call.from}"
+        # Extract the destination number from the SIP URI
+        # LiveKit sends: sip:+16042566768@erik-livekit.dapp.signalwire.com
+        # We extract: +16042566768
+        to: "%{call.to.replace(/^sip:/i, '').replace(/@.*/, '')}"
+        # Use TLS for secure connection
+        codecs:
+          - PCMU
+          - PCMA
+        timeout: 30
+        max_duration: 3600

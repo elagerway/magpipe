@@ -1,0 +1,69 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+.npmrc
+
+# Build output
+dist/
+build/
+.vite/
+
+# Testing
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Supabase
+.supabase/
+
+# Temporary files
+*.tmp
+.cache/
+.vercel
+.env*.local
+
+# Debug scripts
+check-*.cjs
+check-*.sh
+check-*.js
+place-test-call.sh
+test-bridged-call.sh
+
+# Claude Code
+CLAUDE.md
+.claude/settings.local.json
+.claude/commands/whats-new.md
+
+# Specify (internal planning docs)
+.specify/
+
+# Screenshots
+*.png
+!docs/images/*.png
+!docs/logo/*.png
+!public/magpipe-logo.png
+tests/screenshots/
+# Archive (macOS duplicate files)
+archive/
+
+docs/jwt-rotation-plan.md

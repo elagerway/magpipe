@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Magpipe — System Status</title>
+  <meta name="description" content="Real-time status of Magpipe services and infrastructure.">
+  <meta property="og:title" content="Magpipe — System Status">
+  <meta property="og:description" content="Real-time monitoring for all Magpipe services. Voice AI, telephony, SMS, email, and more.">
+  <meta property="og:image" content="https://status.magpipe.ai/og-image.png">
+  <meta property="og:url" content="https://status.magpipe.ai">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Magpipe — System Status">
+  <meta name="twitter:description" content="Real-time monitoring for all Magpipe services.">
+  <meta name="twitter:image" content="https://status.magpipe.ai/og-image.png">
+  <link rel="icon" href="https://magpipe.ai/magpipe-bird.png" type="image/png">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+      color: #fff;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Gradient orbs */
+    .orb {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(140px);
+      pointer-events: none;
+      z-index: 0;
+    }
+    .orb-1 {
+      width: 900px; height: 900px;
+      background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%);
+      top: -350px; left: -250px;
+      opacity: 0.35;
+      animation: float1 20s ease-in-out infinite;
+    }
+    .orb-2 {
+      width: 800px; height: 800px;
+      background: linear-gradient(135deg, #06b6d4 0%, #3b82f6 50%, #6366f1 100%);
+      bottom: -300px; right: -200px;
+      opacity: 0.35;
+      animation: float2 25s ease-in-out infinite;
+    }
+    .orb-3 {
+      width: 600px; height: 600px;
+      background: linear-gradient(135deg, #10b981 0%, #06b6d4 50%, #3b82f6 100%);
+      top: 40%; right: -10%;
+      opacity: 0.25;
+      animation: float3 18s ease-in-out infinite;
+    }
+
+    @keyframes float1 {
+      0%, 100% { transform: translate(0, 0); }
+      50% { transform: translate(400px, 300px); }
+    }
+    @keyframes float2 {
+      0%, 100% { transform: translate(0, 0); }
+      50% { transform: translate(-400px, -300px); }
+    }
+    @keyframes float3 {
+      0%, 100% { transform: translate(0, 0); }
+      50% { transform: translate(-250px, 100px); }
+    }
+
+    /* Grid overlay */
+    .grid-overlay {
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+      background-size: 60px 60px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Layout */
+    .container {
+      position: relative;
+      z-index: 1;
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 3rem 1.5rem 2rem;
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 2.5rem;
+    }
+    .header img {
+      width: 44px;
+      height: auto;
+    }
+    .header h1 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+
+    /* Overall banner */
+    .overall-banner {
+      border-radius: 12px;
+      padding: 1.25rem 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 2rem;
+      font-weight: 600;
+      font-size: 1.05rem;
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    .overall-banner.operational {
+      background: rgba(16, 185, 129, 0.12);
+      border-color: rgba(16, 185, 129, 0.25);
+      color: #6ee7b7;
+    }
+    .overall-banner.degraded {
+      background: rgba(245, 158, 11, 0.12);
+      border-color: rgba(245, 158, 11, 0.25);
+      color: #fcd34d;
+    }
+    .overall-banner.down {
+      background: rgba(239, 68, 68, 0.12);
+      border-color: rgba(239, 68, 68, 0.25);
+      color: #fca5a5;
+    }
+
+    .overall-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .overall-banner.operational .overall-dot { background: #10b981; box-shadow: 0 0 8px rgba(16,185,129,0.5); }
+    .overall-banner.degraded .overall-dot { background: #f59e0b; box-shadow: 0 0 8px rgba(245,158,11,0.5); }
+    .overall-banner.down .overall-dot { background: #ef4444; box-shadow: 0 0 8px rgba(239,68,68,0.5); }
+
+    /* Section title */
+    .section-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: rgba(255,255,255,0.35);
+      margin-bottom: 0.75rem;
+    }
+
+    /* Category cards with uptime bars */
+    .category-card {
+      background: rgba(15, 23, 42, 0.6);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .category-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .category-name {
+      flex: 1;
+      font-size: 0.925rem;
+      font-weight: 600;
+      color: rgba(255,255,255,0.9);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .status-dot.operational { background: #10b981; box-shadow: 0 0 6px rgba(16,185,129,0.4); }
+    .status-dot.degraded { background: #f59e0b; box-shadow: 0 0 6px rgba(245,158,11,0.4); }
+    .status-dot.down { background: #ef4444; box-shadow: 0 0 6px rgba(239,68,68,0.4); }
+
+    .status-label {
+      font-size: 0.8rem;
+      font-weight: 500;
+    }
+    .status-label.operational { color: #6ee7b7; }
+    .status-label.degraded { color: #fcd34d; }
+    .status-label.down { color: #fca5a5; }
+
+    .latency-badge {
+      font-size: 0.7rem;
+      color: rgba(255,255,255,0.3);
+      margin-left: 0.5rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Uptime bar */
+    .uptime-bar {
+      display: flex;
+      gap: 1px;
+      margin-top: 0.6rem;
+      height: 28px;
+      border-radius: 3px;
+    }
+
+    .uptime-day {
+      flex: 1;
+      min-width: 0;
+      border-radius: 2px;
+      cursor: default;
+      position: relative;
+      transition: opacity 0.15s;
+    }
+    .uptime-day:hover { opacity: 0.75; }
+    .uptime-day.operational { background: #10b981; }
+    .uptime-day.degraded { background: #f59e0b; }
+    .uptime-day.down { background: #ef4444; }
+    .uptime-day.no-data { background: rgba(255,255,255,0.06); }
+
+    /* Tooltip */
+    .uptime-day[data-tooltip]:hover::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      bottom: calc(100% + 8px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: #fff;
+      border: 1px solid rgba(0,0,0,0.12);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+      color: #1e293b;
+      font-size: 0.82rem;
+      padding: 8px 12px;
+      border-radius: 8px;
+      white-space: nowrap;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    .uptime-meta {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.68rem;
+      color: rgba(255,255,255,0.3);
+      margin-top: 0.3rem;
+    }
+
+    .uptime-pct {
+      text-align: center;
+      color: rgba(255,255,255,0.45);
+    }
+
+    /* Loading / error states */
+    .loading {
+      text-align: center;
+      padding: 3rem 1rem;
+      color: rgba(255,255,255,0.4);
+      font-size: 0.9rem;
+    }
+    .loading .spinner {
+      width: 24px;
+      height: 24px;
+      border: 2px solid rgba(255,255,255,0.1);
+      border-top-color: rgba(255,255,255,0.5);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 1rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .error-msg {
+      text-align: center;
+      padding: 2rem 1rem;
+      color: #fca5a5;
+      font-size: 0.9rem;
+    }
+
+    /* Footer */
+    .footer {
+      margin-top: 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.78rem;
+      color: rgba(255,255,255,0.3);
+    }
+    .footer a {
+      color: rgba(255,255,255,0.4);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    .footer a:hover {
+      color: rgba(255,255,255,0.7);
+    }
+
+    /* Subscribe form */
+    .subscribe-card {
+      background: rgba(15, 23, 42, 0.6);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 2rem;
+    }
+    .subscribe-card h3 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+    .subscribe-card p {
+      font-size: 0.8rem;
+      color: rgba(255,255,255,0.4);
+      margin-bottom: 1rem;
+      line-height: 1.4;
+    }
+    .subscribe-row {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+    .subscribe-row input {
+      flex: 1;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+      padding: 0.6rem 0.75rem;
+      color: #fff;
+      font-size: 0.85rem;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .subscribe-row input::placeholder { color: rgba(255,255,255,0.25); }
+    .subscribe-row input:focus { border-color: rgba(99,102,241,0.5); }
+    .subscribe-btn {
+      background: #6366f1;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 0.6rem 1.25rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.2s;
+    }
+    .phone-wrapper {
+      display: flex;
+      gap: 0;
+      flex: 1;
+    }
+    .country-select-wrap {
+      position: relative;
+      flex-shrink: 0;
+    }
+    .country-select-wrap select {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      font-size: 1rem;
+      width: 100%;
+    }
+    .country-display {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.6rem 0.5rem;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-right: none;
+      border-radius: 8px 0 0 8px;
+      font-size: 0.85rem;
+      color: rgba(255,255,255,0.7);
+      white-space: nowrap;
+      pointer-events: none;
+    }
+    .phone-wrapper input[type="tel"] {
+      border-radius: 0 8px 8px 0 !important;
+    }
+    .subscribe-btn:hover { background: #4f46e5; }
+    .subscribe-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .webhook-toggle {
+      font-size: 0.75rem;
+      color: rgba(255,255,255,0.3);
+      cursor: pointer;
+      background: none;
+      border: none;
+      padding: 0;
+      font-family: inherit;
+      margin-bottom: 0.5rem;
+      transition: color 0.2s;
+    }
+    .webhook-toggle:hover { color: rgba(255,255,255,0.5); }
+    .webhook-field { display: none; margin-bottom: 0.5rem; }
+    .webhook-field.visible { display: flex; }
+    .subscribe-msg {
+      font-size: 0.8rem;
+      margin-top: 0.5rem;
+      line-height: 1.4;
+    }
+    .subscribe-msg.success { color: #6ee7b7; }
+    .subscribe-msg.error { color: #fca5a5; }
+
+    @media (max-width: 600px) {
+      .container { padding: 2rem 1rem 1.5rem; }
+      .header h1 { font-size: 1.15rem; }
+      .header img { width: 36px; }
+      .overall-banner { font-size: 0.95rem; padding: 1rem 1.25rem; }
+      .category-card { padding: 0.75rem 1rem; }
+      .uptime-bar { height: 22px; }
+      .latency-badge { display: none; }
+      .footer { flex-direction: column; gap: 0.5rem; text-align: center; }
+      .subscribe-row { flex-direction: column; }
+      .subscribe-btn { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+  <div class="grid-overlay"></div>
+
+  <div class="container">
+    <div class="header">
+      <img src="https://magpipe.ai/magpipe-bird.png" alt="Magpipe">
+      <h1>System Status</h1>
+    </div>
+
+    <div id="overall-banner" class="overall-banner operational" style="display:none;">
+      <span class="overall-dot"></span>
+      <span id="overall-text"></span>
+    </div>
+
+    <div class="subscribe-card">
+      <h3>Get notified</h3>
+      <p>Receive email, SMS, or webhook alerts when service status changes.</p>
+      <form id="subscribe-form" onsubmit="handleSubscribe(event)">
+        <div class="subscribe-row">
+          <input type="email" id="sub-email" placeholder="Email address" required>
+          <button type="submit" class="subscribe-btn" id="sub-btn">Subscribe</button>
+        </div>
+        <div class="subscribe-row">
+          <div class="phone-wrapper">
+            <div class="country-select-wrap">
+              <select id="sub-country-code" aria-label="Country code"></select>
+              <span class="country-display" id="country-display">🇺🇸 +1 ▾</span>
+            </div>
+            <input type="tel" id="sub-phone" placeholder="555-123-4567" maxlength="15">
+          </div>
+        </div>
+        <button type="button" class="webhook-toggle" onclick="toggleWebhook()">+ Add webhook URL</button>
+        <div class="webhook-field subscribe-row" id="webhook-row">
+          <input type="url" id="sub-webhook" placeholder="https://your-server.com/webhook">
+        </div>
+        <div id="sub-msg" class="subscribe-msg" style="display:none;"></div>
+      </form>
+    </div>
+
+    <div id="status-content">
+      <div class="loading">
+        <div class="spinner"></div>
+        Checking services&hellip;
+      </div>
+    </div>
+
+    <div class="footer">
+      <span id="last-checked"></span>
+      <a href="https://magpipe.ai">&larr; Back to Magpipe</a>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = 'https://api.magpipe.ai/functions/v1/public-status';
+    const VIEWER_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const HISTORY_URL = API_URL + '?history=true&tz=' + encodeURIComponent(VIEWER_TZ);
+    const REFRESH_INTERVAL = 60000;
+    const HISTORY_DAYS = 90;
+
+    const STATUS_LABELS = {
+      operational: 'Operational',
+      degraded: 'Partial Outage',
+      down: 'Outage',
+    };
+
+    const OVERALL_LABELS = {
+      operational: 'All Systems Operational',
+      degraded: 'Partial Service Disruption',
+      down: 'Service Disruption Detected',
+    };
+
+    let lastCheckedAt = null;
+    let historyData = null; // { category: { 'YYYY-MM-DD': { uptime_pct, status } } }
+
+    async function fetchAll() {
+      const [statusRes, historyRes] = await Promise.allSettled([
+        fetch(API_URL, { signal: AbortSignal.timeout(15000) }),
+        historyData ? Promise.resolve(null) : fetch(HISTORY_URL, { signal: AbortSignal.timeout(15000) }),
+      ]);
+
+      if (statusRes.status === 'fulfilled' && statusRes.value.ok) {
+        const data = await statusRes.value.json();
+
+        // Parse history on first load
+        if (!historyData && historyRes.status === 'fulfilled' && historyRes.value && historyRes.value.ok) {
+          const raw = await historyRes.value.json();
+          historyData = {};
+          for (const row of raw) {
+            if (!historyData[row.category]) historyData[row.category] = {};
+            // Bar color based on uptime %: green >= 95%, amber >= 50%, red < 50%
+            const pct = parseFloat(row.uptime_pct) || 0;
+            const dayStatus = pct >= 95 ? 'operational' : pct >= 50 ? 'degraded' : 'down';
+            historyData[row.category][row.day] = {
+              uptime_pct: row.uptime_pct,
+              status: dayStatus,
+              detail: row.worst_detail || null,
+            };
+          }
+        }
+
+        renderStatus(data);
+        lastCheckedAt = new Date();
+        updateLastChecked();
+      } else {
+        document.getElementById('status-content').innerHTML =
+          '<div class="error-msg">Unable to reach status endpoint. Please try again shortly.</div>';
+      }
+    }
+
+    function renderStatus(data) {
+      // Overall banner
+      const banner = document.getElementById('overall-banner');
+      const overallText = document.getElementById('overall-text');
+      banner.className = 'overall-banner ' + data.overall;
+      overallText.textContent = OVERALL_LABELS[data.overall] || data.overall;
+      banner.style.display = 'flex';
+
+      // Build date array for last 90 days (viewer's local dates)
+      const days = [];
+      const now = new Date();
+      for (let i = HISTORY_DAYS - 1; i >= 0; i--) {
+        const d = new Date(now);
+        d.setDate(d.getDate() - i);
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        days.push(`${yyyy}-${mm}-${dd}`);
+      }
+
+      // Section: current status + uptime
+      const localTime = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+      let html = '<div class="section-title" style="display:flex;justify-content:space-between;align-items:baseline;"><span>Uptime over the past 90 days</span><span style="text-transform:none;letter-spacing:0;font-variant-numeric:tabular-nums;">' + localTime + '</span></div>';
+
+      for (const cat of data.categories) {
+        const isPartial = cat.detail && /partial/i.test(cat.detail);
+        const label = isPartial ? 'Partial Outage' : (STATUS_LABELS[cat.status] || cat.status);
+        const latency = cat.latency != null ? cat.latency + ' ms' : '';
+        // Calculate overall uptime % from history (weighted by actual check counts)
+        const catHistory = historyData ? historyData[cat.name] || {} : {};
+        const daysWithData = Object.values(catHistory);
+        let totalPct = 0, dayCount = 0;
+        for (const d of daysWithData) {
+          if (d.uptime_pct != null) { totalPct += parseFloat(d.uptime_pct); dayCount++; }
+        }
+        // Only show uptime % once we have at least 2 days of data
+        const uptimePct = dayCount >= 2 ? (totalPct / dayCount).toFixed(2) : null;
+
+        // Build bar — for today's bar, use live detail from current check
+        const _now = new Date();
+        const todayISO = `${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,'0')}-${String(_now.getDate()).padStart(2,'0')}`;
+        let barHtml = '';
+        for (const day of days) {
+          const dayData = catHistory[day];
+          if (dayData) {
+            const dateLabel = formatDate(day);
+            const pctLabel = dayData.uptime_pct != null ? dayData.uptime_pct + '% uptime' : '';
+            // Use live detail for today, historical detail for past days
+            const detail = (day === todayISO && cat.detail) ? cat.detail : dayData.detail;
+            let tip = dateLabel + (pctLabel ? ' \u2014 ' + pctLabel : '');
+            if (detail && dayData.status !== 'operational') tip += ' \u2014 ' + detail;
+            barHtml += `<div class="uptime-day ${dayData.status}" data-tooltip="${esc(tip)}"></div>`;
+          } else {
+            barHtml += `<div class="uptime-day no-data" data-tooltip="${esc(formatDate(day))} \u2014 No data"></div>`;
+          }
+        }
+
+        html += `
+          <div class="category-card">
+            <div class="category-header">
+              <span class="category-name">${esc(cat.name)}</span>
+              <span class="status-dot ${cat.status}"></span>
+              <span class="status-label ${cat.status}">${label}</span>
+              <span class="latency-badge">${latency}</span>
+            </div>
+            <div class="uptime-bar">${barHtml}</div>
+            <div class="uptime-meta">
+              <span>90 days ago</span>
+              <span class="uptime-pct">${uptimePct !== null ? uptimePct + ' % uptime' : ''}</span>
+              <span>Today</span>
+            </div>
+          </div>`;
+      }
+
+      document.getElementById('status-content').innerHTML = html;
+    }
+
+    function formatDate(iso) {
+      const d = new Date(iso + 'T00:00:00');
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+
+    function updateLastChecked() {
+      const el = document.getElementById('last-checked');
+      if (!lastCheckedAt) { el.textContent = ''; return; }
+      const secs = Math.round((Date.now() - lastCheckedAt.getTime()) / 1000);
+      if (secs < 5) el.textContent = 'Last checked: just now';
+      else if (secs < 60) el.textContent = `Last checked: ${secs}s ago`;
+      else el.textContent = `Last checked: ${Math.round(secs / 60)}m ago`;
+    }
+
+    function esc(str) {
+      const d = document.createElement('div');
+      d.textContent = str;
+      return d.innerHTML;
+    }
+
+    // Initial fetch (status + history)
+    fetchAll();
+
+    // Refresh status every 60s (history only fetched once)
+    setInterval(() => {
+      fetch(API_URL, { signal: AbortSignal.timeout(15000) })
+        .then(r => r.ok ? r.json() : Promise.reject())
+        .then(data => {
+          renderStatus(data);
+          lastCheckedAt = new Date();
+          updateLastChecked();
+        })
+        .catch(() => {});
+    }, REFRESH_INTERVAL);
+
+    // Update "last checked" counter every 10s
+    setInterval(updateLastChecked, 10000);
+
+    // --- Subscribe form ---
+    const SUBSCRIBE_API = 'https://api.magpipe.ai/functions/v1/status-subscribe';
+
+    // Country codes — US/CA first, then alphabetical
+    const COUNTRY_CODES = [
+      { code: '+1', flag: '\u{1F1FA}\u{1F1F8}', name: 'United States' },
+      { code: '+1', flag: '\u{1F1E8}\u{1F1E6}', name: 'Canada' },
+      { code: '+93', flag: '\u{1F1E6}\u{1F1EB}', name: 'Afghanistan' },
+      { code: '+355', flag: '\u{1F1E6}\u{1F1F1}', name: 'Albania' },
+      { code: '+213', flag: '\u{1F1E9}\u{1F1FF}', name: 'Algeria' },
+      { code: '+54', flag: '\u{1F1E6}\u{1F1F7}', name: 'Argentina' },
+      { code: '+61', flag: '\u{1F1E6}\u{1F1FA}', name: 'Australia' },
+      { code: '+43', flag: '\u{1F1E6}\u{1F1F9}', name: 'Austria' },
+      { code: '+973', flag: '\u{1F1E7}\u{1F1ED}', name: 'Bahrain' },
+      { code: '+880', flag: '\u{1F1E7}\u{1F1E9}', name: 'Bangladesh' },
+      { code: '+32', flag: '\u{1F1E7}\u{1F1EA}', name: 'Belgium' },
+      { code: '+55', flag: '\u{1F1E7}\u{1F1F7}', name: 'Brazil' },
+      { code: '+359', flag: '\u{1F1E7}\u{1F1EC}', name: 'Bulgaria' },
+      { code: '+855', flag: '\u{1F1F0}\u{1F1ED}', name: 'Cambodia' },
+      { code: '+56', flag: '\u{1F1E8}\u{1F1F1}', name: 'Chile' },
+      { code: '+86', flag: '\u{1F1E8}\u{1F1F3}', name: 'China' },
+      { code: '+57', flag: '\u{1F1E8}\u{1F1F4}', name: 'Colombia' },
+      { code: '+506', flag: '\u{1F1E8}\u{1F1F7}', name: 'Costa Rica' },
+      { code: '+385', flag: '\u{1F1ED}\u{1F1F7}', name: 'Croatia' },
+      { code: '+357', flag: '\u{1F1E8}\u{1F1FE}', name: 'Cyprus' },
+      { code: '+420', flag: '\u{1F1E8}\u{1F1FF}', name: 'Czech Republic' },
+      { code: '+45', flag: '\u{1F1E9}\u{1F1F0}', name: 'Denmark' },
+      { code: '+593', flag: '\u{1F1EA}\u{1F1E8}', name: 'Ecuador' },
+      { code: '+20', flag: '\u{1F1EA}\u{1F1EC}', name: 'Egypt' },
+      { code: '+503', flag: '\u{1F1F8}\u{1F1FB}', name: 'El Salvador' },
+      { code: '+372', flag: '\u{1F1EA}\u{1F1EA}', name: 'Estonia' },
+      { code: '+251', flag: '\u{1F1EA}\u{1F1F9}', name: 'Ethiopia' },
+      { code: '+358', flag: '\u{1F1EB}\u{1F1EE}', name: 'Finland' },
+      { code: '+33', flag: '\u{1F1EB}\u{1F1F7}', name: 'France' },
+      { code: '+49', flag: '\u{1F1E9}\u{1F1EA}', name: 'Germany' },
+      { code: '+233', flag: '\u{1F1EC}\u{1F1ED}', name: 'Ghana' },
+      { code: '+30', flag: '\u{1F1EC}\u{1F1F7}', name: 'Greece' },
+      { code: '+502', flag: '\u{1F1EC}\u{1F1F9}', name: 'Guatemala' },
+      { code: '+504', flag: '\u{1F1ED}\u{1F1F3}', name: 'Honduras' },
+      { code: '+852', flag: '\u{1F1ED}\u{1F1F0}', name: 'Hong Kong' },
+      { code: '+36', flag: '\u{1F1ED}\u{1F1FA}', name: 'Hungary' },
+      { code: '+354', flag: '\u{1F1EE}\u{1F1F8}', name: 'Iceland' },
+      { code: '+91', flag: '\u{1F1EE}\u{1F1F3}', name: 'India' },
+      { code: '+62', flag: '\u{1F1EE}\u{1F1E9}', name: 'Indonesia' },
+      { code: '+98', flag: '\u{1F1EE}\u{1F1F7}', name: 'Iran' },
+      { code: '+964', flag: '\u{1F1EE}\u{1F1F6}', name: 'Iraq' },
+      { code: '+353', flag: '\u{1F1EE}\u{1F1EA}', name: 'Ireland' },
+      { code: '+972', flag: '\u{1F1EE}\u{1F1F1}', name: 'Israel' },
+      { code: '+39', flag: '\u{1F1EE}\u{1F1F9}', name: 'Italy' },
+      { code: '+81', flag: '\u{1F1EF}\u{1F1F5}', name: 'Japan' },
+      { code: '+962', flag: '\u{1F1EF}\u{1F1F4}', name: 'Jordan' },
+      { code: '+7', flag: '\u{1F1F0}\u{1F1FF}', name: 'Kazakhstan' },
+      { code: '+254', flag: '\u{1F1F0}\u{1F1EA}', name: 'Kenya' },
+      { code: '+82', flag: '\u{1F1F0}\u{1F1F7}', name: 'South Korea' },
+      { code: '+965', flag: '\u{1F1F0}\u{1F1FC}', name: 'Kuwait' },
+      { code: '+371', flag: '\u{1F1F1}\u{1F1FB}', name: 'Latvia' },
+      { code: '+961', flag: '\u{1F1F1}\u{1F1E7}', name: 'Lebanon' },
+      { code: '+370', flag: '\u{1F1F1}\u{1F1F9}', name: 'Lithuania' },
+      { code: '+352', flag: '\u{1F1F1}\u{1F1FA}', name: 'Luxembourg' },
+      { code: '+60', flag: '\u{1F1F2}\u{1F1FE}', name: 'Malaysia' },
+      { code: '+356', flag: '\u{1F1F2}\u{1F1F9}', name: 'Malta' },
+      { code: '+52', flag: '\u{1F1F2}\u{1F1FD}', name: 'Mexico' },
+      { code: '+212', flag: '\u{1F1F2}\u{1F1E6}', name: 'Morocco' },
+      { code: '+31', flag: '\u{1F1F3}\u{1F1F1}', name: 'Netherlands' },
+      { code: '+64', flag: '\u{1F1F3}\u{1F1FF}', name: 'New Zealand' },
+      { code: '+234', flag: '\u{1F1F3}\u{1F1EC}', name: 'Nigeria' },
+      { code: '+47', flag: '\u{1F1F3}\u{1F1F4}', name: 'Norway' },
+      { code: '+968', flag: '\u{1F1F4}\u{1F1F2}', name: 'Oman' },
+      { code: '+92', flag: '\u{1F1F5}\u{1F1F0}', name: 'Pakistan' },
+      { code: '+507', flag: '\u{1F1F5}\u{1F1E6}', name: 'Panama' },
+      { code: '+595', flag: '\u{1F1F5}\u{1F1FE}', name: 'Paraguay' },
+      { code: '+51', flag: '\u{1F1F5}\u{1F1EA}', name: 'Peru' },
+      { code: '+63', flag: '\u{1F1F5}\u{1F1ED}', name: 'Philippines' },
+      { code: '+48', flag: '\u{1F1F5}\u{1F1F1}', name: 'Poland' },
+      { code: '+351', flag: '\u{1F1F5}\u{1F1F9}', name: 'Portugal' },
+      { code: '+974', flag: '\u{1F1F6}\u{1F1E6}', name: 'Qatar' },
+      { code: '+40', flag: '\u{1F1F7}\u{1F1F4}', name: 'Romania' },
+      { code: '+7', flag: '\u{1F1F7}\u{1F1FA}', name: 'Russia' },
+      { code: '+966', flag: '\u{1F1F8}\u{1F1E6}', name: 'Saudi Arabia' },
+      { code: '+65', flag: '\u{1F1F8}\u{1F1EC}', name: 'Singapore' },
+      { code: '+421', flag: '\u{1F1F8}\u{1F1F0}', name: 'Slovakia' },
+      { code: '+386', flag: '\u{1F1F8}\u{1F1EE}', name: 'Slovenia' },
+      { code: '+27', flag: '\u{1F1FF}\u{1F1E6}', name: 'South Africa' },
+      { code: '+34', flag: '\u{1F1EA}\u{1F1F8}', name: 'Spain' },
+      { code: '+94', flag: '\u{1F1F1}\u{1F1F0}', name: 'Sri Lanka' },
+      { code: '+46', flag: '\u{1F1F8}\u{1F1EA}', name: 'Sweden' },
+      { code: '+41', flag: '\u{1F1E8}\u{1F1ED}', name: 'Switzerland' },
+      { code: '+886', flag: '\u{1F1F9}\u{1F1FC}', name: 'Taiwan' },
+      { code: '+66', flag: '\u{1F1F9}\u{1F1ED}', name: 'Thailand' },
+      { code: '+90', flag: '\u{1F1F9}\u{1F1F7}', name: 'Turkey' },
+      { code: '+256', flag: '\u{1F1FA}\u{1F1EC}', name: 'Uganda' },
+      { code: '+380', flag: '\u{1F1FA}\u{1F1E6}', name: 'Ukraine' },
+      { code: '+971', flag: '\u{1F1E6}\u{1F1EA}', name: 'United Arab Emirates' },
+      { code: '+44', flag: '\u{1F1EC}\u{1F1E7}', name: 'United Kingdom' },
+      { code: '+598', flag: '\u{1F1FA}\u{1F1FE}', name: 'Uruguay' },
+      { code: '+58', flag: '\u{1F1FB}\u{1F1EA}', name: 'Venezuela' },
+      { code: '+84', flag: '\u{1F1FB}\u{1F1F3}', name: 'Vietnam' },
+      { code: '+260', flag: '\u{1F1FF}\u{1F1F2}', name: 'Zambia' },
+      { code: '+263', flag: '\u{1F1FF}\u{1F1FC}', name: 'Zimbabwe' },
+    ];
+
+    let selectedCountryCode = '+1';
+
+    // Initialize country code dropdown
+    (function initPhoneInput() {
+      const select = document.getElementById('sub-country-code');
+      const display = document.getElementById('country-display');
+      const phoneInput = document.getElementById('sub-phone');
+      if (!select) return;
+
+      select.innerHTML = COUNTRY_CODES.map((c, i) =>
+        `<option value="${i}"${i === 0 ? ' selected' : ''}>${c.flag} ${c.name} (${c.code})</option>`
+      ).join('');
+
+      select.addEventListener('change', (e) => {
+        const country = COUNTRY_CODES[e.target.value];
+        selectedCountryCode = country.code;
+        display.textContent = `${country.flag} ${country.code} \u25BE`;
+        phoneInput.placeholder = selectedCountryCode === '+1' ? '555-123-4567' : 'Phone number';
+        phoneInput.maxLength = selectedCountryCode === '+1' ? 12 : 15;
+        phoneInput.value = '';
+        phoneInput.focus();
+      });
+
+      phoneInput.addEventListener('input', (e) => {
+        let value = e.target.value.replace(/\D/g, '');
+        if (selectedCountryCode === '+1') {
+          if (value.startsWith('1') && value.length === 11) value = value.slice(1);
+          if (value.length > 10) value = value.slice(0, 10);
+          if (value.length > 6) value = `${value.slice(0,3)}-${value.slice(3,6)}-${value.slice(6)}`;
+          else if (value.length > 3) value = `${value.slice(0,3)}-${value.slice(3)}`;
+        } else {
+          const maxDigits = 15 - selectedCountryCode.replace('+','').length;
+          if (value.length > maxDigits) value = value.slice(0, maxDigits);
+        }
+        e.target.value = value;
+      });
+    })();
+
+    function toggleWebhook() {
+      const row = document.getElementById('webhook-row');
+      row.classList.toggle('visible');
+    }
+
+    async function handleSubscribe(e) {
+      e.preventDefault();
+      const btn = document.getElementById('sub-btn');
+      const msgEl = document.getElementById('sub-msg');
+      const email = document.getElementById('sub-email').value.trim();
+      const rawPhone = document.getElementById('sub-phone').value.trim();
+      const webhook = document.getElementById('sub-webhook').value.trim();
+
+      // Build E.164 phone from country code + digits
+      const phone = rawPhone ? selectedCountryCode + rawPhone.replace(/\D/g, '') : '';
+
+      const channels = [];
+      if (email) channels.push('email');
+      if (phone) channels.push('sms');
+      if (webhook) channels.push('webhook');
+
+      if (channels.length === 0) {
+        showMsg('Please enter at least an email address.', 'error');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Subscribing…';
+      msgEl.style.display = 'none';
+
+      try {
+        const res = await fetch(SUBSCRIBE_API, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: email || undefined,
+            phone: phone || undefined,
+            webhook_url: webhook || undefined,
+            channels,
+          }),
+        });
+        const data = await res.json();
+        if (data.error) {
+          showMsg(data.error, 'error');
+        } else {
+          showMsg(data.message || 'Subscribed!', 'success');
+          document.getElementById('subscribe-form').reset();
+          document.getElementById('webhook-row').classList.remove('visible');
+        }
+      } catch {
+        showMsg('Something went wrong. Please try again.', 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Subscribe';
+      }
+    }
+
+    function showMsg(text, type) {
+      const el = document.getElementById('sub-msg');
+      el.textContent = text;
+      el.className = 'subscribe-msg ' + type;
+      el.style.display = 'block';
+    }
+  </script>
+</body>
+</html>

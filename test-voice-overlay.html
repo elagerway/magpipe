@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test Voice Overlay</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: #f5f5f5;
+    }
+    .test-controls {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    h1 {
+      margin-top: 0;
+    }
+    button {
+      padding: 10px 20px;
+      margin: 5px;
+      background: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button:hover {
+      background: #0056b3;
+    }
+    .status {
+      margin-top: 20px;
+      padding: 15px;
+      background: #f8f9fa;
+      border-radius: 4px;
+      border-left: 4px solid #007bff;
+    }
+    .note {
+      margin-top: 10px;
+      padding: 10px;
+      background: #fff3cd;
+      border-radius: 4px;
+      border-left: 4px solid #ffc107;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="test-controls">
+    <h1>Voice Overlay Test</h1>
+    <p>Test the circular waveform animation states:</p>
+
+    <div>
+      <button onclick="testListening()">Test Listening State</button>
+      <button onclick="testActive()">Test Active State (User Speaking)</button>
+      <button onclick="testProcessing()">Test Processing State</button>
+      <button onclick="testSpeaking()">Test Speaking State (AI Response)</button>
+    </div>
+
+    <div class="status" id="status">
+      <strong>Status:</strong> Ready to test
+    </div>
+
+    <div class="note">
+      <strong>Expected Behavior:</strong>
+      <ul>
+        <li><strong>Listening:</strong> Circles static/minimal opacity (0.3)</li>
+        <li><strong>Active:</strong> Circles pulse with staggered delay when user speaks</li>
+        <li><strong>Processing:</strong> Subtle pulse while processing</li>
+        <li><strong>Speaking:</strong> Strong pulse with scale when AI responds</li>
+      </ul>
+    </div>
+
+    <div class="note">
+      <strong>Note:</strong> Open browser console to see state changes. Go to <a href="/home">Admin Home</a> to test the actual voice conversation.
+    </div>
+  </div>
+
+  <script type="module">
+    window.testListening = () => {
+      document.getElementById('status').innerHTML = '<strong>Status:</strong> Testing Listening State - circles should be static with minimal opacity';
+      console.log('Testing Listening State');
+    };
+
+    window.testActive = () => {
+      document.getElementById('status').innerHTML = '<strong>Status:</strong> Testing Active State - circles should pulse with staggered animation';
+      console.log('Testing Active State (User Speaking)');
+    };
+
+    window.testProcessing = () => {
+      document.getElementById('status').innerHTML = '<strong>Status:</strong> Testing Processing State - circles should show subtle pulse';
+      console.log('Testing Processing State');
+    };
+
+    window.testSpeaking = () => {
+      document.getElementById('status').innerHTML = '<strong>Status:</strong> Testing Speaking State - circles should pulse strongly with scale';
+      console.log('Testing Speaking State (AI Response)');
+    };
+  </script>
+</body>
+</html>

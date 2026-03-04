@@ -1,0 +1,114 @@
+---
+title: "Update Custom Function"
+api: "PATCH /custom-functions/{id}"
+description: "Update an existing custom function"
+---
+
+Update a custom function's configuration. Only include fields you want to change.
+
+## Path Parameters
+
+<ParamField path="id" type="string" required>
+  UUID of the custom function to update
+</ParamField>
+
+## Request Body
+
+<ParamField body="name" type="string">
+  Function name in snake_case. Must be unique per agent.
+</ParamField>
+
+<ParamField body="description" type="string">
+  Description of what the function does
+</ParamField>
+
+<ParamField body="http_method" type="string">
+  HTTP method: `GET`, `POST`, `PUT`, `PATCH`, or `DELETE`
+</ParamField>
+
+<ParamField body="endpoint_url" type="string">
+  The webhook URL to call
+</ParamField>
+
+<ParamField body="headers" type="array">
+  Custom headers to include with requests
+</ParamField>
+
+<ParamField body="body_schema" type="array">
+  Parameters the AI should collect
+</ParamField>
+
+<ParamField body="response_variables" type="array">
+  Variables to extract from response
+</ParamField>
+
+<ParamField body="timeout_ms" type="integer">
+  Request timeout in milliseconds
+</ParamField>
+
+<ParamField body="max_retries" type="integer">
+  Number of retry attempts
+</ParamField>
+
+<ParamField body="is_active" type="boolean">
+  Whether the function is active
+</ParamField>
+
+## Response
+
+Returns the updated custom function object.
+
+<RequestExample>
+```bash cURL
+curl -X PATCH "https://api.magpipe.ai/functions/v1/custom-functions/789e0123-e89b-12d3-a456-426614174000" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "description": "Look up order status including tracking info",
+    "is_active": true
+  }'
+```
+</RequestExample>
+
+<ResponseExample>
+```json 200
+{
+  "id": "789e0123-e89b-12d3-a456-426614174000",
+  "agent_id": "123e4567-e89b-12d3-a456-426614174000",
+  "user_id": "456e7890-e89b-12d3-a456-426614174000",
+  "name": "check_order_status",
+  "description": "Look up order status including tracking info",
+  "http_method": "POST",
+  "endpoint_url": "https://api.yourstore.com/orders/status",
+  "headers": [],
+  "body_schema": [
+    {
+      "name": "order_id",
+      "type": "string",
+      "description": "The customer order ID",
+      "required": true
+    }
+  ],
+  "response_variables": [
+    {"name": "status", "json_path": "$.data.status"}
+  ],
+  "timeout_ms": 120000,
+  "max_retries": 2,
+  "is_active": true,
+  "created_at": "2024-01-15T10:30:00Z",
+  "updated_at": "2024-01-15T14:00:00Z"
+}
+```
+
+```json 404
+{
+  "error": "Custom function not found"
+}
+```
+
+```json 409
+{
+  "error": "A function with this name already exists for this agent"
+}
+```
+</ResponseExample>

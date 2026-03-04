@@ -1,0 +1,261 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "name": "MAGPIPE",
+  "logo": {
+    "dark": "logo/dark.svg",
+    "light": "logo/light.svg"
+  },
+  "favicon": "logo/magpipe-bird-2.png",
+  "openapi": "openapi.json",
+  "api": {
+    "baseUrl": "https://api.magpipe.ai/functions/v1",
+    "auth": {
+      "method": "bearer"
+    },
+    "playground": {
+      "mode": "show"
+    }
+  },
+  "colors": {
+    "primary": "#6366f1",
+    "light": "#818cf8",
+    "dark": "#4f46e5",
+    "anchors": {
+      "from": "#6366f1",
+      "to": "#8b5cf6"
+    }
+  },
+  "topbarLinks": [
+    {
+      "name": "Support",
+      "url": "mailto:support@magpipe.ai"
+    }
+  ],
+  "topbarCtaButton": {
+    "name": "Dashboard",
+    "url": "https://magpipe.ai/inbox"
+  },
+  "tabs": [
+    {
+      "name": "API Reference",
+      "url": "api-reference"
+    }
+  ],
+  "anchors": [
+    {
+      "name": "Dashboard",
+      "icon": "browser",
+      "url": "https://magpipe.ai/inbox"
+    },
+    {
+      "name": "Contact Us",
+      "icon": "envelope",
+      "url": "mailto:support@magpipe.ai"
+    }
+  ],
+  "navigation": [
+    {
+      "group": "Get Started",
+      "pages": [
+        "introduction",
+        "quickstart"
+      ]
+    },
+    {
+      "group": "Features",
+      "pages": [
+        "features/agents",
+        "features/agent-memory",
+        "features/agent-notifications",
+        "features/system-functions",
+        "features/custom-functions",
+        "features/phone-numbers",
+        "features/inbox",
+        "features/email",
+        "features/knowledge-base",
+        "features/chat-widget",
+        "features/apps",
+        "features/integrations",
+        "features/contacts",
+        "features/team-management",
+        "features/white-labeling",
+        "features/billing",
+        "features/scheduled-actions",
+        "features/batch-calling",
+        "features/webhooks",
+        "features/status-page",
+        "features/settings"
+      ]
+    },
+    {
+      "group": "Guides",
+      "pages": [
+        "guides/create-agent",
+        "guides/make-calls",
+        "guides/receive-calls",
+        "guides/sms"
+      ]
+    },
+    {
+      "group": "API Reference",
+      "pages": [
+        "api-reference/introduction",
+        "api-reference/authentication",
+        "api-reference/mcp-server"
+      ]
+    },
+    {
+      "group": "Agents",
+      "pages": [
+        "api-reference/endpoints/create-agent",
+        "api-reference/endpoints/get-agent",
+        "api-reference/endpoints/update-agent",
+        "api-reference/endpoints/list-agents",
+        "api-reference/endpoints/delete-agent"
+      ]
+    },
+    {
+      "group": "Custom Functions",
+      "pages": [
+        "api-reference/endpoints/create-custom-function",
+        "api-reference/endpoints/get-custom-function",
+        "api-reference/endpoints/update-custom-function",
+        "api-reference/endpoints/list-custom-functions",
+        "api-reference/endpoints/delete-custom-function"
+      ]
+    },
+    {
+      "group": "Dynamic Variables",
+      "pages": [
+        "api-reference/endpoints/create-dynamic-variable",
+        "api-reference/endpoints/get-dynamic-variable",
+        "api-reference/endpoints/update-dynamic-variable",
+        "api-reference/endpoints/list-dynamic-variables",
+        "api-reference/endpoints/delete-dynamic-variable"
+      ]
+    },
+    {
+      "group": "Memory",
+      "pages": [
+        "api-reference/endpoints/list-memories",
+        "api-reference/endpoints/get-memory",
+        "api-reference/endpoints/update-memory",
+        "api-reference/endpoints/delete-memory"
+      ]
+    },
+    {
+      "group": "Calls",
+      "pages": [
+        "api-reference/endpoints/create-call",
+        "api-reference/endpoints/get-call",
+        "api-reference/endpoints/list-calls",
+        "api-reference/endpoints/transfer-call",
+        "api-reference/endpoints/end-call",
+        "api-reference/endpoints/get-recording"
+      ]
+    },
+    {
+      "group": "Batch Calls",
+      "pages": [
+        "api-reference/endpoints/create-batch",
+        "api-reference/endpoints/list-batches",
+        "api-reference/endpoints/get-batch",
+        "api-reference/endpoints/cancel-batch"
+      ]
+    },
+    {
+      "group": "Messages",
+      "pages": [
+        "api-reference/endpoints/send-sms",
+        "api-reference/endpoints/get-message",
+        "api-reference/endpoints/list-messages"
+      ]
+    },
+    {
+      "group": "Phone Numbers",
+      "pages": [
+        "api-reference/endpoints/search-numbers",
+        "api-reference/endpoints/provision-number",
+        "api-reference/endpoints/list-numbers",
+        "api-reference/endpoints/release-number",
+        "api-reference/endpoints/lookup-phone-number"
+      ]
+    },
+    {
+      "group": "Chat Widget",
+      "pages": [
+        "api-reference/endpoints/create-chat-widget",
+        "api-reference/endpoints/send-chat-message",
+        "api-reference/endpoints/list-chat-sessions"
+      ]
+    },
+    {
+      "group": "Knowledge Base",
+      "pages": [
+        "api-reference/endpoints/add-knowledge-source",
+        "api-reference/endpoints/add-knowledge-manual",
+        "api-reference/endpoints/list-knowledge-sources",
+        "api-reference/endpoints/delete-knowledge-source"
+      ]
+    },
+    {
+      "group": "Voice",
+      "pages": [
+        "api-reference/endpoints/clone-voice",
+        "api-reference/endpoints/list-voices",
+        "api-reference/endpoints/delete-voice"
+      ]
+    },
+    {
+      "group": "Models",
+      "pages": [
+        "api-reference/endpoints/list-models"
+      ]
+    },
+    {
+      "group": "Calendar",
+      "pages": [
+        "api-reference/endpoints/get-calendar-slots",
+        "api-reference/endpoints/create-booking",
+        "api-reference/endpoints/cancel-booking"
+      ]
+    },
+    {
+      "group": "Contacts",
+      "pages": [
+        "api-reference/endpoints/create-contact",
+        "api-reference/endpoints/get-contact",
+        "api-reference/endpoints/list-contacts",
+        "api-reference/endpoints/update-contact",
+        "api-reference/endpoints/delete-contact"
+      ]
+    },
+    {
+      "group": "Billing",
+      "pages": [
+        "api-reference/endpoints/get-balance",
+        "api-reference/endpoints/purchase-credits"
+      ]
+    },
+    {
+      "group": "Scheduled Actions",
+      "pages": [
+        "api-reference/endpoints/create-scheduled-action",
+        "api-reference/endpoints/list-scheduled-actions",
+        "api-reference/endpoints/cancel-scheduled-action"
+      ]
+    },
+    {
+      "group": "API Keys & Webhooks",
+      "pages": [
+        "api-reference/endpoints/create-api-key",
+        "api-reference/endpoints/list-api-keys",
+        "api-reference/endpoints/set-webhook",
+        "api-reference/endpoints/revoke-api-key"
+      ]
+    }
+  ],
+  "footerSocials": {
+    "website": "https://magpipe.ai"
+  }
+}

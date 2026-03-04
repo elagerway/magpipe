@@ -1,0 +1,39 @@
+---
+title: "Delete Dynamic Variable"
+api: "DELETE /manage-dynamic-variables/{id}"
+description: "Delete a dynamic variable"
+---
+
+Permanently delete a dynamic variable. The agent will no longer extract this data from conversations.
+
+## Path Parameters
+
+<ParamField path="id" type="string" required>
+  UUID of the dynamic variable to delete
+</ParamField>
+
+## Response
+
+Returns a success message on deletion.
+
+<RequestExample>
+```bash cURL
+curl -X DELETE "https://api.magpipe.ai/functions/v1/manage-dynamic-variables/789e0123-e89b-12d3-a456-426614174000" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+</RequestExample>
+
+<ResponseExample>
+```json 200
+{
+  "success": true,
+  "message": "Dynamic variable deleted"
+}
+```
+
+```json 404
+{
+  "error": "Dynamic variable not found"
+}
+```
+</ResponseExample>

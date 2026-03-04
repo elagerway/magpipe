@@ -1,0 +1,33 @@
+# Magpipe robots.txt
+# Allow search engines and LLM crawlers to index public marketing pages
+
+User-agent: *
+Allow: /
+Disallow: /login
+Disallow: /signup
+Disallow: /verify-email
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /impersonate
+Disallow: /home
+Disallow: /inbox
+Disallow: /agent
+Disallow: /agents
+Disallow: /phone
+Disallow: /verify-phone
+Disallow: /contacts
+Disallow: /calls
+Disallow: /messages
+Disallow: /apps
+Disallow: /analytics
+Disallow: /knowledge
+Disallow: /settings
+Disallow: /team
+Disallow: /bulk-calling
+Disallow: /manage-numbers
+Disallow: /select-number
+Disallow: /admin
+Disallow: /chat-widget
+Disallow: /agent-config
+
+Sitemap: https://magpipe.ai/sitemap.xml

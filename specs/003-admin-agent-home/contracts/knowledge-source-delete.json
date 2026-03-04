@@ -1,0 +1,110 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Knowledge Source Delete API",
+    "version": "1.0.0",
+    "description": "Remove knowledge source and all associated chunks"
+  },
+  "paths": {
+    "/knowledge-source-delete": {
+      "delete": {
+        "summary": "Delete knowledge source",
+        "description": "Removes knowledge source and cascades to delete all chunks and embeddings",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["id"],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "ID of knowledge source to delete"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Knowledge source deleted successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "deleted_chunks"],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "deleted_chunks": {
+                      "type": "integer",
+                      "description": "Number of chunks removed",
+                      "example": 25
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "ID is required"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Knowledge source not found or not owned by user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "Knowledge source not found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  }
+}

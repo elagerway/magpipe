@@ -1,0 +1,104 @@
+---
+title: "List Scheduled Actions"
+api: "GET /scheduled-actions"
+description: "List all scheduled actions for your account"
+---
+
+Retrieve a list of scheduled actions, optionally filtered by status.
+
+## Query Parameters
+
+<ParamField query="status" type="string">
+  Filter by status: `pending`, `processing`, `completed`, `failed`, `cancelled`
+</ParamField>
+
+<ParamField query="action_type" type="string">
+  Filter by action type: `send_sms`, `call_contact`
+</ParamField>
+
+<ParamField query="limit" type="integer" default="50">
+  Maximum number of results (max 100)
+</ParamField>
+
+<ParamField query="offset" type="integer" default="0">
+  Number of records to skip for pagination
+</ParamField>
+
+## Response
+
+Returns an array of scheduled action objects.
+
+<ResponseField name="id" type="string">
+  UUID of the scheduled action
+</ResponseField>
+
+<ResponseField name="action_type" type="string">
+  Type of action
+</ResponseField>
+
+<ResponseField name="scheduled_at" type="string">
+  Scheduled execution time
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Current status
+</ResponseField>
+
+<ResponseField name="parameters" type="object">
+  Action parameters
+</ResponseField>
+
+<ResponseField name="executed_at" type="string">
+  When the action was executed (if completed)
+</ResponseField>
+
+<ResponseField name="error_message" type="string">
+  Error details (if failed)
+</ResponseField>
+
+<ResponseField name="retry_count" type="integer">
+  Number of retry attempts
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl "https://api.magpipe.ai/functions/v1/scheduled-actions?status=pending" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+</RequestExample>
+
+<ResponseExample>
+```json 200
+{
+  "data": [
+    {
+      "id": "123e4567-e89b-12d3-a456-426614174000",
+      "action_type": "send_sms",
+      "scheduled_at": "2026-01-15T18:00:00.000Z",
+      "status": "pending",
+      "parameters": {
+        "recipient_phone": "+14155551234",
+        "recipient_name": "John Smith",
+        "message": "Your appointment is in 1 hour!"
+      },
+      "created_at": "2026-01-14T12:00:00.000Z",
+      "retry_count": 0
+    },
+    {
+      "id": "456e7890-e89b-12d3-a456-426614174000",
+      "action_type": "send_sms",
+      "scheduled_at": "2026-01-16T09:00:00.000Z",
+      "status": "pending",
+      "parameters": {
+        "recipient_phone": "+14155555678",
+        "recipient_name": "Jane Doe",
+        "message": "Follow-up: How was your experience?"
+      },
+      "created_at": "2026-01-14T12:30:00.000Z",
+      "retry_count": 0
+    }
+  ],
+  "total": 2
+}
+```
+</ResponseExample>

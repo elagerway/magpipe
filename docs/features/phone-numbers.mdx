@@ -1,0 +1,276 @@
+---
+title: Phone Numbers
+description: "Provision, manage, and configure phone numbers for your AI agents"
+---
+
+## Overview
+
+Phone numbers are the gateway for your AI agents to communicate with the world. Magpipe supports provisioning new numbers, bringing your own carrier via SIP trunks, and managing multiple numbers across your organization.
+
+## Number Types
+
+### Local Numbers
+- Area code specific to a region
+- Lower per-minute costs
+- Familiar to local callers
+- Available in US and Canada
+
+### Toll-Free Numbers
+- 800, 888, 877, 866, 855, 844 prefixes
+- Free for callers to dial
+- Professional appearance
+- Higher per-minute costs
+
+## Provisioning Numbers
+
+### Search for Numbers
+
+1. Go to **Phone** → **Get a Number**
+2. Select country (US or Canada)
+3. Enter area code or city
+4. Browse available numbers
+5. Click to provision
+
+#### Search Options
+- **Area Code**: Search by 3-digit area code (e.g., 604, 415)
+- **Contains**: Find vanity numbers containing specific digits
+- **City/Region**: Search by location name
+
+### Provision a Number
+
+1. Select a number from search results
+2. Optionally set a friendly name (e.g., "Main Line")
+3. Assign to an agent immediately or later
+4. Number is active within seconds
+
+### Number Capabilities
+
+Each number has specific capabilities:
+
+| Capability | Description |
+|------------|-------------|
+| **Voice** | Make and receive phone calls |
+| **SMS** | Send and receive text messages |
+| **MMS** | Send and receive picture messages |
+
+<Note>
+Most US/Canada numbers support all three capabilities. Some toll-free numbers may have limited MMS support.
+</Note>
+
+## Number Management
+
+### Assigning Agents
+
+Each phone number supports independent voice and text agent assignments:
+
+- **Voice agent**: Handles inbound and outbound phone calls
+- **Text agent**: Handles inbound SMS messages
+
+A single number can have both a voice agent and a text agent at the same time, allowing specialized handling for each channel.
+
+#### From Agent Detail → Deploy
+1. Open an agent and go to the **Deploy** tab
+2. Click **Assign Number** to assign available numbers
+3. Voice agents assign to the number's voice slot; text agents assign to the text slot
+
+#### From Phone → Number Management
+1. Go to **Phone** or **Manage Numbers**
+2. Each number shows its voice and text agent assignments
+3. Click to change or detach either assignment
+
+<Note>
+If a number has no text agent assigned, inbound SMS falls back to the voice agent. This maintains backward compatibility — existing setups continue working without changes.
+</Note>
+
+### Friendly Names
+
+Give numbers meaningful names:
+- "Main Office"
+- "Sales Line"
+- "Support Hotline"
+- "After Hours"
+
+### Active/Inactive Status
+
+Temporarily disable a number without releasing it:
+- **Active**: Calls and SMS are handled
+- **Inactive**: Calls go to busy signal, SMS rejected
+
+### Releasing Numbers
+
+Permanently release a number:
+
+<Warning>
+Releasing a number is permanent. The number returns to the public pool and you may not be able to get it back.
+</Warning>
+
+1. Go to **Phone** → **Your Numbers**
+2. Click the menu on the number
+3. Select **Release Number**
+4. Confirm the release
+
+## External SIP Trunks
+
+Bring your own carrier for more control and potentially lower costs.
+
+### What is a SIP Trunk?
+
+A SIP trunk connects your existing phone carrier to Magpipe, allowing:
+- Use your existing phone numbers
+- Keep your current carrier rates
+- Maintain existing phone infrastructure
+- Route calls through Magpipe AI
+
+### Supported Carriers
+
+Any SIP-compatible carrier works, including:
+- Twilio
+- Bandwidth
+- Telnyx
+- Vonage
+- Plivo
+- Your own PBX
+
+### Configuration
+
+#### Inbound Trunk (Receiving Calls)
+
+Configure your carrier to send calls to Magpipe:
+
+**IP-Based Authentication:**
+1. Whitelist Magpipe's IP addresses in your carrier
+2. Point your carrier's SIP destination to Magpipe
+3. Add your phone numbers in Magpipe
+
+**Registration-Based Authentication:**
+1. Get SIP credentials from your carrier
+2. Enter in Magpipe: username, password, domain
+3. Magpipe registers with your carrier
+
+#### Outbound Trunk (Making Calls)
+
+Configure Magpipe to send calls through your carrier:
+
+1. Enter your carrier's SIP URI
+2. Add authentication credentials
+3. Specify which numbers use this trunk
+
+### Adding External Numbers
+
+1. Go to **Phone** → **External Numbers**
+2. Click **Add Number**
+3. Enter the phone number in E.164 format
+4. Select or create a SIP trunk configuration
+5. Assign to an agent
+
+## Call Routing
+
+### Inbound Call Flow
+
+```
+Caller dials your number
+        ↓
+Magpipe receives call
+        ↓
+Check if number has assigned agent
+        ↓
+[Yes] → Agent answers call
+[No]  → Play "number not in service" or route to default agent
+        ↓
+AI handles conversation
+        ↓
+Call ends or transfers
+```
+
+### Transfer Destinations
+
+Configure where calls transfer:
+
+1. Go to **Agent** → **Settings**
+2. Set **Transfer Number**
+3. Optionally set **Transfer Passcode**
+
+When callers request transfer:
+- Agent says "I'll transfer you now"
+- Call connects to transfer number
+- If passcode set, transferred party enters it
+
+### After-Hours Handling
+
+When calls arrive outside business hours:
+
+1. **Voicemail**: Play message, record voicemail
+2. **Forward**: Route to after-hours number
+3. **AI Response**: Agent answers with limited scope
+4. **Closed Message**: Play recording and hang up
+
+Configure in **Agent** → **Schedule**.
+
+## Call Features
+
+### Call Recording
+
+All calls recorded by default:
+- Secure cloud storage
+- Available in inbox
+- Downloadable via dashboard or API
+- Configurable retention period
+
+To disable recording:
+1. Go to **Settings** → **Preferences**
+2. Toggle off **Record Calls**
+
+### Caller ID
+
+Outbound calls show your Magpipe number:
+- Number must be verified
+- Consistent caller ID for callbacks
+- Multiple numbers = choose which to show
+
+### Call Transcription
+
+Every call is transcribed:
+- Real-time during call
+- Full transcript after call ends
+- Speaker identification (agent vs caller)
+- Timestamps for each segment
+
+### Call Analytics
+
+Track metrics per number:
+- Total calls (inbound/outbound)
+- Average duration
+- Sentiment distribution
+- Busiest times
+- Transfer rate
+
+## Best Practices
+
+### Number Selection
+
+1. **Local presence**: Use area codes matching your customers
+2. **Vanity numbers**: Easy-to-remember patterns for marketing
+3. **Multiple numbers**: Different numbers for different purposes
+
+### Capacity Planning
+
+- Each number handles unlimited concurrent calls
+- No per-number concurrency limits
+- Plan for peak call volumes
+
+### Number Portability
+
+Currently, number porting (bringing existing numbers) is handled via:
+1. External SIP trunk setup
+2. Forward existing number to Magpipe number
+
+Direct number porting coming soon.
+
+<CardGroup cols={2}>
+  <Card title="Search Numbers API" icon="magnifying-glass" href="/api-reference/endpoints/search-numbers">
+    Find available numbers programmatically
+  </Card>
+  <Card title="Provision Number API" icon="phone-plus" href="/api-reference/endpoints/provision-number">
+    Provision numbers via API
+  </Card>
+</CardGroup>

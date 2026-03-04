@@ -1,0 +1,65 @@
+---
+title: "Cancel Scheduled Action"
+api: "PATCH /scheduled-actions/{id}"
+description: "Cancel a pending scheduled action"
+---
+
+Cancel a scheduled action before it executes. Only actions with `pending` status can be cancelled.
+
+## Path Parameters
+
+<ParamField path="id" type="string" required>
+  UUID of the scheduled action to cancel
+</ParamField>
+
+## Request Body
+
+<ParamField body="status" type="string" required>
+  Must be `cancelled`
+</ParamField>
+
+## Response
+
+Returns the updated scheduled action object.
+
+<RequestExample>
+```bash cURL
+curl -X PATCH "https://api.magpipe.ai/functions/v1/scheduled-actions/123e4567-e89b-12d3-a456-426614174000" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"status": "cancelled"}'
+```
+</RequestExample>
+
+<ResponseExample>
+```json 200
+{
+  "id": "123e4567-e89b-12d3-a456-426614174000",
+  "action_type": "send_sms",
+  "scheduled_at": "2026-01-15T18:00:00.000Z",
+  "status": "cancelled",
+  "parameters": {
+    "recipient_phone": "+14155551234",
+    "recipient_name": "John Smith",
+    "message": "Your appointment is in 1 hour!"
+  },
+  "created_at": "2026-01-14T12:00:00.000Z"
+}
+```
+
+```json 400
+{
+  "error": "Cannot cancel action with status: processing"
+}
+```
+
+```json 404
+{
+  "error": "Scheduled action not found"
+}
+```
+</ResponseExample>
+
+<Warning>
+Once an action starts processing, it cannot be cancelled. Check the action status before attempting to cancel.
+</Warning>

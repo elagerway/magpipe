@@ -1,0 +1,75 @@
+---
+title: "Update Dynamic Variable"
+api: "PATCH /manage-dynamic-variables/{id}"
+description: "Update an existing dynamic variable"
+---
+
+Update a dynamic variable's configuration. Only include fields you want to change.
+
+## Path Parameters
+
+<ParamField path="id" type="string" required>
+  UUID of the dynamic variable to update
+</ParamField>
+
+## Request Body
+
+<ParamField body="name" type="string">
+  Variable name
+</ParamField>
+
+<ParamField body="description" type="string">
+  Description of what this variable captures
+</ParamField>
+
+<ParamField body="var_type" type="string">
+  Data type: `text`, `number`, `boolean`, or `enum`
+</ParamField>
+
+<ParamField body="enum_options" type="array">
+  Required when `var_type` is `enum`. List of allowed values.
+</ParamField>
+
+## Response
+
+Returns the updated dynamic variable object.
+
+<RequestExample>
+```bash cURL
+curl -X PATCH "https://api.magpipe.ai/functions/v1/manage-dynamic-variables/789e0123-e89b-12d3-a456-426614174000" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "description": "The caller full name including middle name",
+    "var_type": "text"
+  }'
+```
+</RequestExample>
+
+<ResponseExample>
+```json 200
+{
+  "id": "789e0123-e89b-12d3-a456-426614174000",
+  "agent_id": "123e4567-e89b-12d3-a456-426614174000",
+  "user_id": "456e7890-e89b-12d3-a456-426614174000",
+  "name": "caller_name",
+  "description": "The caller full name including middle name",
+  "var_type": "text",
+  "enum_options": null,
+  "created_at": "2024-01-15T10:30:00Z",
+  "updated_at": "2024-01-15T14:00:00Z"
+}
+```
+
+```json 400
+{
+  "error": "var_type must be one of: text, number, boolean, enum"
+}
+```
+
+```json 404
+{
+  "error": "Dynamic variable not found"
+}
+```
+</ResponseExample>

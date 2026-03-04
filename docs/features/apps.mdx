@@ -1,0 +1,380 @@
+---
+title: Apps
+description: "Connect external services and enable agent functions"
+---
+
+## Overview
+
+Apps extend what your AI agents can do. Connect to your CRM, calendar, helpdesk, and more. When a caller asks to book an appointment, your agent checks your actual calendar. When a lead calls, their info is logged directly to your CRM.
+
+Magpipe has two levels of app configuration:
+- **Apps** (global) - Connect external services like Cal.com, HubSpot, and Slack
+- **Functions** (per-agent) - Enable built-in capabilities like SMS, transfers, and booking
+
+## Connected Apps
+
+Connected Apps are external services that your agents can use. Configure them once in the **Apps** section, then they're available to all your agents.
+
+### Cal.com (Calendar)
+
+Book appointments and check availability.
+
+**Features:**
+- Check real-time calendar availability
+- Book appointments during calls
+- Send calendar invites automatically
+- Respect busy times and working hours
+- Cancel or reschedule bookings
+
+**Setup:**
+1. Go to **Apps** from the main navigation
+2. Find Cal.com and click **Connect**
+3. Sign in with your Cal.com account
+4. Grant calendar access
+5. Select which event types to use
+
+**What Agents Can Do:**
+```
+"Book an appointment" → Creates booking
+"When are you available?" → Checks calendar
+"Cancel my appointment" → Cancels booking
+"Reschedule to Thursday" → Reschedules
+```
+
+### HubSpot (CRM)
+
+Sync contacts and log interactions.
+
+**Features:**
+- Import contacts from HubSpot
+- Auto-create contacts for new callers
+- Log calls to contact timeline
+- Sync company information
+- Update contact properties
+
+**Setup:**
+1. Go to **Apps** from the main navigation
+2. Find HubSpot and click **Connect**
+3. Create a Private App in HubSpot (Settings → Integrations → Private Apps)
+4. Enter your HubSpot API key
+5. Select data to sync
+
+**What Agents Can Do:**
+```
+"Look up John Smith" → Searches contacts
+"Add this as a new lead" → Creates contact
+"Note that they're interested in Plan A" → Updates properties
+```
+
+### Slack (Team Chat)
+
+Send notifications and interact with your team.
+
+**Features:**
+- Send messages to channels
+- Receive notifications for calls/messages
+- Post call summaries
+- Alert team to urgent calls
+
+**Setup:**
+1. Go to **Apps** from the main navigation
+2. Find Slack and click **Connect**
+3. Authorize Magpipe in Slack
+4. Select notification channels
+
+**What Agents Can Do:**
+```
+"Alert the sales team" → Posts to #sales channel
+Automatic: Call summary posted after each call
+Automatic: New lead notifications
+```
+
+### Disconnecting Apps
+
+To disconnect a connected app:
+1. Go to **Apps**
+2. Find the app
+3. Click **Disconnect**
+4. Confirm
+
+This immediately revokes Magpipe's access.
+
+## Agent Functions
+
+Functions are built-in capabilities that you enable per-agent. Configure them in each agent's **Functions** tab.
+
+### Send SMS
+
+Allow your agent to send text messages during or after calls.
+
+**Use cases:**
+- Send appointment confirmations
+- Share links or documents
+- Follow up after calls
+- Send directions or contact info
+
+**Enable:**
+1. Go to your agent → **Functions** tab
+2. Toggle on **Send SMS**
+
+### Transfer Calls
+
+Allow your agent to transfer calls to a human.
+
+**Use cases:**
+- Escalate complex issues
+- Connect to sales team
+- Route to specific departments
+- Emergency transfers
+
+**Enable:**
+1. Go to your agent → **Functions** tab
+2. Toggle on **Transfer Calls**
+3. Set transfer number in **Settings** tab
+
+### Book Appointments
+
+Allow your agent to schedule appointments via Cal.com.
+
+**Requirements:**
+- Cal.com must be connected in Apps
+
+**Use cases:**
+- Schedule consultations
+- Book service appointments
+- Reserve meeting times
+
+**Enable:**
+1. First connect Cal.com in **Apps**
+2. Go to your agent → **Functions** tab
+3. Toggle on **Book Appointments**
+
+## MCP Servers
+
+MCP (Model Context Protocol) servers let you add custom tools beyond the built-in apps.
+
+### What is MCP?
+
+Model Context Protocol is an open standard for connecting AI to external tools. Magpipe supports any MCP-compatible server, giving you access to 40+ pre-built servers plus the ability to create custom ones.
+
+### Available MCP Servers
+
+<AccordionGroup>
+  <Accordion title="Productivity" icon="briefcase">
+    - **Google Drive** - Search and access files
+    - **Google Docs** - Read and create documents
+    - **Google Sheets** - Read and write spreadsheets
+    - **Dropbox** - File storage access
+    - **OneDrive** - Microsoft file access
+    - **Evernote** - Note access
+  </Accordion>
+
+  <Accordion title="Communication" icon="comments">
+    - **Gmail** - Read and send emails
+    - **Outlook** - Microsoft email
+    - **Discord** - Server messaging
+    - **Microsoft Teams** - Team chat
+    - **Telegram** - Bot messaging
+    - **WhatsApp Business** - Messaging
+  </Accordion>
+
+  <Accordion title="CRM & Sales" icon="handshake">
+    - **Salesforce** - Full CRM access
+    - **Pipedrive** - Deal management
+    - **Zoho CRM** - Contact management
+    - **Close** - Sales CRM
+    - **Copper** - Google-integrated CRM
+    - **Freshsales** - Sales automation
+  </Accordion>
+
+  <Accordion title="Support & Helpdesk" icon="headset">
+    - **Zendesk** - Ticket management
+    - **Freshdesk** - Support tickets
+    - **Intercom** - Customer messaging
+    - **Help Scout** - Email support
+    - **Front** - Shared inbox
+  </Accordion>
+
+  <Accordion title="Project Management" icon="diagram-project">
+    - **Asana** - Task management
+    - **Monday.com** - Work OS
+    - **Trello** - Kanban boards
+    - **Jira** - Issue tracking
+    - **ClickUp** - Productivity platform
+    - **Basecamp** - Project collaboration
+  </Accordion>
+
+  <Accordion title="E-commerce" icon="cart-shopping">
+    - **Shopify** - Store management
+    - **WooCommerce** - WordPress commerce
+    - **Stripe** - Payment data
+    - **Square** - Point of sale
+    - **BigCommerce** - Online store
+  </Accordion>
+
+  <Accordion title="Marketing" icon="bullhorn">
+    - **Mailchimp** - Email marketing
+    - **ActiveCampaign** - Marketing automation
+    - **Klaviyo** - E-commerce email
+    - **Constant Contact** - Email campaigns
+    - **SendGrid** - Transactional email
+  </Accordion>
+
+  <Accordion title="Analytics" icon="chart-line">
+    - **Google Analytics** - Web analytics
+    - **Mixpanel** - Product analytics
+    - **Amplitude** - Behavioral analytics
+    - **Segment** - Customer data
+  </Accordion>
+
+  <Accordion title="Development" icon="code">
+    - **GitHub** - Repository access
+    - **GitLab** - DevOps platform
+    - **Sentry** - Error tracking
+    - **PagerDuty** - Incident management
+    - **Datadog** - Monitoring
+  </Accordion>
+
+  <Accordion title="Databases" icon="database">
+    - **PostgreSQL** - Query databases
+    - **MySQL** - Query databases
+    - **MongoDB** - Document database
+    - **Redis** - Cache access
+    - **Supabase** - Backend as a service
+  </Accordion>
+
+  <Accordion title="Other" icon="plug">
+    - **Weather** - Current conditions
+    - **News** - Headlines and articles
+    - **Wikipedia** - Encyclopedia search
+    - **Web Search** - General search
+    - **Calculator** - Math operations
+  </Accordion>
+</AccordionGroup>
+
+### Adding an MCP Server
+
+1. Go to **Apps** in the main navigation
+2. Scroll to **MCP Servers** section
+3. Click **+ Add MCP Server**
+4. Enter server details:
+   - **Name** - Display name
+   - **URL** - Server endpoint
+   - **Authentication** - API key if required
+5. Click **Test Connection**
+6. Save if successful
+
+### Custom MCP Servers
+
+Build your own MCP server for custom tools:
+
+1. Implement the MCP specification
+2. Host your server (cloud function, VPS, etc.)
+3. Add the URL in Magpipe
+4. Your tools become available to agents
+
+See [MCP Documentation](https://modelcontextprotocol.io) for implementation details.
+
+## How Apps Work
+
+### Tool-Based Architecture
+
+Each connected app provides "tools" that agents can use:
+
+```
+Caller: "I'd like to book an appointment for next Tuesday at 2 PM"
+          ↓
+Agent uses calendar_check_availability tool
+          ↓
+Cal.com returns: Tuesday 2 PM is available
+          ↓
+Agent uses calendar_create_booking tool
+          ↓
+Cal.com creates the appointment
+          ↓
+Agent: "I've booked you for Tuesday at 2 PM. You'll receive a confirmation email."
+```
+
+### Automatic Tool Selection
+
+Agents automatically choose the right tool based on context. You don't need to configure when to use each tool - the AI determines this naturally from the conversation.
+
+### Prompt Guidance
+
+Help agents use apps effectively by adding instructions to your system prompt:
+
+```
+APP INSTRUCTIONS:
+- When a caller wants to book, use Cal.com to check availability
+- Always offer at least 3 available time slots
+- Log all new callers to HubSpot as leads
+- For urgent issues, alert the team in #support Slack channel
+```
+
+## Data & Privacy
+
+### What Data is Shared
+
+When you connect an app:
+- Magpipe receives OAuth tokens or API keys
+- Agents can access data within granted scopes
+- Call context may be sent to apps (e.g., contact lookup)
+
+### What Data is NOT Shared
+
+- Call recordings are not sent to connected apps
+- Full transcripts are not shared
+- Personal notes are kept private
+
+## Troubleshooting
+
+### App Not Working
+
+1. **Check connection status** - Go to Apps, verify "Connected"
+2. **Check permissions** - Ensure sufficient scopes granted
+3. **Check agent functions** - Verify function enabled for agent
+4. **Check tool usage** - Review call transcript for tool calls
+
+### Authentication Errors
+
+- OAuth tokens can expire - reconnect the app
+- API keys may be revoked - check in third-party service
+- Scopes may have changed - re-authorize with updated permissions
+
+### Slow Responses
+
+App calls add latency:
+- Simple lookups: +200-500ms
+- Complex queries: +1-2 seconds
+- Database writes: +500ms-1s
+
+## Best Practices
+
+### Start Simple
+
+1. Begin with 1-2 key apps
+2. Test thoroughly with real calls
+3. Add more as needed
+
+### Security
+
+- Only connect apps you actively need
+- Use least-privilege permissions
+- Regularly audit connected apps
+- Disconnect unused apps
+
+### Agent Instructions
+
+- Be explicit about when to use apps
+- Provide fallback instructions if app fails
+- Set expectations ("I'll check the calendar...")
+
+<CardGroup cols={2}>
+  <Card title="MCP Documentation" icon="book" href="https://modelcontextprotocol.io">
+    Learn about Model Context Protocol
+  </Card>
+  <Card title="AI Agents" icon="robot" href="/features/agents">
+    Configure agent functions
+  </Card>
+</CardGroup>
+

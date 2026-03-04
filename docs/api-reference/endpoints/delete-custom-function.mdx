@@ -1,0 +1,39 @@
+---
+title: "Delete Custom Function"
+api: "DELETE /custom-functions/{id}"
+description: "Delete a custom function"
+---
+
+Permanently delete a custom function. The agent will no longer be able to call this function.
+
+## Path Parameters
+
+<ParamField path="id" type="string" required>
+  UUID of the custom function to delete
+</ParamField>
+
+## Response
+
+Returns a success message on deletion.
+
+<RequestExample>
+```bash cURL
+curl -X DELETE "https://api.magpipe.ai/functions/v1/custom-functions/789e0123-e89b-12d3-a456-426614174000" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+</RequestExample>
+
+<ResponseExample>
+```json 200
+{
+  "success": true,
+  "message": "Custom function deleted"
+}
+```
+
+```json 404
+{
+  "error": "Custom function not found"
+}
+```
+</ResponseExample>

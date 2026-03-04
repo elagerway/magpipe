@@ -1,0 +1,186 @@
+---
+title: Webhooks
+description: "Receive real-time event data pushed to your server when calls complete"
+---
+
+## Overview
+
+Webhooks let you receive real-time notifications when events happen in Magpipe. Instead of polling the API for updates, Magpipe sends a `POST` request to your server with event data as soon as a call completes.
+
+Each API key can have its own webhook URL, so you can route events to different servers for different integrations.
+
+## Setup
+
+1. Go to **Settings** → **API**
+2. Click **Generate New Key** (or **Edit** on an existing key)
+3. Enter your webhook URL (e.g., `https://your-server.com/webhook`)
+4. Save — a **signing secret** is automatically generated
+
+<Note>
+You can add or change the webhook URL on any existing API key at any time. The signing secret is generated automatically when you first set a URL.
+</Note>
+
+## Events
+
+### `call.completed`
+
+Fired when a call ends and all post-processing (transcript, summary, data extraction) is complete.
+
+```json
+{
+  "event": "call.completed",
+  "timestamp": "2026-02-18T15:30:45.123456Z",
+  "data": {
+    "call_record_id": "550e8400-e29b-41d4-a716-446655440000",
+    "direction": "inbound",
+    "caller_number": "+16045551234",
+    "service_number": "+16042101966",
+    "agent_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+    "agent_name": "Reception Agent",
+    "duration_seconds": 127,
+    "transcript": "Agent: Hello, thanks for calling...\n\nCaller: Hi, I'd like to...",
+    "summary": "Caller requested to schedule a consultation for next week.",
+    "extracted_data": {
+      "caller_name": "John Smith",
+      "purpose": "consultation",
+      "preferred_date": "next Tuesday"
+    },
+    "status": "completed"
+  }
+}
+```
+
+#### Field Reference
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `call_record_id` | string | Unique ID for the call record |
+| `direction` | string | `inbound` or `outbound` |
+| `caller_number` | string | Phone number of the caller (E.164 format) |
+| `service_number` | string | Your Magpipe phone number that handled the call |
+| `agent_id` | string | ID of the agent that handled the call |
+| `agent_name` | string | Name of the agent |
+| `duration_seconds` | integer | Call duration in seconds |
+| `transcript` | string \| null | Full call transcript. `null` if PII storage is disabled. |
+| `summary` | string \| null | AI-generated call summary. `null` if the call was too short. |
+| `extracted_data` | object \| null | Data extracted via dynamic variables. `null` if not configured on the agent. |
+| `status` | string | Always `completed` |
+
+## Verifying Signatures
+
+Every webhook request includes an `x-magpipe-signature` header containing an HMAC-SHA256 signature of the request body, signed with your webhook signing secret.
+
+**Always verify the signature** to confirm the request came from Magpipe.
+
+### Verification Examples
+
+<CodeGroup>
+
+```javascript Node.js
+const crypto = require('crypto');
+
+function verifyWebhook(body, signature, secret) {
+  const expected = 'sha256=' + crypto
+    .createHmac('sha256', secret)
+    .update(body)
+    .digest('hex');
+  return crypto.timingSafeEqual(
+    Buffer.from(signature),
+    Buffer.from(expected)
+  );
+}
+
+// In your Express handler:
+app.post('/webhook', express.raw({ type: 'application/json' }), (req, res) => {
+  const signature = req.headers['x-magpipe-signature'];
+  const isValid = verifyWebhook(req.body, signature, process.env.MAGPIPE_WEBHOOK_SECRET);
+
+  if (!isValid) {
+    return res.status(401).send('Invalid signature');
+  }
+
+  const event = JSON.parse(req.body);
+  console.log('Received:', event.event, event.data.call_record_id);
+
+  res.status(200).send('OK');
+});
+```
+
+```python Python
+import hmac
+import hashlib
+
+def verify_webhook(body: bytes, signature: str, secret: str) -> bool:
+    expected = 'sha256=' + hmac.new(
+        secret.encode('utf-8'),
+        body,
+        hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(signature, expected)
+
+# In your Flask handler:
+@app.route('/webhook', methods=['POST'])
+def handle_webhook():
+    signature = request.headers.get('x-magpipe-signature', '')
+    is_valid = verify_webhook(request.data, signature, os.environ['MAGPIPE_WEBHOOK_SECRET'])
+
+    if not is_valid:
+        return 'Invalid signature', 401
+
+    event = request.json
+    print(f"Received: {event['event']} {event['data']['call_record_id']}")
+
+    return 'OK', 200
+```
+
+```ruby Ruby
+require 'openssl'
+
+def verify_webhook(body, signature, secret)
+  expected = 'sha256=' + OpenSSL::HMAC.hexdigest('SHA256', secret, body)
+  Rack::Utils.secure_compare(signature, expected)
+end
+```
+
+</CodeGroup>
+
+### Signature Format
+
+The `x-magpipe-signature` header value follows this format:
+
+```
+sha256=5d7e8b3c1a9f4e2d6b0c8a7f3e5d9b1c4a6f8e2d7b0c3a5f9e1d4b7c0a3f6e
+```
+
+Compute `HMAC-SHA256(webhook_secret, raw_request_body)` and compare the hex digest to the value after `sha256=`.
+
+<Warning>
+Always use a timing-safe comparison function (e.g., `crypto.timingSafeEqual` in Node.js, `hmac.compare_digest` in Python) to prevent timing attacks.
+</Warning>
+
+## Delivery Details
+
+| Property | Value |
+|----------|-------|
+| **Method** | `POST` |
+| **Content-Type** | `application/json` |
+| **Timeout** | 10 seconds |
+| **Retries** | None (fire once) |
+
+All delivery attempts are logged in the `webhook_deliveries` table for debugging, including the HTTP status code, response body, and duration.
+
+## Managing Webhook Secrets
+
+- A signing secret (`whsec_...`) is auto-generated when you first set a webhook URL on an API key
+- The secret is visible in **Settings → API** — click **Edit** on any key with a webhook URL
+- Clearing the webhook URL also clears the signing secret
+- Setting a new webhook URL on a key that already has a secret keeps the existing secret
+
+## Testing
+
+Use a service like [webhook.site](https://webhook.site) to test your webhook integration:
+
+1. Go to webhook.site and copy the unique URL
+2. Set it as your webhook URL in **Settings → API**
+3. Make a test call to any of your Magpipe phone numbers
+4. After the call completes, check webhook.site for the delivered payload

@@ -1,0 +1,114 @@
+---
+title: API Introduction
+description: "Overview of the Magpipe API"
+---
+
+## Overview
+
+The Magpipe API allows you to programmatically manage agents, phone numbers, and communications.
+
+<Warning>
+This API is currently in beta phase, so there may be changes to endpoints and data structure. We appreciate your understanding and patience as we work to improve the API.
+</Warning>
+
+## Base URL
+
+All API requests are made to:
+
+```
+https://api.magpipe.ai/functions/v1
+```
+
+## Authentication
+
+All API requests require a Bearer token in the `Authorization` header. You can use either an **API key** (recommended) or a **session token**.
+
+```bash
+curl -X GET "https://api.magpipe.ai/functions/v1/your-endpoint" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json"
+```
+
+Generate API keys from **Settings → API** in the dashboard. Keys use the `mgp_` prefix and never expire until revoked.
+
+See [Authentication](/api-reference/authentication) for full details.
+
+## Response Format
+
+All responses are JSON:
+
+```json
+{
+  "data": { ... },
+  "error": null
+}
+```
+
+Or on error:
+
+```json
+{
+  "data": null,
+  "error": {
+    "message": "Error description",
+    "code": "ERROR_CODE"
+  }
+}
+```
+
+## HTTP Status Codes
+
+| Code | Description |
+|------|-------------|
+| 200 | Success |
+| 201 | Created |
+| 400 | Bad Request - Invalid parameters |
+| 401 | Unauthorized - Invalid or missing token |
+| 404 | Not Found |
+| 429 | Rate Limited |
+| 500 | Server Error |
+
+## Rate Limiting
+
+API requests are rate limited to:
+- 100 requests per minute per user
+- 1000 requests per hour per user
+
+Rate limit headers are included in responses:
+```
+X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 95
+X-RateLimit-Reset: 1234567890
+```
+
+## Available Endpoints
+
+<CardGroup cols={2}>
+  <Card title="Agents" icon="robot" href="/api-reference/endpoints/create-agent">
+    Create and manage AI agents
+  </Card>
+  <Card title="Calls" icon="phone" href="/api-reference/endpoints/create-call">
+    Initiate and manage phone calls
+  </Card>
+  <Card title="Messages" icon="message" href="/api-reference/endpoints/send-sms">
+    Send and retrieve SMS messages
+  </Card>
+  <Card title="Phone Numbers" icon="hashtag" href="/api-reference/endpoints/search-numbers">
+    Search and provision phone numbers
+  </Card>
+  <Card title="Chat Widget" icon="comments" href="/api-reference/endpoints/create-chat-widget">
+    Embed chat widgets on your website
+  </Card>
+  <Card title="Knowledge Base" icon="book" href="/api-reference/endpoints/add-knowledge-source">
+    Add knowledge sources for RAG
+  </Card>
+  <Card title="Voice" icon="microphone" href="/api-reference/endpoints/clone-voice">
+    Clone voices using ElevenLabs
+  </Card>
+  <Card title="Calendar" icon="calendar" href="/api-reference/endpoints/get-calendar-slots">
+    Cal.com integration for scheduling
+  </Card>
+  <Card title="Contacts" icon="address-book" href="/api-reference/endpoints/create-contact">
+    Manage your contact directory
+  </Card>
+</CardGroup>

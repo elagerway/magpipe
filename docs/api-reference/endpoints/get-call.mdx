@@ -1,0 +1,146 @@
+---
+title: "Get Call"
+api: "POST /get-call"
+description: "Retrieve details of a specific call including transcript and recording"
+---
+
+Get detailed information about a call, including its status, transcript, summary, and recording URL.
+
+## Request Body
+
+<ParamField body="call_id" type="string" required>
+  The unique identifier of the call to retrieve.
+</ParamField>
+
+## Response
+
+<ResponseField name="id" type="string">
+  Unique call identifier.
+</ResponseField>
+
+<ResponseField name="agent_id" type="string">
+  The agent that handled this call.
+</ResponseField>
+
+<ResponseField name="agent_name" type="string">
+  Name of the agent that handled this call.
+</ResponseField>
+
+<ResponseField name="from_number" type="string">
+  The phone number that made the call.
+</ResponseField>
+
+<ResponseField name="to_number" type="string">
+  The destination phone number.
+</ResponseField>
+
+<ResponseField name="direction" type="string">
+  Either `inbound` or `outbound`.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Final call status: `completed`, `busy`, `no-answer`, `failed`, or `canceled`.
+</ResponseField>
+
+<ResponseField name="duration" type="integer">
+  Call duration in seconds.
+</ResponseField>
+
+<ResponseField name="recording_url" type="string">
+  URL to the call recording, if available. Use the [Get Recording](/api-reference/endpoints/get-recording) endpoint for full recording details.
+</ResponseField>
+
+<ResponseField name="transcript" type="string">
+  Full transcript of the conversation with speaker labels.
+</ResponseField>
+
+<ResponseField name="sentiment" type="string">
+  AI-analyzed call sentiment: `positive`, `neutral`, or `negative`.
+</ResponseField>
+
+<ResponseField name="call_summary" type="string">
+  AI-generated summary of the call.
+</ResponseField>
+
+<ResponseField name="metadata" type="object">
+  Custom metadata attached when the call was created.
+</ResponseField>
+
+<ResponseField name="started_at" type="string">
+  When the call was answered (ISO 8601).
+</ResponseField>
+
+<ResponseField name="ended_at" type="string">
+  When the call ended (ISO 8601).
+</ResponseField>
+
+<ResponseField name="created_at" type="string">
+  When the call record was created (ISO 8601).
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl -X POST https://api.magpipe.ai/functions/v1/get-call \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"call_id": "7f3d8e00-a1b2-4c3d-9e4f-567890abcdef"}'
+```
+
+```javascript Node.js
+const response = await fetch(
+  'https://api.magpipe.ai/functions/v1/get-call',
+  {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer YOUR_API_KEY',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      call_id: '7f3d8e00-a1b2-4c3d-9e4f-567890abcdef'
+    }),
+  }
+);
+
+const call = await response.json();
+console.log('Transcript:', call.transcript);
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'https://api.magpipe.ai/functions/v1/get-call',
+    headers={
+        'Authorization': 'Bearer YOUR_API_KEY',
+        'Content-Type': 'application/json',
+    },
+    json={'call_id': '7f3d8e00-a1b2-4c3d-9e4f-567890abcdef'}
+)
+
+call = response.json()
+print(f"Summary: {call['call_summary']}")
+```
+</RequestExample>
+
+<ResponseExample>
+```json Success Response
+{
+  "id": "7f3d8e00-a1b2-4c3d-9e4f-567890abcdef",
+  "agent_id": "550e8400-e29b-41d4-a716-446655440000",
+  "agent_name": "Sarah - Receptionist",
+  "from_number": "+16045551234",
+  "to_number": "+14155551234",
+  "direction": "inbound",
+  "status": "completed",
+  "duration": 125,
+  "recording_url": "https://storage.supabase.co/v1/object/public/recordings/7f3d8e00.mp3",
+  "transcript": "Agent: Hello, this is Sarah from Acme Dental. How can I help you today?\n\nCaller: Hi, I'd like to book an appointment for a cleaning.\n\nAgent: Of course! I have availability this Thursday at 2pm or Friday at 10am. Which works better for you?",
+  "sentiment": "positive",
+  "call_summary": "Caller requested a dental cleaning appointment. Agent offered Thursday 2pm or Friday 10am slots.",
+  "metadata": null,
+  "started_at": "2024-01-15T10:30:15Z",
+  "ended_at": "2024-01-15T10:32:20Z",
+  "created_at": "2024-01-15T10:30:00Z"
+}
+```
+</ResponseExample>
