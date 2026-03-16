@@ -7,6 +7,7 @@
  */
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { resolveSlackChannelId } from '../_shared/slack-channels.ts'
 
 const CONFIG_ID = '00000000-0000-0000-0000-000000000100'
 
@@ -147,7 +148,7 @@ async function sendEmail(to: string, subject: string, body: string) {
       'X-Postmark-Server-Token': postmarkApiKey,
     },
     body: JSON.stringify({
-      From: Deno.env.get('NOTIFICATION_EMAIL') || 'info@magpipe.ai',
+      From: Deno.env.get('NOTIFICATION_EMAIL') || 'notifications@snapsonic.com',
       To: to,
       Subject: `[Admin Alert] ${subject}`,
       TextBody: body,
@@ -185,18 +186,9 @@ async function sendSlack(supabase: any, channelName: string, title: string, body
   // Resolve channel name to ID
   let channelId = channelName
   if (channelName.startsWith('#') || !channelName.startsWith('C')) {
-    const name = channelName.replace(/^#/, '').toLowerCase()
-    const listResp = await fetch('https://slack.com/api/conversations.list?types=public_channel&limit=200&exclude_archived=true', {
-      headers: { 'Authorization': `Bearer ${integration.access_token}` },
-    })
-    const listResult = await listResp.json()
-    if (listResult.ok && listResult.channels) {
-      const found = listResult.channels.find((c: any) => c.name.toLowerCase() === name)
-      if (found) channelId = found.id
-      else throw new Error(`Slack channel "${channelName}" not found`)
-    } else {
-      throw new Error('Failed to list Slack channels')
-    }
+    const resolved = await resolveSlackChannelId(integration.access_token, channelName)
+    if (resolved) channelId = resolved
+    else throw new Error(`Slack channel "${channelName}" not found`)
   }
 
   // Join channel (no-op if already joined)

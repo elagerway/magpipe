@@ -107,6 +107,11 @@ Deno.serve(async (req) => {
       return errorResponse(`Failed to send email: ${emailResult.Message || 'Unknown error'}`, 500)
     }
 
+    await supabase
+      .from('users')
+      .update({ welcome_email_sent_at: new Date().toISOString() })
+      .eq('id', userId)
+
     await logAdminAction(supabase, {
       adminUserId: adminUser.id,
       targetUserId: userId,

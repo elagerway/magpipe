@@ -1,0 +1,95 @@
+---
+title: "Agent Skills"
+description: "Automate background tasks with 7 built-in skills for your AI agents"
+---
+
+Agent Skills are autonomous background tasks that run on a schedule or trigger after events like phone calls. Each skill handles a specific business workflow — from sending follow-up messages to monitoring competitors.
+
+## Overview
+
+Skills run independently from your agent's real-time conversations. Configure them once, and they execute automatically based on triggers you define.
+
+### Available Skills
+
+| Skill | Category | Trigger | Description |
+|-------|----------|---------|-------------|
+| **Post-Call Follow-Up** | Sales | After call ends | Send follow-up SMS/email to callers with customizable templates |
+| **Appointment Reminder** | Operations | Scheduled | Poll Cal.com for upcoming appointments and send reminders |
+| **Competitor Monitoring** | Research | Scheduled | Monitor competitor websites for pricing, feature, or content changes |
+| **Daily News Digest** | Research | Scheduled | Search industry news and deliver an AI-generated executive summary |
+| **Auto-CRM Update** | Sales | After call ends | Push extracted call data to HubSpot contacts and notes |
+| **Social Media Monitoring** | Marketing | Scheduled | Track brand mentions across Reddit, HN, X, LinkedIn, and Google |
+| **Review Request Campaign** | Marketing | Scheduled | Send review request SMS to recent callers with consent and dedup |
+
+## Configuring Skills
+
+Navigate to any agent's detail page and click the **Skills** tab.
+
+### Enable a Skill
+
+1. Find the skill card in the catalog
+2. Toggle the switch to enable it
+3. Configure the skill parameters in the modal that appears
+4. Click **Save** to activate
+
+### Skill Configuration
+
+Each skill has its own configuration options:
+
+**Trigger Type**
+- **Event-based**: Fires automatically when something happens (e.g., a call ends)
+- **Scheduled**: Runs on a recurring schedule (daily, hourly, etc.)
+
+**Delivery Channels**
+- **Slack**: Posts results to a Slack channel of your choice
+- **Email**: Sends a formatted email to your account
+- **SMS**: Sends text messages (for outbound skills like Review Request)
+
+**Parameters**
+- Each skill has specific settings (keywords, URLs, templates, etc.)
+- Templates support variables like `{{caller_name}}`, `{{organization_name}}`, `{{review_url}}`
+
+## Skill Details
+
+### Post-Call Follow-Up
+Automatically sends a personalized follow-up message after calls. Configure the delay (default 30 minutes), minimum call duration, and message template. Requires consent confirmation before activation.
+
+### Appointment Reminder
+Connects to Cal.com to check for upcoming appointments and sends reminders via SMS or voice call. Configure how many hours before the appointment to send the reminder. Requires Cal.com integration.
+
+### Competitor Monitoring
+Fetches competitor webpages and compares them against previous snapshots. Uses AI to generate a summary of what changed, focused on the type of changes you care about (pricing, features, or all). Stores snapshots between runs for accurate change detection.
+
+### Daily News Digest
+Searches industry news using your configured topics and generates an AI executive summary with key themes, takeaways, and action items. Supports filtering by preferred news sources.
+
+### Auto-CRM Update
+After each call, pushes extracted data (name, email, notes) to your HubSpot CRM. Maps your agent's dynamic variables to HubSpot contact fields. Requires HubSpot integration.
+
+### Social Media Monitoring
+Tracks brand mentions across 5 platforms: Reddit, Hacker News, X (Twitter), LinkedIn, and Google. Filters results to only include content from the target platform. Generates an AI summary with sentiment analysis and action items. Deduplicates against previous runs.
+
+### Review Request Campaign
+Sends personalized review request SMS to recent callers. Pulls caller names from extracted call data. Respects a configurable minimum days between requests to the same contact (default 30 days). Requires consent confirmation.
+
+## Execution History
+
+View all skill executions from the bottom of the Skills tab. Click any row to see the full result, including:
+- Execution status and duration
+- AI-generated summary
+- Delivery status (Slack, email, SMS)
+- Raw data and metrics
+
+## Integrations
+
+Some skills require connected integrations:
+
+| Integration | Required by | Connect from |
+|-------------|-------------|--------------|
+| Cal.com | Appointment Reminder | Settings > Integrations |
+| HubSpot | Auto-CRM Update | Settings > Integrations |
+| Slack | Any skill (for delivery) | Settings > Integrations |
+
+## API
+
+Skills can be managed programmatically via the REST API. See the [Skills API reference](/api-reference/endpoints/list-skill-definitions) for details.

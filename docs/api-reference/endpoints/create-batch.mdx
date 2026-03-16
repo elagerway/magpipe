@@ -1,9 +1,8 @@
 ---
 title: "Create Batch Call"
+api: "POST /batch-calls"
 description: "Create a new batch outbound call campaign"
 ---
-
-## Overview
 
 Creates a new batch call campaign with a list of recipients. You can send immediately, schedule for later, or save as a draft.
 
@@ -11,19 +10,7 @@ Creates a new batch call campaign with a list of recipients. You can send immedi
 Each dial costs $0.005 plus standard per-minute calling charges.
 </Note>
 
-## Request
-
-### Headers
-
-<ParamField header="Authorization" type="string" required>
-  Bearer token (JWT or API key).
-</ParamField>
-
-<ParamField header="Content-Type" type="string" required>
-  Must be `application/json`
-</ParamField>
-
-### Body Parameters
+## Body Parameters
 
 <ParamField body="action" type="string" required>
   Must be `create`
@@ -112,10 +99,7 @@ Each dial costs $0.005 plus standard per-minute calling charges.
   </Expandable>
 </ResponseField>
 
-## Example Request
-
-<CodeGroup>
-
+<RequestExample>
 ```bash cURL
 curl -X POST "https://api.magpipe.ai/functions/v1/batch-calls" \
   -H "Authorization: Bearer YOUR_API_KEY" \
@@ -135,70 +119,9 @@ curl -X POST "https://api.magpipe.ai/functions/v1/batch-calls" \
     ]
   }'
 ```
+</RequestExample>
 
-```javascript JavaScript
-const response = await fetch(
-  'https://api.magpipe.ai/functions/v1/batch-calls',
-  {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      action: 'create',
-      name: 'Appointment Reminders',
-      caller_id: '+16045551234',
-      send_now: true,
-      window_start_time: '09:00',
-      window_end_time: '17:00',
-      window_days: [1, 2, 3, 4, 5],
-      reserved_concurrency: 5,
-      recipients: [
-        { name: 'John Doe', phone_number: '+14155551234' },
-        { name: 'Jane Smith', phone_number: '+12125559876' },
-      ],
-    }),
-  }
-);
-
-const data = await response.json();
-console.log(data.batch.id);
-```
-
-```python Python
-import requests
-
-response = requests.post(
-    'https://api.magpipe.ai/functions/v1/batch-calls',
-    headers={
-        'Authorization': f'Bearer {api_key}',
-        'Content-Type': 'application/json',
-    },
-    json={
-        'action': 'create',
-        'name': 'Appointment Reminders',
-        'caller_id': '+16045551234',
-        'send_now': True,
-        'window_start_time': '09:00',
-        'window_end_time': '17:00',
-        'window_days': [1, 2, 3, 4, 5],
-        'reserved_concurrency': 5,
-        'recipients': [
-            {'name': 'John Doe', 'phone_number': '+14155551234'},
-            {'name': 'Jane Smith', 'phone_number': '+12125559876'},
-        ],
-    }
-)
-
-data = response.json()
-print(data['batch']['id'])
-```
-
-</CodeGroup>
-
-## Example Response
-
+<ResponseExample>
 ```json
 {
   "batch": {
@@ -215,3 +138,4 @@ print(data['batch']['id'])
   }
 }
 ```
+</ResponseExample>

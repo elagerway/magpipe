@@ -1,0 +1,102 @@
+---
+title: "Execute Skill"
+api: "POST /manage-skills/{id}/execute"
+description: "Execute a skill manually or perform a dry run"
+---
+
+Trigger a skill execution manually. Use `dry_run: true` to preview what the skill would do without sending any messages or making changes.
+
+## Path Parameters
+
+<ParamField path="id" type="string" required>
+  The agent skill ID to execute.
+</ParamField>
+
+## Request Body
+
+<ParamField body="dry_run" type="boolean" default={false}>
+  If `true`, returns a preview without executing delivery or side effects.
+</ParamField>
+
+<ParamField body="trigger_context" type="object">
+  Optional context data passed to the skill handler. For event-based skills, this includes call data like `caller_phone`, `call_summary`, `extracted_data`.
+</ParamField>
+
+## Response
+
+<ResponseField name="success" type="boolean">Whether the execution succeeded</ResponseField>
+<ResponseField name="execution_id" type="string">Execution record ID (not present for dry runs)</ResponseField>
+<ResponseField name="status" type="string">`completed`, `failed`, or `pending`</ResponseField>
+<ResponseField name="dry_run" type="boolean">Whether this was a dry run</ResponseField>
+
+<ResponseField name="result" type="object">
+  <Expandable title="Execution Result">
+    <ResponseField name="summary" type="string">Human-readable summary of what the skill did</ResponseField>
+    <ResponseField name="actions_taken" type="array">List of action identifiers</ResponseField>
+    <ResponseField name="preview" type="string">Preview text (dry runs only)</ResponseField>
+    <ResponseField name="data" type="object">Skill-specific result data</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="deliveries" type="array">
+  Delivery results for each configured channel.
+
+  <Expandable title="Delivery">
+    <ResponseField name="channel" type="string">`slack`, `email`, or `sms`</ResponseField>
+    <ResponseField name="status" type="string">`sent`, `failed`, or `skipped`</ResponseField>
+    <ResponseField name="to" type="string">Recipient (channel name, email, phone)</ResponseField>
+    <ResponseField name="error" type="string">Error message if failed</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<RequestExample>
+```bash cURL (dry run)
+curl -X POST https://api.magpipe.ai/functions/v1/manage-skills/SKILL_ID/execute \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"dry_run": true}'
+```
+
+```bash cURL (execute)
+curl -X POST https://api.magpipe.ai/functions/v1/manage-skills/SKILL_ID/execute \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+</RequestExample>
+
+<ResponseExample>
+```json Dry Run
+{
+  "success": true,
+  "status": "completed",
+  "dry_run": true,
+  "result": {
+    "summary": "Would monitor 2 keyword(s) across reddit, hackernews, x",
+    "actions_taken": ["preview"],
+    "preview": "Keywords: AI voice agent, magpipe\nPlatforms: reddit, hackernews, x"
+  }
+}
+```
+
+```json Execution
+{
+  "success": true,
+  "execution_id": "b425a0b3-...",
+  "status": "completed",
+  "result": {
+    "summary": "Social Media Monitor: 20 new mention(s) found\n\n📋 *Summary*\n...",
+    "actions_taken": ["mentions_found"],
+    "data": {
+      "keywords": ["AI voice agent"],
+      "new_mentions": 20,
+      "platforms": ["reddit", "hackernews", "x"]
+    }
+  },
+  "deliveries": [
+    { "channel": "slack", "status": "sent", "to": "#general" },
+    { "channel": "email", "status": "sent" }
+  ]
+}
+```
+</ResponseExample>

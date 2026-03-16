@@ -5,7 +5,6 @@
 
 import { User } from '../models/User.js';
 import { getCurrentUser, supabase } from '../lib/supabase.js';
-import { canAddPhoneNumber } from '../services/planService.js';
 import { formatPhoneNumber } from '../lib/formatters.js';
 import { renderBottomNav } from '../components/BottomNav.js';
 import { showToast } from '../lib/toast.js';
@@ -15,6 +14,8 @@ export default class SelectNumberPage {
     this.availableNumbers = [];
     this.selectedNumber = null;
     this.numberType = 'local';
+    this.currentPage = 1;
+    this.perPage = 25;
   }
 
   async render() {
@@ -25,60 +26,7 @@ export default class SelectNumberPage {
       return;
     }
 
-    const phoneCheck = await canAddPhoneNumber(user.id);
     const appElement = document.getElementById('app');
-
-    if (!phoneCheck.canAdd) {
-      appElement.innerHTML = `
-        <div class="container with-bottom-nav" style="max-width: 600px; padding-top: 1.5rem;">
-          <button onclick="navigateTo(window.innerWidth > 768 ? '/phone' : '/manage-numbers')" style="
-            background: none;
-            border: none;
-            color: var(--text-secondary);
-            cursor: pointer;
-            padding: 0.5rem 0.5rem 0.5rem 0;
-            display: flex;
-            align-items: center;
-            gap: 0.25rem;
-            font-size: 0.875rem;
-            transition: color 0.2s;
-            margin-bottom: 1rem;
-          " onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-secondary)'">
-            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
-            </svg>
-            Back
-          </button>
-
-          <div class="card" style="text-align: center;">
-            <div style="font-size: 3rem; margin-bottom: 1rem;">
-              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin: 0 auto; color: var(--warning-color);">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-              </svg>
-            </div>
-            <h2 style="margin-bottom: 0.5rem;">Phone Number Limit Reached</h2>
-            <p class="text-muted" style="margin-bottom: 1.5rem;">
-              Your Free plan includes ${phoneCheck.limit} phone number${phoneCheck.limit > 1 ? 's' : ''}.
-              You currently have ${phoneCheck.current} number${phoneCheck.current > 1 ? 's' : ''}.
-            </p>
-            <div style="background: var(--bg-secondary); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1.5rem;">
-              <h3 style="margin: 0 0 0.5rem 0; font-size: 1rem;">Upgrade to Pro for:</h3>
-              <ul style="text-align: left; margin: 0; padding-left: 1.25rem; color: var(--text-secondary);">
-                <li>Unlimited phone numbers</li>
-                <li>Voice cloning</li>
-                <li>Unlimited calls, minutes, and SMS</li>
-                <li>Priority support</li>
-              </ul>
-            </div>
-            <button class="btn btn-primary btn-full" onclick="navigateTo('/settings')">
-              Upgrade to Pro - $9.99/month
-            </button>
-          </div>
-        </div>
-        ${renderBottomNav('/phone')}
-      `;
-      return;
-    }
 
     appElement.innerHTML = `
       <div class="container with-bottom-nav" style="max-width: 850px; padding-top: 1.5rem;">
@@ -107,7 +55,7 @@ export default class SelectNumberPage {
 
           <!-- Search controls -->
           <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; align-items: flex-start;">
-            <!-- Area code search + Local/Toll Free toggle -->
+            <!-- Area code search -->
             <div style="flex: 0 0 auto;">
               <div style="display: flex; gap: 0.5rem; align-items: center;">
                 <div style="position: relative;">
@@ -119,28 +67,46 @@ export default class SelectNumberPage {
                 </div>
                 <button class="btn btn-primary" id="area-code-search-btn" style="white-space: nowrap;">Search</button>
               </div>
-              <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem;">
-                <span style="font-size: 0.8rem; color: var(--text-secondary);">Local</span>
-                <label class="toggle-switch" style="vertical-align: middle;">
-                  <input type="checkbox" id="number-type-toggle" />
-                  <span class="toggle-slider"></span>
-                </label>
-                <span style="font-size: 0.8rem; color: var(--text-secondary);">Toll Free</span>
+            </div>
+
+            <!-- State/Province search with autocomplete -->
+            <div style="flex: 0 1 auto;">
+              <div style="display: flex; gap: 0.5rem; align-items: center;">
+                <div style="position: relative;" class="autocomplete-wrap">
+                  <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="position: absolute; left: 0.625rem; top: 50%; transform: translateY(-50%); color: var(--text-secondary); pointer-events: none; z-index: 1;">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                  </svg>
+                  <input type="text" id="state-input" class="form-input" placeholder="State / Province"
+                    style="width: 190px; padding-left: 2rem;" autocomplete="off" />
+                  <div id="state-dropdown" class="ac-dropdown"></div>
+                </div>
+                <button class="btn btn-primary" id="state-search-btn" style="white-space: nowrap;">Search</button>
               </div>
             </div>
 
-            <!-- City search -->
+            <!-- City search with autocomplete -->
             <div style="flex: 0 1 auto;">
               <div style="display: flex; gap: 0.5rem; align-items: center;">
-                <div style="position: relative;">
-                  <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="position: absolute; left: 0.625rem; top: 50%; transform: translateY(-50%); color: var(--text-secondary); pointer-events: none;">
+                <div style="position: relative;" class="autocomplete-wrap">
+                  <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="position: absolute; left: 0.625rem; top: 50%; transform: translateY(-50%); color: var(--text-secondary); pointer-events: none; z-index: 1;">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
                   </svg>
                   <input type="text" id="city-input" class="form-input" placeholder="City"
-                    style="width: 150px; padding-left: 2rem;" />
+                    style="width: 180px; padding-left: 2rem;" autocomplete="off" />
+                  <div id="city-dropdown" class="ac-dropdown"></div>
                 </div>
                 <button class="btn btn-primary" id="city-search-btn" style="white-space: nowrap;">Search</button>
               </div>
+            </div>
+
+            <!-- Local / Toll Free toggle -->
+            <div style="flex: 0 0 auto; display: flex; align-items: center; gap: 0.5rem; padding-top: 0.375rem;">
+              <span style="font-size: 0.8rem; color: var(--text-secondary);">Local</span>
+              <label class="toggle-switch" style="vertical-align: middle;">
+                <input type="checkbox" id="number-type-toggle" />
+                <span class="toggle-slider"></span>
+              </label>
+              <span style="font-size: 0.8rem; color: var(--text-secondary);">Toll Free</span>
             </div>
           </div>
 
@@ -156,6 +122,8 @@ export default class SelectNumberPage {
               </thead>
               <tbody id="numbers-list"></tbody>
             </table>
+            <!-- Pagination -->
+            <div id="pagination-controls" style="display: none; padding: 0.75rem 1rem; border-top: 1px solid var(--border-color); display: flex; justify-content: center; align-items: center; gap: 0.5rem;"></div>
           </div>
 
           <!-- Empty state -->
@@ -182,7 +150,135 @@ export default class SelectNumberPage {
       ${renderBottomNav('/phone')}
     `;
 
+    this.populateAutocomplete();
     this.attachEventListeners();
+
+    // Load default US numbers on page load
+    this.performSearch({ numberType: 'local' });
+  }
+
+  populateAutocomplete() {
+    const states = {
+      // US States
+      'Alabama': 'AL', 'Alaska': 'AK', 'Arizona': 'AZ', 'Arkansas': 'AR', 'California': 'CA',
+      'Colorado': 'CO', 'Connecticut': 'CT', 'Delaware': 'DE', 'Florida': 'FL', 'Georgia': 'GA',
+      'Hawaii': 'HI', 'Idaho': 'ID', 'Illinois': 'IL', 'Indiana': 'IN', 'Iowa': 'IA',
+      'Kansas': 'KS', 'Kentucky': 'KY', 'Louisiana': 'LA', 'Maine': 'ME', 'Maryland': 'MD',
+      'Massachusetts': 'MA', 'Michigan': 'MI', 'Minnesota': 'MN', 'Mississippi': 'MS', 'Missouri': 'MO',
+      'Montana': 'MT', 'Nebraska': 'NE', 'Nevada': 'NV', 'New Hampshire': 'NH', 'New Jersey': 'NJ',
+      'New Mexico': 'NM', 'New York': 'NY', 'North Carolina': 'NC', 'North Dakota': 'ND', 'Ohio': 'OH',
+      'Oklahoma': 'OK', 'Oregon': 'OR', 'Pennsylvania': 'PA', 'Rhode Island': 'RI', 'South Carolina': 'SC',
+      'South Dakota': 'SD', 'Tennessee': 'TN', 'Texas': 'TX', 'Utah': 'UT', 'Vermont': 'VT',
+      'Virginia': 'VA', 'Washington': 'WA', 'West Virginia': 'WV', 'Wisconsin': 'WI', 'Wyoming': 'WY',
+      'District of Columbia': 'DC',
+      // Canadian Provinces
+      'Alberta': 'AB', 'British Columbia': 'BC', 'Manitoba': 'MB', 'New Brunswick': 'NB',
+      'Newfoundland': 'NL', 'Nova Scotia': 'NS', 'Ontario': 'ON', 'Prince Edward Island': 'PE',
+      'Quebec': 'QC', 'Saskatchewan': 'SK',
+    };
+    this._stateMap = states;
+    this._stateNames = Object.entries(states).map(([name, code]) => ({ label: `${name} (${code})`, name, code }));
+    this._cities = [
+      'New York', 'Los Angeles', 'San Francisco', 'Chicago', 'Houston', 'Dallas', 'Austin',
+      'Phoenix', 'Philadelphia', 'San Diego', 'San Jose', 'Seattle', 'Denver', 'Boston',
+      'Miami', 'Atlanta', 'Portland', 'Las Vegas', 'Detroit', 'Minneapolis', 'Tampa',
+      'Orlando', 'Nashville', 'Charlotte', 'Washington DC',
+      'Vancouver', 'Toronto', 'Montreal', 'Calgary', 'Edmonton', 'Ottawa', 'Winnipeg',
+      'Victoria', 'Halifax', 'Quebec City', 'Surrey', 'Mississauga', 'Hamilton',
+      'Saskatoon', 'Regina',
+    ];
+
+    // Wire up autocomplete dropdowns
+    this.setupAutocomplete('state-input', 'state-dropdown', () => this._stateNames.map(s => s.label));
+    this.setupAutocomplete('city-input', 'city-dropdown', () => this._cities);
+
+    // Add styles for dropdown
+    if (!document.getElementById('ac-styles')) {
+      const style = document.createElement('style');
+      style.id = 'ac-styles';
+      style.textContent = `
+        .ac-dropdown { display: none; position: absolute; top: 100%; left: 0; right: 0; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: var(--radius-md); box-shadow: var(--shadow-lg); max-height: 200px; overflow-y: auto; z-index: 100; margin-top: 2px; }
+        .ac-dropdown.open { display: block; }
+        .ac-item { padding: 0.5rem 0.75rem; cursor: pointer; font-size: 0.875rem; }
+        .ac-item:hover, .ac-item.active { background: var(--bg-secondary); }
+      `;
+      document.head.appendChild(style);
+    }
+  }
+
+  setupAutocomplete(inputId, dropdownId, getItems) {
+    const input = document.getElementById(inputId);
+    const dropdown = document.getElementById(dropdownId);
+    if (!input || !dropdown) return;
+    let activeIdx = -1;
+
+    const renderDropdown = () => {
+      const val = input.value.trim().toLowerCase();
+      if (!val) { dropdown.classList.remove('open'); activeIdx = -1; return; }
+      const matches = getItems().filter(item => item.toLowerCase().includes(val)).slice(0, 8);
+      if (matches.length === 0) { dropdown.classList.remove('open'); activeIdx = -1; return; }
+      dropdown.innerHTML = matches.map((m, i) =>
+        `<div class="ac-item${i === activeIdx ? ' active' : ''}">${m}</div>`
+      ).join('');
+      dropdown.classList.add('open');
+      dropdown.querySelectorAll('.ac-item').forEach(item => {
+        item.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          input.value = item.textContent;
+          dropdown.classList.remove('open');
+          activeIdx = -1;
+        });
+      });
+    };
+
+    input.addEventListener('input', () => { activeIdx = -1; renderDropdown(); });
+
+    input.addEventListener('keydown', (e) => {
+      const items = dropdown.querySelectorAll('.ac-item');
+      if (!items.length || !dropdown.classList.contains('open')) return;
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        activeIdx = Math.min(activeIdx + 1, items.length - 1);
+        items.forEach((el, i) => el.classList.toggle('active', i === activeIdx));
+        items[activeIdx]?.scrollIntoView({ block: 'nearest' });
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        activeIdx = Math.max(activeIdx - 1, 0);
+        items.forEach((el, i) => el.classList.toggle('active', i === activeIdx));
+        items[activeIdx]?.scrollIntoView({ block: 'nearest' });
+      } else if (e.key === 'Enter' && activeIdx >= 0) {
+        e.preventDefault();
+        input.value = items[activeIdx].textContent;
+        dropdown.classList.remove('open');
+        activeIdx = -1;
+      } else if (e.key === 'Escape') {
+        dropdown.classList.remove('open');
+        activeIdx = -1;
+      }
+    });
+
+    input.addEventListener('blur', () => {
+      setTimeout(() => { dropdown.classList.remove('open'); activeIdx = -1; }, 150);
+    });
+
+    input.addEventListener('focus', () => {
+      if (input.value.trim()) renderDropdown();
+    });
+  }
+
+  resolveStateCode(input) {
+    const trimmed = input.trim();
+    // Check if it's already a 2-letter code
+    if (/^[A-Z]{2}$/i.test(trimmed)) return trimmed.toUpperCase();
+    // Check "Name (XX)" format from datalist
+    const parenMatch = trimmed.match(/\(([A-Z]{2})\)$/i);
+    if (parenMatch) return parenMatch[1].toUpperCase();
+    // Look up by full name
+    for (const [name, code] of Object.entries(this._stateMap || {})) {
+      if (name.toLowerCase() === trimmed.toLowerCase()) return code;
+    }
+    return null;
   }
 
   attachEventListeners() {
@@ -207,6 +303,23 @@ export default class SelectNumberPage {
 
     areaCodeInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') areaCodeBtn.click();
+    });
+
+    // State/Province search (supports full name or 2-letter code)
+    const stateBtn = document.getElementById('state-search-btn');
+    const stateInput = document.getElementById('state-input');
+
+    stateBtn.addEventListener('click', () => {
+      const state = this.resolveStateCode(stateInput.value);
+      if (!state) {
+        showToast('Please select a state or province', 'error');
+        return;
+      }
+      this.performSearch({ state, numberType: this.numberType });
+    });
+
+    stateInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') stateBtn.click();
     });
 
     // City search
@@ -274,6 +387,7 @@ export default class SelectNumberPage {
       const result = await this.searchNumbers(params);
       this.availableNumbers = result.numbers || [];
       this.selectedNumber = null;
+      this.currentPage = 1;
 
       // Update Next button state
       document.getElementById('next-btn').disabled = true;
@@ -302,8 +416,11 @@ export default class SelectNumberPage {
 
   renderNumbersList() {
     const numbersList = document.getElementById('numbers-list');
+    const totalPages = Math.ceil(this.availableNumbers.length / this.perPage);
+    const start = (this.currentPage - 1) * this.perPage;
+    const pageNumbers = this.availableNumbers.slice(start, start + this.perPage);
 
-    numbersList.innerHTML = this.availableNumbers
+    numbersList.innerHTML = pageNumbers
       .map((number) => {
         const caps = [];
         if (number.capabilities?.voice) caps.push('voice');
@@ -311,9 +428,10 @@ export default class SelectNumberPage {
         if (number.capabilities?.mms) caps.push('mms');
         if (number.capabilities?.fax) caps.push('fax');
         const capsText = caps.length > 0 ? caps.join(', ') : 'none';
+        const isSelected = number.phone_number === this.selectedNumber;
 
         return `
-          <tr class="sn-number-row" data-number="${number.phone_number}" style="cursor: pointer; border-bottom: 1px solid var(--border-color); transition: background-color 0.15s;">
+          <tr class="sn-number-row" data-number="${number.phone_number}" style="cursor: pointer; border-bottom: 1px solid var(--border-color); transition: background-color 0.15s;${isSelected ? ' background-color: rgba(99, 102, 241, 0.08);' : ''}">
             <td style="padding: 0.75rem 1rem;">
               <div style="font-weight: 600; font-size: 0.95rem;">${formatPhoneNumber(number.phone_number)}</div>
               <div style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase;">${number.locality || 'Unknown'}${number.region ? ', ' + number.region : ''}</div>
@@ -328,31 +446,46 @@ export default class SelectNumberPage {
     // Row click handlers
     document.querySelectorAll('.sn-number-row').forEach(row => {
       row.addEventListener('click', () => {
-        // Deselect all
-        document.querySelectorAll('.sn-number-row').forEach(r => {
-          r.style.backgroundColor = '';
-        });
-
-        // Select this row
+        document.querySelectorAll('.sn-number-row').forEach(r => { r.style.backgroundColor = ''; });
         row.style.backgroundColor = 'rgba(99, 102, 241, 0.08)';
         this.selectedNumber = row.dataset.number;
-
-        // Enable Next button
         document.getElementById('next-btn').disabled = false;
       });
-
-      // Hover effect
       row.addEventListener('mouseenter', () => {
-        if (row.dataset.number !== this.selectedNumber) {
-          row.style.backgroundColor = 'rgba(99, 102, 241, 0.04)';
-        }
+        if (row.dataset.number !== this.selectedNumber) row.style.backgroundColor = 'rgba(99, 102, 241, 0.04)';
       });
       row.addEventListener('mouseleave', () => {
-        if (row.dataset.number !== this.selectedNumber) {
-          row.style.backgroundColor = '';
-        }
+        if (row.dataset.number !== this.selectedNumber) row.style.backgroundColor = '';
       });
     });
+
+    // Pagination controls
+    const paginationEl = document.getElementById('pagination-controls');
+    if (totalPages <= 1) {
+      paginationEl.style.display = 'none';
+    } else {
+      paginationEl.style.display = 'flex';
+      paginationEl.innerHTML = `
+        <button class="btn btn-sm btn-secondary" id="page-prev" ${this.currentPage === 1 ? 'disabled' : ''} style="padding: 0.25rem 0.75rem;">&laquo; Prev</button>
+        ${Array.from({ length: totalPages }, (_, i) => i + 1).map(p =>
+          `<button class="btn btn-sm ${p === this.currentPage ? 'btn-primary' : 'btn-secondary'}" data-page="${p}" style="padding: 0.25rem 0.625rem; min-width: 2rem;">${p}</button>`
+        ).join('')}
+        <button class="btn btn-sm btn-secondary" id="page-next" ${this.currentPage === totalPages ? 'disabled' : ''} style="padding: 0.25rem 0.75rem;">Next &raquo;</button>
+      `;
+
+      paginationEl.querySelectorAll('[data-page]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          this.currentPage = parseInt(btn.dataset.page);
+          this.renderNumbersList();
+        });
+      });
+      document.getElementById('page-prev')?.addEventListener('click', () => {
+        if (this.currentPage > 1) { this.currentPage--; this.renderNumbersList(); }
+      });
+      document.getElementById('page-next')?.addEventListener('click', () => {
+        if (this.currentPage < totalPages) { this.currentPage++; this.renderNumbersList(); }
+      });
+    }
   }
 
 

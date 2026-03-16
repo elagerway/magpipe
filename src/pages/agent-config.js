@@ -12,7 +12,7 @@ import { escapeHtml } from '../lib/formatters.js';
 
 // ElevenLabs Voices with metadata
 const ELEVENLABS_VOICES = [
-  { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel', label: 'Rachel (Default)', accent: 'American', gender: 'Female', description: 'Calm' },
+  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Rachel', label: 'Sarah (Default)', accent: 'American', gender: 'Female', description: 'Calm' },
   { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam', label: 'Adam', accent: 'American', gender: 'Male', description: 'Deep' },
   { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah', label: 'Sarah', accent: 'American', gender: 'Female', description: 'Soft' },
   { id: 'MF3mGyEYCl7XYWbV9V6O', name: 'Elli', label: 'Elli', accent: 'American', gender: 'Female', description: 'Youthful' },
@@ -227,7 +227,7 @@ export default class AgentConfigPage {
           <form id="config-form" style="margin-bottom: 0;">
             <div class="form-group">
               <label class="form-label" for="voice-id">Voice</label>
-              <input type="hidden" id="voice-id" value="${activeConfig?.voice_id || '21m00Tcm4TlvDq8ikWAM'}" />
+              <input type="hidden" id="voice-id" value="${activeConfig?.voice_id || 'EXAVITQu4vr4xnSDxMaL'}" />
               <div class="voice-selector-display" style="
                 flex: 1;
                 display: flex;
@@ -241,7 +241,7 @@ export default class AgentConfigPage {
                 transition: all 0.2s;
               " id="voice-selector-display">
                 <span id="selected-voice-display" style="font-weight: 500; pointer-events: none;">
-                  ${this.getVoiceDisplayName(activeConfig?.voice_id || '21m00Tcm4TlvDq8ikWAM', clonedVoices)}
+                  ${this.getVoiceDisplayName(activeConfig?.voice_id || 'EXAVITQu4vr4xnSDxMaL', clonedVoices)}
                 </span>
                 <button type="button" id="change-voice-btn" class="btn btn-sm" style="background: var(--primary-color); color: white; padding: 0.35rem 0.75rem; font-size: 0.875rem; pointer-events: none;">
                   Change Voice
@@ -1641,7 +1641,7 @@ Always sound approachable, keep things simple, and update the user with a quick 
               .insert({
                 user_id: session.user.id,
                 name: 'AI Assistant',
-                voice_id: '11labs-21m00Tcm4TlvDq8ikWAM',
+                voice_id: '11labs-EXAVITQu4vr4xnSDxMaL',
                 system_prompt: defaultPrompt,
                 active_voice_stack: 'livekit',
                 is_default: true,

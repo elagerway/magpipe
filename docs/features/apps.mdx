@@ -7,9 +7,17 @@ description: "Connect external services and enable agent functions"
 
 Apps extend what your AI agents can do. Connect to your CRM, calendar, helpdesk, and more. When a caller asks to book an appointment, your agent checks your actual calendar. When a lead calls, their info is logged directly to your CRM.
 
+<Frame caption="Connect external services like Slack, Cal.com, and CRMs to extend your agents">
+  <img src="/images/apps-integrations.png" alt="Apps and integrations" />
+</Frame>
+
 Magpipe has two levels of app configuration:
 - **Apps** (global) - Connect external services like Cal.com, HubSpot, and Slack
 - **Functions** (per-agent) - Enable built-in capabilities like SMS, transfers, and booking
+
+<Frame caption="Configuring Slack channel routing on the Extract Data function">
+  <img src="/images/connect-slack-demo.png" alt="Slack channel configuration" />
+</Frame>
 
 ## Connected Apps
 
@@ -71,10 +79,11 @@ Sync contacts and log interactions.
 Send notifications and interact with your team.
 
 **Features:**
-- Send messages to channels
+- Send messages to public and private channels
 - Receive notifications for calls/messages
 - Post call summaries
 - Alert team to urgent calls
+- Route extracted call data to specific channels
 
 **Setup:**
 1. Go to **Apps** from the main navigation
@@ -82,11 +91,16 @@ Send notifications and interact with your team.
 3. Authorize Magpipe in Slack
 4. Select notification channels
 
+<Note>
+Both public and private channels are supported. For private channels, invite the Magpipe bot to the channel first. If you connected Slack before March 2026, disconnect and reconnect to grant the `groups:read` permission needed for private channels.
+</Note>
+
 **What Agents Can Do:**
 ```
 "Alert the sales team" → Posts to #sales channel
 Automatic: Call summary posted after each call
 Automatic: New lead notifications
+Extract data → Route to specific channels (public or private)
 ```
 
 ### Disconnecting Apps

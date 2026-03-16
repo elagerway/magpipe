@@ -1,0 +1,64 @@
+---
+title: "Call Whitelist"
+description: "Blind-forward trusted callers directly to a phone number, bypassing the AI agent"
+---
+
+The Call Whitelist lets you define per-agent rules that automatically forward specific callers to any phone number — without involving the AI agent at all. The call is still recorded, logged, and triggers your configured notifications when it ends.
+
+## Use Cases
+
+- **VIP callers**: Route a key client directly to your cell
+- **Co-owners**: Forward calls from a business partner straight through
+- **Emergency contacts**: Ensure high-priority callers always reach a human
+- **Staff extensions**: Forward internal team numbers to mobile phones
+
+## How It Works
+
+When a call comes in, Magpipe checks the inbound number against the agent's whitelist before dispatching the AI agent. If a match is found, the call is blind-forwarded to the configured destination via SignalWire `<Dial>`. The AI agent is never involved.
+
+- The A-leg (caller) connects to the forwarding destination
+- Both legs are recorded via SignalWire
+- A `call_record` is created with `disposition: forwarded_answered` or `forwarded_no_answer`
+- Notifications fire on completion (email, SMS, push, Slack) just like any other call
+
+## Configuring the Whitelist
+
+Navigate to any agent's detail page → **Skills** tab → **Call Whitelist** section.
+
+### Add an Entry
+
+1. Click **+ Add Number**
+2. Enter an optional **Label** (e.g. "Kyler's son")
+3. Enter the **Caller Number** in E.164 format (e.g. `+16045551234`)
+4. Enter the **Forward To** number in E.164 format
+5. Click **Add**
+
+### Remove an Entry
+
+Click **Remove** on any row. A confirmation modal will appear before the entry is deleted.
+
+## Phone Number Format
+
+All numbers must be in **E.164 format**: a `+` followed by the country code and number, no spaces or dashes.
+
+| Format | Valid |
+|--------|-------|
+| `+16045551234` | ✅ |
+| `6045551234` | ❌ |
+| `+1 (604) 555-1234` | ❌ |
+| `604-555-1234` | ❌ |
+
+## API
+
+Whitelist entries can be managed programmatically. See the API reference:
+
+- [List Whitelist Entries](/api-reference/endpoints/list-whitelist-entries)
+- [Add Whitelist Entry](/api-reference/endpoints/add-whitelist-entry)
+- [Delete Whitelist Entry](/api-reference/endpoints/delete-whitelist-entry)
+
+## Notes
+
+- Whitelist matching is exact — the inbound caller's number must match exactly in E.164 format
+- Each entry is scoped to a single agent; different agents can have independent whitelists
+- Duplicate entries for the same `(agent, caller_number)` pair are rejected with a `409 Conflict`
+- The whitelist is checked before any AI agent logic runs — latency impact is a single DB lookup

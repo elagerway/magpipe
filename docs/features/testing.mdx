@@ -1,0 +1,143 @@
+---
+title: "Agent Testing"
+description: "Automatically test your AI agents by placing real calls, evaluating transcripts, and getting AI-powered failure analysis"
+---
+
+The Testing framework lets you write automated test cases for your AI agents. Each test places a real call through your agent, evaluates the conversation against a set of assertions, and flags failures with an AI-generated explanation of what went wrong and how to fix it.
+
+## Overview
+
+- **Real calls** — tests use your live telephony infrastructure, not simulations
+- **Assertion-based** — define what must (or must not) happen in the conversation
+- **AI failure analysis** — when a test fails, an AI explains why and suggests fixes
+- **Suites and cases** — organize tests into suites by agent, feature, or workflow
+
+## Suites and Test Cases
+
+**Suites** are containers for related test cases. Create a suite per agent or per feature area (e.g., "Reception Agent — Core Flows", "Booking Flows").
+
+**Test cases** define a single scenario:
+- Which agent to test
+- Whether the call is inbound or outbound
+- How the test caller behaves
+- What assertions to check after the call
+
+## Caller Modes
+
+<CardGroup cols={2}>
+  <Card title="Silent" icon="microphone-slash">
+    The test caller stays quiet. Use this to test agent-initiated flows — greetings, hold music, timeout behavior.
+  </Card>
+  <Card title="Scripted" icon="list">
+    The test caller speaks from a script — one phrase per conversational turn. Use this to walk through a specific dialogue path.
+  </Card>
+</CardGroup>
+
+### Scripted example
+
+```json
+{
+  "caller_mode": "scripted",
+  "caller_script": [
+    "Hi, I'd like to book an appointment for next Tuesday",
+    "Morning works — how about 10 AM?",
+    "Yes, that's confirmed. Thank you."
+  ]
+}
+```
+
+## Assertions
+
+After the call completes, the framework checks each assertion and marks the run as `passed` or `failed`.
+
+| Assertion | Configuration | Description |
+|-----------|---------------|-------------|
+| `call_connected` | automatic | The test call connected successfully |
+| `agent_joined` | automatic | The AI agent joined the call |
+| `expected_phrases` | `expected_phrases: [...]` | All listed phrases appear in the transcript (case-insensitive) |
+| `prohibited_phrases` | `prohibited_phrases: [...]` | None of the listed phrases appear in the transcript |
+| `expected_functions` | `expected_functions: [...]` | All listed custom function names were called |
+| `min_duration` | `min_duration_seconds: N` | Call lasted at least N seconds |
+| `max_duration` | `max_duration_seconds: N` | Call ended within N seconds |
+
+### Example: booking flow test
+
+```json
+{
+  "name": "Booking flow — morning slot",
+  "caller_mode": "scripted",
+  "caller_script": ["I'd like to book an appointment tomorrow morning"],
+  "expected_phrases": ["confirmed", "Tuesday"],
+  "prohibited_phrases": ["I can't help with that", "I don't know"],
+  "expected_functions": ["book_appointment"],
+  "min_duration_seconds": 15,
+  "max_duration_seconds": 90
+}
+```
+
+## AI Failure Analysis
+
+When a test run fails, the framework generates an `ai_analysis` field explaining the failure in plain English with actionable suggestions — for example:
+
+> "The agent said '9:00 AM' but the expected phrase is '9 AM'. Either update the expected phrase to match the agent's wording, or adjust the system prompt to use the shorter format."
+
+This saves time diagnosing whether the issue is in the test definition or the agent's behavior.
+
+## How to Use
+
+### 1. Open Tests
+
+Find **Tests** in the sidebar. You'll see your suites listed with case counts.
+
+### 2. Create a Suite
+
+Click **New Suite**, give it a name (e.g., "Reception Agent"), and optionally add a description.
+
+### 3. Add Test Cases
+
+Open a suite and click **New Test Case**. Configure:
+- **Name** — what this test checks
+- **Type** — inbound or outbound call
+- **Caller mode** — silent or scripted
+- **Assertions** — expected phrases, prohibited phrases, required functions, duration bounds
+
+### 4. Run a Test
+
+Click **Run** on any test case. The run starts immediately — you'll see the status update to `running` and then `passed` or `failed` once the call completes.
+
+### 5. Review Results
+
+Each completed run shows:
+- Pass/fail for every assertion
+- The full call transcript
+- AI analysis for any failures
+
+## API Integration
+
+You can run tests programmatically as part of a CI/CD pipeline or after deploying agent prompt changes:
+
+```javascript
+// 1. Trigger a run
+const { run_id } = await fetch('https://api.magpipe.ai/functions/v1/run-test', {
+  method: 'POST',
+  headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+  body: JSON.stringify({ test_case_id: 'your-case-uuid' }),
+}).then(r => r.json());
+
+// 2. Poll until complete
+let run;
+do {
+  await new Promise(r => setTimeout(r, 5000));
+  run = await fetch(
+    `https://api.magpipe.ai/functions/v1/test-runs?id=${run_id}`,
+    { headers: { 'Authorization': `Bearer ${apiKey}` } }
+  ).then(r => r.json()).then(d => d.run);
+} while (['pending', 'running'].includes(run.status));
+
+// 3. Check result
+console.log(run.status); // 'passed' or 'failed'
+console.log(run.assertions);
+if (run.ai_analysis) console.log(run.ai_analysis);
+```
+
+See the [Testing API Reference](/api-reference/endpoints/list-test-suites) for full endpoint documentation.

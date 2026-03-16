@@ -1100,7 +1100,7 @@ export default class ManageNumbersPage {
       .insert({
         user_id: session.user.id,
         name: 'AI Assistant',
-        voice_id: '11labs-21m00Tcm4TlvDq8ikWAM',
+        voice_id: '11labs-EXAVITQu4vr4xnSDxMaL',
         system_prompt: 'You are a helpful AI assistant answering calls for the user. Be friendly, professional, and helpful. Take messages and provide information as needed.',
         active_voice_stack: 'livekit',
         is_default: true,

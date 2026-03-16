@@ -1,6 +1,6 @@
 ---
 title: "Create Phone Call"
-openapi: "POST /initiate-bridged-call"
+api: "POST /initiate-bridged-call"
 description: "Initiate an outbound phone call with an AI agent"
 ---
 
@@ -103,7 +103,7 @@ Calls are billed based on duration. See [Pricing](/pricing) for details.
 
 ## Example Request
 
-<CodeGroup>
+<RequestExample>
 
 ```bash cURL
 curl -X POST "https://api.magpipe.ai/functions/v1/initiate-bridged-call" \
@@ -157,11 +157,12 @@ data = response.json()
 print(data['call_id'])
 ```
 
-</CodeGroup>
+</RequestExample>
 
 ## Example Response
 
-```json
+<ResponseExample>
+```json 200 Success
 {
   "success": true,
   "call_id": "a1b2c3d4-5678-9012-3456-789012345678",
@@ -172,6 +173,7 @@ print(data['call_id'])
   "created_at": "2024-01-15T10:30:00.000Z"
 }
 ```
+</ResponseExample>
 
 ## Error Responses
 

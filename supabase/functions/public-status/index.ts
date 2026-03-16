@@ -76,6 +76,7 @@ Deno.serve(async (req) => {
       signalWireResult,
       postmarkResult,
       openaiResult,
+      anthropicResult,
       stripeResult,
       firecrawlResult,
       hubspotResult,
@@ -91,6 +92,7 @@ Deno.serve(async (req) => {
       checkSignalWire(),
       checkPostmark(),
       checkOpenAI(),
+      checkAnthropic(),
       checkStripe(),
       checkFirecrawl(),
       checkHubSpot(supabase),
@@ -107,7 +109,8 @@ Deno.serve(async (req) => {
       { name: 'Telephony', ...signalWireResult },
       { name: 'SMS', ...signalWireResult },
       { name: 'Email', ...postmarkResult },
-      { name: 'AI Engine', ...openaiResult },
+      { name: 'OpenAI', ...openaiResult },
+      { name: 'Anthropic', ...anthropicResult },
       { name: 'Payments', ...stripeResult },
       { name: 'Knowledge Base', ...firecrawlResult },
       { name: 'HubSpot', ...hubspotResult },
@@ -166,7 +169,8 @@ function worstOf(results: ServiceResult[]): ServiceResult {
     if (r.latency > maxLatency) maxLatency = r.latency
     if (r.detail && r.status !== 'operational') details.push(r.detail)
   }
-  return { status: worst, latency: maxLatency, detail: details.length ? details.join('; ') : undefined }
+  const uniqueDetails = [...new Set(details)]
+  return { status: worst, latency: maxLatency, detail: uniqueDetails.length ? uniqueDetails.join('; ') : undefined }
 }
 
 // --- Error message helper ---
@@ -190,9 +194,16 @@ async function fetchIncidents(baseUrl: string): Promise<string | undefined> {
     const data = await res.json()
     const incidents = data.incidents as Array<{ name: string; status: string; components?: Array<{ name: string }> }>
     if (!incidents?.length) return undefined
+    // Filter out incidents that only affect regional nodes (e.g. "Node - Dubai")
+    // These are edge nodes unrelated to core service availability
+    const coreIncidents = incidents.filter(i => {
+      if (!i.components?.length) return true
+      return i.components.some(c => !/^Node\s*[-–]/i.test(c.name))
+    })
+    if (!coreIncidents.length) return undefined
     // Return incident names with affected components
-    return incidents.map(i => {
-      const comps = i.components?.map(c => c.name).join(', ')
+    return coreIncidents.map(i => {
+      const comps = i.components?.filter(c => !/^Node\s*[-–]/i.test(c.name)).map(c => c.name).join(', ')
       return comps ? `${i.name} (${comps})` : i.name
     }).join('; ')
   } catch {
@@ -248,7 +259,7 @@ async function checkVercel(): Promise<ServiceResult> {
     const data = await statusRes.json()
     const indicator = data.status?.indicator
     if (indicator === 'critical') return { status: 'down', latency, detail: incidents || data.status?.description }
-    if (indicator === 'major' || indicator === 'minor') return { status: 'degraded', latency, detail: incidents || data.status?.description }
+    if (indicator === 'major') return { status: 'degraded', latency, detail: incidents || data.status?.description }
     return { status: 'operational', latency }
   } catch (e) {
     return { status: 'down', latency: Date.now() - start, detail: friendlyError(e) }
@@ -256,23 +267,22 @@ async function checkVercel(): Promise<ServiceResult> {
 }
 
 async function checkLiveKit(): Promise<ServiceResult> {
-  const start = Date.now()
   const livekitUrl = Deno.env.get('LIVEKIT_URL')
   if (!livekitUrl) return { status: 'down', latency: 0, detail: 'Not configured' }
   try {
     const httpUrl = livekitUrl.replace('wss://', 'https://').replace('ws://', 'http://')
-    const [, incidents] = await Promise.all([
-      fetch(httpUrl, { method: 'HEAD', signal: AbortSignal.timeout(5000) }),
-      fetchIncidents('https://status.livekit.io'),
-    ])
+    // Measure LiveKit latency independently — don't let incident fetch inflate it
+    const start = Date.now()
+    await fetch(httpUrl, { method: 'HEAD', signal: AbortSignal.timeout(5000) })
     const latency = Date.now() - start
+    // Check incidents separately (doesn't affect latency measurement)
+    const incidents = await fetchIncidents('https://status.livekit.io')
     if (incidents) return { status: 'degraded', latency, detail: incidents }
     if (latency > 3000) return { status: 'degraded', latency, detail: 'High latency' }
     return { status: 'operational', latency }
   } catch (error) {
-    const latency = Date.now() - start
-    if (error.name === 'AbortError') return { status: 'down', latency, detail: 'Timeout' }
-    return { status: 'operational', latency }
+    if (error.name === 'AbortError') return { status: 'down', latency: 5000, detail: 'Timeout' }
+    return { status: 'operational', latency: 0 }
   }
 }
 
@@ -368,6 +378,24 @@ async function checkOpenAI(): Promise<ServiceResult> {
   try {
     const response = await fetch('https://api.openai.com/v1/models', {
       headers: { 'Authorization': `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(5000),
+    })
+    const latency = Date.now() - start
+    if (!response.ok) return { status: 'down', latency, detail: `HTTP ${response.status}` }
+    if (latency > 3000) return { status: 'degraded', latency, detail: 'High latency' }
+    return { status: 'operational', latency }
+  } catch (e) {
+    return { status: 'down', latency: Date.now() - start, detail: friendlyError(e) }
+  }
+}
+
+async function checkAnthropic(): Promise<ServiceResult> {
+  const start = Date.now()
+  const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
+  if (!apiKey) return { status: 'down', latency: 0, detail: 'Not configured' }
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/models', {
+      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
       signal: AbortSignal.timeout(5000),
     })
     const latency = Date.now() - start

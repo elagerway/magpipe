@@ -3,14 +3,12 @@
  * Handles caching, offline support, and background sync
  */
 
-const CACHE_NAME = 'magpipe-v1';
+const CACHE_NAME = 'magpipe-v3';
+// Never cache index.html here — Vercel sends no-cache for it and the SW
+// must not override that, otherwise stale asset hashes cause chunk-load failures.
 const STATIC_ASSETS = [
-  '/',
-  '/index.html',
   '/manifest.json',
   '/styles/main.css',
-  '/src/main.js',
-  '/src/router.js',
 ];
 
 // Install event - cache static assets
@@ -49,7 +47,7 @@ self.addEventListener('activate', (event) => {
   return self.clients.claim();
 });
 
-// Fetch event - serve from cache, fallback to network
+// Fetch event
 self.addEventListener('fetch', (event) => {
   // Skip non-GET requests
   if (event.request.method !== 'GET') {
@@ -57,76 +55,51 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Skip Supabase API requests (always fetch from network)
-  if (event.request.url.includes('supabase.co')) {
+  if (event.request.url.includes('supabase.co') || event.request.url.includes('api.magpipe.ai')) {
     return;
   }
 
-  // Network-first for CSS files (always get fresh styles)
-  if (event.request.url.endsWith('.css')) {
+  // Navigation requests (HTML pages): always network-first, never serve stale index.html.
+  // This is critical — serving a cached index.html with old asset hashes causes chunk-load
+  // failures on every deploy.
+  if (event.request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request)
-        .then((networkResponse) => {
-          // Cache the fresh response
-          if (networkResponse.ok) {
-            const responseClone = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, responseClone);
-            });
-          }
-          return networkResponse;
-        })
-        .catch(() => {
-          // Network failed, try cache
-          return caches.match(event.request);
-        })
+      fetch(event.request).catch(() => {
+        // Only fall back to cached index.html when completely offline
+        return caches.match('/index.html');
+      })
     );
     return;
   }
 
-  event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      // Return cached response if found
-      if (cachedResponse) {
-        // Update cache in background
-        event.waitUntil(
-          fetch(event.request).then((networkResponse) => {
-            return caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, networkResponse.clone());
-              return networkResponse;
-            });
-          }).catch(() => {
-            // Network fetch failed, but we have cache
-            return cachedResponse;
-          })
-        );
-
-        return cachedResponse;
-      }
-
-      // Not in cache, fetch from network
-      return fetch(event.request)
-        .then((networkResponse) => {
-          // Cache successful responses
-          if (networkResponse.ok) {
-            return caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, networkResponse.clone());
-              return networkResponse;
-            });
+  // Content-hashed assets (/assets/...): cache-first, they're immutable.
+  if (event.request.url.includes('/assets/')) {
+    event.respondWith(
+      caches.match(event.request).then((cached) => {
+        if (cached) return cached;
+        return fetch(event.request).then((response) => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
           }
-
-          return networkResponse;
-        })
-        .catch((error) => {
-          console.error('Fetch failed:', error);
-
-          // Return offline page for navigation requests
-          if (event.request.mode === 'navigate') {
-            return caches.match('/index.html');
-          }
-
-          throw error;
+          return response;
         });
-    })
+      })
+    );
+    return;
+  }
+
+  // Everything else: network-first, cache as fallback.
+  event.respondWith(
+    fetch(event.request)
+      .then((response) => {
+        if (response.ok) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        }
+        return response;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
 

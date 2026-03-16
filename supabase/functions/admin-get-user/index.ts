@@ -63,7 +63,8 @@ Deno.serve(async (req) => {
         credits_used_this_period,
         signup_ip,
         signup_city,
-        signup_country
+        signup_country,
+        welcome_email_sent_at
       `)
       .eq('id', userId)
       .single()

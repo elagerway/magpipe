@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { reportError } from '../_shared/error-reporter.ts'
 import {
   isOptOutMessage,
   isOptInMessage,
@@ -94,30 +95,8 @@ Deno.serve(async (req) => {
       agentConfig = assignedAgent
     }
 
-    // 2. Default text agent for this user
-    if (!agentConfig) {
-      const { data: defaultAgent } = await supabase
-        .from('agent_configs')
-        .select('*')
-        .eq('user_id', serviceNumber.user_id)
-        .eq('agent_type', 'text')
-        .eq('is_default', true)
-        .single()
-      agentConfig = defaultAgent
-    }
-
-    // 3. Any text agent for this user
-    if (!agentConfig) {
-      const { data: anyAgent } = await supabase
-        .from('agent_configs')
-        .select('*')
-        .eq('user_id', serviceNumber.user_id)
-        .eq('agent_type', 'text')
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .single()
-      agentConfig = anyAgent
-    }
+    // No fallback — if no text agent is explicitly assigned, don't guess.
+    // The system agent check below will send the generic setup message.
 
     const agentId = agentConfig?.id || null
     console.log('Using agent for SMS:', agentId, agentConfig?.name || 'None')
@@ -181,7 +160,7 @@ Deno.serve(async (req) => {
     }
 
     // Log the message to database with agent_id and sentiment
-    const { error: insertError } = await supabase
+    const { data: insertedMsg, error: insertError } = await supabase
       .from('sms_messages')
       .insert({
         user_id: serviceNumber.user_id,
@@ -194,12 +173,16 @@ Deno.serve(async (req) => {
         sent_at: new Date().toISOString(),
         sentiment: messageSentiment,
       })
+      .select('id')
+      .single()
+
+    const sessionId: string | null = insertedMsg?.id || null
 
     if (insertError) {
       console.error('Error logging SMS:', insertError)
       const { allowed: hasCreditsOnError } = await checkBalance(supabase, serviceNumber.user_id)
       if (hasCreditsOnError) {
-        processAndReplySMS(serviceNumber.user_id, from, to, body, supabase, agentConfig, null)
+        processAndReplySMS(serviceNumber.user_id, from, to, body, supabase, agentConfig, null, null)
       }
     } else {
       // Deduct credits for inbound SMS (fire and forget)
@@ -292,14 +275,14 @@ Deno.serve(async (req) => {
           if (slackSmsEnabled) {
             sendSlackNotification(serviceNumber.user_id, from, body, supabase)
               .then(slackThread => {
-                processAndReplySMS(serviceNumber.user_id, from, to, body, supabase, agentConfig, slackThread)
+                processAndReplySMS(serviceNumber.user_id, from, to, body, supabase, agentConfig, slackThread, sessionId)
               })
               .catch(err => {
                 console.error('Failed to send Slack notification:', err)
-                processAndReplySMS(serviceNumber.user_id, from, to, body, supabase, agentConfig, null)
+                processAndReplySMS(serviceNumber.user_id, from, to, body, supabase, agentConfig, null, sessionId)
               })
           } else {
-            processAndReplySMS(serviceNumber.user_id, from, to, body, supabase, agentConfig, null)
+            processAndReplySMS(serviceNumber.user_id, from, to, body, supabase, agentConfig, null, sessionId)
           }
         }
       }
@@ -313,6 +296,8 @@ Deno.serve(async (req) => {
     })
   } catch (error) {
     console.error('Error in webhook-inbound-sms:', error)
+    const _sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+    await reportError(_sb, { error_type: 'edge_function_error', error_message: String(error.message || error), error_code: 'webhook-inbound-sms:outer', source: 'supabase' })
     const twiml = `<?xml version="1.0" encoding="UTF-8"?><Response></Response>`
     return new Response(twiml, {
       headers: { 'Content-Type': 'text/xml' },

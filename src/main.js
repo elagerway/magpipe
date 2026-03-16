@@ -83,6 +83,9 @@ class App {
       if ('serviceWorker' in navigator) {
         this.registerServiceWorker();
       }
+
+      // Global error handler — report uncaught JS errors to admin dashboard
+      this.setupGlobalErrorHandler();
     } catch (err) {
       console.error('App init error:', err);
       if (!initCompleted) {
@@ -159,8 +162,14 @@ class App {
       const currentPath = window.location.pathname;
 
       if (!authRedirectRoutes.includes(currentPath)) {
-        // User is on a protected route or public content page, don't redirect
-        console.log('Auth state change, staying on:', currentPath);
+        // User is already on a protected route — only redirect if phone not verified
+        if (currentPath !== '/verify-phone') {
+          const { User: UserCheck } = await import('./models/User.js');
+          const { profile: checkProfile } = await UserCheck.getProfile(session.user.id);
+          if (checkProfile && !checkProfile.phone_verified) {
+            this.router.navigate('/verify-phone');
+          }
+        }
         return;
       }
 
@@ -224,11 +233,43 @@ class App {
 
       // Initialize push notifications (only if user has them enabled)
       initPushNotifications().catch(err => console.error('Push init error:', err));
+    } else if (event === 'INITIAL_SESSION') {
+      // Fires on page load/refresh with an existing session.
+      // Check phone verification so users can't bypass it by refreshing.
+      if (!session) return;
+      this.currentUser = session.user;
+      const initPath = window.location.pathname;
+      const skipPaths = ['/verify-phone', '/login', '/signup', '/verify-email',
+                         '/forgot-password', '/reset-password', '/impersonate',
+                         '/', '/pricing', '/custom-plan', '/privacy', '/terms'];
+      if (skipPaths.some(p => initPath === p || initPath.startsWith(p + '/'))) return;
+      const { User: InitUser } = await import('./models/User.js');
+      const { profile: initProfile } = await InitUser.getProfile(session.user.id);
+      if (initProfile && !initProfile.phone_verified) {
+        this.router.navigate('/verify-phone');
+      }
     } else if (event === 'SIGNED_OUT') {
       this.currentUser = null;
       this.removePortalWidget();
       this.router.navigate('/login');
     }
+  }
+
+  _reportError(errorType, message, code, extra = {}) {
+    const url = import.meta.env.VITE_SUPABASE_URL;
+    const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    fetch(`${url}/functions/v1/log-error`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': key },
+      body: JSON.stringify({
+        error_type: errorType,
+        error_message: String(message).substring(0, 500),
+        error_code: code,
+        source: 'vercel',
+        severity: 'error',
+        metadata: { url: window.location.pathname, ...extra },
+      }),
+    }).catch(() => {}); // fire-and-forget, never throw
   }
 
   setupGlobalDialpad() {
@@ -394,6 +435,54 @@ class App {
     if (window.MagpipeChat) {
       delete window.MagpipeChat;
     }
+  }
+
+  setupGlobalErrorHandler() {
+    // Loading screen watchdog — if the spinner is still visible 12s after app init,
+    // log it as an error so it shows up in the admin error dashboard.
+    const watchdog = setTimeout(() => {
+      const app = document.getElementById('app');
+      const stillLoading = app?.querySelector('.loading-screen, #loading-screen');
+      const text = app?.textContent || '';
+      if (stillLoading || text.includes('Loading MAGPIPE')) {
+        this._reportError(
+          'frontend_loading_timeout',
+          `Loading screen stuck after 12s on ${window.location.pathname}`,
+          'loading_watchdog',
+          { pathname: window.location.pathname }
+        );
+      }
+    }, 3000);
+    // Cancel watchdog if user navigates away (page rendered successfully)
+    window.addEventListener('popstate', () => clearTimeout(watchdog), { once: true });
+
+    const report = (errorType, message, code, extra = {}) => {
+      // Only report when user is logged in (avoid noise from public pages)
+      if (!this.currentUser) return;
+      this._reportError(errorType, message, code, extra);
+    };
+
+    window.addEventListener('error', (e) => {
+      // Filter out cross-origin script errors and browser extension noise
+      if (!e.message || e.message === 'Script error.') return;
+      report(
+        'frontend_js_error',
+        e.message,
+        e.filename ? `${e.filename.split('/').pop()}:${e.lineno}` : undefined,
+        { stack: e.error?.stack?.substring(0, 500) }
+      );
+    });
+
+    window.addEventListener('unhandledrejection', (e) => {
+      const msg = e.reason?.message || String(e.reason) || 'Unhandled promise rejection';
+      if (msg === 'Unhandled promise rejection' || msg.length < 3) return;
+      report(
+        'frontend_js_error',
+        msg,
+        'unhandledrejection',
+        { stack: e.reason?.stack?.substring(0, 500) }
+      );
+    });
   }
 
   async registerServiceWorker() {

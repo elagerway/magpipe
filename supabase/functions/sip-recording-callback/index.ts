@@ -170,6 +170,17 @@ Deno.serve(async (req) => {
 
     console.log(`✅ Stored recording metadata for ${callRecord.id} (label: ${label}, sid: ${RecordingSid})`);
 
+    // Eagerly sync the recording in the background (download + upload to Supabase Storage)
+    // This ensures recording_url is populated without waiting for on-demand view.
+    // Use EdgeRuntime.waitUntil so Deno doesn't cancel the fetch when the response is returned.
+    const syncPromise = fetch(`${supabaseUrl}/functions/v1/sync-recording`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${supabaseKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ call_record_id: callRecord.id }),
+    }).catch(err => console.error('Background sync-recording failed:', err));
+    // deno-lint-ignore no-explicit-any
+    (globalThis as any).EdgeRuntime?.waitUntil(syncPromise);
+
     // Deduct credits for completed calls
     // Bill for: main, transfer_conference, back_to_agent, reconnect_conversation
     // Don't bill for: transferee_consult (AI briefing transferee, very short)

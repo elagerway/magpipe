@@ -34,16 +34,6 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Deactivate ALL other numbers for this user
-    const { error: deactivateError } = await supabase
-      .from('service_numbers')
-      .update({ is_active: false })
-      .eq('user_id', user.id)
-
-    if (deactivateError) {
-      console.error('Error deactivating numbers:', deactivateError)
-    }
-
     // Activate the specified number
     const { data, error } = await supabase
       .from('service_numbers')

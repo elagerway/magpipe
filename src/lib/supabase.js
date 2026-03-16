@@ -134,12 +134,19 @@ let userCacheTime = 0;
 const USER_CACHE_TTL = 60000; // 1 minute cache
 
 // Clear cache on auth state change
-supabase.auth.onAuthStateChange((event) => {
+supabase.auth.onAuthStateChange((event, session) => {
   if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
     cachedUser = null;
     userCacheTime = 0;
   } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
     userCacheTime = 0; // Force refresh on next call
+    // Auto-save browser timezone so notifications use the correct local time
+    if (session?.user?.id) {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (tz) {
+        supabase.from('users').update({ timezone: tz }).eq('id', session.user.id).then(() => {});
+      }
+    }
   }
 });
 

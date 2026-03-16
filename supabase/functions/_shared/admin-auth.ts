@@ -29,6 +29,12 @@ export async function requireAdmin(
   supabase: SupabaseClient,
   authToken: string
 ): Promise<AdminUser> {
+  // Allow service role key for internal/CLI calls
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (serviceRoleKey && authToken === serviceRoleKey) {
+    return { id: '00000000-0000-0000-0000-000000000001', email: SUPERUSER_EMAIL, role: 'god' }
+  }
+
   // Get authenticated user from token
   const { data: { user }, error: userError } = await supabase.auth.getUser(authToken)
 

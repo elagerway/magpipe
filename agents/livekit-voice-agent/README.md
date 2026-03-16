@@ -84,9 +84,9 @@ python agent.py dev
 
 6. Add Environment Variables (from Render dashboard):
    ```
-   LIVEKIT_URL=wss://plug-bq7kgzpt.livekit.cloud
-   LIVEKIT_API_KEY=APIJrWftyj6qS8w
-   LIVEKIT_API_SECRET=9oafeK3kiHb8vAN0rlJrnmsCPpgQqLFhfekBAmfr6pzH
+   LIVEKIT_URL=wss://<your-livekit-subdomain>.livekit.cloud
+   LIVEKIT_API_KEY=<your_livekit_api_key>
+   LIVEKIT_API_SECRET=<your_livekit_api_secret>
    SUPABASE_URL=<your_supabase_url>
    SUPABASE_SERVICE_ROLE_KEY=<your_service_role_key>
    SIGNALWIRE_SPACE=<your_space>.signalwire.com

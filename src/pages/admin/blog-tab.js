@@ -157,24 +157,22 @@ export const blogTabMethods = {
     this.blogPosts = [];
     this.blogEditingPost = null;
 
-    // Check for Twitter OAuth callback params
+    // Check for OAuth callback params
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('twitter_connected') === 'true') {
       showToast('Connected to X successfully!', 'success');
-      // Clean up URL
       urlParams.delete('twitter_connected');
-      const cleanUrl = urlParams.toString()
-        ? `${window.location.pathname}?${urlParams}`
-        : window.location.pathname;
-      window.history.replaceState({}, '', cleanUrl);
+      window.history.replaceState({}, '', urlParams.toString() ? `${window.location.pathname}?${urlParams}` : window.location.pathname);
+    }
+    if (urlParams.get('linkedin_connected') === 'true') {
+      showToast('Connected to LinkedIn successfully!', 'success');
+      urlParams.delete('linkedin_connected');
+      window.history.replaceState({}, '', urlParams.toString() ? `${window.location.pathname}?${urlParams}` : window.location.pathname);
     }
     if (urlParams.get('error')) {
-      showToast('X connection failed: ' + urlParams.get('error'), 'error');
+      showToast('Connection failed: ' + urlParams.get('error'), 'error');
       urlParams.delete('error');
-      const cleanUrl = urlParams.toString()
-        ? `${window.location.pathname}?${urlParams}`
-        : window.location.pathname;
-      window.history.replaceState({}, '', cleanUrl);
+      window.history.replaceState({}, '', urlParams.toString() ? `${window.location.pathname}?${urlParams}` : window.location.pathname);
     }
 
     const content = document.getElementById('admin-tab-content');
@@ -188,6 +186,7 @@ export const blogTabMethods = {
       await Promise.all([
         this.blogLoadPosts(),
         this.blogCheckTwitterConnection(),
+        this.blogCheckLinkedInConnection(),
       ]);
       this.blogRenderList();
     } catch (error) {
@@ -237,6 +236,15 @@ export const blogTabMethods = {
     }
   },
 
+  async blogCheckLinkedInConnection() {
+    try {
+      const data = await this.blogApiCall('check_linkedin');
+      this.blogLinkedInConnected = !!data.connected;
+    } catch {
+      this.blogLinkedInConnected = false;
+    }
+  },
+
   blogRenderList() {
     const container = document.querySelector('.blog-tab');
     if (!container) return;
@@ -255,12 +263,18 @@ export const blogTabMethods = {
       const tweetBadge = post.tweeted_at
         ? `<span class="badge-twitter-posted" title="Posted to X on ${new Date(post.tweeted_at).toLocaleString()}">${this.blogXLogoSvg(10)} Posted</span>`
         : '';
+      const linkedinBadge = post.linkedin_posted_at
+        ? `<span class="badge-linkedin-posted" title="Posted to LinkedIn on ${new Date(post.linkedin_posted_at).toLocaleString()}">${this.blogLinkedInLogoSvg(10)} Posted</span>`
+        : '';
+      const linkedinPostBtn = post.status === 'published' && !post.linkedin_posted_at && this.blogLinkedInConnected
+        ? `<button class="btn-linkedin btn-linkedin-sm" id="blog-li-btn-${post.id}" onclick="window.adminPage.blogPostToLinkedInFromList('${post.id}')">${this.blogLinkedInLogoSvg(12)} Post</button>`
+        : '';
 
       return `
         <tr>
           <td>
             <div class="blog-post-title-cell">
-              <strong>${this.blogEscape(post.title)}${tweetBadge}</strong>
+              <strong>${this.blogEscape(post.title)}${tweetBadge}${linkedinBadge}</strong>
               ${tags ? `<span class="blog-tags-preview">${this.blogEscape(tags)}</span>` : ''}
             </div>
           </td>
@@ -268,6 +282,7 @@ export const blogTabMethods = {
           <td>${date}</td>
           <td>
             <div class="blog-actions">
+              ${linkedinPostBtn}
               <button class="btn btn-secondary btn-sm" onclick="window.adminPage.blogEditPost('${post.id}')">Edit</button>
               <button class="btn btn-danger btn-sm" onclick="window.adminPage.blogDeletePost('${post.id}', '${this.blogEscape(post.title).replace(/'/g, "\\'")}')">Delete</button>
             </div>
@@ -281,6 +296,14 @@ export const blogTabMethods = {
         <div class="blog-list-header">
           <h3>Blog Posts</h3>
           <div style="display: flex; gap: 0.5rem; align-items: center;">
+            ${this.blogLinkedInConnected
+              ? `<button class="btn-linkedin btn-linkedin-disconnect" onclick="window.adminPage.blogDisconnectLinkedIn()">
+                  ${this.blogLinkedInLogoSvg()} Disconnect LinkedIn
+                </button>`
+              : `<button class="btn-linkedin" onclick="window.adminPage.blogConnectLinkedIn()">
+                  ${this.blogLinkedInLogoSvg()} Connect LinkedIn
+                </button>`
+            }
             ${this.blogTwitterConnected
               ? `<button class="btn-twitter btn-twitter-disconnect" onclick="window.adminPage.blogDisconnectTwitter()">
                   ${this.blogXLogoSvg()} Disconnect X
@@ -431,6 +454,9 @@ export const blogTabMethods = {
               ${isEdit && post.status === 'published' ? `
                 <div class="blog-twitter-section">
                   ${this.blogTwitterSectionHtml(post)}
+                </div>
+                <div class="blog-linkedin-section">
+                  ${this.blogLinkedInSectionHtml(post)}
                 </div>
               ` : ''}
 
@@ -768,6 +794,10 @@ export const blogTabMethods = {
     return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>`;
   },
 
+  blogLinkedInLogoSvg(size = 14) {
+    return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>`;
+  },
+
   async blogPostToTwitter(postId) {
     try {
       const btn = document.getElementById('blog-tweet-btn');
@@ -842,6 +872,7 @@ export const blogTabMethods = {
           headers: {
             'Authorization': `Bearer ${this.session.access_token}`,
           },
+          signal: AbortSignal.timeout(5000),
         }
       );
 
@@ -855,6 +886,126 @@ export const blogTabMethods = {
     } catch (error) {
       showToast('Failed to connect to X: ' + error.message, 'error');
     }
+  },
+
+  async blogConnectLinkedIn() {
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/linkedin-oauth-callback?action=init`,
+        { headers: { 'Authorization': `Bearer ${this.session.access_token}` } }
+      );
+      const data = await response.json();
+      if (!response.ok || !data.auth_url) throw new Error(data.error || 'Failed to start OAuth flow');
+      window.location.href = data.auth_url;
+    } catch (error) {
+      showToast('Failed to connect LinkedIn: ' + error.message, 'error');
+    }
+  },
+
+  async blogDisconnectLinkedIn() {
+    const confirmed = await showConfirmModal({
+      title: 'Disconnect LinkedIn',
+      message: 'Are you sure you want to disconnect LinkedIn? Auto-posting will stop.',
+      confirmText: 'Disconnect',
+      confirmStyle: 'danger',
+    });
+    if (!confirmed) return;
+    try {
+      await this.blogApiCall('disconnect_linkedin');
+      this.blogLinkedInConnected = false;
+      showToast('Disconnected from LinkedIn', 'success');
+      this.blogRenderList();
+    } catch (error) {
+      showToast('Failed to disconnect: ' + error.message, 'error');
+    }
+  },
+
+  async blogPostToLinkedInFromList(postId) {
+    const post = this.blogPosts.find(p => p.id === postId);
+    const confirmed = await showConfirmModal({
+      title: 'Post to LinkedIn',
+      message: `Post "${post?.title || 'this article'}" to LinkedIn?`,
+      confirmText: 'Post',
+      confirmStyle: 'primary',
+    });
+    if (!confirmed) return;
+
+    const btn = document.getElementById(`blog-li-btn-${postId}`);
+    if (btn) { btn.disabled = true; btn.innerHTML = `${this.blogLinkedInLogoSvg(12)} Posting...`; }
+
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/publish-blog-to-linkedin`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ mode: 'single', post_id: postId }),
+        }
+      );
+      const data = await response.json();
+      if (!response.ok || data.error) throw new Error(data.error || 'Failed to post to LinkedIn');
+
+      showToast('Posted to LinkedIn!', 'success');
+      await this.blogLoadPosts();
+      this.blogRenderList();
+    } catch (error) {
+      showToast('Failed to post to LinkedIn: ' + error.message, 'error');
+      if (btn) { btn.disabled = false; btn.innerHTML = `${this.blogLinkedInLogoSvg(12)} Post`; }
+    }
+  },
+
+  async blogPostToLinkedIn(postId) {
+    try {
+      const btn = document.getElementById('blog-linkedin-btn');
+      if (btn) { btn.disabled = true; btn.innerHTML = `${this.blogLinkedInLogoSvg()} Posting...`; }
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/publish-blog-to-linkedin`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ mode: 'single', post_id: postId }),
+        }
+      );
+      const data = await response.json();
+      if (!response.ok || data.error) throw new Error(data.error || 'Failed to post to LinkedIn');
+
+      showToast('Posted to LinkedIn!', 'success');
+
+      if (this.blogEditingPost?.id === postId) {
+        const postData = await this.blogApiCall('get_post', { id: postId });
+        this.blogEditingPost = postData.post;
+        const section = document.querySelector('.blog-linkedin-section');
+        if (section) section.innerHTML = this.blogLinkedInSectionHtml(postData.post);
+      }
+    } catch (error) {
+      showToast('Failed to post to LinkedIn: ' + error.message, 'error');
+      const btn = document.getElementById('blog-linkedin-btn');
+      if (btn) { btn.disabled = false; btn.innerHTML = `${this.blogLinkedInLogoSvg()} Re-post to LinkedIn`; }
+    }
+  },
+
+  blogLinkedInSectionHtml(post) {
+    if (post.status !== 'published') return '';
+    const hasPosted = !!post.linkedin_posted_at;
+    const label = hasPosted ? 'Re-post to LinkedIn' : 'Post to LinkedIn';
+    const postedInfo = hasPosted
+      ? `<div class="blog-twitter-info">Last posted: ${new Date(post.linkedin_posted_at).toLocaleString()}</div>`
+      : '';
+    return `
+      <label>LinkedIn</label>
+      <button type="button" class="btn-linkedin" id="blog-linkedin-btn"
+        onclick="window.adminPage.blogPostToLinkedIn('${post.id}')">
+        ${this.blogLinkedInLogoSvg()} ${label}
+      </button>
+      ${postedInfo}
+    `;
   },
 
   blogTwitterSectionHtml(post) {

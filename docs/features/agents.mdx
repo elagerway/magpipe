@@ -7,6 +7,14 @@ description: "Create intelligent AI agents that handle calls, texts, chat, and e
 
 AI Agents are the core of Magpipe. Each agent is a fully customizable AI assistant with its own personality, voice, knowledge, and behavior. Agents can handle multiple communication channels simultaneously — answering phone calls, responding to SMS messages, chatting with website visitors, and handling email conversations.
 
+<Frame caption="The agents dashboard shows all your AI agents at a glance">
+  <img src="/images/agents-list.png" alt="Agents list" />
+</Frame>
+
+<Frame caption="Creating a new AI agent">
+  <img src="/images/create-agent-demo.gif" alt="Creating a new agent" />
+</Frame>
+
 ## Agent Capabilities
 
 ### Inbound Calls
@@ -53,6 +61,14 @@ AI Agents are the core of Magpipe. Each agent is a fully customizable AI assista
 See [Email Integration](/features/email) for setup details.
 
 ## Agent Configuration
+
+<Frame caption="Agent detail view — configure your agent's personality, voice, and behavior">
+  <img src="/images/agent-detail.png" alt="Agent detail configuration" />
+</Frame>
+
+<Frame caption="Scroll through all Configure tab settings">
+  <img src="/images/agent-configure-scroll.gif" alt="Agent configure tab scroll" />
+</Frame>
 
 ### Basic Settings
 
@@ -108,6 +124,14 @@ Voice cloning requires the Pro plan and uses ElevenLabs technology.
 Adjust speech rate from 0.5x to 2.0x (default: 1.0x)
 
 ### System Prompts
+
+<Frame caption="The Prompt tab — define your agent's personality and conversation behavior">
+  <img src="/images/agent-prompt-tab.png" alt="Agent prompt tab" />
+</Frame>
+
+<Frame caption="Scroll through the full system prompt configuration">
+  <img src="/images/agent-prompt-scroll.gif" alt="Agent prompt scroll" />
+</Frame>
 
 The system prompt defines your agent's personality, knowledge, and behavior. This is the most critical configuration for customizing how your agent responds.
 
@@ -188,6 +212,14 @@ Phone number for transferring calls to a human:
 
 ### Schedule
 
+<Frame caption="The Schedule tab — set business hours, timezone, and after-hours forwarding">
+  <img src="/images/agent-schedule-tab.png" alt="Agent schedule tab" />
+</Frame>
+
+<Frame caption="Scroll through call and SMS schedule settings">
+  <img src="/images/agent-schedule-scroll.gif" alt="Agent schedule scroll" />
+</Frame>
+
 Configure when your agent is available:
 
 #### Call Schedule
@@ -219,6 +251,14 @@ Leave these empty to simply play the off-duty message.
 Select your business timezone for accurate scheduling.
 
 ## Deployment
+
+<Frame caption="The Deployment tab — assign phone numbers, create chat widgets, and connect email">
+  <img src="/images/agent-deployment-tab.png" alt="Agent deployment tab" />
+</Frame>
+
+<Frame caption="Assigning a phone number to your agent">
+  <img src="/images/agent-deployment-demo.gif" alt="Assigning a number" />
+</Frame>
 
 ### Phone Numbers
 Assign your agent to one or more phone numbers:
@@ -278,6 +318,11 @@ Assign different phone numbers to different agents:
 ## Advanced Features
 
 ### Knowledge Base Integration
+
+<Frame caption="The Knowledge tab — manage which knowledge sources your agent can access">
+  <img src="/images/agent-knowledge-tab.png" alt="Agent knowledge tab" />
+</Frame>
+
 Connect your agent to knowledge sources for accurate answers:
 - Add website URLs
 - Upload documents
@@ -299,7 +344,22 @@ All calls are recorded by default:
 - Recordings stored securely
 - Available in inbox and via API
 - Transcripts generated automatically
-- Can be disabled per agent
+- Can be disabled per agent via the **Settings** tab or API
+
+To disable recording for an agent, toggle **Record calls** off in the agent's Settings tab, or use the API:
+
+```bash
+curl -X POST https://api.magpipe.ai/functions/v1/update-agent \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"agent_id": "YOUR_AGENT_ID", "recording_enabled": false}'
+```
+
+The `recording_enabled` field applies to both inbound calls routed to the agent and outbound calls placed using the agent's number. It defaults to `true`.
+
+<Frame caption="The Analytics tab — track call volume, sentiment, and agent performance">
+  <img src="/images/agent-analytics-tab.png" alt="Agent analytics tab" />
+</Frame>
 
 ### Sentiment Analysis
 AI analyzes each conversation:

@@ -68,7 +68,8 @@ export const kpiTabMethods = {
           headers: {
             'Authorization': `Bearer ${this.session.access_token}`,
             'Content-Type': 'application/json'
-          }
+          },
+          signal: AbortSignal.timeout(5000),
         }
       );
 

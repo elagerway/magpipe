@@ -120,6 +120,7 @@ export const supportTabMethods = {
         <button class="support-subtab ${this.supportSubTab === 'chat' ? 'active' : ''}" data-support-subtab="chat">Chat</button>
         <button class="support-subtab ${this.supportSubTab === 'settings' ? 'active' : ''}" data-support-subtab="settings">Settings</button>
         <button class="support-subtab ${this.supportSubTab === 'errors' ? 'active' : ''}" data-support-subtab="errors">Errors</button>
+        <button class="support-subtab ${this.supportSubTab === 'numbers' ? 'active' : ''}" data-support-subtab="numbers">Numbers</button>
       </div>
 
       <!-- Tickets sub-tab -->
@@ -220,13 +221,18 @@ export const supportTabMethods = {
         <div class="loading-spinner">Loading errors...</div>
       </div>
 
+      <!-- Numbers sub-tab -->
+      <div id="support-subtab-numbers" class="support-subtab-content" style="display: ${this.supportSubTab === 'numbers' ? 'flex' : 'none'};">
+        <div class="loading-spinner">Loading...</div>
+      </div>
+
       <!-- Thread View (hidden initially) -->
       <div id="support-thread-view" class="thread-view" style="display: none;"></div>
     `;
 
     // Sub-tab switching
     this._supportLazyLoaded = {};
-    const allSupportPanes = ['tickets', 'users', 'global-agent', 'chat', 'settings', 'errors'];
+    const allSupportPanes = ['tickets', 'users', 'global-agent', 'chat', 'settings', 'errors', 'numbers'];
     container.querySelectorAll('.support-subtab').forEach(btn => {
       btn.addEventListener('click', async () => {
         this.supportSubTab = btn.dataset.supportSubtab;
@@ -322,6 +328,7 @@ export const supportTabMethods = {
   async _loadSupportSubtab(subtab) {
     // Tickets and settings are rendered inline — no lazy load needed
     if (subtab === 'tickets' || subtab === 'settings') return;
+
     if (this._supportLazyLoaded[subtab]) return;
     this._supportLazyLoaded[subtab] = true;
 
@@ -342,6 +349,8 @@ export const supportTabMethods = {
         await this.renderChatTab();
       } else if (subtab === 'errors') {
         await this.renderErrorsTab();
+      } else if (subtab === 'numbers') {
+        await this.renderNumbersTab();
       }
     } finally {
       // Restore IDs
@@ -1466,6 +1475,7 @@ export const supportTabMethods = {
                   'Authorization': `Bearer ${this.session.access_token}`,
                   'Content-Type': 'application/json',
                 },
+                signal: AbortSignal.timeout(5000),
               }
             );
             if (!res.ok) return;
@@ -1796,13 +1806,33 @@ export const supportTabMethods = {
 
     content.innerHTML = `
       <div class="support-section">
-        <div class="tl-toolbar" style="margin-bottom: 1rem;">
+        <div class="tl-toolbar" style="margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
           <h3 style="margin: 0;">System Error Logs</h3>
-          <select id="errors-type-filter" class="form-input form-select" style="max-width: 200px; font-size: 0.85rem;">
-            <option value="">All Types</option>
-            <option value="sms_verification">SMS Verification</option>
-            <option value="sms_notification">SMS Notification</option>
-          </select>
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin-left: auto;">
+            <select id="errors-severity-filter" class="form-input form-select" style="max-width: 140px; font-size: 0.85rem;">
+              <option value="">All Severity</option>
+              <option value="error">Error</option>
+              <option value="warning">Warning</option>
+            </select>
+            <select id="errors-source-filter" class="form-input form-select" style="max-width: 150px; font-size: 0.85rem;">
+              <option value="">All Sources</option>
+              <option value="supabase">Supabase</option>
+              <option value="vercel">Vercel (Frontend)</option>
+              <option value="scheduled">Scheduled</option>
+              <option value="render">Render (Agent)</option>
+            </select>
+            <select id="errors-type-filter" class="form-input form-select" style="max-width: 200px; font-size: 0.85rem;">
+              <option value="">All Types</option>
+              <option value="sms_verification">SMS Verification</option>
+              <option value="sms_notification">SMS Notification</option>
+              <option value="gmail_token_expired">Gmail Token Expired</option>
+              <option value="scheduled_function_stale">Scheduled Function Stale</option>
+              <option value="edge_function_error">Edge Function Error</option>
+              <option value="frontend_js_error">Frontend JS Error</option>
+              <option value="knowledge_upload_error">KB Upload Error</option>
+            </select>
+            <button class="btn btn-secondary" id="errors-refresh-btn" style="font-size: 0.85rem; padding: 0.35rem 0.75rem; white-space: nowrap;">↻ Refresh</button>
+          </div>
         </div>
         <div id="errors-table-container">
           <div class="loading-spinner">Loading errors...</div>
@@ -1810,11 +1840,11 @@ export const supportTabMethods = {
       </div>
     `;
 
-    // Filter change handler
-    document.getElementById('errors-type-filter')?.addEventListener('change', () => {
-      this._errorsPage = 1;
-      this._loadErrorLogs();
-    });
+    const refilter = () => { this._errorsPage = 1; this._loadErrorLogs(); };
+    document.getElementById('errors-type-filter')?.addEventListener('change', refilter);
+    document.getElementById('errors-source-filter')?.addEventListener('change', refilter);
+    document.getElementById('errors-severity-filter')?.addEventListener('change', refilter);
+    document.getElementById('errors-refresh-btn')?.addEventListener('click', () => this._loadErrorLogs());
 
     await this._loadErrorLogs();
   },
@@ -1827,6 +1857,8 @@ export const supportTabMethods = {
 
     try {
       const typeFilter = document.getElementById('errors-type-filter')?.value || '';
+      const sourceFilter = document.getElementById('errors-source-filter')?.value || '';
+      const severityFilter = document.getElementById('errors-severity-filter')?.value || '';
       const from = (this._errorsPage - 1) * this._errorsPerPage;
       const to = from + this._errorsPerPage - 1;
 
@@ -1836,12 +1868,11 @@ export const supportTabMethods = {
         .order('created_at', { ascending: false })
         .range(from, to);
 
-      if (typeFilter) {
-        query = query.eq('error_type', typeFilter);
-      }
+      if (typeFilter) query = query.eq('error_type', typeFilter);
+      if (sourceFilter) query = query.eq('source', sourceFilter);
+      if (severityFilter) query = query.eq('severity', severityFilter);
 
       const { data: errors, error, count } = await query;
-
       if (error) throw error;
 
       if (!errors || errors.length === 0) {
@@ -1861,10 +1892,10 @@ export const supportTabMethods = {
             <thead>
               <tr>
                 <th style="white-space: nowrap;">Date</th>
+                <th>Severity</th>
+                <th>Source</th>
                 <th>Type</th>
-                <th>Code</th>
                 <th>Message</th>
-                <th>Phone</th>
                 <th>User</th>
               </tr>
             </thead>
@@ -1873,16 +1904,26 @@ export const supportTabMethods = {
                 const date = new Date(err.created_at);
                 const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                 const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-                const phone = err.metadata?.phone_number || '';
                 const userEmail = err.users?.email || '';
+                const severityBadge = err.severity === 'warning'
+                  ? `<span style="display:inline-block;padding:0.15rem 0.5rem;border-radius:9999px;font-size:0.75rem;font-weight:500;background:#fef3c7;color:#92400e;">warning</span>`
+                  : `<span style="display:inline-block;padding:0.15rem 0.5rem;border-radius:9999px;font-size:0.75rem;font-weight:500;background:#fee2e2;color:#991b1b;">error</span>`;
+                const sourceBadge = this._errorSourceBadge(err.source || 'supabase');
                 const typeBadge = this._errorTypeBadge(err.error_type);
+                // Show metadata details as tooltip on message
+                const metaStr = err.metadata && Object.keys(err.metadata).length
+                  ? Object.entries(err.metadata).map(([k, v]) => `${k}: ${v}`).join(' | ')
+                  : '';
                 return `
                   <tr>
                     <td style="white-space: nowrap; color: var(--text-muted);">${dateStr}<br><span style="font-size: 0.75rem;">${timeStr}</span></td>
+                    <td>${severityBadge}</td>
+                    <td>${sourceBadge}</td>
                     <td>${typeBadge}</td>
-                    <td style="font-family: monospace; font-size: 0.8rem;">${escapeHtml(err.error_code || '')}</td>
-                    <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(err.error_message)}">${escapeHtml(err.error_message)}</td>
-                    <td style="font-family: monospace; font-size: 0.8rem; white-space: nowrap;">${escapeHtml(phone)}</td>
+                    <td style="max-width: 320px;">
+                      <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(err.error_message + (metaStr ? '\n' + metaStr : ''))}">${escapeHtml(err.error_message)}</div>
+                      ${err.error_code ? `<div style="font-family: monospace; font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">${escapeHtml(err.error_code)}</div>` : ''}
+                    </td>
                     <td>${err.user_id ? `<a href="#" class="error-user-link" data-user-id="${err.user_id}" style="font-size: 0.8rem;">${escapeHtml(userEmail || 'View user')}</a>` : '<span style="color: var(--text-muted);">—</span>'}</td>
                   </tr>
                 `;
@@ -1890,39 +1931,29 @@ export const supportTabMethods = {
             </tbody>
           </table>
         </div>
-        ${totalPages > 1 ? `
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; padding: 0.5rem 0;">
-            <span style="font-size: 0.8rem; color: var(--text-muted);">Page ${this._errorsPage} of ${totalPages} (${count} total)</span>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; padding: 0.5rem 0;">
+          <span style="font-size: 0.8rem; color: var(--text-muted);">${count} total${totalPages > 1 ? ` — page ${this._errorsPage} of ${totalPages}` : ''}</span>
+          ${totalPages > 1 ? `
             <div style="display: flex; gap: 0.5rem;">
               <button class="btn btn-secondary" id="errors-prev-btn" style="font-size: 0.8rem; padding: 0.3rem 0.75rem;" ${this._errorsPage <= 1 ? 'disabled' : ''}>Prev</button>
               <button class="btn btn-secondary" id="errors-next-btn" style="font-size: 0.8rem; padding: 0.3rem 0.75rem;" ${this._errorsPage >= totalPages ? 'disabled' : ''}>Next</button>
             </div>
-          </div>
-        ` : ''}
+          ` : ''}
+        </div>
       `;
 
-      // Pagination handlers
       document.getElementById('errors-prev-btn')?.addEventListener('click', () => {
-        if (this._errorsPage > 1) {
-          this._errorsPage--;
-          this._loadErrorLogs();
-        }
+        if (this._errorsPage > 1) { this._errorsPage--; this._loadErrorLogs(); }
       });
       document.getElementById('errors-next-btn')?.addEventListener('click', () => {
-        if (this._errorsPage < totalPages) {
-          this._errorsPage++;
-          this._loadErrorLogs();
-        }
+        if (this._errorsPage < totalPages) { this._errorsPage++; this._loadErrorLogs(); }
       });
 
-      // User link handlers — navigate to Users sub-tab
       container.querySelectorAll('.error-user-link').forEach(link => {
         link.addEventListener('click', (e) => {
           e.preventDefault();
-          const userId = link.dataset.userId;
-          // Switch to users sub-tab
           this.supportSubTab = 'users';
-          this._supportLazyLoaded['users'] = false; // Force reload
+          this._supportLazyLoaded['users'] = false;
           this.renderSupportContent();
         });
       });
@@ -1937,13 +1968,29 @@ export const supportTabMethods = {
     }
   },
 
-  _errorTypeBadge(type) {
-    const badges = {
-      sms_verification: { label: 'SMS Verify', bg: '#fef3c7', color: '#92400e' },
-      sms_notification: { label: 'SMS Notif', bg: '#fee2e2', color: '#991b1b' },
+  _errorSourceBadge(source) {
+    const map = {
+      supabase:  { label: 'Supabase',  bg: '#ede9fe', color: '#5b21b6' },
+      vercel:    { label: 'Vercel',    bg: '#f0fdf4', color: '#166534' },
+      scheduled: { label: 'Scheduled', bg: '#e0f2fe', color: '#075985' },
+      render:    { label: 'Render',    bg: '#fef9c3', color: '#854d0e' },
     };
-    const badge = badges[type] || { label: type, bg: '#f3f4f6', color: '#374151' };
-    return `<span style="display: inline-block; padding: 0.15rem 0.5rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; background: ${badge.bg}; color: ${badge.color}; white-space: nowrap;">${badge.label}</span>`;
+    const b = map[source] || { label: source, bg: '#f3f4f6', color: '#374151' };
+    return `<span style="display:inline-block;padding:0.15rem 0.5rem;border-radius:9999px;font-size:0.75rem;font-weight:500;background:${b.bg};color:${b.color};white-space:nowrap;">${b.label}</span>`;
+  },
+
+  _errorTypeBadge(type) {
+    const map = {
+      sms_verification:        { label: 'SMS Verify',   bg: '#fef3c7', color: '#92400e' },
+      sms_notification:        { label: 'SMS Notif',    bg: '#fee2e2', color: '#991b1b' },
+      gmail_token_expired:     { label: 'Gmail Token',  bg: '#fee2e2', color: '#991b1b' },
+      scheduled_function_stale:{ label: 'Cron Stale',   bg: '#fef9c3', color: '#854d0e' },
+      edge_function_error:     { label: 'Edge Fn',      bg: '#f3e8ff', color: '#6b21a8' },
+      frontend_js_error:       { label: 'Frontend JS',  bg: '#e0f2fe', color: '#075985' },
+      knowledge_upload_error:  { label: 'KB Upload',    bg: '#fce7f3', color: '#9d174d' },
+    };
+    const b = map[type] || { label: type.replace(/_/g, ' '), bg: '#f3f4f6', color: '#374151' };
+    return `<span style="display:inline-block;padding:0.15rem 0.5rem;border-radius:9999px;font-size:0.75rem;font-weight:500;background:${b.bg};color:${b.color};white-space:nowrap;">${b.label}</span>`;
   },
 
   _renderSupportAttachmentPreviews() {

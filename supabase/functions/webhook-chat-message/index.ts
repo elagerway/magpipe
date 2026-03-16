@@ -11,6 +11,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { resolveUser } from '../_shared/api-auth.ts'
 import { corsHeaders, handleCors } from '../_shared/cors.ts'
+import { reportError } from '../_shared/error-reporter.ts'
 
 interface ToolDefinition {
   name: string
@@ -645,9 +646,27 @@ TROUBLESHOOTING:
 - Chat widget not appearing: Verify the embed code is on your page and domain is allowed
 ` : ''
 
+    // Search Knowledge Base for relevant context
+    let KB_CONTEXT_SECTION = ''
+    const knowledgeSourceIds = agentConfig.knowledge_source_ids || []
+    if (knowledgeSourceIds.length > 0 && message) {
+      console.log('Searching KB for chat agent with', knowledgeSourceIds.length, 'knowledge sources')
+      const kbContext = await searchKnowledgeBase(supabase, knowledgeSourceIds, message, 3)
+      if (kbContext) {
+        console.log('📚 Chat KB context found, length:', kbContext.length)
+        KB_CONTEXT_SECTION = `
+
+KNOWLEDGE BASE - USE THIS INFORMATION TO ANSWER QUESTIONS:
+${kbContext}
+
+IMPORTANT: Base your answers on the knowledge base information above. If the question is not covered in the knowledge base, you can provide a general helpful response, but prefer the KB content when relevant.
+`
+      }
+    }
+
     const systemPrompt = agentConfig.system_prompt
-      ? `${visitorPrefix}${agentConfig.system_prompt}${AGENT_IDENTITY}${SUPPORT_AGENT_KNOWLEDGE}${CHAT_CONTEXT_SUFFIX}`
-      : `${visitorPrefix}You are a helpful AI assistant responding via website chat. Be friendly, professional, and concise. Keep responses to 2-4 sentences unless more detail is needed.${AGENT_IDENTITY}${SUPPORT_AGENT_KNOWLEDGE}${CHAT_CONTEXT_SUFFIX}`
+      ? `${visitorPrefix}${agentConfig.system_prompt}${AGENT_IDENTITY}${KB_CONTEXT_SECTION}${SUPPORT_AGENT_KNOWLEDGE}${CHAT_CONTEXT_SUFFIX}`
+      : `${visitorPrefix}You are a helpful AI assistant responding via website chat. Be friendly, professional, and concise. Keep responses to 2-4 sentences unless more detail is needed.${AGENT_IDENTITY}${KB_CONTEXT_SECTION}${SUPPORT_AGENT_KNOWLEDGE}${CHAT_CONTEXT_SUFFIX}`
 
     // Map conversation history to OpenAI format
     const conversationHistory = (history || [])
@@ -942,7 +961,7 @@ You can create support tickets for visitors when they describe issues, problems,
                 const cfResponse = await fetch(cf.endpoint_url, {
                   method: cf.http_method || 'POST',
                   headers: cfHeaders,
-                  body: JSON.stringify(toolArgs),
+                  body: JSON.stringify({ ...toolArgs, channel: 'chat', session_id: session.id }),
                 })
 
                 if (cfResponse.status >= 400) {
@@ -1117,6 +1136,8 @@ Page: ${session.page_url || 'Unknown'}`
     console.error('Error in webhook-chat-message:', error)
     console.error('Error stack:', error instanceof Error ? error.stack : 'No stack')
     console.error('Error message:', error instanceof Error ? error.message : String(error))
+    const _sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+    await reportError(_sb, { error_type: 'edge_function_error', error_message: String(error instanceof Error ? error.message : error), error_code: 'webhook-chat-message:outer', source: 'supabase' })
     return new Response(
       JSON.stringify({
         error: 'Internal server error',
@@ -1126,3 +1147,55 @@ Page: ${session.page_url || 'Unknown'}`
     )
   }
 })
+
+/**
+ * Search knowledge base for relevant content via vector similarity
+ */
+async function searchKnowledgeBase(
+  supabase: any,
+  knowledgeSourceIds: string[],
+  query: string,
+  limit: number = 3
+): Promise<string | null> {
+  if (!knowledgeSourceIds || knowledgeSourceIds.length === 0) return null
+
+  const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
+  if (!openaiApiKey) return null
+
+  try {
+    const embResponse = await fetch('https://api.openai.com/v1/embeddings', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${openaiApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'text-embedding-3-small',
+        input: query.slice(0, 8000),
+      }),
+    })
+
+    if (!embResponse.ok) return null
+
+    const embData = await embResponse.json()
+    const embedding = embData.data[0].embedding
+
+    const { data: chunks, error } = await supabase.rpc('match_knowledge_chunks', {
+      query_embedding: embedding,
+      source_ids: knowledgeSourceIds,
+      match_count: limit,
+      similarity_threshold: 0.25,
+    })
+
+    if (error || !chunks || chunks.length === 0) {
+      console.log('📚 Chat KB: no relevant chunks found')
+      return null
+    }
+
+    console.log(`📚 Chat KB: found ${chunks.length} relevant chunks`)
+    return chunks.map((c: any) => c.content).join('\n\n---\n\n')
+  } catch (error) {
+    console.error('Error searching knowledge base:', error)
+    return null
+  }
+}

@@ -61,24 +61,42 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Release number from SignalWire
+    // Release number from SignalWire (or mark for future release if within 30-day cutoff)
     const signalwireProjectId = Deno.env.get("SIGNALWIRE_PROJECT_ID");
     const signalwireToken = Deno.env.get("SIGNALWIRE_API_TOKEN");
     const signalwireSpaceUrl = Deno.env.get("SIGNALWIRE_SPACE_URL");
 
-    if (signalwireProjectId && signalwireToken && signalwireSpaceUrl && number.vendor_sid) {
-      try {
-        const signalwireAuth = btoa(`${signalwireProjectId}:${signalwireToken}`);
-        await fetch(
-          `https://${signalwireSpaceUrl}/api/relay/rest/phone_numbers/${number.vendor_sid}`,
+    if (signalwireProjectId && signalwireToken && signalwireSpaceUrl && number.phone_sid) {
+      const signalwireAuth = btoa(`${signalwireProjectId}:${signalwireToken}`);
+      const deleteResp = await fetch(
+        `https://${signalwireSpaceUrl}/api/laml/2010-04-01/Accounts/${signalwireProjectId}/IncomingPhoneNumbers/${number.phone_sid}.json`,
+        { method: "DELETE", headers: { Authorization: `Basic ${signalwireAuth}` } }
+      );
+
+      if (deleteResp.ok) {
+        console.log("Released number from SignalWire:", number.phone_number);
+      } else {
+        // Release failed (likely 30-day cutoff) — rename to mark for future release
+        const errText = await deleteResp.text();
+        console.warn("Failed to release from SignalWire:", deleteResp.status, errText);
+        const currentName = number.friendly_name || `Magpipe - ${user.email}`;
+        const releaseName = currentName.includes("(RELEASE)") ? currentName : `${currentName} (RELEASE)`;
+        const renameResp = await fetch(
+          `https://${signalwireSpaceUrl}/api/laml/2010-04-01/Accounts/${signalwireProjectId}/IncomingPhoneNumbers/${number.phone_sid}.json`,
           {
-            method: "DELETE",
-            headers: { Authorization: `Basic ${signalwireAuth}` },
+            method: "POST",
+            headers: {
+              Authorization: `Basic ${signalwireAuth}`,
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: new URLSearchParams({ FriendlyName: releaseName }).toString(),
           }
         );
-      } catch (e) {
-        console.error("Failed to release number from SignalWire:", e);
-        // Continue with database deletion anyway
+        if (renameResp.ok) {
+          console.log("Marked number for release in SignalWire:", releaseName);
+        } else {
+          console.error("Failed to rename number in SignalWire:", await renameResp.text());
+        }
       }
     }
 

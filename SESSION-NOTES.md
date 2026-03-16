@@ -1,7 +1,67 @@
 # Session Notes
 
-**Last Updated:** 2026-01-25
-**Active Branch:** Pat-AI
+**Last Updated:** 2026-03-04
+**Active Branch:** 007-magpipe-agent-skills
+
+---
+
+## Current Session (2026-03-04)
+
+### ✅ Agent Skills Framework — Full Pipeline
+
+**Branch:** `007-magpipe-agent-skills` (pushed, NOT merged to master)
+
+**What was built:**
+- Skills tab UI with catalog, config modals, execution history
+- 7 built-in skills with full handler implementations
+- CRM field mapping: key-value row builder with live HubSpot property fetching
+- Cal.com OAuth: fixed redirect URI, scope format, token refresh
+- Social Media Monitoring: Serper search across 6 platforms (tested, working)
+- Appointment Reminder: Cal.com polling with dedup, SMS/voice delivery
+- Schedule-based execution via `process-scheduled-actions` cron
+- Event-based execution via `execute-skill` edge function
+
+**Key decisions:**
+- `enableSkill` uses UPSERT (not INSERT) — handles re-enabling after disable
+- Toggle on → `is_enabled: false` → opens config → Save sets `is_enabled: true`
+- Single-trigger skills hide trigger picker. Schedule skills show interval/time.
+- Cal.com disconnect auto-disables dependent skills
+- `API_URL` config constant for OAuth redirect URIs (`https://api.magpipe.ai`)
+- Cal.com scopes must be sent as separate query params (not space/comma-joined)
+
+**Edge functions deployed to prod:**
+- `execute-skill`, `process-scheduled-actions`, `mcp-execute`, `cal-com-oauth-start`, `cal-com-oauth-callback`, `cal-com-disconnect`, `integration-oauth-start`
+
+**Frontend NOT deployed** — skills tab only on feature branch
+
+**Secrets set:**
+- `API_URL=https://api.magpipe.ai`
+- `CAL_COM_CLIENT_SECRET` (for token refresh)
+- `SERPER_API_KEY` (already existed)
+
+**Files created/modified:**
+| File | Status |
+|------|--------|
+| `src/lib/skills.js` | Created |
+| `src/pages/agent-detail/skills-tab.js` | Created |
+| `src/pages/agent-detail/index.js` | Modified |
+| `supabase/functions/_shared/config.ts` | Modified (added API_URL) |
+| `supabase/functions/_shared/skill-handlers/*.ts` | Created (9 files) |
+| `supabase/functions/execute-skill/index.ts` | Created |
+| `supabase/functions/process-scheduled-actions/index.ts` | Modified |
+| `supabase/functions/mcp-execute/index.ts` | Modified (Cal.com event types, HubSpot properties) |
+| `supabase/functions/mcp-execute/hubspot.ts` | Modified (list_contact_properties) |
+| `supabase/functions/cal-com-oauth-start/index.ts` | Modified (API_URL, scope fix) |
+| `supabase/functions/cal-com-oauth-callback/index.ts` | Modified (user_integrations, name/email) |
+| `supabase/functions/cal-com-disconnect/index.ts` | Modified (auto-disable skills) |
+| `supabase/functions/integration-oauth-start/index.ts` | Modified (pass redirect_path to Cal.com) |
+| `supabase/functions/integration-oauth-callback/index.ts` | Modified (API_URL) |
+| `supabase/migrations/20260304_agent_skills_framework.sql` | Created |
+| `ARCHITECTURE.md` | Modified |
+
+---
+
+## Previous Session (2026-01-25)
 
 ---
 

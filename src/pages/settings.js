@@ -1955,6 +1955,51 @@ export default class SettingsPage {
         </details>
       </div>
 
+      <!-- Voice API Reference -->
+      <div class="card" style="margin-top: 1rem;">
+        <details>
+          <summary style="cursor: pointer; font-weight: 600; font-size: 1rem; user-select: none;">
+            Voice API Reference
+          </summary>
+          <div style="margin-top: 1rem;">
+            <p style="margin: 0 0 0.75rem 0; font-size: 0.85rem; color: var(--text-secondary);">
+              List available voices and update an agent's voice via the REST API using your API key.
+            </p>
+
+            <p style="font-weight: 600; font-size: 0.85rem; margin: 0.75rem 0 0.35rem 0;">List voices</p>
+<pre style="background: var(--bg-secondary); padding: 0.75rem; border-radius: var(--radius-sm); font-size: 0.78rem; overflow-x: auto; margin: 0; line-height: 1.5;">POST https://api.magpipe.ai/functions/v1/list-voices
+Authorization: Bearer mgp_your_key_here
+Content-Type: application/json
+
+{}
+
+// Optional filters:
+{ "provider": "elevenlabs" }   // or "openai"
+{ "include_builtin": false }   // custom/cloned voices only</pre>
+
+            <p style="font-weight: 600; font-size: 0.85rem; margin: 0.75rem 0 0.35rem 0;">Response</p>
+<pre style="background: var(--bg-secondary); padding: 0.75rem; border-radius: var(--radius-sm); font-size: 0.78rem; overflow-x: auto; margin: 0; line-height: 1.5;">{
+  "voices": [
+    { "id": "EXAVITQu4vr4xnSDxMaL", "name": "Sarah", "description": "Soft, American female", "provider": "elevenlabs", "is_custom": false },
+    { "id": "openai-alloy",          "name": "Alloy",  "description": "Neutral, professional",  "provider": "openai",      "is_custom": false },
+    ...
+  ]
+}</pre>
+
+            <p style="font-weight: 600; font-size: 0.85rem; margin: 0.75rem 0 0.35rem 0;">Set agent voice</p>
+            <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 0 0 0.5rem 0;">Pass a <code>voice_id</code> from the list above to <code>update-agent</code>:</p>
+<pre style="background: var(--bg-secondary); padding: 0.75rem; border-radius: var(--radius-sm); font-size: 0.78rem; overflow-x: auto; margin: 0; line-height: 1.5;">POST https://api.magpipe.ai/functions/v1/update-agent
+Authorization: Bearer mgp_your_key_here
+Content-Type: application/json
+
+{
+  "agent_id": "uuid",
+  "voice_id": "EXAVITQu4vr4xnSDxMaL"
+}</pre>
+          </div>
+        </details>
+      </div>
+
       <!-- MCP Server -->
       <div class="card" style="margin-top: 1rem;">
         <div style="margin-bottom: 1rem;">

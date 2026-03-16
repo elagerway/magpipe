@@ -60,7 +60,7 @@ export async function searchKnowledgeBase(
       query_embedding: embedding,
       source_ids: knowledgeSourceIds,
       match_count: limit,
-      similarity_threshold: 0.5
+      similarity_threshold: 0.25
     })
 
     if (error) {

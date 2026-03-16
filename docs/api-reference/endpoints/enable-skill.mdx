@@ -1,0 +1,80 @@
+---
+title: "Enable Skill"
+api: "POST /manage-skills"
+description: "Enable a skill for an agent"
+---
+
+Enable a skill from the catalog for a specific agent. If the skill was previously enabled and removed, this will re-create it with the provided configuration.
+
+## Request Body
+
+<ParamField body="agent_id" type="string" required>
+  The agent to enable the skill for.
+</ParamField>
+
+<ParamField body="skill_definition_id" type="string" required>
+  The skill definition ID from the catalog. Get this from [List Skill Definitions](/api-reference/endpoints/list-skill-definitions).
+</ParamField>
+
+<ParamField body="config" type="object">
+  Skill-specific configuration. See the skill's `config_schema` for available options.
+</ParamField>
+
+<ParamField body="trigger_type" type="string">
+  How the skill should fire: `event` or `schedule`.
+</ParamField>
+
+<ParamField body="delivery_channels" type="array">
+  Where to deliver results. Each entry has a `channel` (`slack`, `email`, `sms`) and optional `channel_name`.
+</ParamField>
+
+## Response
+
+<ResponseField name="agent_skill" type="object">
+  The created agent skill object.
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl -X POST https://api.magpipe.ai/functions/v1/manage-skills \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_id": "YOUR_AGENT_ID",
+    "skill_definition_id": "SKILL_DEF_ID",
+    "config": {
+      "keywords": ["AI voice agent"],
+      "platforms": ["reddit", "hackernews", "x"]
+    },
+    "delivery_channels": [
+      { "channel": "slack", "channel_name": "#alerts" },
+      { "channel": "email" }
+    ]
+  }'
+```
+</RequestExample>
+
+<ResponseExample>
+```json
+{
+  "agent_skill": {
+    "id": "7a99a0af-...",
+    "agent_id": "7f806f26-...",
+    "skill_definition_id": "a1b2c3d4-...",
+    "is_enabled": true,
+    "config": {
+      "keywords": ["AI voice agent"],
+      "platforms": ["reddit", "hackernews", "x"]
+    },
+    "delivery_channels": [
+      { "channel": "slack", "channel_name": "#alerts" },
+      { "channel": "email" }
+    ],
+    "skill_definitions": {
+      "slug": "social_media_monitoring",
+      "name": "Social Media Monitoring"
+    }
+  }
+}
+```
+</ResponseExample>

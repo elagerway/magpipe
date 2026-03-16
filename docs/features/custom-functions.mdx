@@ -9,6 +9,14 @@ Custom Functions allow you to extend your AI agent's capabilities by defining we
 
 When a caller asks for information your agent doesn't have (like order status, account balance, or inventory availability), the agent can call your webhook to fetch that data and respond naturally.
 
+<Frame caption="The Functions tab shows built-in and custom functions for your agent">
+  <img src="/images/agent-functions-tab.png" alt="Agent functions tab" />
+</Frame>
+
+<Frame caption="Adding a custom function to your agent">
+  <img src="/images/add-function-demo.gif" alt="Adding a custom function" />
+</Frame>
+
 ## How It Works
 
 ```
@@ -216,9 +224,13 @@ X-Magpipe-Signature: abc123...
 ```json
 {
   "order_id": "12345",
-  "include_tracking": true
+  "include_tracking": true,
+  "session_id": "session_abc123",
+  "channel_type": "call"
 }
 ```
+
+`session_id` is a unique identifier for the current conversation session. `channel_type` indicates how the customer is communicating — `"call"`, `"sms"`, or `"chat"`. Both are automatically injected by the agent alongside your defined parameters.
 
 ### Response Format
 
@@ -419,6 +431,10 @@ After creating a function, test it:
     - Verify webhook secret matches on both ends
     - Check timestamp format (Unix seconds)
     - Ensure payload isn't modified before verification
+  </Accordion>
+
+  <Accordion title="Authentication Headers Not Being Sent">
+    If your endpoint is returning 401 errors, verify that headers are configured in the Functions tab for your agent. Headers like `Authorization` or `x-api-key` must be set there — they are not inherited from anywhere else.
   </Accordion>
 </AccordionGroup>
 

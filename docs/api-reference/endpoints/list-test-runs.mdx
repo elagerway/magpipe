@@ -1,0 +1,91 @@
+---
+title: "List Test Runs"
+api: "GET /test-runs"
+description: "List recent runs for a test case, or fetch full details of a single run"
+---
+
+Returns test run results. Use `test_case_id` to list all runs for a given test case, or `id` to fetch a single run with full detail.
+
+## Query Parameters
+
+<ParamField query="test_case_id" type="string">
+  UUID of the test case. Returns all runs newest first. Use this to poll for results after [Run Test Case](/api-reference/endpoints/run-test-case).
+</ParamField>
+
+<ParamField query="id" type="string">
+  UUID of a specific test run. Returns the full run object with nested test case data.
+</ParamField>
+
+<Note>
+  Provide exactly one of `test_case_id` or `id`.
+</Note>
+
+## Response
+
+<ResponseField name="runs" type="array">
+  Returned when querying by `test_case_id`.
+
+  <Expandable title="Run object">
+    <ResponseField name="id" type="string">Run UUID</ResponseField>
+    <ResponseField name="test_case_id" type="string">Test case UUID</ResponseField>
+    <ResponseField name="status" type="string">`pending`, `running`, `passed`, `failed`, or `error`</ResponseField>
+    <ResponseField name="started_at" type="string">ISO 8601 start timestamp</ResponseField>
+    <ResponseField name="completed_at" type="string">ISO 8601 completion timestamp (null if running)</ResponseField>
+    <ResponseField name="assertions" type="array">Array of assertion results — each has `name`, `passed`, and `detail`</ResponseField>
+    <ResponseField name="error_message" type="string">Error details if status is `error`</ResponseField>
+    <ResponseField name="ai_analysis" type="string">AI diagnosis and suggested fixes (only on failed runs)</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="run" type="object">
+  Returned when querying by `id`. Same fields as above, plus a nested `test_cases` object with the full test case configuration.
+</ResponseField>
+
+## Assertion Names
+
+| Assertion | Description |
+|-----------|-------------|
+| `call_connected` | The test call connected successfully |
+| `agent_joined` | The AI agent joined the call |
+| `expected_phrases` | All `expected_phrases` found in transcript |
+| `prohibited_phrases` | No `prohibited_phrases` found in transcript |
+| `expected_functions` | All `expected_functions` were called |
+| `min_duration` | Call lasted at least `min_duration_seconds` |
+| `max_duration` | Call ended within `max_duration_seconds` |
+
+<RequestExample>
+```bash cURL
+# List runs for a test case
+curl "https://api.magpipe.ai/functions/v1/test-runs?test_case_id=b2c3d4e5-2345-6789-abcd-ef0123456789" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+
+# Get a single run by ID
+curl "https://api.magpipe.ai/functions/v1/test-runs?id=c3d4e5f6-3456-789a-bcde-f01234567890" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+</RequestExample>
+
+<ResponseExample>
+```json
+{
+  "runs": [
+    {
+      "id": "c3d4e5f6-3456-789a-bcde-f01234567890",
+      "test_case_id": "b2c3d4e5-2345-6789-abcd-ef0123456789",
+      "status": "failed",
+      "started_at": "2024-01-15T10:10:00.000Z",
+      "completed_at": "2024-01-15T10:10:45.000Z",
+      "assertions": [
+        { "name": "call_connected", "passed": true, "detail": "Call connected successfully" },
+        { "name": "agent_joined", "passed": true, "detail": "Agent joined within 3 seconds" },
+        { "name": "expected_phrases", "passed": false, "detail": "Phrase '9 AM' not found in transcript" },
+        { "name": "prohibited_phrases", "passed": true, "detail": "No prohibited phrases detected" },
+        { "name": "min_duration", "passed": true, "detail": "Call lasted 45 seconds (min: 10)" }
+      ],
+      "error_message": null,
+      "ai_analysis": "The agent said '9:00 AM' instead of '9 AM'. Update the expected phrase or adjust the system prompt."
+    }
+  ]
+}
+```
+</ResponseExample>

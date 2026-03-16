@@ -80,8 +80,8 @@ MAGPIPE_API_KEY=mgp_xxx npx magpipe-mcp-server
 |---|---|
 | `list_agents` | List all agents with optional filters |
 | `get_agent` | Get full agent details including assigned phone numbers, custom functions, knowledge sources, and dynamic variables |
-| `create_agent` | Create a new agent |
-| `update_agent` | Update agent configuration |
+| `create_agent` | Create a new agent. Supports full config: voice, model, language, recording, memory, knowledge sources, call behaviour, VAD, audio, and more |
+| `update_agent` | Update any agent config field: name, prompt, voice, model, `recording_enabled`, `memory_enabled`, `dynamic_variables`, `knowledge_source_ids`, VAD settings, and more. See [Update Agent](/api-reference/endpoints/update-agent) for the full field list |
 | `delete_agent` | Delete an agent |
 
 ### Calls

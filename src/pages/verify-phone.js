@@ -574,7 +574,7 @@ Example SMS Reply:
       .insert({
         user_id: session.user.id,
         name: 'AI Assistant',
-        voice_id: '11labs-21m00Tcm4TlvDq8ikWAM',
+        voice_id: '11labs-EXAVITQu4vr4xnSDxMaL',
         system_prompt: defaultPrompt,
         active_voice_stack: 'livekit',
         is_default: true,

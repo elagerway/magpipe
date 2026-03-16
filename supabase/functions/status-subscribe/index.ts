@@ -57,10 +57,48 @@ Deno.serve(async (req) => {
     return new Response('Missing parameter', { status: 400, headers: corsHeaders })
   }
 
-  // POST: subscribe
+  // POST: subscribe or manage
   if (req.method === 'POST') {
     try {
       const body = await req.json()
+
+      // Resend unsubscribe link to email
+      if (body.action === 'resend_unsubscribe') {
+        const email = (body.email || '').trim().toLowerCase()
+        if (!email) return jsonResponse({ error: 'Email required' }, 400)
+
+        const { data: sub } = await supabase
+          .from('status_subscribers')
+          .select('unsubscribe_token')
+          .eq('email', email)
+          .single()
+
+        // Always return success to avoid email enumeration
+        if (sub?.unsubscribe_token) {
+          await sendUnsubscribeEmail(email, sub.unsubscribe_token)
+        }
+        return jsonResponse({ message: 'If that email is subscribed, you\'ll receive an unsubscribe link shortly.' })
+      }
+
+      // Unsubscribe by phone number directly
+      if (body.action === 'unsubscribe_by_phone') {
+        const phone = (body.phone || '').trim()
+        if (!phone) return jsonResponse({ error: 'Phone required' }, 400)
+
+        const { data, error } = await supabase
+          .from('status_subscribers')
+          .delete()
+          .eq('phone', phone)
+          .select('id')
+          .single()
+
+        if (error || !data) {
+          // Return success to avoid enumeration
+          return jsonResponse({ message: 'If that number is subscribed, it has been removed.' })
+        }
+        return jsonResponse({ message: 'You\'ve been unsubscribed from SMS status alerts.' })
+      }
+
       const { email, phone, webhook_url, channels } = body
 
       // Validate channels
@@ -268,6 +306,54 @@ async function sendConfirmationSMS(phone: string, confirmToken: string, supabase
     }
   } catch (e) {
     console.error('Failed to send confirmation SMS:', e)
+  }
+}
+
+async function sendUnsubscribeEmail(email: string, unsubscribeToken: string) {
+  const postmarkApiKey = Deno.env.get('POSTMARK_API_KEY') || Deno.env.get('POSTMARK_SERVER_TOKEN')
+  if (!postmarkApiKey) return
+
+  const unsubUrl = `${SUBSCRIBE_URL}?unsubscribe=${unsubscribeToken}`
+  const htmlBody = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px;">
+      <h2 style="color: #1e293b; margin-bottom: 16px;">Unsubscribe from status updates</h2>
+      <p style="color: #475569; line-height: 1.6;">
+        Click the button below to remove your email from ${APP_NAME} status notifications.
+      </p>
+      <div style="margin: 24px 0;">
+        <a href="${unsubUrl}" style="display: inline-block; background: #6366f1; color: #fff; padding: 12px 28px; border-radius: 8px; text-decoration: none; font-weight: 600;">
+          Unsubscribe
+        </a>
+      </div>
+      <p style="color: #94a3b8; font-size: 13px; line-height: 1.5;">
+        If you didn't request this, you can ignore this email.
+      </p>
+    </div>
+  `
+
+  try {
+    const res = await fetch('https://api.postmarkapp.com/email', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'X-Postmark-Server-Token': postmarkApiKey,
+      },
+      body: JSON.stringify({
+        From: `${APP_NAME} Status <info@magpipe.ai>`,
+        To: email,
+        Subject: `Unsubscribe from ${APP_NAME} status updates`,
+        HtmlBody: htmlBody,
+        TextBody: `Unsubscribe from ${APP_NAME} status updates:\n\n${unsubUrl}`,
+        MessageStream: 'outbound',
+      }),
+    })
+    if (!res.ok) {
+      const errText = await res.text()
+      console.error('Postmark unsubscribe email error:', res.status, errText)
+    }
+  } catch (e) {
+    console.error('Failed to send unsubscribe email:', e)
   }
 }
 

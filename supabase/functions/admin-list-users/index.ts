@@ -71,7 +71,8 @@ Deno.serve(async (req) => {
         phone_number,
         phone_verified,
         created_at,
-        updated_at
+        updated_at,
+        welcome_email_sent_at
       `, { count: 'exact' })
 
     // Apply filters

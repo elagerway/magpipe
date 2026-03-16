@@ -24,6 +24,7 @@ import { promptTabMethods } from './prompt-tab.js';
 import { knowledgeTabMethods } from './knowledge-tab.js';
 import { memoryTabMethods } from './memory-tab.js';
 import { functionsTabMethods } from './functions-tab.js';
+import { skillsTabMethods } from './skills-tab.js';
 import { deploymentTabMethods } from './deployment-tab.js';
 import { notificationsTabMethods } from './notifications-tab.js';
 import { scheduleTabMethods } from './schedule-tab.js';
@@ -43,6 +44,7 @@ export default class AgentDetailPage {
     this.clonedVoices = [];
     this.serviceNumbers = [];
     this.chatWidget = null; // Chat widget for this agent
+    this.whatsappAccounts = []; // WhatsApp Business accounts connected by this user
     this.gmailIntegration = null; // Gmail integration for this user
     this.emailConfig = null; // Agent email config
     this.knowledgeSources = []; // Knowledge bases for this user
@@ -124,7 +126,7 @@ export default class AgentDetailPage {
     ] = await Promise.all([
       supabase.functions.invoke('get-cloned-voices').then(r => ({ data: r.data?.voices || [], error: r.error })),
       supabase.from('knowledge_sources').select('id, title, url, sync_status, chunk_count, crawl_mode').eq('user_id', user.id).order('created_at', { ascending: false }),
-      supabase.from('service_numbers').select('id, phone_number, friendly_name, agent_id, text_agent_id, termination_uri').eq('user_id', user.id).eq('is_active', true).order('created_at', { ascending: true }),
+      supabase.from('service_numbers').select('id, phone_number, friendly_name, agent_id, outbound_agent_id, text_agent_id, termination_uri').eq('user_id', user.id).eq('is_active', true).order('created_at', { ascending: true }),
       supabase.from('external_sip_numbers').select('id, phone_number, friendly_name, agent_id, trunk_id, external_sip_trunks(name)').eq('user_id', user.id).eq('is_active', true).order('created_at', { ascending: true }),
       supabase.from('users').select('cal_com_access_token, avatar_url').eq('id', user.id).single(),
       ChatWidget.getByAgentId(this.agent.id),
@@ -150,6 +152,9 @@ export default class AgentDetailPage {
     this.isCalComConnected = !!userDataResult.data?.cal_com_access_token;
     this.userAvatarUrl = userDataResult.data?.avatar_url || null;
     this.chatWidget = chatWidgetResult.widget;
+    if (this.agent.agent_type === 'whatsapp') {
+      await this.loadWhatsAppAccounts();
+    }
     this.customFunctions = customFunctionsResult.functions || [];
     this.semanticActions = semanticActionsResult.actions || [];
     this.connectedApps = (connectedAppsResult.data || [])
@@ -238,6 +243,7 @@ export default class AgentDetailPage {
             <button class="agent-tab" data-tab="knowledge">Knowledge</button>
             <button class="agent-tab" data-tab="memory">Memory</button>
             <button class="agent-tab" data-tab="functions">Functions</button>
+            <button class="agent-tab" data-tab="skills">Skills</button>
             <button class="agent-tab" data-tab="notifications">Notifications</button>
             <button class="agent-tab" data-tab="schedule">Schedule</button>
             <button class="agent-tab" data-tab="deployment">Deployment</button>
@@ -263,6 +269,7 @@ export default class AgentDetailPage {
             <option value="knowledge">Knowledge</option>
             <option value="memory">Memory</option>
             <option value="functions">Functions</option>
+            <option value="skills">Skills</option>
             <option value="notifications">Notifications</option>
             <option value="schedule">Schedule</option>
             <option value="deployment">Deployment</option>
@@ -299,8 +306,8 @@ export default class AgentDetailPage {
       this.switchTab(tabParam);
     }
 
-    // Check for Cal.com OAuth callback success
-    if (urlParams.get('cal_connected') === 'true') {
+    // Check for Cal.com OAuth callback success (skip if returning to skills tab)
+    if (urlParams.get('cal_connected') === 'true' && !urlParams.get('connect_skill')) {
       // Clean URL
       window.history.replaceState({}, '', `/agents/${this.agentId}`);
 
@@ -365,7 +372,7 @@ export default class AgentDetailPage {
     const openAIVoice = OPENAI_VOICES.find(v => v.id === voiceId);
     if (openAIVoice) return openAIVoice.name;
 
-    return 'Rachel (Default)';
+    return 'Sarah (Default)';
   }
 
   attachEventListeners() {
@@ -380,11 +387,24 @@ export default class AgentDetailPage {
       tabSelect.addEventListener('change', () => this.switchTab(tabSelect.value));
     }
 
-    // Name input - also triggers prompt regeneration since it's part of identity
+    // Name input - saves name only, does NOT regenerate prompt
+    // If the greeting contains the old name, update it to match the new name
     const nameInput = document.getElementById('agent-name-input');
     if (nameInput) {
       nameInput.addEventListener('input', () => {
-        this.onIdentityFieldChange('name', nameInput.value);
+        const oldName = this.agent.name;
+        const newName = nameInput.value;
+        this.agent.name = newName;
+        this.scheduleAutoSave({ name: newName });
+
+        // Sync greeting if it literally contains the old name
+        if (oldName && newName && this.agent.greeting && this.agent.greeting.includes(oldName)) {
+          const updatedGreeting = this.agent.greeting.split(oldName).join(newName);
+          this.agent.greeting = updatedGreeting;
+          this.scheduleAutoSave({ greeting: updatedGreeting });
+          const greetingInput = document.getElementById('agent-greeting');
+          if (greetingInput) greetingInput.value = updatedGreeting;
+        }
       });
     }
 
@@ -402,7 +422,8 @@ export default class AgentDetailPage {
         // Check if trying to activate without a deployed number
         if (isActive) {
           const isTextAgent = this.agent.agent_type === 'text';
-          const col = isTextAgent ? 'text_agent_id' : 'agent_id';
+          const isOutboundAgent = this.agent.agent_type === 'outbound_voice';
+          const col = isTextAgent ? 'text_agent_id' : isOutboundAgent ? 'outbound_agent_id' : 'agent_id';
           const assignedNumbers = this.serviceNumbers.filter(n => n[col] === this.agent.id);
           if (assignedNumbers.length === 0) {
             // Revert the toggle
@@ -480,6 +501,7 @@ export default class AgentDetailPage {
 
     const modal = document.createElement('div');
     modal.id = 'confirm-modal-overlay';
+    modal.style.zIndex = '10001';
     modal.innerHTML = `
       <div class="confirm-modal-backdrop"></div>
       <div class="confirm-modal">
@@ -542,6 +564,10 @@ export default class AgentDetailPage {
       case 'functions':
         tabContent.innerHTML = this.renderFunctionsTab();
         this.attachFunctionsTabListeners();
+        break;
+      case 'skills':
+        tabContent.innerHTML = this.renderSkillsTab();
+        this.attachSkillsListeners();
         break;
       case 'notifications':
         tabContent.innerHTML = this.renderNotificationsTab();
@@ -646,7 +672,7 @@ export default class AgentDetailPage {
   async refreshDeploymentTab() {
     const [serviceNumbersResult, externalSipResult] = await Promise.all([
       supabase.from('service_numbers')
-        .select('id, phone_number, friendly_name, agent_id, text_agent_id, termination_uri')
+        .select('id, phone_number, friendly_name, agent_id, outbound_agent_id, text_agent_id, termination_uri')
         .eq('user_id', this.userId).eq('is_active', true).order('created_at', { ascending: true }),
       supabase.from('external_sip_numbers')
         .select('id, phone_number, friendly_name, agent_id, trunk_id, external_sip_trunks(name)')
@@ -688,6 +714,7 @@ Object.assign(AgentDetailPage.prototype,
   knowledgeTabMethods,
   memoryTabMethods,
   functionsTabMethods,
+  skillsTabMethods,
   notificationsTabMethods,
   deploymentTabMethods,
   scheduleTabMethods,

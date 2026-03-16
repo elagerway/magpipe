@@ -80,6 +80,28 @@ export function registerNumberTools(server: McpServer, client: MagpipeClient) {
   );
 
   server.tool(
+    "assign_phone_number",
+    "Assign an existing provisioned phone number to an agent",
+    {
+      phone_number: z.string().describe("Phone number to assign (E.164 format)"),
+      agent_id: z.string().describe("Agent UUID to assign the number to"),
+      channel: z
+        .enum(["inbound", "outbound", "sms"])
+        .optional()
+        .describe(
+          "Which slot to assign: inbound (default for voice agents), outbound (outbound_voice agents), or sms (text agents). Auto-detected from agent type if omitted."
+        ),
+    },
+    async (args) => {
+      try {
+        return formatToolResponse(await client.call("assign-phone-number", args));
+      } catch (e) {
+        return formatError(e);
+      }
+    }
+  );
+
+  server.tool(
     "lookup_phone_number",
     "Look up carrier/linetype info for a phone number (wireless, landline, voip)",
     {

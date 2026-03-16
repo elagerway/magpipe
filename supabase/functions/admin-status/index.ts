@@ -55,6 +55,7 @@ Deno.serve(async (req) => {
       checkFirecrawl(),
       checkStripe(),
       checkOpenAI(),
+      checkAnthropic(),
       checkElevenLabs(),
       checkDeepgram(),
       checkApollo(),
@@ -428,6 +429,42 @@ async function checkOpenAI(): Promise<ServiceStatus> {
     }
   } catch (error) {
     return { name: 'OpenAI', status: 'down', latency: Date.now() - start, message: error.message, statusUrl }
+  }
+}
+
+async function checkAnthropic(): Promise<ServiceStatus> {
+  const start = Date.now()
+  const statusUrl = 'https://status.anthropic.com/'
+  const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
+
+  if (!apiKey) {
+    return { name: 'Anthropic', status: 'down', message: 'Not configured', statusUrl }
+  }
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/models', {
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      signal: AbortSignal.timeout(5000)
+    })
+
+    const latency = Date.now() - start
+
+    if (!response.ok) {
+      return { name: 'Anthropic', status: 'down', latency, message: `HTTP ${response.status}`, statusUrl }
+    }
+
+    return {
+      name: 'Anthropic',
+      status: latency > 3000 ? 'degraded' : 'operational',
+      latency,
+      message: latency > 3000 ? 'High latency' : undefined,
+      statusUrl
+    }
+  } catch (error) {
+    return { name: 'Anthropic', status: 'down', latency: Date.now() - start, message: error.message, statusUrl }
   }
 }
 

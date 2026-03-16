@@ -174,7 +174,7 @@ Deno.serve(async (req) => {
         contact_phone: contactPhone,
         service_number: fromNumber,
         ai_paused_until: pauseUntil.toISOString(),
-        updated_at: new Date().toISOString(),
+        last_updated: new Date().toISOString(),
       }, {
         onConflict: 'user_id,contact_phone,service_number'
       })

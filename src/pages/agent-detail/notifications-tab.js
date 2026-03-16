@@ -9,6 +9,45 @@ import {
   showTestNotification
 } from '../../services/pushNotifications.js';
 
+const CONTENT_FIELDS = [
+  { key: 'caller_info', label: 'Caller info (phone number)' },
+  { key: 'agent_name', label: 'Agent name' },
+  { key: 'sentiment', label: 'Caller sentiment' },
+  { key: 'session_id', label: 'Session ID' },
+  { key: 'summary', label: 'Call summary' },
+  { key: 'recording_url', label: 'Recording URL' },
+];
+
+const TEXT_CONTENT_FIELDS = [
+  { key: 'caller_info', label: 'Sender info (phone number)' },
+  { key: 'agent_name', label: 'Agent name' },
+  { key: 'sentiment', label: 'Sender sentiment' },
+  { key: 'session_id', label: 'Session ID' },
+  { key: 'summary', label: 'Message summary' },
+];
+
+function renderContentConfigUI(channel, fields = CONTENT_FIELDS) {
+  return `
+    <details style="margin-top: 0.5rem; margin-left: 0.5rem;">
+      <summary style="font-size: 0.8rem; cursor: pointer; color: var(--text-secondary); user-select: none; list-style: none; display: flex; align-items: center; gap: 0.35rem;">
+        <span>▶</span> Customize what's included
+      </summary>
+      <div style="padding: 0.5rem 0 0 0.25rem; display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.35rem;">
+        ${fields.map(f => `
+          <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.8rem;">
+            <input type="checkbox" class="notif-content-field" data-channel="${channel}" data-field="${f.key}" />
+            <span>${f.label}</span>
+          </label>
+        `).join('')}
+        <div style="margin-top: 0.35rem;">
+          <label style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.25rem;">Custom text (prepended to message)</label>
+          <textarea class="form-input notif-content-custom-text" data-channel="${channel}" rows="2" style="font-size: 0.8rem; resize: vertical;" placeholder="e.g. New message alert!"></textarea>
+        </div>
+      </div>
+    </details>
+  `;
+}
+
 export const notificationsTabMethods = {
   renderNotificationsTab() {
     // notifPrefs is loaded in attachNotificationsTabListeners via async fetch
@@ -63,6 +102,7 @@ export const notificationsTabMethods = {
             </label>
             ` : ''}
           </div>
+          ${isVoice ? renderContentConfigUI('email') : isText ? renderContentConfigUI('email', TEXT_CONTENT_FIELDS) : ''}
           <button class="btn btn-sm btn-secondary" id="notif-test-email-btn" style="margin-top: 0.75rem;">Send Test Notification</button>
         </div>
 
@@ -104,6 +144,7 @@ export const notificationsTabMethods = {
             </label>
             ` : ''}
           </div>
+          ${isVoice ? renderContentConfigUI('sms') : isText ? renderContentConfigUI('sms', TEXT_CONTENT_FIELDS) : ''}
           <button class="btn btn-sm btn-secondary" id="notif-test-sms-btn" style="margin-top: 0.75rem;">Send Test Notification</button>
         </div>
 
@@ -186,6 +227,7 @@ export const notificationsTabMethods = {
             </label>
             ` : ''}
           </div>
+          ${isVoice ? renderContentConfigUI('slack') : isText ? renderContentConfigUI('slack', TEXT_CONTENT_FIELDS) : ''}
           <button class="btn btn-sm btn-secondary" id="notif-test-slack-btn" style="margin-top: 0.75rem;">
             Send Test Notification
           </button>
@@ -273,6 +315,18 @@ export const notificationsTabMethods = {
     setChecked('notif-slack-inbound-messages', prefs?.slack_inbound_messages);
     setChecked('notif-slack-all-messages', prefs?.slack_all_messages);
 
+    // Content config — populate checkboxes + custom text per channel
+    const contentConfig = prefs?.content_config || {};
+    for (const channel of ['email', 'sms', 'slack']) {
+      const channelConfig = contentConfig[channel] || {};
+      const fields = channelConfig.fields || [];
+      document.querySelectorAll(`.notif-content-field[data-channel="${channel}"]`).forEach(cb => {
+        cb.checked = fields.includes(cb.dataset.field);
+      });
+      const textArea = document.querySelector(`.notif-content-custom-text[data-channel="${channel}"]`);
+      if (textArea) textArea.value = channelConfig.custom_text || '';
+    }
+
     // Show push options if enabled
     const pushOptions = document.getElementById('notif-push-options');
     if (pushOptions && prefs?.push_enabled) {
@@ -296,6 +350,19 @@ export const notificationsTabMethods = {
       notifSaveTimer = setTimeout(async () => {
         if (statusEl) statusEl.textContent = 'Saving...';
         try {
+          // Collect content_config per channel
+          const content_config = {};
+          for (const channel of ['email', 'sms', 'slack']) {
+            const fields = [];
+            document.querySelectorAll(`.notif-content-field[data-channel="${channel}"]:checked`).forEach(cb => {
+              fields.push(cb.dataset.field);
+            });
+            const customText = document.querySelector(`.notif-content-custom-text[data-channel="${channel}"]`)?.value || '';
+            if (fields.length > 0 || customText) {
+              content_config[channel] = { fields, custom_text: customText };
+            }
+          }
+
           const preferences = {
             user_id: userId,
             agent_id: agentId,
@@ -321,6 +388,7 @@ export const notificationsTabMethods = {
             slack_all_calls: document.getElementById('notif-slack-all-calls')?.checked || false,
             slack_inbound_messages: document.getElementById('notif-slack-inbound-messages')?.checked || false,
             slack_all_messages: document.getElementById('notif-slack-all-messages')?.checked || false,
+            content_config,
             updated_at: new Date().toISOString()
           };
           const { error } = await supabase
@@ -340,8 +408,13 @@ export const notificationsTabMethods = {
       el.addEventListener('change', autoSaveNotifications);
     });
 
-    // Debounce text inputs (email address, phone number)
-    document.querySelectorAll('#notif-email-address, #notif-sms-phone-number').forEach(el => {
+    // Content config field checkboxes
+    document.querySelectorAll('.notif-content-field').forEach(el => {
+      el.addEventListener('change', autoSaveNotifications);
+    });
+
+    // Debounce text inputs (email address, phone number, custom text)
+    document.querySelectorAll('#notif-email-address, #notif-sms-phone-number, .notif-content-custom-text').forEach(el => {
       el.addEventListener('input', autoSaveNotifications);
     });
 

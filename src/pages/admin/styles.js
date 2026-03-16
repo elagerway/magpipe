@@ -326,6 +326,7 @@ export const stylesMethods = {
       }
 
       .badge-active { background: #d1fae5; color: #059669; }
+      .badge-pending { background: #e0f2fe; color: #0369a1; }
       .badge-suspended { background: #fef3c7; color: #d97706; }
       .badge-banned { background: #fee2e2; color: #dc2626; }
       .badge-admin { background: #ede9fe; color: #7c3aed; }
@@ -3061,6 +3062,76 @@ export const stylesMethods = {
       }
 
       .blog-twitter-section {
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--border-color);
+      }
+
+      /* LinkedIn Button & Badge */
+      .btn-linkedin {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
+        background: #0a66c2;
+        color: #fff;
+        border: none;
+        padding: 0.5rem 0.875rem;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+
+      .btn-linkedin:hover {
+        background: #004182;
+      }
+
+      .btn-linkedin:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .btn-linkedin-disconnect {
+        background: #dc2626;
+      }
+
+      .btn-linkedin-sm {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.75rem;
+        gap: 0.25rem;
+      }
+
+      .btn-linkedin-disconnect:hover {
+        background: #b91c1c;
+      }
+
+      .btn-linkedin svg {
+        width: 14px;
+        height: 14px;
+        flex-shrink: 0;
+      }
+
+      .badge-linkedin-posted {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.1rem 0.4rem;
+        border-radius: 4px;
+        font-size: 0.65rem;
+        font-weight: 600;
+        background: #dbeafe;
+        color: #0a66c2;
+        vertical-align: middle;
+        margin-left: 0.375rem;
+      }
+
+      .badge-linkedin-posted svg {
+        width: 10px;
+        height: 10px;
+      }
+
+      .blog-linkedin-section {
         margin-top: 1rem;
         padding-top: 1rem;
         border-top: 1px solid var(--border-color);

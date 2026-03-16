@@ -1,0 +1,171 @@
+---
+title: "Send WhatsApp Message"
+api: "POST /send-whatsapp-message"
+description: "Send a WhatsApp message from your connected WhatsApp Business number"
+---
+
+## Overview
+
+Sends a WhatsApp text message to a recipient using one of your connected WhatsApp Business numbers. The number must be connected via the Magpipe dashboard before it can be used.
+
+<Info>
+WhatsApp enforces a **24-hour messaging window**. You can only send free-form messages within 24 hours of the recipient's last message to you. Attempts to message outside this window will be rejected by Meta.
+</Info>
+
+## Request
+
+### Headers
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token for authentication.
+</ParamField>
+
+<ParamField header="Content-Type" type="string" required>
+  Must be `application/json`
+</ParamField>
+
+### Body Parameters
+
+<ParamField body="phone_number_id" type="string" required>
+  The Meta phone number ID for your WhatsApp Business number. Found in the Meta Business Manager or in the Magpipe Deploy tab after connecting.
+
+  **Example:** `"1026733600525693"`
+</ParamField>
+
+<ParamField body="recipient_wa_id" type="string" required>
+  The recipient's WhatsApp ID — their phone number in international format without the `+` prefix.
+
+  **Example:** `"14155551234"`
+</ParamField>
+
+<ParamField body="message" type="string" required>
+  The text message content.
+
+  **Example:** `"Hi! Your appointment is confirmed for tomorrow at 2pm."`
+</ParamField>
+
+## Response
+
+<ResponseField name="success" type="boolean">
+  Whether the message was sent successfully.
+</ResponseField>
+
+<ResponseField name="message_id" type="string">
+  The WhatsApp message ID returned by Meta.
+</ResponseField>
+
+<ResponseField name="stored" type="object">
+  The stored message record from Magpipe.
+</ResponseField>
+
+## Example Request
+
+<RequestExample>
+
+```bash cURL
+curl -X POST "https://api.magpipe.ai/functions/v1/send-whatsapp-message" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "phone_number_id": "1026733600525693",
+    "recipient_wa_id": "14155551234",
+    "message": "Hi! Your appointment is confirmed for tomorrow at 2pm."
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch(
+  'https://api.magpipe.ai/functions/v1/send-whatsapp-message',
+  {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      phone_number_id: '1026733600525693',
+      recipient_wa_id: '14155551234',
+      message: 'Hi! Your appointment is confirmed for tomorrow at 2pm.',
+    }),
+  }
+);
+
+const data = await response.json();
+console.log(data.message_id);
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'https://api.magpipe.ai/functions/v1/send-whatsapp-message',
+    headers={
+        'Authorization': f'Bearer {api_key}',
+        'Content-Type': 'application/json',
+    },
+    json={
+        'phone_number_id': '1026733600525693',
+        'recipient_wa_id': '14155551234',
+        'message': 'Hi! Your appointment is confirmed for tomorrow at 2pm.',
+    }
+)
+
+data = response.json()
+print(data['message_id'])
+```
+
+</RequestExample>
+
+## Example Response
+
+<ResponseExample>
+```json 200 Success
+{
+  "success": true,
+  "message_id": "wamid.HBgNMTQxNTU1NTEyMzQVAgARGBI...",
+  "stored": {
+    "id": "msg_a1b2c3d4-5678-9012-3456-789012345678",
+    "content": "Hi! Your appointment is confirmed for tomorrow at 2pm.",
+    "direction": "outbound",
+    "status": "sent",
+    "channel": "whatsapp",
+    "sent_at": "2024-01-15T10:30:00.000Z"
+  }
+}
+```
+</ResponseExample>
+
+## Error Responses
+
+<ResponseExample>
+```json 400 Bad Request
+{
+  "error": "phone_number_id, recipient_wa_id, and message are required"
+}
+```
+</ResponseExample>
+
+<ResponseExample>
+```json 401 Unauthorized
+{
+  "error": "Unauthorized"
+}
+```
+</ResponseExample>
+
+<ResponseExample>
+```json 404 Not Found
+{
+  "error": "WhatsApp account not found"
+}
+```
+</ResponseExample>
+
+<ResponseExample>
+```json 502 Bad Gateway
+{
+  "error": "Failed to send WhatsApp message",
+  "detail": "Meta API error details"
+}
+```
+</ResponseExample>

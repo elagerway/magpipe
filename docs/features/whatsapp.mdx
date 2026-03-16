@@ -1,0 +1,104 @@
+---
+title: WhatsApp
+description: "Connect a WhatsApp Business number to receive and send messages through your AI agents"
+---
+
+## Overview
+
+WhatsApp integration lets you connect a WhatsApp Business number to your AI agents, bringing WhatsApp conversations into your unified inbox alongside calls, texts, and chat. Your agents can respond to incoming messages automatically, and you can reply manually from the inbox.
+
+## How It Works
+
+1. **Connect via Meta** — use the one-click Embedded Signup flow in the agent's Deploy tab
+2. **Messages arrive** in your inbox automatically
+3. **Agent responds** — your AI agent handles incoming WhatsApp messages within Meta's 24-hour messaging window
+4. **Reply manually** — take over any conversation from the inbox at any time
+
+## Connecting a WhatsApp Number
+
+<Steps>
+  <Step title="Go to Agent Settings">
+    Navigate to **Agents** → select your agent → **Deploy** tab.
+  </Step>
+  <Step title="Open WhatsApp Section">
+    Scroll to the **WhatsApp** section and click **Connect WhatsApp Number**.
+  </Step>
+  <Step title="Continue with Meta">
+    Click **Continue with Meta**. A Meta OAuth popup will open.
+  </Step>
+  <Step title="Authorize Access">
+    Log in with your Facebook account and select your WhatsApp Business Account. Follow the prompts to grant Magpipe access.
+  </Step>
+  <Step title="Connected">
+    Your WhatsApp Business number is now connected. Incoming messages will be routed to this agent.
+  </Step>
+</Steps>
+
+<Info>
+You need a WhatsApp Business Account and an approved WhatsApp Business number to connect. If you don't have one, the Embedded Signup flow will guide you through creating one.
+</Info>
+
+## Manual Entry
+
+If you already have a WhatsApp Business access token and phone number ID from the Meta developer console, you can connect manually:
+
+1. Click **Enter credentials manually** in the WhatsApp section
+2. Enter your **Phone Number ID** and **Access Token**
+3. Click **Connect**
+
+## The 24-Hour Messaging Window
+
+WhatsApp enforces a **24-hour messaging window**: you can only send free-form messages to a user within 24 hours of their last message to you. After 24 hours, you must use a pre-approved Message Template.
+
+| Time since last inbound | What you can send |
+|------------------------|-------------------|
+| < 24 hours | Any message |
+| > 24 hours | Approved templates only |
+
+Magpipe agents respect this window automatically — the AI will not attempt to send messages outside the window without a template.
+
+## WhatsApp in the Inbox
+
+WhatsApp conversations appear in the inbox alongside your other channels. Filter to **WhatsApp only** using the type filter.
+
+Each conversation shows:
+- Contact name and WhatsApp number
+- Message preview
+- Timestamp
+- Read/delivered status
+
+### Sending a Message
+
+From any WhatsApp thread, type your reply and press Send. When you send manually, the AI is automatically paused for 5 minutes so you can handle the conversation without interference.
+
+## AI Agent Behavior
+
+Your agent handles WhatsApp messages the same way it handles SMS:
+- Responds using its configured persona and knowledge base
+- Applies custom functions and dynamic variables
+- Extracts data from conversations (if configured)
+- Sends Slack/email notifications on new messages (if configured)
+
+## Disconnecting
+
+To remove a WhatsApp number from an agent:
+1. Go to **Agents** → select agent → **Deploy** tab
+2. In the WhatsApp section, click **Disconnect**
+3. Confirm the removal
+
+<Warning>
+Disconnecting removes the access token from Magpipe. Your WhatsApp Business Account and number remain active on Meta — only the Magpipe connection is removed.
+</Warning>
+
+## Token Refresh
+
+WhatsApp Business access tokens expire approximately every 60 days. Magpipe automatically refreshes tokens monthly to maintain uninterrupted service. No action is required.
+
+<CardGroup cols={2}>
+  <Card title="Inbox" icon="inbox" href="/features/inbox">
+    View all conversations including WhatsApp
+  </Card>
+  <Card title="Messages API" icon="paper-plane" href="/api-reference/endpoints/send-whatsapp-message">
+    Send WhatsApp messages via API
+  </Card>
+</CardGroup>

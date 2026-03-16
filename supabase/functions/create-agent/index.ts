@@ -50,12 +50,13 @@ Deno.serve(async (req) => {
       user_id: user.id,
       name: body.name,
       active_voice_stack: body.active_voice_stack || "livekit",
+      agent_type: body.agent_type || "inbound_voice",
     };
 
     const allowedFields = [
       "agent_type", "system_prompt", "greeting", "voice_id", "language",
       "llm_model", "organization_name", "owner_name", "agent_role",
-      "is_active", "temperature", "transfer_phone_number", "functions",
+      "is_active", "temperature", "max_tokens", "transfer_phone_number", "functions",
       "prompt", "response_style", "agent_volume", "ambient_sound",
       "ambient_sound_volume", "noise_suppression", "memory_enabled",
       "semantic_memory_enabled", "translate_to", "pii_storage",

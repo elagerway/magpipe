@@ -6,6 +6,7 @@ const AGENT_TYPES = [
   { value: 'text', label: 'Text / SMS', description: 'Handle text message conversations' },
   { value: 'email', label: 'Email', description: 'Draft and respond to emails' },
   { value: 'chat_widget', label: 'Chat Widget', description: 'Live chat on your website' },
+  { value: 'whatsapp', label: 'WhatsApp', description: 'Handle WhatsApp conversations' },
 ];
 
 export const configureTabMethods = {
@@ -405,7 +406,8 @@ export const configureTabMethods = {
         <div class="form-group">
           <label class="form-label">AI Model</label>
           <select id="ai-model" class="form-select">
-            <option value="gpt-4.1" ${this.agent.llm_model === 'gpt-4.1' ? 'selected' : ''}>GPT-4.1 (Recommended)</option>
+            <option value="gpt-4.1-mini" ${this.agent.llm_model === 'gpt-4.1-mini' || !this.agent.llm_model ? 'selected' : ''}>GPT-4.1 Mini (Recommended)</option>
+            <option value="gpt-4.1" ${this.agent.llm_model === 'gpt-4.1' ? 'selected' : ''}>GPT-4.1</option>
             <option value="gpt-4o" ${this.agent.llm_model === 'gpt-4o' ? 'selected' : ''}>GPT-4o</option>
             <option value="gpt-4o-mini" ${this.agent.llm_model === 'gpt-4o-mini' ? 'selected' : ''}>GPT-4o Mini (Faster)</option>
             <option value="claude-3.5-sonnet" ${this.agent.llm_model === 'claude-3.5-sonnet' ? 'selected' : ''}>Claude 3.5 Sonnet</option>
@@ -498,13 +500,14 @@ export const configureTabMethods = {
       insertRoleTemplateBtn.addEventListener('click', () => {
         const org = document.getElementById('organization-name')?.value.trim() || '[Organization Name]';
         const owner = document.getElementById('owner-name')?.value.trim() || '[Owner Name]';
-        const agentName = this.agent.name || 'Maggie';
+        const agentName = this.agent.name || 'Assistant';
         const typeLabel = {
           inbound_voice: 'handle incoming calls',
           outbound_voice: 'make outbound calls',
           text: 'handle SMS conversations',
           email: 'draft and respond to emails',
           chat_widget: 'assist website visitors',
+          whatsapp: 'handle WhatsApp conversations',
         }[this.agent.agent_type] || 'handle communications';
 
         const template =

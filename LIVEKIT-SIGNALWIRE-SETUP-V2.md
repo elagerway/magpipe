@@ -34,7 +34,7 @@ SignalWire provides a regional SIP endpoint for standard SIP trunk connections:
 - **Transport:** TLS
 - **Port:** 5061 (automatically used with TLS)
 - **Auth Username:** `fb9ea15e-cf87-4de2-8be2-0f619b8e956e` (SignalWire Project ID)
-- **Auth Password:** `PTb99247e211706a7195122196aaa1281f97f93bbe64b24f28` (SignalWire API Token)
+- **Auth Password:** `YOUR_SIGNALWIRE_API_TOKEN` (SignalWire API Token)
 
 ### Steps to Fix LiveKit Trunk
 
@@ -49,7 +49,7 @@ SignalWire provides a regional SIP endpoint for standard SIP trunk connections:
    Address: erik.signalwire.com
    Transport: TLS
    Auth Username: fb9ea15e-cf87-4de2-8be2-0f619b8e956e
-   Auth Password: PTb99247e211706a7195122196aaa1281f97f93bbe64b24f28
+   Auth Password: YOUR_SIGNALWIRE_API_TOKEN
    Numbers: +14152518686, +16042566768, +16042101966, +12013040992, +16042431596
    ```
 
@@ -65,7 +65,7 @@ If TLS continues to fail, try UDP:
 Address: erik.signalwire.com
 Transport: UDP
 Auth Username: fb9ea15e-cf87-4de2-8be2-0f619b8e956e
-Auth Password: PTb99247e211706a7195122196aaa1281f97f93bbe64b24f28
+Auth Password: YOUR_SIGNALWIRE_API_TOKEN
 ```
 
 ---

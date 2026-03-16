@@ -160,7 +160,7 @@ export class AgentConfig {
       name: agentName,
       agent_type: agentType,
       is_default: isFirstAgent, // First agent is always default
-      voice_id: agentData.voice_id || '21m00Tcm4TlvDq8ikWAM',
+      voice_id: agentData.voice_id || 'EXAVITQu4vr4xnSDxMaL',
       system_prompt: agentData.system_prompt || defaultPrompt,
       ...agentData,
     };
@@ -339,7 +339,7 @@ export class AgentConfig {
         return this.getDefaultChatWidgetPrompt(firstName);
       case 'inbound_voice':
       default:
-        return this.getDefaultInboundVoicePrompt(firstName);
+        return this.getDefaultInboundVoicePrompt(firstName, agentName);
     }
   }
 
@@ -348,11 +348,12 @@ export class AgentConfig {
    * @param {string} firstName - User's first name
    * @returns {string} Default inbound voice prompt
    */
-  static getDefaultInboundVoicePrompt(firstName) {
-    return `You are Maggie, a professional AI assistant. Your job is to handle incoming calls on behalf of the business.
+  static getDefaultInboundVoicePrompt(firstName, agentName = null) {
+    const name = agentName || 'Assistant';
+    return `You are ${name}, a professional AI assistant. Your job is to handle incoming calls on behalf of the business.
 
 When someone calls:
-1. Greet them warmly and introduce yourself as Maggie
+1. Greet them warmly and introduce yourself as ${name}
 2. Ask for their name and the purpose of their call
 3. Determine if this is a legitimate inquiry
 
@@ -447,8 +448,8 @@ Focus on converting visitors into contacts by being genuinely helpful.`;
   }
 
   // Legacy aliases for backward compatibility
-  static getDefaultInboundPrompt(firstName) {
-    return this.getDefaultInboundVoicePrompt(firstName);
+  static getDefaultInboundPrompt(firstName, agentName = null) {
+    return this.getDefaultInboundVoicePrompt(firstName, agentName);
   }
 
   static getDefaultOutboundPrompt(orgName, agentName = null) {

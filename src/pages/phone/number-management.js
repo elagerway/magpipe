@@ -1,5 +1,6 @@
 import { supabase } from '../../lib/supabase.js';
 import { showToast } from '../../lib/toast.js';
+import { showConfirmModal } from '../../components/ConfirmModal.js';
 import { User, Organization } from '../../models/index.js';
 import { formatPhoneNumber } from '../../lib/formatters.js';
 
@@ -80,6 +81,10 @@ export const numberManagementMethods = {
         .select(`
           *,
           agent:agent_configs!service_numbers_agent_id_fkey (
+            id,
+            name
+          ),
+          outbound_agent:agent_configs!service_numbers_outbound_agent_id_fkey (
             id,
             name
           ),
@@ -269,6 +274,7 @@ export const numberManagementMethods = {
     const isAssigned = number.agent && number.agent.id !== SYSTEM_AGENT_ID;
     const agentName = isAssigned ? number.agent.name : null;
 
+
     return `
       <div class="number-item" style="
         display: flex;
@@ -290,6 +296,22 @@ export const numberManagementMethods = {
         </div>
         <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 0.375rem;">
           <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <button class="delete-number-btn" data-number-id="${number.id}" data-phone="${number.phone_number}" style="
+              background: transparent;
+              border: none;
+              padding: 0.25rem;
+              cursor: pointer;
+              color: var(--text-secondary);
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              border-radius: 0.25rem;
+            " title="Delete number">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+              </svg>
+            </button>
             <button class="edit-number-btn" data-number-id="${number.id}" style="
               background: transparent;
               border: none;
@@ -318,7 +340,15 @@ export const numberManagementMethods = {
                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
                 <circle cx="12" cy="7" r="4"/>
               </svg>
-              ${number.text_agent?.name ? 'Voice: ' : ''}${agentName}
+              In: ${agentName}
+            </span>
+          ` : ''}
+          ${number.outbound_agent?.name ? `
+            <span style="font-size: 0.7rem; padding: 0.125rem 0.375rem; background: rgba(234, 88, 12, 0.1); color: rgb(234, 88, 12); border-radius: 0.25rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M5 12h14M12 5l7 7-7 7"/>
+              </svg>
+              Out: ${number.outbound_agent.name}
             </span>
           ` : ''}
           ${number.text_agent?.name ? `
@@ -390,6 +420,16 @@ export const numberManagementMethods = {
       });
     });
 
+    // Delete number buttons
+    document.querySelectorAll('.delete-number-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const numberId = btn.dataset.numberId;
+        const phoneNumber = btn.dataset.phone;
+        await this.deleteNumber(numberId, phoneNumber);
+      });
+    });
+
     // Cancel deletion buttons
     document.querySelectorAll('.cancel-deletion-btn').forEach(btn => {
       btn.addEventListener('click', async (e) => {
@@ -450,6 +490,59 @@ export const numberManagementMethods = {
       console.error('Error cancelling deletion:', error);
       showToast(`Failed to cancel deletion: ${error.message}`, 'error');
     }
+  },
+
+  async deleteNumber(numberId, phoneNumber) {
+    const number = this.serviceNumbers.find(n => n.id === numberId);
+    if (!number) return;
+
+    const isAssigned = number.agent && number.agent.id !== SYSTEM_AGENT_ID;
+    const agentName = isAssigned ? number.agent.name : null;
+
+    const parts = [`Delete ${formatPhoneNumber(phoneNumber)}?`];
+    if (agentName) {
+      parts.push(`Agent "${agentName}" will no longer receive calls or messages on this number.`);
+    }
+    parts.push('This cannot be undone.');
+    const message = parts.join(' ');
+
+    showConfirmModal({
+      title: 'Delete Phone Number',
+      message,
+      confirmText: 'Delete',
+      confirmStyle: 'danger',
+      onConfirm: async () => {
+        try {
+          // Reassign to system agent before deletion so calls/SMS get unassigned responses
+          if (isAssigned) {
+            const table = number.source === 'external_sip' ? 'external_sip_numbers' : 'service_numbers';
+            await supabase.from(table).update({ agent_id: SYSTEM_AGENT_ID }).eq('id', numberId);
+          }
+
+          const { data: { session } } = await supabase.auth.getSession();
+          const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/release-phone-number`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({ number_id: numberId }),
+          });
+
+          if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error?.message || 'Failed to delete number');
+          }
+
+          showToast(`${formatPhoneNumber(phoneNumber)} deleted`, 'success');
+          await this.loadServiceNumbersList();
+          await this.loadServiceNumbers();
+        } catch (error) {
+          console.error('Error deleting number:', error);
+          showToast(`Failed to delete: ${error.message}`, 'error');
+        }
+      }
+    });
   },
 
   async renderBrandedCallingSummary() {
@@ -1011,10 +1104,15 @@ export const numberManagementMethods = {
       return;
     }
 
-    // Don't show current assignment if it's the system agent
     const isSystemAgent = number.agent_id === SYSTEM_AGENT_ID;
-    const currentAgentId = isSystemAgent ? null : number.agent_id;
-    const currentAgentName = isSystemAgent ? null : number.agent?.name;
+    const currentInboundId = isSystemAgent ? '' : (number.agent_id || '');
+    const currentOutboundId = number.outbound_agent_id || '';
+    const currentTextId = number.text_agent_id || '';
+
+    const agentOptions = [
+      `<option value="">— Unassigned (system default) —</option>`,
+      ...agents.map(a => `<option value="${a.id}">${a.name}</option>`),
+    ].join('');
 
     const modal = document.createElement('div');
     modal.id = 'agent-assignment-modal';
@@ -1036,7 +1134,7 @@ export const numberManagementMethods = {
       <div style="
         background: var(--bg-primary);
         border-radius: var(--radius-lg);
-        max-width: 400px;
+        max-width: 420px;
         width: 100%;
         max-height: 80vh;
         overflow: hidden;
@@ -1051,7 +1149,7 @@ export const numberManagementMethods = {
           align-items: center;
         ">
           <div>
-            <h3 style="margin: 0; font-size: 1rem;">Agent Assignment</h3>
+            <h3 style="margin: 0; font-size: 1rem;">Channel Assignment</h3>
             <p style="margin: 0.25rem 0 0; font-size: 0.875rem; color: var(--text-secondary);">${formatPhoneNumber(number.phone_number)}</p>
           </div>
           <button id="close-agent-modal" style="
@@ -1068,203 +1166,123 @@ export const numberManagementMethods = {
           </button>
         </div>
 
-        <div style="padding: 1rem; overflow-y: auto;">
-          ${currentAgentId ? `
-            <div style="margin-bottom: 1rem;">
-              <label style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Current Assignment</label>
-              <div style="
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                padding: 0.75rem;
-                background: rgba(99, 102, 241, 0.1);
-                border: 1px solid rgba(99, 102, 241, 0.3);
-                border-radius: var(--radius-md);
-                margin-top: 0.5rem;
-              ">
-                <span style="display: flex; align-items: center; gap: 0.5rem;">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgb(99, 102, 241)" stroke-width="2">
-                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                    <circle cx="12" cy="7" r="4"/>
-                  </svg>
-                  ${currentAgentName}
-                </span>
-                <button class="detach-agent-btn" data-agent-id="${currentAgentId}" style="
-                  background: transparent;
-                  border: 1px solid rgba(239, 68, 68, 0.5);
-                  color: rgb(239, 68, 68);
-                  padding: 0.25rem 0.5rem;
-                  border-radius: 0.25rem;
-                  font-size: 0.75rem;
-                  cursor: pointer;
-                ">Detach</button>
-              </div>
-            </div>
-          ` : `
-            <div style="
-              padding: 0.75rem;
-              background: var(--bg-secondary);
-              border-radius: var(--radius-md);
-              margin-bottom: 1rem;
-              text-align: center;
-              color: var(--text-secondary);
-              font-size: 0.875rem;
-            ">System default (not assigned)</div>
-          `}
+        <div style="padding: 1rem; overflow-y: auto; display: flex; flex-direction: column; gap: 1.25rem;">
 
           <div>
-            <label style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">
-              ${currentAgentId ? 'Change to' : 'Assign Agent'}
+            <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.75rem; font-weight: 600; color: rgb(99, 102, 241); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M5 12h14M12 19l-7-7 7-7"/>
+              </svg>
+              Inbound Calls
             </label>
-            <div style="margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.5rem;">
-              ${agents.length === 0 ? `
-                <div style="
-                  padding: 1rem;
-                  text-align: center;
-                  color: var(--text-secondary);
-                  font-size: 0.875rem;
-                ">No agents available. Create an agent first.</div>
-              ` : agents.filter(a => a.id !== currentAgentId).map(agent => `
-                <button class="assign-agent-btn" data-agent-id="${agent.id}" style="
-                  display: flex;
-                  align-items: center;
-                  gap: 0.5rem;
-                  padding: 0.75rem;
-                  background: var(--bg-secondary);
-                  border: 1px solid var(--border-color);
-                  border-radius: var(--radius-md);
-                  cursor: pointer;
-                  text-align: left;
-                  width: 100%;
-                  color: var(--text-primary);
-                  transition: border-color 0.15s;
-                ">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                    <circle cx="12" cy="7" r="4"/>
-                  </svg>
-                  ${agent.name}
-                </button>
-              `).join('')}
-              ${agents.length > 0 && agents.filter(a => a.id !== currentAgentId).length === 0 ? `
-                <div style="
-                  padding: 1rem;
-                  text-align: center;
-                  color: var(--text-secondary);
-                  font-size: 0.875rem;
-                ">All agents already assigned or no other agents available.</div>
-              ` : ''}
-            </div>
+            <select id="select-inbound-agent" style="
+              width: 100%;
+              padding: 0.625rem 0.75rem;
+              background: var(--bg-secondary);
+              border: 1px solid var(--border-color);
+              border-radius: var(--radius-md);
+              color: var(--text-primary);
+              font-size: 0.875rem;
+            ">
+              ${agentOptions}
+            </select>
           </div>
 
+          <div>
+            <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.75rem; font-weight: 600; color: rgb(234, 88, 12); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M5 12h14M12 5l7 7-7 7"/>
+              </svg>
+              Outbound Calls
+            </label>
+            <select id="select-outbound-agent" style="
+              width: 100%;
+              padding: 0.625rem 0.75rem;
+              background: var(--bg-secondary);
+              border: 1px solid var(--border-color);
+              border-radius: var(--radius-md);
+              color: var(--text-primary);
+              font-size: 0.875rem;
+            ">
+              ${agentOptions}
+            </select>
+          </div>
+
+          <div>
+            <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.75rem; font-weight: 600; color: rgb(21, 128, 61); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+              SMS / Text
+            </label>
+            <select id="select-text-agent" style="
+              width: 100%;
+              padding: 0.625rem 0.75rem;
+              background: var(--bg-secondary);
+              border: 1px solid var(--border-color);
+              border-radius: var(--radius-md);
+              color: var(--text-primary);
+              font-size: 0.875rem;
+            ">
+              ${agentOptions}
+            </select>
+          </div>
+
+        </div>
+
+        <div style="
+          padding: 1rem;
+          border-top: 1px solid var(--border-color);
+          display: flex;
+          gap: 0.5rem;
+          justify-content: flex-end;
+        ">
+          <button id="cancel-agent-modal" class="btn btn-secondary btn-sm">Cancel</button>
+          <button id="save-channel-assignment" class="btn btn-primary btn-sm">Save</button>
         </div>
       </div>
     `;
 
     document.body.appendChild(modal);
 
-    // Close button
-    document.getElementById('close-agent-modal').addEventListener('click', () => {
-      modal.remove();
-    });
+    // Set current values
+    modal.querySelector('#select-inbound-agent').value = currentInboundId;
+    modal.querySelector('#select-outbound-agent').value = currentOutboundId;
+    modal.querySelector('#select-text-agent').value = currentTextId;
 
-    // Click outside to close
-    modal.addEventListener('click', (e) => {
-      if (e.target === modal) {
-        modal.remove();
+    const closeModal = () => modal.remove();
+
+    document.getElementById('close-agent-modal').addEventListener('click', closeModal);
+    document.getElementById('cancel-agent-modal').addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+
+    document.getElementById('save-channel-assignment').addEventListener('click', async () => {
+      const saveBtn = document.getElementById('save-channel-assignment');
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+
+      const inboundId = modal.querySelector('#select-inbound-agent').value;
+      const outboundId = modal.querySelector('#select-outbound-agent').value;
+      const textId = modal.querySelector('#select-text-agent').value;
+
+      const { error } = await supabase
+        .from('service_numbers')
+        .update({
+          agent_id: inboundId || SYSTEM_AGENT_ID,
+          outbound_agent_id: outboundId || null,
+          text_agent_id: textId || null,
+        })
+        .eq('id', number.id);
+
+      if (error) {
+        console.error('Error saving channel assignment:', error);
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save';
+        return;
       }
-    });
 
-    // Detach button
-    modal.querySelector('.detach-agent-btn')?.addEventListener('click', async (e) => {
-      const btn = e.target;
-      const agentName = currentAgentName;
-
-      // Show confirmation modal
-      const confirmModal = document.createElement('div');
-      confirmModal.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0,0,0,0.6);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 1001;
-        padding: 1rem;
-      `;
-      confirmModal.innerHTML = `
-        <div style="
-          background: var(--bg-primary);
-          border-radius: var(--radius-lg);
-          max-width: 320px;
-          width: 100%;
-          padding: 1.25rem;
-        ">
-          <h3 style="margin: 0 0 0.5rem; font-size: 1rem;">Detach Agent?</h3>
-          <p style="margin: 0 0 1rem; color: var(--text-secondary); font-size: 0.875rem;">
-            Remove <strong>${agentName}</strong> from ${formatPhoneNumber(number.phone_number)}? The agent will no longer handle calls or messages on this number.
-          </p>
-          <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
-            <button id="cancel-detach" class="btn btn-secondary btn-sm">Cancel</button>
-            <button id="confirm-detach" class="btn btn-sm" style="background: rgb(239, 68, 68); color: white;">Detach</button>
-          </div>
-        </div>
-      `;
-      document.body.appendChild(confirmModal);
-
-      document.getElementById('cancel-detach').addEventListener('click', () => {
-        confirmModal.remove();
-      });
-
-      document.getElementById('confirm-detach').addEventListener('click', async () => {
-        const confirmBtn = document.getElementById('confirm-detach');
-        confirmBtn.disabled = true;
-        confirmBtn.textContent = 'Detaching...';
-
-        const { error } = await supabase
-          .from('service_numbers')
-          .update({ agent_id: SYSTEM_AGENT_ID })
-          .eq('id', number.id);
-
-        if (error) {
-          console.error('Error detaching agent:', error);
-          confirmBtn.disabled = false;
-          confirmBtn.textContent = 'Detach';
-          confirmModal.remove();
-          return;
-        }
-
-        confirmModal.remove();
-        modal.remove();
-        await this.loadServiceNumbersList();
-      });
-    });
-
-    // Assign buttons
-    modal.querySelectorAll('.assign-agent-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const agentId = btn.dataset.agentId;
-        btn.disabled = true;
-        btn.style.opacity = '0.5';
-
-        const { error } = await supabase
-          .from('service_numbers')
-          .update({ agent_id: agentId })
-          .eq('id', number.id);
-
-        if (error) {
-          console.error('Error assigning agent:', error);
-          btn.disabled = false;
-          btn.style.opacity = '1';
-          return;
-        }
-
-        modal.remove();
-        await this.loadServiceNumbersList();
-      });
+      modal.remove();
+      await this.loadServiceNumbersList();
     });
   },
 

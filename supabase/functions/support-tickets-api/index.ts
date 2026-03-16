@@ -489,6 +489,18 @@ async function handleSendReply(supabase: any, body: any) {
     })
   }
 
+  // Sync to email_messages so reply appears in inbox
+  await syncToEmailMessages(supabase, {
+    threadId,
+    gmailMessageId: sentMsgId,
+    fromEmail: 'help@magpipe.ai',
+    toEmail,
+    subject: replySubject,
+    bodyText: replyBody,
+    bodyHtml: replyBodyHtml,
+    attachments,
+  })
+
   // Post reply to chat widget if applicable
   await postReplyToChatWidget(supabase, latestMsg, toEmail, replyBody)
 
@@ -590,6 +602,16 @@ async function handleApproveDraft(supabase: any, body: any) {
       received_at: new Date().toISOString(),
     })
   }
+
+  // Sync to email_messages so reply appears in inbox
+  await syncToEmailMessages(supabase, {
+    threadId: ticket.thread_id,
+    gmailMessageId: `approved-${Date.now()}`,
+    fromEmail: 'help@magpipe.ai',
+    toEmail: ticket.from_email,
+    subject: replySubject,
+    bodyText: draftText,
+  })
 
   // Post reply to chat widget if applicable
   await postReplyToChatWidget(supabase, ticket, ticket.from_email, draftText)
@@ -869,6 +891,52 @@ async function sendPostmarkReply(toEmail: string, subject: string, body: string,
   }
 
   console.log('Postmark reply sent to', toEmail)
+}
+
+
+/**
+ * Sync a support reply to email_messages so it appears in the user's inbox.
+ * Looks up user_id from existing email_messages in the same thread.
+ */
+async function syncToEmailMessages(supabase: any, opts: {
+  threadId: string, gmailMessageId?: string, fromEmail: string,
+  toEmail: string, subject: string, bodyText: string,
+  bodyHtml?: string, attachments?: any[]
+}) {
+  try {
+    // Find user_id from existing email_messages in this thread
+    const { data: existing } = await supabase
+      .from('email_messages')
+      .select('user_id')
+      .eq('thread_id', opts.threadId)
+      .limit(1)
+      .single()
+
+    if (!existing?.user_id) {
+      console.log('No email_messages found for thread, skipping inbox sync:', opts.threadId)
+      return
+    }
+
+    await supabase.from('email_messages').insert({
+      user_id: existing.user_id,
+      thread_id: opts.threadId,
+      gmail_message_id: opts.gmailMessageId || `support-reply-${Date.now()}`,
+      from_email: opts.fromEmail,
+      from_name: '',
+      to_email: opts.toEmail,
+      subject: opts.subject,
+      body_text: opts.bodyText,
+      body_html: opts.bodyHtml || null,
+      attachments: opts.attachments && opts.attachments.length > 0 ? opts.attachments : [],
+      direction: 'outbound',
+      status: 'sent',
+      sent_at: new Date().toISOString(),
+    })
+    console.log('Synced support reply to email_messages for inbox:', opts.threadId)
+  } catch (err) {
+    console.error('Failed to sync to email_messages:', err)
+    // Don't fail the support reply if inbox sync fails
+  }
 }
 
 

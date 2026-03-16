@@ -323,7 +323,7 @@ export default class AdminHeader {
         position: absolute;
         top: calc(100% + 8px);
         right: 0;
-        width: 260px;
+        width: 300px;
         background: var(--bg-primary);
         border: 1px solid var(--border-color);
         border-radius: 8px;
@@ -368,8 +368,6 @@ export default class AdminHeader {
 
       .status-dropdown-content {
         padding: 0.25rem 0;
-        max-height: 400px;
-        overflow-y: auto;
       }
 
       .status-loading-msg {

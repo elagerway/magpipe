@@ -19,6 +19,7 @@ export const notificationsTabMethods = {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({ action: 'get_config' }),
+          signal: AbortSignal.timeout(5000),
         }
       );
 
@@ -221,6 +222,30 @@ export const notificationsTabMethods = {
                   </label>
                 </td>
               </tr>
+              <tr>
+                <td class="notif-matrix-event">
+                  <div class="notif-event-name">System Errors</div>
+                  <div class="notif-event-desc">Edge function failures, token expiry, stale cron jobs</div>
+                </td>
+                <td class="notif-matrix-channel">
+                  <label class="notif-toggle">
+                    <input type="checkbox" id="notif-errors-sms" ${cfg.errors_sms ? 'checked' : ''}>
+                    <span class="notif-toggle-slider"></span>
+                  </label>
+                </td>
+                <td class="notif-matrix-channel">
+                  <label class="notif-toggle">
+                    <input type="checkbox" id="notif-errors-email" ${cfg.errors_email ? 'checked' : ''}>
+                    <span class="notif-toggle-slider"></span>
+                  </label>
+                </td>
+                <td class="notif-matrix-channel">
+                  <label class="notif-toggle">
+                    <input type="checkbox" id="notif-errors-slack" ${cfg.errors_slack ? 'checked' : ''}>
+                    <span class="notif-toggle-slider"></span>
+                  </label>
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>
@@ -249,6 +274,9 @@ export const notificationsTabMethods = {
       vendor_status_sms: document.getElementById('notif-vendor-status-sms')?.checked || false,
       vendor_status_email: document.getElementById('notif-vendor-status-email')?.checked || false,
       vendor_status_slack: document.getElementById('notif-vendor-status-slack')?.checked || false,
+      errors_sms: document.getElementById('notif-errors-sms')?.checked || false,
+      errors_email: document.getElementById('notif-errors-email')?.checked || false,
+      errors_slack: document.getElementById('notif-errors-slack')?.checked || false,
     };
 
     fetch(

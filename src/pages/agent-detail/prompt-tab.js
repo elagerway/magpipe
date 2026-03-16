@@ -45,6 +45,12 @@ export const promptTabMethods = {
         `}
 
         <div class="form-group">
+          <label class="form-label">Opening Line</label>
+          <input type="text" id="agent-greeting" class="form-input" value="${this.agent.greeting || ''}" placeholder="${this.agent.agent_type === 'outbound_voice' ? `Hi, this is ${this.agent.name || 'your assistant'} calling...` : `Hi, I'm ${this.agent.name || 'your assistant'}, how can I help you today?`}" />
+          <p class="form-help">${this.agent.agent_type === 'outbound_voice' ? 'What the agent says when the called party picks up. Leave blank to let the agent respond naturally.' : 'What the agent says when it first picks up. Leave blank to let the agent respond naturally.'}</p>
+        </div>
+
+        <div class="form-group">
           <label class="form-label">System Prompt</label>
           <textarea id="system-prompt" class="form-textarea" rows="12" placeholder="Instructions for your agent...">${this.agent.system_prompt || ''}</textarea>
           <p class="form-help">${this.getPromptHelpText()}</p>
@@ -128,6 +134,15 @@ CALL CONTEXT:
     if (regenerateBtn) {
       regenerateBtn.addEventListener('click', () => {
         this.regeneratePrompts();
+      });
+    }
+
+    // Opening line / greeting
+    const greetingInput = document.getElementById('agent-greeting');
+    if (greetingInput) {
+      greetingInput.addEventListener('input', () => {
+        this.agent.greeting = greetingInput.value;
+        this.scheduleAutoSave({ greeting: greetingInput.value });
       });
     }
 

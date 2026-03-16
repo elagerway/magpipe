@@ -111,7 +111,8 @@ export const usersTabMethods = {
           headers: {
             'Authorization': `Bearer ${this.session.access_token}`,
             'Content-Type': 'application/json'
-          }
+          },
+          signal: AbortSignal.timeout(5000),
         }
       );
 
@@ -150,7 +151,7 @@ export const usersTabMethods = {
           <div class="user-email">${user.email}</div>
         </div>
         <div class="user-badges">
-          <span class="badge badge-${user.account_status}">${user.account_status}</span>
+          <span class="badge badge-${user.account_status === 'active' && !user.phone_verified ? 'pending' : user.account_status}">${user.account_status === 'active' && !user.phone_verified ? 'pending' : user.account_status}</span>
         </div>
       </div>
     `).join('');
@@ -205,7 +206,8 @@ export const usersTabMethods = {
           headers: {
             'Authorization': `Bearer ${this.session.access_token}`,
             'Content-Type': 'application/json'
-          }
+          },
+          signal: AbortSignal.timeout(5000),
         }
       );
 
@@ -236,7 +238,7 @@ export const usersTabMethods = {
           <div class="user-email">${user.email}</div>
           <div class="user-badges" style="margin-top: 0.5rem;">
             <span class="badge badge-${user.role}">${user.role}</span>
-            <span class="badge badge-${user.account_status}">${user.account_status}</span>
+            <span class="badge badge-${user.account_status === 'active' && !user.phone_verified ? 'pending' : user.account_status}">${user.account_status === 'active' && !user.phone_verified ? 'pending' : user.account_status}</span>
           </div>
         </div>
       </div>
@@ -286,7 +288,16 @@ export const usersTabMethods = {
             <span id="phone-display-value">${user.phone_number || 'Not set'}</span>
             <span id="phone-verified-badge" style="font-size: 0.7rem; padding: 0.1rem 0.4rem; border-radius: 8px; ${user.phone_verified ? 'background: rgba(16,185,129,0.1); color: #10b981;' : 'background: rgba(128,128,128,0.1); color: var(--text-muted);'}">${user.phone_verified ? 'verified' : 'unverified'}</span>
             <button id="btn-edit-phone" style="background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 0.75rem; padding: 0; text-decoration: underline;">edit</button>
-            ${user.phone_verified ? `<button id="btn-send-welcome-email" style="background: none; border: 1px solid var(--primary-color); color: var(--primary-color); border-radius: 4px; cursor: pointer; font-size: 0.72rem; padding: 0.15rem 0.5rem; white-space: nowrap;">✉ Welcome Email</button>` : ''}
+          </span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Welcome Email</span>
+          <span class="detail-value" style="display: flex; align-items: center; gap: 0.5rem;">
+            ${user.welcome_email_sent_at
+              ? `<span id="welcome-email-status" style="font-size: 0.75rem; padding: 0.15rem 0.5rem; border-radius: 8px; background: rgba(16,185,129,0.1); color: #10b981; font-weight: 500;">✓ Sent ${new Date(user.welcome_email_sent_at).toLocaleDateString()}</span>`
+              : `<span style="font-size: 0.75rem; padding: 0.15rem 0.5rem; border-radius: 8px; background: rgba(128,128,128,0.08); color: var(--text-muted);">✗ Not sent</span>
+                 <button id="btn-send-welcome-email" style="background: none; border: 1px solid var(--primary-color); color: var(--primary-color); border-radius: 4px; cursor: pointer; font-size: 0.72rem; padding: 0.15rem 0.5rem; white-space: nowrap;">Send</button>`
+            }
           </span>
         </div>
         <div id="phone-edit-form" style="display: none; padding: 0.5rem 0 0.25rem;">
@@ -573,7 +584,12 @@ export const usersTabMethods = {
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || 'Failed to send');
         showToast('Welcome email sent', 'success');
-        btn.textContent = '✓ Sent';
+        // Replace the "not sent" state with the sent badge
+        const sentDate = new Date().toLocaleDateString();
+        const valueEl = btn.closest('.detail-value');
+        if (valueEl) {
+          valueEl.innerHTML = `<span id="welcome-email-status" style="font-size: 0.75rem; padding: 0.15rem 0.5rem; border-radius: 8px; background: rgba(16,185,129,0.1); color: #10b981; font-weight: 500;">✓ Sent ${sentDate}</span>`;
+        }
       } catch (err) {
         showToast('Error: ' + err.message, 'error');
         btn.disabled = false;

@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { corsHeaders, handleCors } from '../_shared/cors.ts'
 import { shouldNotify, filterExtractedDataForApp } from '../_shared/app-function-prefs.ts'
+import { resolveSlackChannelId, fetchAllSlackChannels } from '../_shared/slack-channels.ts'
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -388,32 +389,19 @@ async function sendSlackCallNotification(
     }
 
     if (notifPrefs?.slack_channel) {
-      const name = notifPrefs.slack_channel.replace(/^#/, '').toLowerCase()
-      const listResp = await fetch(
-        'https://slack.com/api/conversations.list?types=public_channel&limit=200&exclude_archived=true',
-        { headers: { 'Authorization': `Bearer ${integration.access_token}` } }
-      )
-      const listResult = await listResp.json()
-      if (listResult.ok && listResult.channels) {
-        const found = listResult.channels.find((c: any) => c.name.toLowerCase() === name)
-        if (found) channelId = found.id
-      }
+      channelId = await resolveSlackChannelId(integration.access_token, notifPrefs.slack_channel)
     }
 
     if (!channelId) {
       channelId = integration.config?.notification_channel
     }
     if (!channelId) {
-      const channelsResponse = await fetch(
-        'https://slack.com/api/conversations.list?types=public_channel&limit=10',
-        { headers: { 'Authorization': `Bearer ${integration.access_token}` } }
-      )
-      const channelsResult = await channelsResponse.json()
-      if (channelsResult.ok && channelsResult.channels?.length > 0) {
-        const magpipeChannel = channelsResult.channels.find((c: any) => c.name === 'magpipe-notifications')
-        const generalChannel = channelsResult.channels.find((c: any) => c.name === 'general')
-        channelId = magpipeChannel?.id || generalChannel?.id || channelsResult.channels[0].id
-      }
+      try {
+        const channels = await fetchAllSlackChannels(integration.access_token)
+        const magpipeChannel = channels.find(c => c.name === 'magpipe-notifications')
+        const generalChannel = channels.find(c => c.name === 'general')
+        channelId = magpipeChannel?.id || generalChannel?.id || channels[0]?.id || null
+      } catch { /* ignore */ }
     }
 
     if (!channelId) return

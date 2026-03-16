@@ -92,4 +92,23 @@ echo -e "${YELLOW}⚠️  REMINDER: Have you tested the affected features?${NC}"
 echo -e "${YELLOW}   See PRE-COMMIT-CHECKLIST.md section 3${NC}"
 echo ""
 
+# Warn if code files are staged but docs are not updated
+CODE_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(js|ts|jsx|tsx|py)$' || true)
+DOC_FILES=$(git diff --cached --name-only | grep -E '^(docs/architecture\.md|CHANGELOG\.md)$' || true)
+
+if [ -n "$CODE_FILES" ] && [ -z "$DOC_FILES" ]; then
+    echo -e "${YELLOW}╔════════════════════════════════════════════════╗${NC}"
+    echo -e "${YELLOW}║                                                ║${NC}"
+    echo -e "${YELLOW}║  📝 DOCS NOT UPDATED                           ║${NC}"
+    echo -e "${YELLOW}║                                                ║${NC}"
+    echo -e "${YELLOW}║  Code files are staged but docs/architecture   ║${NC}"
+    echo -e "${YELLOW}║  and CHANGELOG.md are not included.            ║${NC}"
+    echo -e "${YELLOW}║                                                ║${NC}"
+    echo -e "${YELLOW}║  Run: /update-docs-commit                      ║${NC}"
+    echo -e "${YELLOW}║  (or add --no-verify if intentionally skipping)║${NC}"
+    echo -e "${YELLOW}║                                                ║${NC}"
+    echo -e "${YELLOW}╚════════════════════════════════════════════════╝${NC}"
+    echo ""
+fi
+
 exit 0

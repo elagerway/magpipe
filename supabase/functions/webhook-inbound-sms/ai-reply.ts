@@ -14,7 +14,8 @@ export async function processAndReplySMS(
   body: string,
   supabase: any,
   agentConfig: any,
-  slackThread: { channel: string; ts: string; accessToken: string } | null
+  slackThread: { channel: string; ts: string; accessToken: string } | null,
+  sessionId: string | null = null
 ) {
   try {
     // Check if sender has opted out (USA SMS compliance)
@@ -226,37 +227,103 @@ IMPORTANT: Base your answers on the knowledge base information above. If the que
 
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY')!
 
+    // Fetch active custom functions for this agent
+    const { data: customFunctionsData } = await supabase
+      .from('custom_functions')
+      .select('*')
+      .eq('agent_id', agentConfig.id)
+      .eq('is_active', true)
+    const customFunctions: any[] = customFunctionsData || []
+
+    // Build OpenAI tools from custom functions
+    const tools = customFunctions.length > 0 ? customFunctions.map((fn: any) => ({
+      type: 'function',
+      function: {
+        name: fn.name,
+        description: fn.description,
+        parameters: {
+          type: 'object',
+          properties: Object.fromEntries(
+            (fn.body_schema || []).map((p: any) => [
+              p.name,
+              { type: p.type === 'number' ? 'number' : 'string', description: p.description }
+            ])
+          ),
+          required: (fn.body_schema || []).filter((p: any) => p.required).map((p: any) => p.name),
+        },
+      },
+    })) : undefined
+
     // Build messages array with conversation history
-    const messages = [
+    const messages: any[] = [
       { role: 'system', content: systemPrompt },
       ...conversationHistory,
       { role: 'user', content: body }
     ]
 
-    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openaiApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        max_tokens: 150,
-        messages: messages,
-      }),
-    })
+    // Agentic loop: call OpenAI, execute any tool calls, repeat until text reply
+    let reply = ''
+    for (let i = 0; i < 5; i++) {
+      const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${openaiApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          max_tokens: 150,
+          messages,
+          ...(tools ? { tools, tool_choice: 'auto' } : {}),
+        }),
+      })
 
-    if (!openaiResponse.ok) {
-      const errorText = await openaiResponse.text()
-      console.error('OpenAI API error:', errorText)
-      // Fallback to simple response
-      const reply = "Hi! I'm Maggie, your AI assistant. Sorry, I'm having trouble processing your message right now. Please try again later."
-      await sendSMS(userId, from, to, reply, supabase)
-      return
+      if (!openaiResponse.ok) {
+        const errorText = await openaiResponse.text()
+        console.error('OpenAI API error:', errorText)
+        await sendSMS(userId, from, to, "Sorry, I'm having trouble processing your message right now. Please try again later.", supabase)
+        return
+      }
+
+      const result = await openaiResponse.json()
+      const choice = result.choices[0]
+      messages.push(choice.message)
+
+      // No tool calls — we have the final text reply
+      if (!choice.message.tool_calls || choice.message.tool_calls.length === 0) {
+        reply = choice.message.content || ''
+        break
+      }
+
+      // Execute each tool call
+      for (const toolCall of choice.message.tool_calls) {
+        const fnName = toolCall.function.name
+        const fnArgs = { ...JSON.parse(toolCall.function.arguments || '{}'), channel: 'sms', session_id: sessionId }
+        const fn = customFunctions.find((f: any) => f.name === fnName)
+
+        let toolResult = 'error: function not found'
+        if (fn) {
+          try {
+            const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+            if (fn.headers) Object.assign(headers, fn.headers)
+            const fnRes = await fetch(fn.endpoint_url, {
+              method: fn.http_method || 'POST',
+              headers,
+              body: JSON.stringify(fnArgs),
+            })
+            toolResult = await fnRes.text()
+            console.log(`Tool call ${fnName}:`, fnArgs, '→', toolResult)
+          } catch (err) {
+            toolResult = `error: ${err}`
+            console.error(`Tool call ${fnName} failed:`, err)
+          }
+        }
+
+        messages.push({ role: 'tool', tool_call_id: toolCall.id, content: toolResult })
+      }
     }
 
-    const openaiResult = await openaiResponse.json()
-    const reply = openaiResult.choices[0].message.content
+    if (!reply) return
 
     console.log('OpenAI generated reply:', reply)
 

@@ -131,6 +131,7 @@ export const monitorTabMethods = {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ action, ...data }),
+        signal: AbortSignal.timeout(5000),
       }
     );
     const result = await response.json();

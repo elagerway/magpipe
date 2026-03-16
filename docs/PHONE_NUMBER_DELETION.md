@@ -209,4 +209,4 @@ curl -X POST https://api.magpipe.ai/functions/v1/process-scheduled-deletions \
 - **30-day hold period**: Required by SignalWire before numbers can be released
 - **Deletion is permanent**: Once deleted from SignalWire, numbers cannot be recovered
 - **Failed deletions**: Review `deletion_notes` for errors and retry manually if needed
-- **SignalWire project**: Currently using `fb9ea15e-cf87-4de2-8be2-0f619b8e956e`
+- **SignalWire project**: See `.env` for `SIGNALWIRE_PROJECT_ID`

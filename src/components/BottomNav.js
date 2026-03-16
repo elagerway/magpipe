@@ -332,10 +332,16 @@ async function fetchStatusForLed() {
 // Refresh status LED every 5 minutes
 setInterval(fetchStatusForLed, 300000);
 
-window._showStatusModal = function() {
+window._showStatusModal = async function() {
   // Remove existing modal if any
   const existing = document.getElementById('status-modal-overlay');
   if (existing) existing.remove();
+
+  // Always fetch fresh data so the modal reflects current state
+  try {
+    const res = await fetch(STATUS_API);
+    if (res.ok) cachedStatusData = await res.json();
+  } catch { /* use cached data if fetch fails */ }
 
   const categories = cachedStatusData?.categories || [];
   const overall = cachedStatusData?.overall || 'operational';
@@ -388,12 +394,12 @@ window._showStatusModal = function() {
         pointer-events: none;
       }
     </style>
-    <div class="contact-modal" onclick="event.stopPropagation()" style="max-width:480px;">
+    <div class="contact-modal" onclick="event.stopPropagation()" style="max-width:480px;max-height:none;">
       <div class="contact-modal-header">
         <h3>System Status</h3>
         <button class="close-modal-btn" onclick="document.getElementById('status-modal-overlay').style.display='none'">&times;</button>
       </div>
-      <div class="contact-modal-body scrollable">
+      <div class="contact-modal-body" style="overflow-y:visible;max-height:none;">
         <div style="display:flex;align-items:center;gap:0.4rem;padding:0.5rem 0.6rem;border-radius:6px;background:${overallColor}15;border:1px solid ${overallColor}40;margin-bottom:0.5rem;">
           <span style="width:8px;height:8px;border-radius:50%;background:${overallColor};box-shadow:0 0 6px ${overallColor};"></span>
           <span style="font-weight:600;font-size:0.8rem;color:${overallColor};">${overallLabel}</span>
@@ -519,6 +525,11 @@ function updateNavUserSection(userData) {
   const userInitials = getInitials(userData.name, userData.email);
   const userName = userData.name || 'User';
   const userEmail = userData.email || '';
+
+  // Show Admin button only for the admin account
+  if (userEmail === 'erik@snapsonic.com') {
+    document.querySelectorAll('.nav-admin-btn').forEach(btn => btn.style.display = '');
+  }
 
   userSection.innerHTML = `
     <button class="nav-user-button" id="nav-user-button" onclick="toggleUserModal(event)">
@@ -718,6 +729,12 @@ function generateNavHtml(currentPath) {
             </svg>
             <span>Chat with us</span>
           </button>
+          <button class="nav-modal-item" onclick="navigateTo('/tests'); closeUserModal();">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <span>Tests</span>
+          </button>
           <button class="nav-modal-item" onclick="closeUserModal(); window._showStatusModal();">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
@@ -734,6 +751,13 @@ function generateNavHtml(currentPath) {
 
         <div class="nav-modal-divider"></div>
 
+        <button class="nav-modal-item nav-admin-btn${currentPath === '/admin' ? ' active' : ''}" style="display: none;" onclick="navigateTo('/admin'); closeUserModal();">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+          <span>Admin</span>
+        </button>
         <button class="nav-modal-item${currentPath === '/team' ? ' active' : ''}" data-path="/team" onclick="navigateTo('/team'); closeUserModal();">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
@@ -1131,6 +1155,12 @@ export function renderBottomNav(currentPath = '/inbox') {
             </svg>
             <span>Chat with us</span>
           </button>
+          <button class="nav-modal-item" onclick="navigateTo('/tests'); closeUserModal();">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <span>Tests</span>
+          </button>
           <button class="nav-modal-item" onclick="closeUserModal(); window._showStatusModal();">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
@@ -1147,6 +1177,13 @@ export function renderBottomNav(currentPath = '/inbox') {
 
         <div class="nav-modal-divider"></div>
 
+        <button class="nav-modal-item nav-admin-btn${currentPath === '/admin' ? ' active' : ''}" style="display: none;" onclick="navigateTo('/admin'); closeUserModal();">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+          <span>Admin</span>
+        </button>
         <button class="nav-modal-item${currentPath === '/team' ? ' active' : ''}" data-path="/team" onclick="navigateTo('/team'); closeUserModal();">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>

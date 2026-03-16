@@ -466,6 +466,21 @@
         </div>
         <div id="sub-msg" class="subscribe-msg" style="display:none;"></div>
       </form>
+      <div style="margin-top: 0.75rem; text-align: center;">
+        <button type="button" onclick="toggleManage()" style="background:none;border:none;color:rgba(255,255,255,0.4);font-size:0.8rem;cursor:pointer;text-decoration:underline;padding:0;">Manage / unsubscribe</button>
+      </div>
+      <div id="manage-form" style="display:none; margin-top: 1rem;">
+        <div class="subscribe-row">
+          <input type="email" id="manage-email" placeholder="Subscribed email" style="flex:1;">
+          <button type="button" class="subscribe-btn" id="manage-btn" onclick="handleManage()">Send link</button>
+        </div>
+        <div style="text-align:center; color:rgba(255,255,255,0.35); font-size:0.75rem; margin: 0.5rem 0;">or unsubscribe by phone</div>
+        <div class="subscribe-row">
+          <input type="tel" id="manage-phone" placeholder="+1 604 555 0123" style="flex:1;">
+          <button type="button" class="subscribe-btn" id="manage-phone-btn" onclick="handleManagePhone()">Unsubscribe</button>
+        </div>
+        <div id="manage-msg" class="subscribe-msg" style="display:none;"></div>
+      </div>
     </div>
 
     <div id="status-content">
@@ -851,6 +866,69 @@
 
     function showMsg(text, type) {
       const el = document.getElementById('sub-msg');
+      el.textContent = text;
+      el.className = 'subscribe-msg ' + type;
+      el.style.display = 'block';
+    }
+
+    function toggleManage() {
+      const form = document.getElementById('manage-form');
+      form.style.display = form.style.display === 'none' ? 'block' : 'none';
+    }
+
+    async function handleManage() {
+      const btn = document.getElementById('manage-btn');
+      const msgEl = document.getElementById('manage-msg');
+      const email = document.getElementById('manage-email').value.trim();
+      if (!email) { showManageMsg('Please enter your email address.', 'error'); return; }
+
+      btn.disabled = true;
+      btn.textContent = 'Sending…';
+      msgEl.style.display = 'none';
+
+      try {
+        const res = await fetch(SUBSCRIBE_API, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'resend_unsubscribe', email }),
+        });
+        const data = await res.json();
+        showManageMsg(data.message || 'Check your email for the unsubscribe link.', 'success');
+      } catch {
+        showManageMsg('Something went wrong. Please try again.', 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Send link';
+      }
+    }
+
+    async function handleManagePhone() {
+      const btn = document.getElementById('manage-phone-btn');
+      const phone = document.getElementById('manage-phone').value.trim().replace(/[\s\-\(\)]/g, '');
+      const e164 = phone.startsWith('+') ? phone : '+1' + phone.replace(/\D/g, '');
+      if (!e164.match(/^\+[1-9]\d{6,14}$/)) { showManageMsg('Please enter a valid phone number.', 'error'); return; }
+
+      btn.disabled = true;
+      btn.textContent = 'Removing…';
+
+      try {
+        const res = await fetch(SUBSCRIBE_API, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'unsubscribe_by_phone', phone: e164 }),
+        });
+        const data = await res.json();
+        showManageMsg(data.message || 'Done.', res.ok ? 'success' : 'error');
+      } catch {
+        showManageMsg('Something went wrong. Please try again.', 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Unsubscribe';
+      }
+    }
+
+    function showManageMsg(text, type) {
+      const el = document.getElementById('manage-msg');
       el.textContent = text;
       el.className = 'subscribe-msg ' + type;
       el.style.display = 'block';

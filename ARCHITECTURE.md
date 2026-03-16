@@ -58,7 +58,7 @@
 | `/agent` | `agent.js` | Admin chat interface for AI agent | `sms_messages` | None |
 | `/agents` | `agents.js` | Multi-agent list with type-selection creation modal (5 types: inbound_voice, outbound_voice, text, email, chat_widget) | `agent_configs`, `service_numbers` | None |
 | `/agents/:id` | `agent-detail/index.js` | Agent config detail. Split into `configure-tab.js`, `prompt-tab.js`, `functions-tab.js`, `knowledge-tab.js`, `memory-tab.js`, `notifications-tab.js`, `analytics-tab.js`, `deployment-tab.js` (includes inline buy-number modal: search → select → provision without leaving the page; `refreshDeploymentTab()` re-queries DB and re-renders), `schedule-tab.js`, `modals.js`, `styles.js` | `agent_configs`, `service_numbers`, `knowledge_sources`, `dynamic_variables`, `custom_functions`, `transfer_numbers`, `notification_preferences` | `preview-voice`, `clone-voice`, `fetch-agent-avatar`, `search-phone-numbers`, `provision-phone-number` |
-| `/phone` | `phone/index.js` | Phone number management. Split into `call-handler.js`, `dialpad.js`, `number-management.js` | `service_numbers`, `external_sip_numbers`, `agent_configs` | `cancel-number-deletion`, `submit-cnam-request`, `fix-number-capabilities`, `sync-external-capabilities` |
+| `/phone` | `phone/index.js` | Phone number management with delete button, confirmation modal (warns about agent), SIP trunk cleanup. Split into `call-handler.js`, `dialpad.js`, `number-management.js` | `service_numbers`, `external_sip_numbers`, `agent_configs` | `release-phone-number`, `cancel-number-deletion`, `submit-cnam-request`, `fix-number-capabilities`, `sync-external-capabilities` |
 | `/contacts` | `contacts.js` | Contact list with CSV import | `contacts` | `contact-lookup` |
 | `/calls` | `calls.js` | Call history | `call_records` | None |
 | `/messages` | `messages.js` | SMS history | `sms_messages` | None |
@@ -67,7 +67,7 @@
 | `/analytics` | `analytics.js` | Org-wide analytics dashboard | None directly | `org-analytics` |
 | `/settings` | `settings.js` | Profile, Billing, Branding, API | `users`, `service_numbers`, `organizations`, `user_integrations` | Stripe functions, Cal.com functions, `integration-oauth-start` |
 | `/team` | `team.js` | Team member management | `organization_members`, `organizations` | `send-team-invitation` |
-| `/select-number` | `select-number.js` | Phone number purchase | `service_numbers` | `search-phone-numbers`, `provision-phone-number` |
+| `/select-number` | `select-number.js` | Phone number search & purchase. State/city autocomplete, area code search, 3-page pagination (75 numbers). Default loads US numbers. | `service_numbers` | `search-phone-numbers`, `provision-phone-number` |
 | `/manage-numbers` | `manage-numbers.js` | Number management (mobile) | `service_numbers`, `numbers_to_delete`, `agent_configs` | `queue-number-deletion`, `cancel-number-deletion`, `configure-signalwire-number`, `fix-number-capabilities` |
 | `/bulk-calling` | `bulk-calling.js` | Outbound bulk calling (legacy) | `service_numbers`, `contacts` | None (legacy) |
 | `/batch-calls` | `batch-calls.js` | Batch outbound calls — CSV upload (max 500 recipients), scheduling, concurrency (max 5), real-time status via Supabase Realtime, conference bridge calling, recurring batches (hourly/daily/weekly/monthly with parent-child model) | `batch_calls`, `batch_call_recipients`, `service_numbers`, `agent_configs` | `batch-calls`, `process-batch-calls`, `batch-call-cxml` |
@@ -204,6 +204,8 @@ Admin calls many edge functions: `admin-list-users`, `admin-get-user`, `admin-up
 #### Per-Variable Slack Channel Routing (Extracted Data)
 Dynamic variables (`dynamic_variables` table) support `send_to` JSONB with a `slack_channel` field, enabling per-variable Slack routing. When the voice agent extracts data during a call, it dispatches to `send-notification-slack` with `type: 'extracted_data'`. The edge function groups variables by their target channel and posts one consolidated message per channel. The Notifications tab in agent-detail is agent-type-aware: voice agents show "calls" checkboxes, text/chat agents show "messages" checkboxes.
 
+All Slack channel listing and resolution uses `_shared/slack-channels.ts` — a shared module with cursor-based pagination that fetches both public and private channels (`types=public_channel,private_channel`). OAuth scopes: `chat:write`, `channels:read`, `groups:read`, `users:read`. Private channels require the bot to be a member.
+
 ### Call Management
 
 | Function | Auth | Tables | External APIs | Called By |
@@ -294,13 +296,38 @@ Dynamic variables (`dynamic_variables` table) support `send_to` JSONB with a `sl
 | `knowledge-crawl-process` | Service role | `knowledge_sources`, `knowledge_chunks` | Firecrawl, Jina Reader, Microlink, OpenAI | background job. Loads `auth_headers` via join, uses JS fallback cascade |
 | `semantic-memory-search` | JWT | `conversation_contexts` | OpenAI (embeddings) | debug |
 
+### Agent Skills Framework
+
+Autonomous background skills that agents execute on schedules or in response to events (call ends, message received).
+
+**Architecture**: Dual-path execution:
+- **Scheduled skills**: `scheduled_actions` table with `action_type = 'execute_skill'` → 5-min pg_cron → `process-scheduled-actions` → `execute-skill` edge function
+- **Event-triggered skills**: Voice agent `on_call_end()` → `execute-skill` edge function directly
+
+**Tables**:
+- `skill_definitions` — catalog of 7 built-in skills (DB-stored, new skills added by inserting rows)
+- `agent_skills` — per-agent skill configuration (trigger, schedule, delivery channels, config)
+- `skill_executions` — execution log with status, delivery receipts, errors
+
+**Handler architecture**: Each skill has a handler module in `_shared/skill-handlers/` exporting `execute(context)`. The `execute-skill` edge function loads the handler by `skill_definitions.handler_id`.
+
+| Function | Auth | Tables | External APIs | Called By |
+|----------|------|--------|---------------|----------|
+| `execute-skill` | Service role / JWT (dry_run) | `agent_skills`, `skill_definitions`, `skill_executions`, `agent_configs` | Varies by handler (Serper, Cal.com, HubSpot) | cron, voice agent, SMS webhook, frontend (dry_run) |
+
+**Built-in skills**: Post-Call Follow-Up, Appointment Reminder, Competitor Monitoring, Daily News Digest, Auto-CRM Update, Social Media Monitoring, Review Request Campaign
+
+**Delivery**: Reuses existing `send-notification-email/sms/slack` edge functions. Each delivery channel is independent — failure in one doesn't block others.
+
+**UI**: Skills tab on agent detail page (`src/pages/agent-detail/skills-tab.js`) — catalog cards with toggle + configure modal + execution history table.
+
 ### Phone Number Management
 
 | Function | Auth | Tables | External APIs | Called By |
 |----------|------|--------|---------------|----------|
 | `search-phone-numbers` | JWT / API key | None | SignalWire | select-number page, deployment tab (inline modal), API |
-| `provision-phone-number` | JWT / API key | `service_numbers`, `users`, `monthly_billing_log` | SignalWire | select-number page, deployment tab (inline modal, auto-assigns `agent_id`), API |
-| `release-phone-number` | JWT / API key | `service_numbers`, `numbers_to_delete` | None | number management, API |
+| `provision-phone-number` | JWT / API key | `service_numbers` | SignalWire, LiveKit SIP | select-number page, deployment tab (passes `agent_id`), API. Defaults to system agent if no `agent_id`. Auto-registers with LiveKit SIP trunk via `updateSipInboundTrunkFields`. |
+| `release-phone-number` | JWT / API key | `service_numbers` | SignalWire, LiveKit SIP | number management, API. Removes from SIP trunk. Renames to `(RELEASE)` in SignalWire if within 30-day cutoff. |
 | `queue-number-deletion` | JWT | `numbers_to_delete` | None | number release |
 | `cancel-number-deletion` | JWT | `numbers_to_delete` | None | deletion management |
 | `process-scheduled-deletions` | Cron | `numbers_to_delete`, `service_numbers` | SignalWire | cron job |
@@ -386,6 +413,7 @@ Dynamic variables (`dynamic_variables` table) support `send_to` JSONB with a `sl
 |----------|------|--------|---------------|----------|
 | `process-referral` | JWT | `users`, `referral_rewards` | None | signup page |
 | `_shared/balance-check.ts` | — | `users` | — | Shared helper used by call/SMS functions |
+| `_shared/slack-channels.ts` | — | — | Slack API | Shared: `fetchAllSlackChannels` (paginated, public+private), `resolveSlackChannelId`. Used by `send-notification-slack`, `admin-agent-chat`, `admin-send-notification`, `admin-notifications-api`, `execute-semantic-action`, `mcp-execute/slack`, `webhook-call-status`, `sip-call-status`, `signalwire-status-webhook`, `webhook-inbound-sms` |
 
 ---
 
@@ -551,3 +579,21 @@ Dynamic variables (`dynamic_variables` table) support `send_to` JSONB with a `sl
 | Edge Functions | Supabase Cloud | `npx supabase functions deploy <name>` | `{SUPABASE_URL}/functions/v1/<name>` |
 | Voice Agent | Render | Push to `master` | Auto-connects to LiveKit Cloud |
 | Database | Supabase Cloud | SQL via Management API | `{SUPABASE_URL}/rest/v1/` |
+
+---
+
+## Credential Management
+
+All Supabase keys are read from environment variables — never hardcoded in source.
+
+| Context | Pattern | Example |
+|---------|---------|---------|
+| Vite frontend (`src/`) | `import.meta.env.VITE_*` | `import.meta.env.VITE_SUPABASE_ANON_KEY` |
+| Test HTML files (root) | `import.meta.env.VITE_*` (served by Vite) | Same as frontend |
+| Node.js scripts/tests | `dotenv.config()` + `process.env.*` | `process.env.VITE_SUPABASE_ANON_KEY` |
+| Playwright `page.evaluate()` | Pass key as parameter from Node scope | `page.evaluate(({ anonKey }) => ..., { anonKey: ANON_KEY })` |
+| Shell scripts | `source .env` + `$VAR` | `$VITE_SUPABASE_ANON_KEY` |
+| SQL migrations (pg_cron) | Placeholder with comment | `YOUR_SUPABASE_ANON_KEY` — replace when applying |
+| CDN widget (`public/widget/`) | Hardcoded anon key (intentional) | Client-side safe, no build step |
+
+**Key env vars:** `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_URL` — see `.env.example`.

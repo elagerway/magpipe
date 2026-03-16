@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { reportError } from '../_shared/error-reporter.ts'
 
 const CONFIG_ID = '00000000-0000-0000-0000-000000000001'
 
@@ -59,6 +60,13 @@ Deno.serve(async (req) => {
     if (new Date(integration.token_expires_at) < new Date()) {
       accessToken = await refreshGoogleToken(supabase, integration)
       if (!accessToken) {
+        await reportError(supabase, {
+          error_type: 'gmail_token_expired',
+          error_message: 'Failed to refresh Google OAuth token — Gmail polling is stopped until reconnected',
+          source: 'supabase',
+          severity: 'error',
+          metadata: { function_name: 'poll-gmail-tickets', integration_id: integration.id },
+        })
         return jsonResponse({ error: 'Failed to refresh Google token' }, 500)
       }
     }

@@ -322,6 +322,19 @@ export const modalsMethods = {
         return prompt;
       }
 
+      case 'whatsapp': {
+        let prompt = identityPrefix;
+        prompt += `You handle WhatsApp conversations.\n\n`;
+        prompt += `Guidelines:\n`;
+        prompt += `- Keep responses concise and conversational (1-3 sentences)\n`;
+        prompt += `- Use a warm, friendly tone suitable for WhatsApp\n`;
+        prompt += `- You can use basic WhatsApp formatting: *bold*, _italic_\n`;
+        prompt += `- Ask for the contact's name if unknown\n`;
+        if (owner) prompt += `- Offer to connect them with ${owner} for complex matters\n`;
+        prompt += `- Never share sensitive information via messaging`;
+        return prompt;
+      }
+
       default:
         return identityPrefix;
     }

@@ -1,4 +1,4 @@
-import { addSource, addManualSource, deleteSource, listSources } from '../../services/knowledgeService.js';
+import { addSource, addManualSource, deleteSource, listSources, getCrawlStatus } from '../../services/knowledgeService.js';
 import { showToast } from '../../lib/toast.js';
 
 export const knowledgeTabMethods = {
@@ -125,6 +125,17 @@ export const knowledgeTabMethods = {
             </svg>
           </button>
         </div>
+        ${kb.sync_status === 'syncing' && kb.crawl_mode && kb.crawl_mode !== 'single' ? `
+        <div class="kb-crawl-progress" data-kb-progress="${kb.id}">
+          <div class="kb-progress-header" style="display:flex;justify-content:space-between;font-size:0.8rem;color:var(--text-secondary);margin-bottom:4px;">
+            <span>Crawling...</span>
+            <span class="kb-progress-count"></span>
+          </div>
+          <div class="nav-plan-progress" style="margin-bottom:0;">
+            <div class="nav-plan-progress-bar" style="width:0%"></div>
+          </div>
+        </div>
+        ` : ''}
         `).join('')}
       </div>
     `;
@@ -217,6 +228,9 @@ export const knowledgeTabMethods = {
 
     // Attach remove button listeners for selected KBs
     this.attachKBRemoveListeners();
+
+    // Start polling for any active crawls
+    this.startCrawlPolling();
   },
 
   updateKBSelectorButton() {
@@ -231,6 +245,7 @@ export const knowledgeTabMethods = {
   },
 
   updateSelectedKBsList() {
+    this.stopCrawlPolling();
     const existingList = document.querySelector('.kb-selected-list');
     if (existingList) existingList.remove();
 
@@ -240,6 +255,7 @@ export const knowledgeTabMethods = {
       if (formGroup) {
         formGroup.insertAdjacentHTML('afterend', kbsHtml);
         this.attachKBRemoveListeners();
+        this.startCrawlPolling();
       }
     }
   },
@@ -459,8 +475,28 @@ export const knowledgeTabMethods = {
         let result;
 
         if (activeTab === 'url') {
-          const url = document.getElementById('kb-url-input').value.trim();
+          let url = document.getElementById('kb-url-input').value.trim();
           if (!url) throw new Error('Please enter a URL.');
+
+          // Ensure URL has protocol
+          if (!/^https?:\/\//i.test(url)) {
+            url = 'https://' + url;
+          }
+
+          // Check for redirects before adding — catches www vs non-www issues
+          try {
+            const checkRes = await fetch(url, { method: 'HEAD', redirect: 'follow', signal: AbortSignal.timeout(8000) });
+            const finalUrl = checkRes.url;
+            if (finalUrl && finalUrl !== url && new URL(finalUrl).hostname !== new URL(url).hostname) {
+              // Different host — update to the redirect target
+              url = finalUrl;
+              const urlInput = document.getElementById('kb-url-input');
+              urlInput.value = url;
+              showToast(`URL redirected to ${new URL(url).hostname} — using that instead.`, 'info');
+            }
+          } catch {
+            // HEAD check failed — let the edge function handle it
+          }
 
           const crawlMode = crawlModeSelect.value;
           const syncPeriod = document.getElementById('kb-sync-period').value;
@@ -511,6 +547,7 @@ export const knowledgeTabMethods = {
           chunk_count: result.chunkCount ?? result.chunk_count ?? 0,
           crawl_mode: result.crawlMode || 'single',
           status: result.status,
+          sync_status: result.crawlMode && result.crawlMode !== 'single' ? 'syncing' : 'synced',
         });
 
         this.agent.knowledge_source_ids = [...(this.agent.knowledge_source_ids || []), result.id];
@@ -518,7 +555,11 @@ export const knowledgeTabMethods = {
         this._refreshKBDropdown();
 
         close();
-        showToast('Knowledge base created and connected to agent.', 'success');
+        if (result.crawlMode && result.crawlMode !== 'single' && result.pagesDiscovered > 0) {
+          showToast(`Knowledge base created — crawling ${result.pagesDiscovered} page${result.pagesDiscovered > 1 ? 's' : ''}. This may take a few minutes.`, 'success');
+        } else {
+          showToast('Knowledge base created and connected to agent.', 'success');
+        }
 
       } catch (err) {
         errorDiv.textContent = err.message || 'Something went wrong. Please try again.';
@@ -658,6 +699,77 @@ export const knowledgeTabMethods = {
   },
 
   // ─── Dropdown Refresh ───────────────────────────────────────────────────────
+
+  // ─── Crawl Progress Polling ──────────────────────────────────────────────────
+
+  startCrawlPolling() {
+    this.stopCrawlPolling();
+
+    const progressEls = document.querySelectorAll('[data-kb-progress]');
+    if (progressEls.length === 0) return;
+
+    // Initial fetch
+    this._updateCrawlProgress();
+
+    this._crawlPollInterval = setInterval(() => this._updateCrawlProgress(), 5000);
+  },
+
+  stopCrawlPolling() {
+    if (this._crawlPollInterval) {
+      clearInterval(this._crawlPollInterval);
+      this._crawlPollInterval = null;
+    }
+  },
+
+  async _updateCrawlProgress() {
+    const progressEls = document.querySelectorAll('[data-kb-progress]');
+    if (progressEls.length === 0) {
+      this.stopCrawlPolling();
+      return;
+    }
+
+    let anyStillSyncing = false;
+
+    for (const el of progressEls) {
+      const sourceId = el.dataset.kbProgress;
+      try {
+        const status = await getCrawlStatus(sourceId);
+        if (!status) continue;
+
+        const pct = status.pagesDiscovered > 0
+          ? Math.round((status.pagesCrawled / status.pagesDiscovered) * 100)
+          : 0;
+
+        const countEl = el.querySelector('.kb-progress-count');
+        const barEl = el.querySelector('.nav-plan-progress-bar');
+        const headerLabel = el.querySelector('.kb-progress-header span:first-child');
+
+        if (countEl) countEl.textContent = `${status.pagesCrawled} / ${status.pagesDiscovered} pages`;
+        if (barEl) barEl.style.width = `${pct}%`;
+
+        if (status.status === 'completed' || status.status === 'failed') {
+          if (headerLabel) headerLabel.textContent = status.status === 'completed' ? 'Complete' : 'Failed';
+          // Update local data so progress bar won't re-render after refresh
+          const localKb = this.knowledgeSources.find(k => k.id === sourceId);
+          if (localKb) localKb.sync_status = status.status === 'completed' ? 'synced' : 'failed';
+        } else {
+          anyStillSyncing = true;
+        }
+      } catch (err) {
+        console.error('Crawl status error:', err);
+      }
+    }
+
+    if (!anyStillSyncing) {
+      this.stopCrawlPolling();
+      // Refresh sources to get updated chunk counts
+      try {
+        const freshSources = await listSources();
+        this.knowledgeSources = freshSources;
+        this._refreshKBDropdown();
+      } catch { /* ignore */ }
+    }
+  },
 
   _refreshKBDropdown() {
     const kbModal = document.getElementById('kb-selector-modal');

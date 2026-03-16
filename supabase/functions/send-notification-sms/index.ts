@@ -1,16 +1,21 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { getSenderNumber, isOptedOut, isUSNumber, CANADA_SENDER_NUMBER } from '../_shared/sms-compliance.ts'
+import { reportError } from '../_shared/error-reporter.ts'
+import { buildSmsBody } from '../_shared/build-notification-body.ts'
+import { handleCors, corsHeaders } from '../_shared/cors.ts'
 
 Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return handleCors()
+
   try {
-    const { userId, agentId, type, data } = await req.json()
+    const { userId, agentId, type, data, content_config: reqContentConfig } = await req.json()
 
     console.log('SMS notification request:', { userId, type, agentId })
 
     if (!userId || !type) {
       return new Response(JSON.stringify({ error: 'Missing required fields' }), {
         status: 400,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
 
@@ -20,6 +25,10 @@ Deno.serve(async (req) => {
     const signalwireApiToken = Deno.env.get('SIGNALWIRE_API_TOKEN')!
     const signalwireSpaceUrl = Deno.env.get('SIGNALWIRE_SPACE_URL')!
     const supabase = createClient(supabaseUrl, supabaseKey)
+
+    // Get user's timezone for local time formatting
+    const { data: userRecord } = await supabase.from('users').select('timezone').eq('id', userId).maybeSingle()
+    const userTimezone = userRecord?.timezone || 'UTC'
 
     // Get user's notification preferences (per-agent first, fallback to user-level)
     let prefs = null
@@ -42,92 +51,124 @@ Deno.serve(async (req) => {
       prefs = userPrefs
     }
 
-    if (!prefs || !prefs.sms_enabled) {
-      console.log('SMS notifications not enabled for user:', userId)
-      return new Response(JSON.stringify({ message: 'Notifications not enabled' }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' }
-      })
-    }
+    // Skill executions bypass notification prefs — they have their own consent flow
+    // and send to the contact's phone, not the owner's notification phone
+    const isSkillExecution = type === 'skill_execution'
 
-    // Check if this notification type is enabled
-    let typeEnabled = false
+    if (!isSkillExecution) {
+      if (!prefs || !prefs.sms_enabled) {
+        console.log('SMS notifications not enabled for user:', userId)
+        return new Response(JSON.stringify({ message: 'Notifications not enabled' }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        })
+      }
 
-    if (type === 'completed_call') {
-      // For completed calls, check if "inbound calls" or "all calls" is enabled
-      typeEnabled = prefs.sms_inbound_calls || prefs.sms_all_calls
-    } else if (type === 'missed_call') {
-      // For missed calls, only send if "all calls" is enabled (not for "inbound calls" only)
-      typeEnabled = prefs.sms_all_calls
-    } else if (type === 'new_message') {
-      // For inbound messages, check if "inbound messages" or "all messages" is enabled
-      typeEnabled = prefs.sms_inbound_messages || prefs.sms_all_messages
-    } else if (type === 'outbound_message') {
-      // For outbound messages, only send if "all messages" is enabled
-      typeEnabled = prefs.sms_all_messages
-    }
+      // Check if this notification type is enabled
+      let typeEnabled = false
 
-    if (!typeEnabled) {
-      console.log(`SMS notifications for ${type} not enabled for user:`, userId)
-      return new Response(JSON.stringify({ message: 'Notification type not enabled' }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' }
-      })
+      if (type === 'completed_call') {
+        typeEnabled = prefs.sms_inbound_calls || prefs.sms_all_calls
+      } else if (type === 'missed_call') {
+        typeEnabled = prefs.sms_all_calls
+      } else if (type === 'new_message') {
+        typeEnabled = prefs.sms_inbound_messages || prefs.sms_all_messages
+      } else if (type === 'outbound_message') {
+        typeEnabled = prefs.sms_all_messages
+      }
+
+      if (!typeEnabled) {
+        console.log(`SMS notifications for ${type} not enabled for user:`, userId)
+        return new Response(JSON.stringify({ message: 'Notification type not enabled' }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        })
+      }
     }
 
     // Generate notification ID for tracking
     const notificationId = crypto.randomUUID()
 
     // Only add STOP opt-out text for US destinations (10DLC compliance)
-    const recipientIsUS = await isUSNumber(prefs.sms_phone_number, supabase)
+    // skill_execution uses data.recipientPhone; regular notifications use prefs.sms_phone_number
+    const phoneForUsCheck = isSkillExecution ? data.recipientPhone : prefs?.sms_phone_number
+    const recipientIsUS = await isUSNumber(phoneForUsCheck, supabase)
     const optOutSuffix = recipientIsUS ? '\n\nSTOP to opt out' : ''
+
+    // Resolve content_config: per-request override → prefs.content_config.sms
+    const contentConfig = reqContentConfig || prefs?.content_config?.sms || null
 
     // Build SMS content based on notification type
     let smsBody = ''
 
-    switch (type) {
-      case 'missed_call':
-        smsBody = `Missed call from ${data.callerNumber || 'Unknown'} at ${new Date(data.timestamp).toLocaleString()}\n\nNotification ID: ${notificationId}${optOutSuffix}`
-        break
+    // Try content_config first (for call notification types)
+    if (contentConfig && type !== 'skill_execution') {
+      const customBody = buildSmsBody(data, contentConfig, notificationId, optOutSuffix)
+      if (customBody !== null) {
+        smsBody = customBody
+      }
+    }
 
-      case 'completed_call':
-        smsBody = `Call ${data.successful ? 'completed' : 'ended'} with ${data.callerNumber || 'Unknown'} at ${new Date(data.timestamp).toLocaleString()}${data.duration ? ` (${data.duration}s)` : ''}\n\nNotification ID: ${notificationId}${optOutSuffix}`
-        break
+    if (!smsBody) {
+      switch (type) {
+        case 'missed_call':
+          smsBody = `Missed call from ${data.callerNumber || 'Unknown'} at ${new Date(data.timestamp).toLocaleString('en-US', { timeZone: userTimezone })}\n\nNotification ID: ${notificationId}${optOutSuffix}`
+          break
 
-      case 'new_message':
-        smsBody = `New message from ${data.senderNumber || 'Unknown'}: ${data.content}\n\nNotification ID: ${notificationId}${optOutSuffix}`
-        break
+        case 'completed_call':
+          smsBody = `Call ${data.successful ? 'completed' : 'ended'} with ${data.callerNumber || 'Unknown'} at ${new Date(data.timestamp).toLocaleString('en-US', { timeZone: userTimezone })}${data.duration ? ` (${data.duration}s)` : ''}${data.recordingUrl ? `\nRecording: ${data.recordingUrl}` : ''}\n\nNotification ID: ${notificationId}${optOutSuffix}`
+          break
 
-      case 'outbound_message':
-        smsBody = `Message sent to ${data.recipientNumber || 'Unknown'}: ${data.content}\n\nNotification ID: ${notificationId}${optOutSuffix}`
-        break
+        case 'new_message':
+          smsBody = `New message from ${data.senderNumber || 'Unknown'}: ${data.content}\n\nNotification ID: ${notificationId}${optOutSuffix}`
+          break
 
-      default:
-        return new Response(JSON.stringify({ error: 'Invalid notification type' }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
-        })
+        case 'outbound_message':
+          smsBody = `Message sent to ${data.recipientNumber || 'Unknown'}: ${data.content}\n\nNotification ID: ${notificationId}${optOutSuffix}`
+          break
+
+        case 'skill_execution':
+          smsBody = `${data.message}${optOutSuffix}`
+          break
+
+        default:
+          return new Response(JSON.stringify({ error: 'Invalid notification type' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          })
+      }
+    }
+
+    // For skill executions, send to the contact's phone (data.recipientPhone)
+    // For regular notifications, send to the owner's notification phone (prefs.sms_phone_number)
+    const recipientPhone = isSkillExecution ? data.recipientPhone : prefs.sms_phone_number
+
+    if (!recipientPhone) {
+      return new Response(JSON.stringify({ error: 'No recipient phone number' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
     }
 
     // Check if recipient has opted out (USA SMS compliance)
-    const hasOptedOut = await isOptedOut(supabase, prefs.sms_phone_number)
+    const hasOptedOut = await isOptedOut(supabase, recipientPhone)
 
     if (hasOptedOut) {
-      console.log('Recipient has opted out:', prefs.sms_phone_number)
+      console.log('Recipient has opted out:', recipientPhone)
       return new Response(JSON.stringify({ message: 'Recipient has opted out' }), {
         status: 200,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
 
     // Use dedicated notification sender numbers based on recipient country
     // Canadian/international → +16042431596, US → +14152518686
-    const fromNumber = await getSenderNumber(prefs.sms_phone_number, CANADA_SENDER_NUMBER, supabase)
+    const fromNumber = await getSenderNumber(recipientPhone, CANADA_SENDER_NUMBER, supabase)
 
     // Send SMS via SignalWire
     const smsData = new URLSearchParams({
       From: fromNumber,
-      To: prefs.sms_phone_number,
+      To: recipientPhone,
       Body: smsBody,
     })
 
@@ -160,14 +201,16 @@ Deno.serve(async (req) => {
 
     return new Response(JSON.stringify({ success: true, notificationId: notificationId, signalwireSid: smsResult.sid }), {
       status: 200,
-      headers: { 'Content-Type': 'application/json' }
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
 
   } catch (error) {
     console.error('Error in send-notification-sms:', error)
+    const _sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+    await reportError(_sb, { error_type: 'edge_function_error', error_message: String(error.message || error), error_code: 'send-notification-sms:outer', source: 'supabase' })
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
-      headers: { 'Content-Type': 'application/json' }
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
   }
 })

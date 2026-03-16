@@ -1,7 +1,9 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { RoomServiceClient } from 'npm:livekit-server-sdk@2.14.0'
 import { resolveUser } from "../_shared/api-auth.ts";
 import { checkBalance } from "../_shared/balance-check.ts";
 import { corsHeaders, handleCors } from '../_shared/cors.ts'
+import { reportError } from '../_shared/error-reporter.ts'
 
 Deno.serve(async (req) => {
   // Handle CORS preflight
@@ -22,7 +24,18 @@ Deno.serve(async (req) => {
     );
 
     const body = await req.json();
-    const { phone_number, caller_id, purpose, goal, template_id, user_id: bodyUserId } = body;
+    const {
+      phone_number,
+      caller_id,
+      purpose,
+      goal,
+      template_id,
+      user_id: bodyUserId,
+      dynamic_variables,
+      agent_id: bodyAgentId,
+      outbound_system_prompt,
+      metadata: bodyMetadata,
+    } = body;
 
     // Resolve user: standard auth OR internal service-to-service call with user_id in body
     let user = await resolveUser(req, supabaseClient);
@@ -70,15 +83,6 @@ Deno.serve(async (req) => {
 
     const signalwireAuth = btoa(`${signalwireProjectId}:${signalwireToken}`);
 
-    console.log("Initiating outbound call:", {
-      to: phone_number,
-      from: caller_id,
-      user_id: user.id,
-      purpose: purpose || null,
-      goal: goal || null,
-      template_id: template_id || null,
-    });
-
     // Create service role client for database operations
     const serviceRoleClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
@@ -95,10 +99,56 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Resolve effective agent: body agent_id takes priority over service_numbers assignment
+    let effectiveAgentId: string | null = null;
+    let recordingEnabled = true;
+
+    if (bodyAgentId) {
+      // Validate the agent exists and belongs to this user
+      const { data: agentCheck } = await serviceRoleClient
+        .from("agent_configs")
+        .select("id, recording_enabled")
+        .eq("id", bodyAgentId)
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (agentCheck) {
+        effectiveAgentId = agentCheck.id;
+        recordingEnabled = agentCheck.recording_enabled !== false;
+      }
+    }
+
+    if (!effectiveAgentId) {
+      // Fall back to service_numbers assignment
+      const { data: svcNum } = await serviceRoleClient
+        .from("service_numbers")
+        .select("agent_id, outbound_agent_id")
+        .eq("phone_number", caller_id)
+        .maybeSingle();
+      const assignedAgentId = svcNum?.outbound_agent_id || svcNum?.agent_id || null;
+      if (assignedAgentId) {
+        effectiveAgentId = assignedAgentId;
+        const { data: agentCfg } = await serviceRoleClient
+          .from("agent_configs")
+          .select("recording_enabled")
+          .eq("id", assignedAgentId)
+          .single();
+        if (agentCfg) recordingEnabled = agentCfg.recording_enabled !== false;
+      }
+    }
+
+    if (!effectiveAgentId) {
+      return new Response(
+        JSON.stringify({ error: { code: "no_agent_assigned", message: "Associate a number in agent deployment to use this agent" } }),
+        { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     console.log("Initiating bridged call:", {
       callerNumber: caller_id,
       pstnDestination: phone_number,
       userId: user.id,
+      agentId: effectiveAgentId,
+      hasSystemPromptOverride: !!outbound_system_prompt,
     });
 
     // CRITICAL: Create call record FIRST so agent can find direction when it joins
@@ -122,6 +172,15 @@ Deno.serve(async (req) => {
         call_purpose: purpose || null,
         call_goal: goal || null,
         template_id: template_id || null,
+        // Per-call variable substitutions for {{variable}} placeholders in system prompt
+        call_variables: dynamic_variables && Object.keys(dynamic_variables).length > 0 ? dynamic_variables : null,
+        // Agent and metadata from request body
+        agent_id: effectiveAgentId,
+        // Merge outbound_system_prompt into metadata so agent.py can read it as a fallback
+        // (in case LiveKit room metadata isn't visible when agent connects)
+        metadata: outbound_system_prompt
+          ? { ...(bodyMetadata || {}), _system_prompt_override: outbound_system_prompt }
+          : bodyMetadata || null,
       })
       .select()
       .single();
@@ -139,21 +198,8 @@ Deno.serve(async (req) => {
 
     console.log("Call record created FIRST:", callRecord.id);
 
-    // Create call via SignalWire REST API
-    // Step 1: Call LiveKit SIP URI first
-    // Step 2: CXML will bridge to PSTN destination after LiveKit answers
-    // CRITICAL: Pass direction=outbound and user_id so agent can identify the call correctly
-    // Also pass purpose/goal for agent context
-    let cxmlUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/outbound-call-swml?destination=${encodeURIComponent(phone_number)}&from=${encodeURIComponent(caller_id)}&direction=outbound&user_id=${encodeURIComponent(user.id)}`;
-    if (purpose) {
-      cxmlUrl += `&purpose=${encodeURIComponent(purpose)}`;
-    }
-    if (goal) {
-      cxmlUrl += `&goal=${encodeURIComponent(goal)}`;
-    }
-
-    // LiveKit SIP URI (agent will auto-join)
-    // Use the allowed number in LiveKit trunk: +16282954811
+    // Conference bridge: fire agent SIP + PSTN legs simultaneously
+    // Both join the same named conference — no <Dial><Number> bridging needed
     const livekitSipDomain = Deno.env.get("LIVEKIT_SIP_DOMAIN");
     if (!livekitSipDomain) {
       console.error('LIVEKIT_SIP_DOMAIN not configured');
@@ -166,20 +212,75 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Use a known working number from LiveKit trunk (works for inbound)
-    const livekitNumber = '+16042566768';
-    const livekitSipUri = `sip:${livekitNumber}@${livekitSipDomain};transport=tls`;
-    console.log('Calling LiveKit SIP URI:', livekitSipUri);
-    console.log('From caller ID:', caller_id);
-    console.log('Will bridge to PSTN:', phone_number);
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const confName = `outbound-${callRecord.id}`;
+    const livekitSipUri = `sip:${caller_id}@${livekitSipDomain};transport=tls`;
+    const swCallUrl = `https://${signalwireSpaceUrl}/api/laml/2010-04-01/Accounts/${signalwireProjectId}/Calls.json`;
+    const swHeaders = { Authorization: `Basic ${signalwireAuth}`, "Content-Type": "application/x-www-form-urlencoded" };
 
-    // CRITICAL: SignalWire requires + signs to be URL-encoded as %2B
-    const formBody = [
-      `To=${encodeURIComponent(livekitSipUri)}`, // Call LiveKit with allowed number
-      `From=${encodeURIComponent(caller_id)}`, // From selected caller ID (will show on destination phone)
-      `Url=${encodeURIComponent(cxmlUrl)}`, // CXML will dial PSTN after LiveKit answers
+    // Create LiveKit room with metadata so agent.py fast path works correctly.
+    // Without this, agent.py resolves the agent via service_numbers lookup (slow path),
+    // which ignores the body agent_id and outbound_system_prompt entirely.
+    try {
+      const livekitUrl = Deno.env.get("LIVEKIT_URL");
+      const livekitApiKey = Deno.env.get("LIVEKIT_API_KEY");
+      const livekitApiSecret = Deno.env.get("LIVEKIT_API_SECRET");
+      if (livekitUrl && livekitApiKey && livekitApiSecret) {
+        const roomClient = new RoomServiceClient(livekitUrl, livekitApiKey, livekitApiSecret);
+        const roomMeta: Record<string, string> = {
+          user_id: user.id,
+          agent_id: effectiveAgentId,
+          direction: "outbound",
+          contact_phone: phone_number,
+          service_number: caller_id,
+        };
+        if (outbound_system_prompt) roomMeta.system_prompt_override = outbound_system_prompt;
+        await roomClient.createRoom({
+          name: confName,
+          emptyTimeout: 600,
+          maxParticipants: 10,
+          metadata: JSON.stringify(roomMeta),
+        });
+        console.log("✅ LiveKit room created with metadata:", confName);
+      }
+    } catch (roomErr) {
+      // If caller supplied body agent_id or outbound_system_prompt, room creation is required —
+      // the slow path would ignore both. Return 500 so the caller knows the override didn't take.
+      // For plain service_numbers calls (no overrides), the slow path is an acceptable fallback.
+      if (bodyAgentId || outbound_system_prompt) {
+        console.error("❌ Room pre-creation failed and body overrides are in use:", roomErr);
+        await serviceRoleClient.from("call_records").update({
+          status: "completed", disposition: "failed", ended_at: new Date().toISOString(),
+        }).eq("id", callRecord.id);
+        return new Response(
+          JSON.stringify({ error: "Failed to configure call agent", details: String(roomErr) }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      console.warn("⚠️ Failed to pre-create LiveKit room (agent will use slow path):", roomErr);
+    }
+
+    console.log('LiveKit SIP URI:', livekitSipUri);
+    console.log('PSTN destination:', phone_number);
+    console.log('Conference name:', confName);
+
+    // Leg 1: Agent SIP → LiveKit (joins conference)
+    const agentCxmlUrl = `${supabaseUrl}/functions/v1/batch-call-cxml?leg=agent&conf=${encodeURIComponent(confName)}`;
+    const agentFormBody = [
+      `To=${encodeURIComponent(livekitSipUri)}`,
+      `From=${encodeURIComponent(caller_id)}`,
+      `Url=${encodeURIComponent(agentCxmlUrl)}`,
       `Method=POST`,
-      `StatusCallback=${encodeURIComponent(`${Deno.env.get("SUPABASE_URL")}/functions/v1/outbound-call-status`)}`,
+    ].join("&");
+
+    // Leg 2: PSTN destination (joins same conference, ends it on hangup)
+    const pstnCxmlUrl = `${supabaseUrl}/functions/v1/batch-call-cxml?leg=pstn&conf=${encodeURIComponent(confName)}&call_record_id=${callRecord.id}&recording=${recordingEnabled ? '1' : '0'}`;
+    const pstnFormBody = [
+      `To=${encodeURIComponent(phone_number)}`,
+      `From=${encodeURIComponent(caller_id)}`,
+      `Url=${encodeURIComponent(pstnCxmlUrl)}`,
+      `Method=POST`,
+      `StatusCallback=${encodeURIComponent(`${supabaseUrl}/functions/v1/outbound-call-status`)}`,
       `StatusCallbackEvent=initiated`,
       `StatusCallbackEvent=ringing`,
       `StatusCallbackEvent=answered`,
@@ -187,56 +288,59 @@ Deno.serve(async (req) => {
       `StatusCallbackMethod=POST`,
     ].join("&");
 
-    console.log("Form body:", formBody);
+    // Fire LiveKit leg first so agent is connecting while PSTN rings
+    console.log("Firing agent SIP leg first...");
+    const agentCallResp = await fetch(swCallUrl, { method: "POST", headers: swHeaders, body: agentFormBody });
+    const agentCallData = await agentCallResp.json();
 
-    const callResponse = await fetch(
-      `https://${signalwireSpaceUrl}/api/laml/2010-04-01/Accounts/${signalwireProjectId}/Calls.json`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Basic ${signalwireAuth}`,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: formBody,
-      }
-    );
-
-    if (!callResponse.ok) {
-      const errorText = await callResponse.text();
-      console.error("Failed to create call:", errorText);
+    if (!agentCallResp.ok || !agentCallData.sid) {
+      console.error("Agent SIP leg failed:", agentCallData);
+      await serviceRoleClient.from("call_records").update({
+        status: "completed", disposition: "failed", ended_at: new Date().toISOString(),
+      }).eq("id", callRecord.id);
       return new Response(
-        JSON.stringify({ error: "Failed to create call", details: errorText }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        JSON.stringify({ error: "Failed to start agent SIP leg", details: agentCallData.message || agentCallData }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+    console.log("Agent SIP leg started:", agentCallData.sid, "— now firing PSTN leg");
 
-    const callData = await callResponse.json();
-    console.log("Call created successfully:", callData);
+    console.log("Firing PSTN leg...");
+    const pstnCallResp = await fetch(swCallUrl, { method: "POST", headers: swHeaders, body: pstnFormBody });
+    const pstnCallData = await pstnCallResp.json();
 
-    // Update call record with SignalWire call SID
+    if (!pstnCallResp.ok || !pstnCallData.sid) {
+      console.error("PSTN leg failed:", pstnCallData);
+      await serviceRoleClient.from("call_records").update({
+        status: "completed", disposition: "failed", ended_at: new Date().toISOString(),
+      }).eq("id", callRecord.id);
+      return new Response(
+        JSON.stringify({ error: "Failed to start PSTN leg", details: pstnCallData.message || pstnCallData }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    console.log("PSTN leg started:", pstnCallData.sid);
+
+    // Update call record with PSTN call SID
     const { error: updateError } = await serviceRoleClient
       .from("call_records")
       .update({
-        vendor_call_id: callData.sid,
-        call_sid: callData.sid, // Legacy column
+        vendor_call_id: pstnCallData.sid,
+        call_sid: pstnCallData.sid,
       })
       .eq("id", callRecord.id);
 
     if (updateError) {
       console.error("Error updating call record with SID:", updateError);
-    } else {
-      console.log("Call record updated with SID:", callData.sid);
     }
 
     return new Response(
       JSON.stringify({
         success: true,
-        call_sid: callData.sid,
+        call_sid: pstnCallData.sid,
+        agent_call_sid: agentCallData.sid,
         call_record_id: callRecord?.id,
-        status: callData.status,
+        status: pstnCallData.status,
       }),
       {
         status: 200,
@@ -245,6 +349,8 @@ Deno.serve(async (req) => {
     );
   } catch (error) {
     console.error("Error in initiate-bridged-call:", error);
+    const _sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!)
+    await reportError(_sb, { error_type: 'edge_function_error', error_message: String(error.message || error), error_code: 'initiate-bridged-call:outer', source: 'supabase' })
     return new Response(
       JSON.stringify({ error: error.message }),
       {

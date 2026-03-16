@@ -45,54 +45,6 @@ export default class HomePage {
   async render() {
     const appElement = document.getElementById('app');
 
-    // Fetch recent blog posts for "From the Blog" section
-    const { data: recentPosts } = await supabase
-      .from('blog_posts')
-      .select('slug, title, excerpt, published_at, tags')
-      .eq('status', 'published')
-      .order('published_at', { ascending: false })
-      .limit(3);
-
-    const blogPreviewHtml = (() => {
-      if (!recentPosts || recentPosts.length === 0) return '';
-      const esc = (str) => {
-        if (!str) return '';
-        const d = document.createElement('div');
-        d.textContent = str;
-        return d.innerHTML;
-      };
-      const cards = recentPosts.map(post => {
-        const tag = esc(post.tags?.[0] || '');
-        const title = esc(post.title);
-        const excerpt = post.excerpt ? esc(post.excerpt) : '';
-        const date = post.published_at
-          ? new Date(post.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-          : '';
-        const slug = (post.slug || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-        return `
-          <article class="bp-card" onclick="navigateTo('/blog/${slug}')">
-            ${tag ? `<div class="bp-card-tag">${tag}</div>` : ''}
-            <h3>${title}</h3>
-            ${excerpt ? `<p>${excerpt}</p>` : ''}
-            ${date ? `<span class="bp-card-date">${date}</span>` : ''}
-          </article>
-        `;
-      }).join('');
-      return `
-        <section class="blog-preview-section">
-          <div class="blog-preview-inner">
-            <div class="blog-preview-header">
-              <h2>From the Blog</h2>
-              <a href="/blog" onclick="event.preventDefault(); navigateTo('/blog');">View all posts &rarr;</a>
-            </div>
-            <div class="blog-preview-grid">
-              ${cards}
-            </div>
-          </div>
-        </section>
-      `;
-    })();
-
     injectSEO({
       title: 'Magpipe — AI Voice, Email & SMS for Business',
       description: 'AI-powered communications platform that handles calls, texts, and emails 24/7. Smart call handling, intelligent SMS, email AI, and more.',
@@ -332,7 +284,7 @@ export default class HomePage {
           </div>
         </section>
 
-        ${blogPreviewHtml}
+        <div id="blog-preview-placeholder"></div>
 
         <!-- CTA Section -->
         <section class="landing-cta">
@@ -1149,6 +1101,68 @@ export default class HomePage {
     `;
 
     this.attachEventListeners();
+
+    // Load blog posts async — non-blocking so they never delay page render
+    this.loadBlogPreview();
+  }
+
+  async loadBlogPreview() {
+    try {
+      const { data: recentPosts } = await Promise.race([
+        supabase
+          .from('blog_posts')
+          .select('slug, title, excerpt, published_at, tags')
+          .eq('status', 'published')
+          .order('published_at', { ascending: false })
+          .limit(3),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
+      ]);
+
+      if (!recentPosts || recentPosts.length === 0) return;
+
+      const esc = (str) => {
+        if (!str) return '';
+        const d = document.createElement('div');
+        d.textContent = str;
+        return d.innerHTML;
+      };
+      const cards = recentPosts.map(post => {
+        const tag = esc(post.tags?.[0] || '');
+        const title = esc(post.title);
+        const excerpt = post.excerpt ? esc(post.excerpt) : '';
+        const date = post.published_at
+          ? new Date(post.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+          : '';
+        const slug = (post.slug || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+        return `
+          <article class="bp-card" onclick="navigateTo('/blog/${slug}')">
+            ${tag ? `<div class="bp-card-tag">${tag}</div>` : ''}
+            <h3>${title}</h3>
+            ${excerpt ? `<p>${excerpt}</p>` : ''}
+            ${date ? `<span class="bp-card-date">${date}</span>` : ''}
+          </article>
+        `;
+      }).join('');
+
+      const placeholder = document.getElementById('blog-preview-placeholder');
+      if (placeholder) {
+        placeholder.outerHTML = `
+          <section class="blog-preview-section">
+            <div class="blog-preview-inner">
+              <div class="blog-preview-header">
+                <h2>From the Blog</h2>
+                <a href="/blog" onclick="event.preventDefault(); navigateTo('/blog');">View all posts &rarr;</a>
+              </div>
+              <div class="blog-preview-grid">
+                ${cards}
+              </div>
+            </div>
+          </section>
+        `;
+      }
+    } catch {
+      // Blog posts failed or timed out — page already rendered, just skip the section
+    }
   }
 
   cleanup() {

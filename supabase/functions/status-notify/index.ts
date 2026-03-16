@@ -53,14 +53,18 @@ Deno.serve(async (req) => {
     // 2. Load cached state
     const { data: cachedRows } = await supabase
       .from('status_state_cache')
-      .select('category, status, detail')
+      .select('category, status, detail, confirmed')
 
-    const cache: Record<string, { status: string; detail?: string }> = {}
+    const cache: Record<string, { status: string; detail?: string; confirmed: boolean }> = {}
     for (const row of cachedRows || []) {
-      cache[row.category] = { status: row.status, detail: row.detail }
+      cache[row.category] = { status: row.status, detail: row.detail, confirmed: row.confirmed ?? true }
     }
 
     // 3. Detect transitions
+    // Flap dampening: degraded/down transitions require 2 consecutive bad checks before notifying.
+    // First bad check: update cache, set confirmed=false (no notification yet).
+    // Second bad check (still bad, confirmed=false): set confirmed=true and notify.
+    // Recovery to operational: notify immediately only if we previously confirmed+notified degraded.
     const transitions: Transition[] = []
     for (const cat of categories) {
       const prev = cache[cat.name]
@@ -70,22 +74,53 @@ Deno.serve(async (req) => {
           category: cat.name,
           status: cat.status,
           detail: cat.detail || null,
+          confirmed: true,
           updated_at: new Date().toISOString(),
         })
         continue
       }
+
       if (prev.status !== cat.status) {
+        if (cat.status === 'operational') {
+          // Recovery: only notify if we previously confirmed a degraded/down alert
+          if (prev.confirmed) {
+            transitions.push({
+              category: cat.name,
+              oldStatus: prev.status,
+              newStatus: cat.status,
+              detail: cat.detail,
+            })
+          }
+          await supabase.from('status_state_cache').upsert({
+            category: cat.name,
+            status: cat.status,
+            detail: cat.detail || null,
+            confirmed: true,
+            updated_at: new Date().toISOString(),
+          })
+        } else {
+          // Going degraded/down: first occurrence — update cache but don't notify yet
+          await supabase.from('status_state_cache').upsert({
+            category: cat.name,
+            status: cat.status,
+            detail: cat.detail || null,
+            confirmed: false,
+            updated_at: new Date().toISOString(),
+          })
+        }
+      } else if (prev.status === cat.status && !prev.confirmed && cat.status !== 'operational') {
+        // Still degraded/down after first unconfirmed check — now confirm and notify
         transitions.push({
           category: cat.name,
-          oldStatus: prev.status,
+          oldStatus: 'operational', // effectively: was OK before the flap started
           newStatus: cat.status,
           detail: cat.detail,
         })
-        // Update cache
         await supabase.from('status_state_cache').upsert({
           category: cat.name,
           status: cat.status,
           detail: cat.detail || null,
+          confirmed: true,
           updated_at: new Date().toISOString(),
         })
       }

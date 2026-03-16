@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { encodeBase64Url as base64UrlEncode } from 'jsr:@std/encoding@1/base64url';
 import { corsHeaders, handleCors } from '../_shared/cors.ts'
+import { API_URL } from '../_shared/config.ts'
 
 // Generate PKCE code verifier (43-128 chars, URL-safe)
 function generateCodeVerifier(): string {
@@ -76,8 +77,9 @@ Deno.serve(async (req) => {
 
     // Special handling for Cal.com - redirect to existing function
     if (provider === 'cal_com') {
-      // Redirect to existing cal-com-oauth-start for backward compatibility
-      const response = await fetch(`${supabaseUrl}/functions/v1/cal-com-oauth-start`, {
+      const calUrl = new URL(`${supabaseUrl}/functions/v1/cal-com-oauth-start`);
+      if (redirect_path) calUrl.searchParams.set('returnUrl', redirect_path);
+      const response = await fetch(calUrl.toString(), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -164,7 +166,7 @@ Deno.serve(async (req) => {
     });
 
     // Build OAuth URL
-    const redirectUri = `${Deno.env.get('SUPABASE_URL')}/functions/v1/integration-oauth-callback`;
+    const redirectUri = `${API_URL}/functions/v1/integration-oauth-callback`;
     const scopes = oauthConfig.scopes?.join(' ') || '';
 
     const oauthUrl = new URL(oauthConfig.auth_url);

@@ -23,9 +23,9 @@ Check that the agent deployed successfully:
 # This needs to be done via LiveKit CLI or API
 
 livekit-cli sip create-trunk \
-  --url wss://plug-bq7kgzpt.livekit.cloud \
-  --api-key APIJrWftyj6qS8w \
-  --api-secret 9oafeK3kiHb8vAN0rlJrnmsCPpgQqLFhfekBAmfr6pzH \
+  --url wss://<your-livekit-subdomain>.livekit.cloud \
+  --api-key <your_livekit_api_key> \
+  --api-secret <your_livekit_api_secret> \
   --name "SignalWire Inbound" \
   --inbound-addresses "erik.signalwire.com"
 ```

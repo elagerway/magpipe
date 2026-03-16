@@ -39,6 +39,82 @@ function addAgentsPageStyles() {
       }
     }
 
+    /* Search / sort / filter toolbar */
+    .agents-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+      flex-wrap: wrap;
+    }
+
+    .agents-search-wrap {
+      position: relative;
+      flex: 1;
+      min-width: 180px;
+    }
+
+    .agents-search-icon {
+      position: absolute;
+      left: 0.65rem;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-secondary);
+      pointer-events: none;
+    }
+
+    .agents-search {
+      width: 100%;
+      padding: 0.5rem 0.75rem 0.5rem 2.1rem;
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md, 8px);
+      font-size: 0.875rem;
+      background: white;
+      color: var(--text-primary);
+      outline: none;
+      box-sizing: border-box;
+    }
+
+    .agents-search:focus {
+      border-color: var(--primary-color);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    }
+
+    .agents-toolbar-right {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .agents-select {
+      padding: 0.5rem 0.65rem;
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md, 8px);
+      font-size: 0.875rem;
+      background: white;
+      color: var(--text-primary);
+      cursor: pointer;
+      outline: none;
+    }
+
+    .agents-select:focus {
+      border-color: var(--primary-color);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    }
+
+    @media (max-width: 600px) {
+      .agents-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .agents-toolbar-right {
+        justify-content: stretch;
+      }
+      .agents-select {
+        flex: 1;
+      }
+    }
+
     /* Modal styles */
     .voice-modal-overlay {
       position: fixed;
@@ -159,6 +235,10 @@ export default class AgentsPage {
     this.agents = [];
     this.serviceNumbers = [];
     this.userId = null;
+    this._searchQuery = '';
+    this._sortBy = 'name_asc';
+    this._filterType = 'all';
+    this._filterStatus = 'all';
   }
 
   async render() {
@@ -203,6 +283,41 @@ export default class AgentsPage {
           </button>
         </div>
 
+        ${this.agents.length > 0 ? `
+        <div class="agents-toolbar">
+          <div class="agents-search-wrap">
+            <svg class="agents-search-icon" width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <circle cx="11" cy="11" r="8"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35"/>
+            </svg>
+            <input id="agents-search" class="agents-search" type="search" placeholder="Search agents…" value="" autocomplete="off" />
+          </div>
+          <div class="agents-toolbar-right">
+            <select id="agents-filter-type" class="agents-select">
+              <option value="all">All types</option>
+              <option value="inbound_voice">Inbound Voice</option>
+              <option value="outbound_voice">Outbound Voice</option>
+              <option value="text">Text / SMS</option>
+              <option value="chat_widget">Chat Widget</option>
+              <option value="email">Email</option>
+              <option value="whatsapp">WhatsApp</option>
+            </select>
+            <select id="agents-filter-status" class="agents-select">
+              <option value="all">Any status</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+            <select id="agents-sort" class="agents-select">
+              <option value="name_asc">Name A–Z</option>
+              <option value="updated_desc">Recently edited</option>
+              <option value="updated_asc">Least recently edited</option>
+              <option value="name_desc">Name Z–A</option>
+              <option value="created_desc">Newest</option>
+              <option value="created_asc">Oldest</option>
+            </select>
+          </div>
+        </div>
+        ` : ''}
+
         <div id="agents-container">
           ${this.agents.length === 0
             ? this.renderEmptyState()
@@ -246,14 +361,60 @@ export default class AgentsPage {
     `;
   }
 
+  getFilteredSortedAgents() {
+    let list = [...this.agents];
+
+    // Search
+    const q = this._searchQuery.trim().toLowerCase();
+    if (q) {
+      list = list.filter(a => (a.name || '').toLowerCase().includes(q) || (a.id || '').toLowerCase().includes(q));
+    }
+
+    // Filter by type
+    if (this._filterType !== 'all') {
+      list = list.filter(a => a.agent_type === this._filterType);
+    }
+
+    // Filter by status
+    if (this._filterStatus === 'active') {
+      list = list.filter(a => a.is_active !== false);
+    } else if (this._filterStatus === 'inactive') {
+      list = list.filter(a => a.is_active === false);
+    }
+
+    // Sort
+    list.sort((a, b) => {
+      switch (this._sortBy) {
+        case 'name_asc':  return (a.name || '').localeCompare(b.name || '');
+        case 'name_desc': return (b.name || '').localeCompare(a.name || '');
+        case 'created_asc':  return new Date(a.created_at) - new Date(b.created_at);
+        case 'created_desc': return new Date(b.created_at) - new Date(a.created_at);
+        case 'updated_asc':  return new Date(a.updated_at) - new Date(b.updated_at);
+        case 'updated_desc':
+        default:             return new Date(b.updated_at) - new Date(a.updated_at);
+      }
+    });
+
+    return list;
+  }
+
   renderAgentCards() {
     const grid = document.getElementById('agents-grid');
     if (!grid) return;
 
+    const visible = this.getFilteredSortedAgents();
+
     grid.innerHTML = '';
 
-    // Add existing agent cards
-    this.agents.forEach(agent => {
+    if (visible.length === 0) {
+      grid.innerHTML = `
+        <div style="grid-column: 1 / -1; text-align: center; padding: 3rem 1rem; color: var(--text-secondary);">
+          No agents match your search.
+        </div>`;
+      return;
+    }
+
+    visible.forEach(agent => {
       const card = createAgentCard(agent, {
         onOpen: (agentId) => this.openAgent(agentId),
         onDelete: (agentId) => this.deleteAgent(agentId),
@@ -261,9 +422,6 @@ export default class AgentsPage {
       });
       grid.appendChild(card);
     });
-
-    // Note: "Create New Agent" tile removed - use "+ New Agent" button in header instead
-    // Empty state already shows "Create Your First Agent" when no agents exist
   }
 
   attachEventListeners() {
@@ -277,6 +435,42 @@ export default class AgentsPage {
     const createFirstBtn = document.getElementById('create-first-agent-btn');
     if (createFirstBtn) {
       createFirstBtn.addEventListener('click', () => this.showCreateAgentModal());
+    }
+
+    // Search
+    const searchInput = document.getElementById('agents-search');
+    if (searchInput) {
+      searchInput.addEventListener('input', (e) => {
+        this._searchQuery = e.target.value;
+        this.renderAgentCards();
+      });
+    }
+
+    // Filter: type
+    const filterType = document.getElementById('agents-filter-type');
+    if (filterType) {
+      filterType.addEventListener('change', (e) => {
+        this._filterType = e.target.value;
+        this.renderAgentCards();
+      });
+    }
+
+    // Filter: status
+    const filterStatus = document.getElementById('agents-filter-status');
+    if (filterStatus) {
+      filterStatus.addEventListener('change', (e) => {
+        this._filterStatus = e.target.value;
+        this.renderAgentCards();
+      });
+    }
+
+    // Sort
+    const sortSelect = document.getElementById('agents-sort');
+    if (sortSelect) {
+      sortSelect.addEventListener('change', (e) => {
+        this._sortBy = e.target.value;
+        this.renderAgentCards();
+      });
     }
   }
 
@@ -325,6 +519,14 @@ export default class AgentsPage {
         icon: '<svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a2 2 0 01-2-2v-1M13 6V4a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l4-4h2a2 2 0 002-2V6z"/></svg>',
         color: '#4338ca',
         bg: '#e0e7ff',
+      },
+      {
+        type: 'whatsapp',
+        title: 'WhatsApp',
+        description: 'Handle WhatsApp conversations',
+        icon: '<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>',
+        color: '#15803d',
+        bg: '#dcfce7',
       },
     ];
 

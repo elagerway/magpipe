@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head><title>Connecting...</title></head>
+<body>
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code');
+  const error = params.get('error');
+  if (window.opener) {
+    window.opener.postMessage(
+      { type: 'MAGPIPE_WA_CALLBACK', code, error },
+      window.location.origin
+    );
+    window.close();
+  } else {
+    document.body.innerText = error ? 'Connection failed: ' + error : 'Connected! You may close this window.';
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,64 @@
+---
+title: "List Skill Definitions"
+api: "GET /manage-skills/definitions"
+description: "List all available skills in the catalog"
+---
+
+Retrieve the full catalog of available skill definitions. These are the built-in skills that can be enabled for any agent.
+
+## Response
+
+<ResponseField name="skills" type="array">
+  Array of skill definition objects.
+
+  <Expandable title="Skill Definition">
+    <ResponseField name="id" type="string">Unique skill definition ID (UUID)</ResponseField>
+    <ResponseField name="slug" type="string">URL-safe identifier (e.g. `social_media_monitoring`)</ResponseField>
+    <ResponseField name="name" type="string">Display name</ResponseField>
+    <ResponseField name="description" type="string">What the skill does</ResponseField>
+    <ResponseField name="category" type="string">Category: `sales`, `operations`, `research`, or `marketing`</ResponseField>
+    <ResponseField name="icon" type="string">Lucide icon name</ResponseField>
+    <ResponseField name="supported_triggers" type="array">Trigger types: `event`, `schedule`</ResponseField>
+    <ResponseField name="supported_events" type="array">Event types that trigger this skill (e.g. `call_ends`)</ResponseField>
+    <ResponseField name="supported_channels" type="array">Delivery channels: `sms`, `email`, `slack`, `voice_call`</ResponseField>
+    <ResponseField name="required_integrations" type="array">Required integrations (e.g. `cal_com`, `hubspot`)</ResponseField>
+    <ResponseField name="config_schema" type="object">JSON Schema for skill configuration</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl https://api.magpipe.ai/functions/v1/manage-skills/definitions \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+</RequestExample>
+
+<ResponseExample>
+```json
+{
+  "skills": [
+    {
+      "id": "a1b2c3d4-...",
+      "slug": "social_media_monitoring",
+      "name": "Social Media Monitoring",
+      "description": "Track brand mentions across Reddit, Hacker News, X, LinkedIn, and Google.",
+      "category": "marketing",
+      "icon": "share-2",
+      "supported_triggers": ["schedule"],
+      "supported_events": [],
+      "supported_channels": ["slack", "email"],
+      "required_integrations": [],
+      "config_schema": {
+        "type": "object",
+        "required": ["keywords"],
+        "properties": {
+          "keywords": { "type": "array", "title": "Keywords to track", "maxItems": 10 },
+          "platforms": { "type": "array", "default": ["reddit", "hackernews", "google"] },
+          "digest_format": { "type": "string", "default": "summary" }
+        }
+      }
+    }
+  ]
+}
+```
+</ResponseExample>

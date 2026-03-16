@@ -20,6 +20,8 @@ import { directoriesTabMethods } from './directories-tab.js';
 import { reviewsTabMethods } from './reviews-tab.js';
 import { monitorTabMethods } from './monitor-tab.js';
 import { marketingTabMethods } from './marketing-tab.js';
+import { numbersTabMethods } from './numbers-tab.js';
+import { testsTabMethods } from './tests-tab.js';
 import { stylesMethods } from './styles.js';
 
 class AdminPage {
@@ -45,12 +47,18 @@ class AdminPage {
       return;
     }
 
-    // Check if user has admin role
-    const { data: profile } = await supabase
-      .from('users')
-      .select('role')
-      .eq('id', user.id)
-      .single();
+    // Check if user has admin role (timeout prevents infinite loading)
+    let profile = null;
+    try {
+      const result = await Promise.race([
+        supabase.from('users').select('role').eq('id', user.id).single(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
+      ]);
+      profile = result.data;
+    } catch {
+      navigateTo('/inbox');
+      return;
+    }
 
     if (!profile || (profile.role !== 'admin' && profile.role !== 'support' && profile.role !== 'god')) {
       navigateTo('/inbox');
@@ -79,6 +87,7 @@ class AdminPage {
         { id: 'notifications', label: 'Notifications', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>' },
         { id: 'marketing', label: 'Marketing', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>' },
         { id: 'batches', label: 'Batches', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>' },
+        { id: 'tests', label: 'Tests', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>' },
       ],
       activeTab: 'support',
       onTabChange: (tabId) => this.switchTab(tabId),
@@ -100,6 +109,7 @@ class AdminPage {
           <div id="admin-pane-support" class="admin-tab-pane"></div>
           <div id="admin-pane-notifications" class="admin-tab-pane"></div>
           <div id="admin-pane-marketing" class="admin-tab-pane"></div>
+          <div id="admin-pane-tests" class="admin-tab-pane"></div>
         </div>
       </div>
     `;
@@ -111,7 +121,7 @@ class AdminPage {
     // Check URL params for tab auto-switch (e.g. post-OAuth redirect)
     const urlParams = new URLSearchParams(window.location.search);
     const tabParam = urlParams.get('tab');
-    const validTabs = ['analytics', 'kpi', 'support', 'notifications', 'marketing', 'batches'];
+    const validTabs = ['analytics', 'kpi', 'support', 'notifications', 'marketing', 'batches', 'tests'];
     // Redirect old bookmarks (blog/directories/reviews/monitor → marketing subtab)
     // Redirect old bookmarks to their new parent tabs
     const legacyMarketingSubtabs = { blog: 'blog', directories: 'directories', reviews: 'reviews', monitor: 'monitor' };
@@ -257,6 +267,7 @@ class AdminPage {
         else if (tabName === 'support') await this.renderSupportTab();
         else if (tabName === 'notifications') await this.renderNotificationsTab();
         else if (tabName === 'marketing') await this.renderMarketingTab();
+        else if (tabName === 'tests') await this.renderTestsTab();
       } finally {
         // Always restore IDs, even if render threw
         const inner = document.getElementById('admin-tab-content');
@@ -288,6 +299,8 @@ Object.assign(AdminPage.prototype,
   reviewsTabMethods,
   monitorTabMethods,
   marketingTabMethods,
+  numbersTabMethods,
+  testsTabMethods,
   stylesMethods,
 );
 

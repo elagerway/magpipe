@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { setupGmailWatch } from '../_shared/gmail-helpers.ts';
+import { API_URL } from '../_shared/config.ts';
 
 // Environment variable mapping for provider credentials
 const PROVIDER_CREDENTIALS: Record<string, { clientIdEnv: string; clientSecretEnv: string }> = {
@@ -109,7 +110,7 @@ Deno.serve(async (req) => {
     }
 
     // Build token request
-    const redirectUri = `${Deno.env.get('SUPABASE_URL')}/functions/v1/integration-oauth-callback`;
+    const redirectUri = `${API_URL}/functions/v1/integration-oauth-callback`;
 
     const tokenParams: Record<string, string> = {
       grant_type: 'authorization_code',
@@ -148,6 +149,7 @@ Deno.serve(async (req) => {
     // Extract external user/workspace ID based on provider
     let externalUserId = null;
     let externalWorkspaceId = null;
+    let hubspotMeta: { hub_domain?: string; user_email?: string } | null = null;
 
     if (provider === 'slack') {
       // Slack returns team info and authed_user in token response
@@ -157,7 +159,7 @@ Deno.serve(async (req) => {
       // HubSpot returns hub_id in the token response
       externalWorkspaceId = tokens.hub_id?.toString() || null;
 
-      // Fetch user info to get user ID
+      // Fetch user info to get user ID, portal name, and email
       if (tokens.access_token) {
         try {
           const userInfoResponse = await fetch('https://api.hubapi.com/oauth/v1/access-tokens/' + tokens.access_token);
@@ -165,6 +167,7 @@ Deno.serve(async (req) => {
             const userInfo = await userInfoResponse.json();
             externalUserId = userInfo.user_id?.toString() || null;
             externalWorkspaceId = userInfo.hub_id?.toString() || externalWorkspaceId;
+            hubspotMeta = { hub_domain: userInfo.hub_domain, user_email: userInfo.user };
           }
         } catch (e) {
           console.error('Failed to fetch HubSpot user info:', e);
@@ -220,10 +223,14 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Build config object (store gmail_address for easy access from frontend)
+    // Build config object (store provider-specific info for frontend display)
     const integrationConfig: Record<string, unknown> = {};
     if (provider === 'google_email' && externalUserId) {
       integrationConfig.gmail_address = externalUserId; // externalUserId is the email address for Google
+    }
+    if (provider === 'hubspot' && hubspotMeta) {
+      if (hubspotMeta.hub_domain) integrationConfig.hub_domain = hubspotMeta.hub_domain;
+      if (hubspotMeta.user_email) integrationConfig.user_email = hubspotMeta.user_email;
     }
 
     // Store tokens in user_integrations table

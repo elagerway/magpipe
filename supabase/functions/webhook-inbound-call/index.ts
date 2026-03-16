@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { checkBalance } from '../_shared/balance-check.ts'
 import { corsHeaders, handleCors } from '../_shared/cors.ts'
+import { reportError } from '../_shared/error-reporter.ts'
 
 // This webhook is called by SignalWire, which doesn't send auth headers
 // We handle auth by validating the phone number exists in our database
@@ -170,6 +171,71 @@ Deno.serve(async (req) => {
 
     console.log('Using agent:', agentConfig.id, agentConfig.name || 'Unnamed')
 
+    // ── Call Whitelist: auto-forward whitelisted callers ──────────────────
+    const { data: whitelistEntry } = await supabase
+      .from('call_whitelist')
+      .select('forward_to, label')
+      .eq('agent_id', agentConfig.id)
+      .eq('caller_number', from)
+      .maybeSingle()
+
+    const E164_RE = /^\+[1-9]\d{7,14}$/;
+    if (!whitelistEntry && !E164_RE.test(from)) {
+      console.warn(`Whitelist: from number '${from}' is not E.164 — lookup may have missed a whitelist entry`)
+    }
+    if (whitelistEntry && E164_RE.test(whitelistEntry.forward_to)) {
+      console.log(`Whitelist match: forwarding ${from} → ${whitelistEntry.forward_to} (${whitelistEntry.label || 'unlabeled'})`)
+
+      const fnBase = `${supabaseUrl}/functions/v1`
+
+      // Create call record for the forwarded call
+      const { data: callRecord, error: callRecordError } = await supabase
+        .from('call_records')
+        .insert({
+          user_id: serviceNumber.user_id,
+          agent_id: agentConfig.id,
+          caller_number: from,
+          contact_phone: from,
+          service_number: to,
+          vendor_call_id: callSid,
+          call_sid: callSid,
+          telephony_vendor: 'signalwire',
+          direction: 'inbound',
+          status: 'in-progress',
+          disposition: 'forwarding',
+          started_at: new Date().toISOString(),
+        })
+        .select('id')
+        .single()
+
+      if (callRecordError) {
+        console.error('whitelist: failed to create call record:', callRecordError)
+      }
+
+      // Auto-enrich contact (fire and forget)
+      if (callRecord) {
+        autoEnrichContact(serviceNumber.user_id, from, supabase)
+          .catch(err => console.error('Auto-enrich error:', err))
+      }
+
+      const recordingCb = callRecord?.id
+        ? `${fnBase}/sip-recording-callback?call_record_id=${callRecord.id}&label=main`
+        : `${fnBase}/sip-recording-callback?label=main`
+      const actionUrl = callRecord?.id
+        ? `${fnBase}/whitelist-call-complete?call_record_id=${callRecord.id}`
+        : `${fnBase}/whitelist-call-complete`
+
+      const response = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Dial record="record-from-answer" recordingStatusCallback="${recordingCb}" action="${actionUrl}">
+    <Number>${whitelistEntry.forward_to}</Number>
+  </Dial>
+</Response>`
+
+      return new Response(response, { headers: { 'Content-Type': 'text/xml' }, status: 200 })
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
     // Route to LiveKit voice AI stack
     console.log('=== ROUTING TO LIVEKIT ===')
 
@@ -183,7 +249,7 @@ Deno.serve(async (req) => {
     console.log('Dialing SIP URI:', sipUri)
 
     // Log the call to database with agent_id
-    const { error: insertError } = await supabase
+    const { data: callRecord, error: insertError } = await supabase
       .from('call_records')
       .insert({
         user_id: serviceNumber.user_id,
@@ -201,6 +267,8 @@ Deno.serve(async (req) => {
         disposition: 'answered_by_pat',
         started_at: new Date().toISOString(),
       })
+      .select('id')
+      .single()
 
     if (insertError) {
       console.error('Error logging call:', insertError)
@@ -208,16 +276,41 @@ Deno.serve(async (req) => {
       // Auto-enrich contact if not exists (fire and forget)
       autoEnrichContact(serviceNumber.user_id, from, supabase)
         .catch(err => console.error('Auto-enrich error:', err))
+
+      // If this is a test call, link it to the pending test run immediately
+      if (callRecord?.id) {
+        const { data: configRow } = await supabase
+          .from('test_framework_config').select('test_phone_number').eq('id', 1).single()
+        if (configRow?.test_phone_number && from === configRow.test_phone_number) {
+          // Find the most recent running test_run targeting this agent, not yet linked
+          const { data: linkedRun } = await supabase
+            .from('test_runs')
+            .select('id, test_cases!inner(agent_id)')
+            .eq('status', 'running')
+            .is('call_record_id', null)
+            .eq('test_cases.agent_id', agentConfig.id)
+            .order('started_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+          if (linkedRun) {
+            await supabase.from('test_runs').update({ call_record_id: callRecord.id }).eq('id', linkedRun.id)
+            await supabase.from('call_records').update({ test_run_id: linkedRun.id }).eq('id', callRecord.id)
+            console.log(`Linked test run ${linkedRun.id} to call record ${callRecord.id} on inbound`)
+          }
+        }
+      }
     }
 
     // Return TwiML to connect to LiveKit via SIP
-    // SignalWire records the call
-    const supabaseFunctionsUrl = supabaseUrl.replace('.supabase.co', '.supabase.co/functions/v1')
-    const recordingCallback = `${supabaseFunctionsUrl}/sip-recording-callback?label=main`
+    const supabaseFunctionsUrl = `${supabaseUrl}/functions/v1`
+    const recordingEnabled = agentConfig?.recording_enabled !== false // default true
+    const recordingAttrs = recordingEnabled
+      ? `record="record-from-ringing" recordingStatusCallback="${supabaseFunctionsUrl}/sip-recording-callback?label=main"`
+      : ''
 
     const response = `<?xml version="1.0" encoding="UTF-8"?>
     <Response>
-      <Dial record="record-from-ringing" recordingStatusCallback="${recordingCallback}">
+      <Dial ${recordingAttrs}>
         <Sip>${sipUri}</Sip>
       </Dial>
     </Response>`
@@ -228,6 +321,8 @@ Deno.serve(async (req) => {
     })
   } catch (error) {
     console.error('Error in webhook-inbound-call:', error)
+    const _sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+    await reportError(_sb, { error_type: 'edge_function_error', error_message: String(error.message || error), error_code: 'webhook-inbound-call:outer', source: 'supabase' })
 
     // Return error TwiML
     return new Response(

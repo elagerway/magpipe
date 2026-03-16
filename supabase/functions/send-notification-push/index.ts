@@ -7,6 +7,7 @@
  */
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { handleCors, corsHeaders } from '../_shared/cors.ts'
 
 // Web Push requires crypto operations
 const encoder = new TextEncoder()
@@ -244,13 +245,15 @@ async function sendSimplePush(
 }
 
 Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return handleCors()
+
   try {
     const { userId, agentId, type, title, body, data } = await req.json() as NotificationPayload & { agentId?: string }
 
     if (!userId || !type) {
       return new Response(JSON.stringify({ error: 'Missing required fields: userId, type' }), {
         status: 400,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
 
@@ -264,7 +267,7 @@ Deno.serve(async (req) => {
       console.error('VAPID keys not configured')
       return new Response(JSON.stringify({ error: 'Push notifications not configured' }), {
         status: 500,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
 
@@ -295,7 +298,7 @@ Deno.serve(async (req) => {
       console.log('Push notifications not enabled for user:', userId)
       return new Response(JSON.stringify({ message: 'Push notifications not enabled' }), {
         status: 200,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
 
@@ -316,7 +319,7 @@ Deno.serve(async (req) => {
       console.log(`Push notifications for ${type} not enabled for user:`, userId)
       return new Response(JSON.stringify({ message: 'Notification type not enabled' }), {
         status: 200,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
 
@@ -330,7 +333,7 @@ Deno.serve(async (req) => {
       console.log('No push subscriptions found for user:', userId)
       return new Response(JSON.stringify({ message: 'No push subscriptions' }), {
         status: 200,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
 
@@ -440,14 +443,14 @@ Deno.serve(async (req) => {
       expired: results.expired,
     }), {
       status: 200,
-      headers: { 'Content-Type': 'application/json' }
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
 
   } catch (error) {
     console.error('Error in send-notification-push:', error)
     return new Response(JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }), {
       status: 500,
-      headers: { 'Content-Type': 'application/json' }
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
   }
 })

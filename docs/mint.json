@@ -80,8 +80,12 @@
         "features/team-management",
         "features/white-labeling",
         "features/billing",
+        "features/whatsapp",
+        "features/agent-skills",
+        "features/call-whitelist",
         "features/scheduled-actions",
         "features/batch-calling",
+        "features/testing",
         "features/webhooks",
         "features/status-page",
         "features/settings"
@@ -155,6 +159,26 @@
       ]
     },
     {
+      "group": "Call Whitelist",
+      "pages": [
+        "api-reference/endpoints/list-whitelist-entries",
+        "api-reference/endpoints/add-whitelist-entry",
+        "api-reference/endpoints/delete-whitelist-entry"
+      ]
+    },
+    {
+      "group": "Skills",
+      "pages": [
+        "api-reference/endpoints/list-skill-definitions",
+        "api-reference/endpoints/list-agent-skills",
+        "api-reference/endpoints/enable-skill",
+        "api-reference/endpoints/update-skill",
+        "api-reference/endpoints/delete-skill",
+        "api-reference/endpoints/execute-skill",
+        "api-reference/endpoints/list-skill-executions"
+      ]
+    },
+    {
       "group": "Batch Calls",
       "pages": [
         "api-reference/endpoints/create-batch",
@@ -164,9 +188,21 @@
       ]
     },
     {
+      "group": "Testing",
+      "pages": [
+        "api-reference/endpoints/list-test-suites",
+        "api-reference/endpoints/create-test-suite",
+        "api-reference/endpoints/create-test-case",
+        "api-reference/endpoints/run-test-case",
+        "api-reference/endpoints/list-test-runs"
+      ]
+    },
+    {
       "group": "Messages",
       "pages": [
         "api-reference/endpoints/send-sms",
+        "api-reference/endpoints/send-whatsapp-message",
+        "api-reference/endpoints/send-whatsapp-template",
         "api-reference/endpoints/get-message",
         "api-reference/endpoints/list-messages"
       ]

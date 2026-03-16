@@ -49,23 +49,6 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Check plan limits for phone numbers
-    const { data: phoneNumberCheck } = await supabase.rpc('check_phone_number_limit', {
-      p_user_id: user.id
-    })
-
-    if (phoneNumberCheck && !phoneNumberCheck.can_add_more) {
-      return new Response(
-        JSON.stringify({
-          error: 'Phone number limit reached',
-          message: `Your ${phoneNumberCheck.plan} plan allows ${phoneNumberCheck.limit} phone number(s). Please upgrade to Pro for unlimited numbers.`,
-          current: phoneNumberCheck.current_count,
-          limit: phoneNumberCheck.limit
-        }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
     console.log('Provisioning number:', phoneNumber, 'for user:', user.id)
 
     const webhookBaseUrl = `${supabaseUrl}/functions/v1`
@@ -166,21 +149,19 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Determine agent to assign: explicit > user's default > system agent
+    // Only assign agent if explicitly provided (e.g. from agent deploy tab)
+    // Otherwise use system agent — user assigns via Phone management page
     const SYSTEM_AGENT_ID = '00000000-0000-0000-0000-000000000002'
-    let assignAgentId = body.agent_id
-    if (!assignAgentId) {
-      // Look up user's default agent so new numbers work immediately
-      const { data: defaultAgent } = await supabase
-        .from('agent_configs')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('is_default', true)
-        .limit(1)
-        .single()
-      assignAgentId = defaultAgent?.id || SYSTEM_AGENT_ID
-      console.log('Auto-assigned agent:', assignAgentId, defaultAgent ? '(user default)' : '(system agent)')
-    }
+    const assignAgentId = body.agent_id || SYSTEM_AGENT_ID
+    const agentType = body.agent_type || 'inbound_voice'
+
+    // Resolve which column to assign the agent to based on agent type
+    const agentInsertFields: Record<string, string> =
+      agentType === 'text'
+        ? { text_agent_id: assignAgentId, agent_id: SYSTEM_AGENT_ID }
+        : agentType === 'outbound_voice'
+        ? { outbound_agent_id: assignAgentId, agent_id: SYSTEM_AGENT_ID }
+        : { agent_id: assignAgentId }
 
     // Step 3: Save the service number to service_numbers table
     const { error: insertError } = await supabase
@@ -191,8 +172,8 @@ Deno.serve(async (req) => {
         phone_sid: phoneSid,
         friendly_name: body.friendly_name || `Magpipe - ${user.email}`,
         is_active: true,
-        agent_id: assignAgentId,
         capabilities: normalizedCapabilities,
+        ...agentInsertFields,
       })
 
     if (insertError) {

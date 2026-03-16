@@ -164,6 +164,7 @@ class InboxPage {
         const messageThreadEl = document.getElementById('message-thread');
         if (messageThreadEl) {
           messageThreadEl.innerHTML = this.renderMessageThread();
+          this.attachMessageInputListeners();
         }
       }
     } else {
@@ -195,6 +196,13 @@ class InboxPage {
       }
     };
     document.addEventListener('visibilitychange', this._visibilityHandler);
+
+    // Poll for new messages in the active conversation (fallback when Realtime is broken)
+    this._pollInterval = setInterval(async () => {
+      if (!this.selectedContact || document.hidden || !this.userId) return;
+      await this.loadConversations(this.userId);
+      this.lastFetchTime = Date.now();
+    }, 5000);
 
     // Expose showCallInterface globally for phone nav button
     window.showDialpad = () => this.showCallInterface();
@@ -505,7 +513,7 @@ class InboxPage {
 
   async handleNewCall(call) {
     // Auto-enrich contact for new calls
-    const contactPhone = call.direction === 'inbound' ? call.caller_number : call.callee_number;
+    const contactPhone = call.direction === 'inbound' ? call.caller_number : call.caller_number;
     this.autoEnrichContact(contactPhone); // Fire and forget - don't await
 
     // Unhide conversation if it was hidden (user swipe-deleted it)
@@ -767,6 +775,10 @@ class InboxPage {
       document.removeEventListener('visibilitychange', this._visibilityHandler);
       this._visibilityHandler = null;
     }
+    if (this._pollInterval) {
+      clearInterval(this._pollInterval);
+      this._pollInterval = null;
+    }
     if (this.subscription) {
       this.subscription.unsubscribe();
       this.subscription = null;
@@ -791,8 +803,8 @@ class InboxPage {
   async loadConversations(userId) {
     // Load all data in parallel for speed
     const [messagesResult, callsResult, contactsResult, chatSessionsResult, agentConfigsResult, serviceNumbersResult, emailResult] = await Promise.all([
-      supabase.from('sms_messages').select('id, user_id, sender_number, recipient_number, content, sent_at, created_at, direction, status, sentiment').eq('user_id', userId).order('sent_at', { ascending: false }).limit(500),
-      supabase.from('call_records').select('id, user_id, caller_number, contact_phone, started_at, ended_at, duration, direction, status, recording_url, transcript, call_summary, user_sentiment, service_number, agent_id, created_at').eq('user_id', userId).order('started_at', { ascending: false }).limit(300),
+      supabase.from('sms_messages').select('id, user_id, sender_number, recipient_number, content, sent_at, created_at, direction, status, sentiment, channel').eq('user_id', userId).order('sent_at', { ascending: false }).limit(500),
+      supabase.from('call_records').select('*').eq('user_id', userId).order('started_at', { ascending: false }).limit(300),
       supabase.from('contacts').select('id, user_id, name, phone_number, email, first_name, last_name, company, avatar_url').eq('user_id', userId),
       ChatSession.getRecentWithPreview(userId, 50),
       supabase.from('agent_configs').select('id, translate_to, language').eq('user_id', userId),
@@ -862,7 +874,7 @@ class InboxPage {
 
       if (!smsGrouped[convKey]) {
         smsGrouped[convKey] = {
-          type: 'sms',
+          type: msg.channel === 'whatsapp' ? 'whatsapp' : 'sms',
           phone,
           serviceNumber, // Which of our numbers this conversation is on
           messages: [],
@@ -1130,7 +1142,7 @@ class InboxPage {
           this.selectedContact = null;
           this.selectedServiceNumber = null;
         } else if (lastViewedContact && lastViewedServiceNumber &&
-                   this.conversations.some(c => c.type === 'sms' && c.phone === lastViewedContact && c.serviceNumber === lastViewedServiceNumber)) {
+                   this.conversations.some(c => (c.type === 'sms' || c.type === 'whatsapp') && c.phone === lastViewedContact && c.serviceNumber === lastViewedServiceNumber)) {
           this.selectedContact = lastViewedContact;
           this.selectedServiceNumber = lastViewedServiceNumber;
           this.selectedCallId = null;
@@ -1412,6 +1424,7 @@ class InboxPage {
               <button class="inbox-filter-btn ${this.typeFilter === 'texts' ? 'active' : ''}" data-filter-type="texts">Texts</button>
               <button class="inbox-filter-btn ${this.typeFilter === 'chat' ? 'active' : ''}" data-filter-type="chat">Chat</button>
               <button class="inbox-filter-btn ${this.typeFilter === 'email' ? 'active' : ''}" data-filter-type="email">Email</button>
+              <button class="inbox-filter-btn ${this.typeFilter === 'whatsapp' ? 'active' : ''}" data-filter-type="whatsapp">WhatsApp</button>
             </div>
             <div class="inbox-filters" id="inbox-filters-status" style="justify-content: center; gap: 0.5rem; padding-top: 0.375rem; border-bottom: none; padding-bottom: 0;">
               <button class="inbox-filter-btn ${this.directionFilter === 'inbound' ? 'active' : ''}" data-filter-direction="inbound">In</button>

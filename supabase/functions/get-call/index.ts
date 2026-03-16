@@ -81,7 +81,9 @@ Deno.serve(async (req) => {
       transcript: call.transcript,
       sentiment: call.user_sentiment,
       call_summary: call.call_summary,
-      metadata: call.metadata,
+      metadata: call.metadata
+        ? Object.fromEntries(Object.entries(call.metadata).filter(([k]) => !k.startsWith('_')))
+        : null,
       started_at: call.started_at,
       ended_at: call.ended_at,
       created_at: call.created_at,

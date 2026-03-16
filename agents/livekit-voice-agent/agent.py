@@ -5,6 +5,12 @@ Handles real-time voice conversations with STT, LLM, and TTS pipeline
 """
 print("🔴 AGENT CODE VERSION: CUSTOM-FN-V2 🔴")
 
+import os
+# Pin HuggingFace cache to the project directory so model files downloaded at
+# build time are found by inference subprocesses at runtime (Render build and
+# runtime are different containers; only /opt/render/project/src/ persists).
+os.environ.setdefault('HF_HOME', '/opt/render/project/src/.venv/hf_home')
+
 import aiohttp
 import asyncio
 import datetime
@@ -54,6 +60,23 @@ from livekit.agents import (
     function_tool,
 )
 from livekit.plugins import deepgram, openai as lkopenai, elevenlabs, silero
+from livekit.plugins.elevenlabs import VoiceSettings
+try:
+    from livekit.plugins.turn_detector.multilingual import MultilingualModel
+    _TURN_DETECTOR_AVAILABLE = True
+    print("✅ Turn detector (MultilingualModel) loaded", flush=True)
+except ImportError:
+    MultilingualModel = None
+    _TURN_DETECTOR_AVAILABLE = False
+    print("⚠️ Turn detector not available — falling back to silence-based endpointing", flush=True)
+
+def _build_turn_detector():
+    """Instantiate MultilingualModel, falling back to None if model files are missing."""
+    try:
+        return MultilingualModel()
+    except Exception as e:
+        print(f"⚠️ Turn detector failed to initialize ({e}) — falling back to silence-based endpointing", flush=True)
+        return None
 from openai import NOT_GIVEN
 
 from supabase import create_client, Client
@@ -216,7 +239,7 @@ async def speak_error_and_disconnect(ctx: JobContext, message: str):
             llm=lkopenai.LLM(model="gpt-4o-mini"),
             tts=elevenlabs.TTS(
                 model="eleven_flash_v2_5",
-                voice_id="21m00Tcm4TlvDq8ikWAM",  # Rachel
+                voice_id="EXAVITQu4vr4xnSDxMaL",  # Sarah
                 api_key=os.getenv("ELEVENLABS_API_KEY") or os.getenv("ELEVEN_API_KEY"),
             ),
         )
@@ -243,9 +266,8 @@ async def speak_error_and_disconnect(ctx: JobContext, message: str):
         livekit_url = os.getenv("LIVEKIT_URL")
         livekit_api_key = os.getenv("LIVEKIT_API_KEY")
         livekit_api_secret = os.getenv("LIVEKIT_API_SECRET")
-        livekit_api = api.LiveKitAPI(livekit_url, livekit_api_key, livekit_api_secret)
-
-        await livekit_api.room.delete_room(api.DeleteRoomRequest(room=ctx.room.name))
+        async with api.LiveKitAPI(livekit_url, livekit_api_key, livekit_api_secret) as livekit_api:
+            await livekit_api.room.delete_room(api.DeleteRoomRequest(room=ctx.room.name))
         logger.info("✅ Room deleted - call ended")
 
     except Exception as e:
@@ -255,8 +277,8 @@ async def speak_error_and_disconnect(ctx: JobContext, message: str):
             livekit_url = os.getenv("LIVEKIT_URL")
             livekit_api_key = os.getenv("LIVEKIT_API_KEY")
             livekit_api_secret = os.getenv("LIVEKIT_API_SECRET")
-            livekit_api = api.LiveKitAPI(livekit_url, livekit_api_key, livekit_api_secret)
-            await livekit_api.room.delete_room(api.DeleteRoomRequest(room=ctx.room.name))
+            async with api.LiveKitAPI(livekit_url, livekit_api_key, livekit_api_secret) as livekit_api:
+                await livekit_api.room.delete_room(api.DeleteRoomRequest(room=ctx.room.name))
         except Exception:
             pass
 
@@ -289,8 +311,16 @@ async def get_voice_config(voice_id: str, user_id: str) -> dict:
         logger.warning(f"Could not fetch voice config: {e}")
 
     # Return defaults for preset voices
+    # Validate: ElevenLabs voice IDs are 20-char alphanumeric. Fall back to Sarah if invalid.
+    DEFAULT_VOICE_ID = "EXAVITQu4vr4xnSDxMaL"  # Sarah
+    # Deprecated legacy IDs that no longer exist in ElevenLabs (Rachel was v1 and got removed)
+    DEPRECATED_VOICE_IDS = {"21m00Tcm4TlvDq8ikWAM"}  # Rachel (ElevenLabs v1, deprecated)
+    resolved = voice_id.replace("11labs-", "")
+    if not re.match(r'^[A-Za-z0-9]{15,25}$', resolved) or resolved in DEPRECATED_VOICE_IDS:
+        logger.warning(f"⚠️ Deprecated/invalid ElevenLabs voice_id '{resolved}' — falling back to Sarah")
+        resolved = DEFAULT_VOICE_ID
     return {
-        "voice_id": voice_id.replace("11labs-", ""),
+        "voice_id": resolved,
         "stability": 0.5,
         "similarity_boost": 0.75,
         "style": 0.0,
@@ -655,7 +685,7 @@ async def search_knowledge_base(knowledge_source_ids: list, query_text: str, lim
             "query_embedding": query_embedding,
             "source_ids": knowledge_source_ids,
             "match_count": limit,
-            "similarity_threshold": 0.5,
+            "similarity_threshold": 0.25,
         }).execute()
 
         if response.data and len(response.data) > 0:
@@ -1093,6 +1123,52 @@ async def send_webhooks(user_id: str, event_type: str, payload: dict):
 
     except Exception as e:
         logger.error(f"🔔 send_webhooks error: {e}", exc_info=True)
+
+
+async def trigger_event_skills(call_context: dict):
+    """Trigger event-based skills for this agent after a call ends.
+    Fire-and-forget — never crashes the call flow."""
+    try:
+        supabase_url = os.environ.get("SUPABASE_URL")
+        service_role_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+        if not supabase_url or not service_role_key:
+            logger.warning("⚡ Skills: Missing SUPABASE_URL or SERVICE_ROLE_KEY")
+            return
+
+        agent_id = call_context.get("agent_id")
+        if not agent_id:
+            return
+
+        payload = {
+            "event_type": "call_ends",
+            "agent_id": agent_id,
+            "trigger_context": {
+                "call_record_id": call_context.get("call_record_id"),
+                "caller_phone": call_context.get("caller_phone"),
+                "caller_name": call_context.get("caller_name"),
+                "call_duration_seconds": call_context.get("call_duration_seconds", 0),
+                "call_summary": call_context.get("call_summary"),
+                "extracted_data": call_context.get("extracted_data", {}),
+            }
+        }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{supabase_url}/functions/v1/execute-skill",
+                headers={
+                    "Authorization": f"Bearer {service_role_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=30),
+            ) as response:
+                logger.info(f"⚡ Skills trigger response: {response.status}")
+                if response.status != 200:
+                    text = await response.text()
+                    logger.warning(f"⚡ Skills trigger error: {text}")
+
+    except Exception as e:
+        logger.error(f"⚡ Skills trigger failed (non-fatal): {e}")
 
 
 async def send_extracted_data_slack(
@@ -1633,13 +1709,36 @@ def create_end_call_tool(room_name: str, description: str = None, pre_disconnect
                 except Exception as cb_err:
                     logger.error(f"Error in pre-disconnect callback: {cb_err}")
 
+            # For outbound conference bridge calls, hang up the PSTN leg via SignalWire
+            # BEFORE deleting the LiveKit room. The agent CXML uses endConferenceOnExit=false
+            # so the callee would otherwise stay in a silent empty conference.
+            if room_name.startswith("outbound-"):
+                outbound_call_record_id = room_name[len("outbound-"):]
+                try:
+                    resp = supabase.table("call_records").select("call_sid").eq("id", outbound_call_record_id).single().execute()
+                    pstn_call_sid = resp.data.get("call_sid") if resp.data else None
+                    if pstn_call_sid:
+                        sw_space = os.getenv("SIGNALWIRE_SPACE_URL") or os.getenv("SIGNALWIRE_SPACE")
+                        sw_project = os.getenv("SIGNALWIRE_PROJECT_ID")
+                        sw_token = os.getenv("SIGNALWIRE_API_TOKEN")
+                        async with aiohttp.ClientSession() as session:
+                            url = f"https://{sw_space}/api/laml/2010-04-01/Accounts/{sw_project}/Calls/{pstn_call_sid}.json"
+                            async with session.post(url, data={"Status": "completed"},
+                                                    auth=aiohttp.BasicAuth(sw_project, sw_token)) as r:
+                                body = await r.text()
+                                logger.info(f"📞 PSTN leg terminate: call_sid={pstn_call_sid} status={r.status} body={body[:200]}")
+                    else:
+                        logger.warning(f"📞 No call_sid found for outbound call record {outbound_call_record_id}")
+                except Exception as sw_err:
+                    logger.error(f"Failed to terminate PSTN leg: {sw_err}")
+
             livekit_url = os.getenv("LIVEKIT_URL")
             livekit_api_key = os.getenv("LIVEKIT_API_KEY")
             livekit_api_secret = os.getenv("LIVEKIT_API_SECRET")
-            livekit_api = api.LiveKitAPI(livekit_url, livekit_api_key, livekit_api_secret)
-
-            await livekit_api.room.delete_room(api.DeleteRoomRequest(room=room_name))
+            async with api.LiveKitAPI(livekit_url, livekit_api_key, livekit_api_secret) as livekit_api:
+                await livekit_api.room.delete_room(api.DeleteRoomRequest(room=room_name))
             logger.info(f"✅ Call ended - room {room_name} deleted")
+
             return "Call ended successfully."
         except Exception as e:
             logger.error(f"Failed to end call: {e}")
@@ -2009,7 +2108,29 @@ def extract_json_path(data: dict, path: str):
         return None
 
 
-def create_custom_function_tool(func_config: dict, webhook_secret: str = None, say_filler_ref: list = None):
+def create_kb_search_tool(kb_source_ids: list, say_filler_ref: list):
+    """Create tool for mid-conversation knowledge base searches.
+    Lets the LLM look up answers the pre-loaded KB context doesn't cover."""
+
+    @function_tool(description="Search the knowledge base for information to answer the caller's question. Use this whenever the caller asks something you don't already know the answer to.")
+    async def search_kb(
+        query: Annotated[str, "The caller's question or topic to search for"],
+    ):
+        """Search knowledge base and return relevant information"""
+        if say_filler_ref and say_filler_ref[0]:
+            phrase = random.choice(THINKING_FILLERS)
+            logger.info(f"🔍 KB search: '{query}', saying filler: '{phrase}'")
+            say_filler_ref[0](phrase)
+
+        context = await search_knowledge_base(kb_source_ids, query, limit=3)
+        if context:
+            return f"Here is what I found:\n{context}"
+        return "I couldn't find specific information about that in our knowledge base."
+
+    return search_kb
+
+
+def create_custom_function_tool(func_config: dict, webhook_secret: str = None, say_filler_ref: list = None, call_record_id_ref: list = None):
     """Create a LiveKit function_tool from custom function configuration.
 
     Uses raw_schema for proper typed parameters (like Retell AI's approach).
@@ -2017,6 +2138,7 @@ def create_custom_function_tool(func_config: dict, webhook_secret: str = None, s
 
     say_filler_ref: mutable list containing a coroutine function `async (phrase) -> None`
     that speaks a filler phrase. Set after session creation; None until then.
+    call_record_id_ref: mutable list containing the call_record_id string. Set when resolved; None until then.
     """
     func_name = func_config['name']
     func_description = func_config['description']
@@ -2030,13 +2152,15 @@ def create_custom_function_tool(func_config: dict, webhook_secret: str = None, s
 
     async def _execute_custom_function(params: dict) -> str:
         """Shared execution logic for custom function HTTP calls."""
+        resolved_call_record_id = call_record_id_ref[0] if call_record_id_ref else None
+        params = {**params, 'channel': 'phone', 'session_id': resolved_call_record_id}
         logger.info(f"🔧 Custom function '{func_name}' executing with params: {params}")
 
         # Speak a thinking filler so the caller isn't met with silence
         if say_filler_ref and say_filler_ref[0]:
             phrase = random.choice(THINKING_FILLERS)
             logger.info(f"🤔 [FILLER] '{func_name}' called, saying: '{phrase}'")
-            asyncio.create_task(say_filler_ref[0](phrase))
+            say_filler_ref[0](phrase)
 
         try:
             # Validate required parameters
@@ -2062,12 +2186,17 @@ def create_custom_function_tool(func_config: dict, webhook_secret: str = None, s
                 headers['X-Magpipe-Timestamp'] = timestamp
                 headers['X-Magpipe-Signature'] = signature
 
-            # Add custom headers from config (support both 'name'/'key' field names)
-            for h in headers_config:
-                header_name = h.get('name') or h.get('key')
-                header_value = h.get('value')
-                if header_name and header_value:
-                    headers[header_name] = header_value
+            # Add custom headers from config (support dict or list of {name/key, value} objects)
+            if isinstance(headers_config, dict):
+                for header_name, header_value in headers_config.items():
+                    if header_name and header_value:
+                        headers[header_name] = header_value
+            else:
+                for h in (headers_config or []):
+                    header_name = h.get('name') or h.get('key')
+                    header_value = h.get('value')
+                    if header_name and header_value:
+                        headers[header_name] = header_value
 
             timeout = aiohttp.ClientTimeout(total=timeout_ms / 1000)
             logger.info(f"🔧 Custom function '{func_name}' -> {http_method} {endpoint_url} (headers: {list(headers.keys())})")
@@ -2274,9 +2403,6 @@ async def entrypoint(ctx: JobContext):
         'timestamp': datetime.datetime.now().isoformat(),
     })
 
-    # Initialize LiveKit API client for Egress (requires event loop)
-    livekit_api = api.LiveKitAPI(livekit_url, livekit_api_key, livekit_api_secret)
-
     # Parse room metadata
     room_metadata = {}
     try:
@@ -2309,6 +2435,7 @@ async def entrypoint(ctx: JobContext):
     # Template context for outbound calls
     call_purpose = None
     call_goal = None
+    call_variables = {}  # Per-call {{variable}} substitutions for system prompt
 
     # FAST PATH for outbound calls with complete metadata
     if user_id and direction == "outbound":
@@ -2335,8 +2462,8 @@ async def entrypoint(ctx: JobContext):
             await speak_error_and_disconnect(ctx, "This number is not currently assigned. Go to Magpipe.ai to assign your number.")
             return
 
-        # Get voice config, transfer numbers, and dynamic variables in parallel
-        voice_id = user_config.get("voice_id", "11labs-Rachel")
+        # Get voice config, transfer numbers, dynamic variables, and call record in parallel
+        voice_id = user_config.get("voice_id", "EXAVITQu4vr4xnSDxMaL")
         agent_id = user_config.get("id")
         voice_config_task = get_voice_config(voice_id, user_id)
         dynamic_vars_task = get_dynamic_variables(agent_id, user_id)
@@ -2345,11 +2472,47 @@ async def entrypoint(ctx: JobContext):
             resp = supabase.table("transfer_numbers").select("*").eq("user_id", user_id).execute()
             return resp.data or []
 
-        transfer_task = get_transfer_nums()
+        async def get_outbound_call_record():
+            """Fetch call_variables and call_record_id from the recently-created outbound call record."""
+            try:
+                time_window = (datetime.datetime.utcnow() - datetime.timedelta(minutes=2)).isoformat()
+                resp = supabase.table("call_records") \
+                    .select("id, call_variables, metadata") \
+                    .eq("user_id", user_id) \
+                    .eq("direction", "outbound") \
+                    .gte("created_at", time_window) \
+                    .order("created_at", desc=True) \
+                    .limit(1) \
+                    .execute()
+                if resp.data:
+                    return resp.data[0]
+            except Exception as e:
+                logger.warning(f"Could not fetch outbound call record in fast path: {e}")
+            return None
 
-        voice_config, transfer_numbers, dynamic_variables = await asyncio.gather(
-            voice_config_task, transfer_task, dynamic_vars_task
+        transfer_task = get_transfer_nums()
+        call_record_task = get_outbound_call_record()
+
+        voice_config, transfer_numbers, dynamic_variables, outbound_call_record = await asyncio.gather(
+            voice_config_task, transfer_task, dynamic_vars_task, call_record_task
         )
+
+        # Populate call_variables and early call_record_id from call record
+        if outbound_call_record:
+            if not call_record_id:
+                call_record_id = outbound_call_record.get("id")
+                logger.info(f"📝 Fast path: resolved call_record_id={call_record_id}")
+            call_variables = outbound_call_record.get("call_variables") or {}
+            if call_variables:
+                logger.info(f"📋 Fast path: call_variables={list(call_variables.keys())}")
+            # Fallback: read system_prompt_override from call_records.metadata if room metadata
+            # didn't have it (race condition where agent connects before LiveKit persists room metadata)
+            if not room_metadata.get("system_prompt_override"):
+                cr_metadata = outbound_call_record.get("metadata") or {}
+                cr_override = cr_metadata.get("_system_prompt_override")
+                if cr_override:
+                    room_metadata["system_prompt_override"] = cr_override
+                    logger.info("🔄 Fast path: loaded system_prompt_override from call_records metadata (room metadata fallback)")
 
         logger.info(f"✅ Configs loaded - proceeding to session start")
         remote_party_phone = contact_phone
@@ -2423,7 +2586,7 @@ async def entrypoint(ctx: JobContext):
         if service_number:
             # Look up user and agent from service_numbers table (SignalWire numbers)
             response = supabase.table("service_numbers") \
-                .select("user_id, agent_id") \
+                .select("user_id, agent_id, outbound_agent_id") \
                 .eq("phone_number", service_number) \
                 .eq("is_active", True) \
                 .limit(1) \
@@ -2432,10 +2595,13 @@ async def entrypoint(ctx: JobContext):
             if response.data and len(response.data) > 0:
                 user_id = response.data[0]["user_id"]
                 agent_id = response.data[0].get("agent_id")
+                outbound_agent_id_for_number = response.data[0].get("outbound_agent_id")
                 room_metadata["user_id"] = user_id
+                if outbound_agent_id_for_number:
+                    room_metadata["outbound_agent_id"] = outbound_agent_id_for_number
                 if agent_id:
                     room_metadata["agent_id"] = agent_id
-                    logger.info(f"Looked up user_id: {user_id}, agent_id: {agent_id} from service_numbers")
+                    logger.info(f"Looked up user_id: {user_id}, agent_id: {agent_id}, outbound_agent_id: {outbound_agent_id_for_number} from service_numbers")
                 else:
                     # No agent assigned to number — fall back to user's default agent
                     logger.info(f"No agent assigned to number, looking up default agent for user: {user_id}")
@@ -2600,7 +2766,7 @@ async def entrypoint(ctx: JobContext):
             if service_number:
                 logger.info(f"📊 Trying lookup with service_number={service_number}")
                 call_lookup = supabase.table("call_records") \
-                    .select("direction, contact_phone, call_purpose, call_goal") \
+                    .select("direction, contact_phone, call_purpose, call_goal, call_variables") \
                     .eq("service_number", service_number) \
                     .eq("user_id", user_id) \
                     .gte("created_at", one_minute_ago) \
@@ -2621,7 +2787,7 @@ async def entrypoint(ctx: JobContext):
             if not call_lookup or not call_lookup.data or len(call_lookup.data) == 0:
                 logger.info(f"📊 No match with service_number, trying without (for bridged outbound)")
                 call_lookup = supabase.table("call_records") \
-                    .select("direction, contact_phone, service_number, call_purpose, call_goal") \
+                    .select("direction, contact_phone, service_number, call_purpose, call_goal, call_variables") \
                     .eq("user_id", user_id) \
                     .gte("created_at", one_minute_ago) \
                     .order("created_at", desc=True) \
@@ -2641,12 +2807,15 @@ async def entrypoint(ctx: JobContext):
                 if not contact_phone:
                     contact_phone = call_lookup.data[0].get("contact_phone")
                 found_service_number = call_lookup.data[0].get("service_number")
-                # Get call purpose and goal for outbound calls
+                # Get call purpose, goal, and per-call variable substitutions
                 call_purpose = call_lookup.data[0].get("call_purpose")
                 call_goal = call_lookup.data[0].get("call_goal")
+                call_variables = call_lookup.data[0].get("call_variables") or {}
                 logger.info(f"📊 Found call direction from database: {direction}, contact_phone: {contact_phone}, service_number: {found_service_number}")
                 if call_purpose or call_goal:
                     logger.info(f"📋 Call template context: purpose='{call_purpose}', goal='{call_goal}'")
+                if call_variables:
+                    logger.info(f"📋 Call variables: {list(call_variables.keys())}")
 
                 # CRITICAL: Look up correct agent_id from found_service_number
                 # This fixes dispatch rule overwriting metadata with wrong agent_id
@@ -2688,6 +2857,13 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"📞 Call direction: {direction}")
     logger.info(f"📞 Contact phone: {contact_phone}")
 
+    # If outbound and a dedicated outbound agent is assigned to this number, use it
+    if direction == "outbound":
+        outbound_agent_override = room_metadata.get("outbound_agent_id")
+        if outbound_agent_override:
+            logger.info(f"🔄 Outbound call — overriding agent with outbound_agent_id: {outbound_agent_override}")
+            room_metadata["agent_id"] = outbound_agent_override
+
     # Store admin check info for later (after session is created)
     admin_check_info = None
     if direction != "outbound" and caller_number:
@@ -2717,8 +2893,8 @@ async def entrypoint(ctx: JobContext):
         agent_name = user_config.get("name", "")
         logger.info(f"🔍 Agent loaded: name='{agent_name}', id='{agent_id_str}'")
         logger.info(f"🔍 Comparing to system agent: '{SYSTEM_AGENT_ID}'")
-        # Check by ID or by name (System - Not Assigned)
-        is_system_agent = agent_id_str == SYSTEM_AGENT_ID or agent_name == "System - Not Assigned"
+        # Check by ID only — name-based check is fragile and could false-positive on user-named agents
+        is_system_agent = agent_id_str == SYSTEM_AGENT_ID
         if is_system_agent:
             logger.info("🔔 System agent detected - speaking greeting and disconnecting")
             greeting = user_config.get("greeting", "This number is not currently assigned.")
@@ -2737,7 +2913,7 @@ async def entrypoint(ctx: JobContext):
         log_call_state(ctx.room.name, "debug_1_fetching_voice", "agent", {})
 
         # Get voice configuration
-        voice_id = user_config.get("voice_id", "11labs-Rachel")
+        voice_id = user_config.get("voice_id", "EXAVITQu4vr4xnSDxMaL")
         voice_config = await get_voice_config(voice_id, user_id)
         log_call_state(ctx.room.name, "debug_2_voice_fetched", "agent", {"voice_id": voice_id})
 
@@ -2760,7 +2936,8 @@ async def entrypoint(ctx: JobContext):
     log_call_state(ctx.room.name, "debug_5_prompt_start", "agent", {})
 
     # Get greeting message and base prompt
-    base_prompt = user_config.get("system_prompt", "You are Maggie, a helpful AI assistant answering calls for a business. The caller is a customer - treat them professionally and helpfully.")
+    _fallback_agent_name = user_config.get("name") or user_config.get("agent_name") or "Assistant"
+    base_prompt = user_config.get("system_prompt", f"You are {_fallback_agent_name}, a helpful AI assistant answering calls for a business. The caller is a customer - treat them professionally and helpfully.")
 
     # Language configuration
     agent_language = user_config.get("language", "en-US") if user_config else "en-US"
@@ -2780,15 +2957,21 @@ async def entrypoint(ctx: JobContext):
         # Use configured greeting so agent speaks first (instant TTS, no LLM wait)
         greeting = user_config.get("greeting") or ""
 
+        # Per-call system prompt override (from initiate-bridged-call request body) takes highest priority
+        system_prompt_override = room_metadata.get("system_prompt_override")
+
         # Use system_prompt (new single-prompt architecture) with fallback to outbound_system_prompt (legacy)
         outbound_prompt = user_config.get("system_prompt") or user_config.get("outbound_system_prompt")
 
-        if outbound_prompt:
+        if system_prompt_override:
+            system_prompt = system_prompt_override
+            logger.info("🔄 Outbound call - Using per-call system_prompt_override from request")
+        elif outbound_prompt:
             system_prompt = outbound_prompt
             logger.info("🔄 Outbound call - Using configured system prompt")
         else:
             # Default outbound prompt when user hasn't configured one
-            agent_name = user_config.get("agent_name", "Maggie")
+            agent_name = user_config.get("name") or user_config.get("agent_name") or "Assistant"
             system_prompt = f"""You are {agent_name}, an AI assistant making an outbound phone call on behalf of your owner.
 
 THIS IS AN OUTBOUND CALL:
@@ -2913,21 +3096,8 @@ THIS IS AN OUTBOUND CALL:
         if reconnect_reason == "transfer_declined":
             reconnect_context = f"\n- IMPORTANT: This caller just tried to transfer to {transfer_target} but they were unavailable. Apologize briefly and offer to help with something else."
 
-        # Resolve agent's spoken name: voice name as fallback
-        VOICE_NAMES = {
-            "21m00Tcm4TlvDq8ikWAM": "Rachel",
-            "pNInz6obpgDQGcFmaJgB": "Adam",
-            "EXAVITQu4vr4xnSDxMaL": "Sarah",
-            "TxGEqnHWrfWFTfGW9XjX": "Josh",
-            "cjVigY5qzO86Huf0OWal": "Eric",
-            "onwK4e9ZLuTAKqWW03F9": "Daniel",
-            "cgSgspJ2msm6clMCkdW9": "Jessica",
-            "iP95p4xoKVk53GoZ742B": "Chris",
-        }
-        voice_id = user_config.get("voice_id", "")
-        voice_name = VOICE_NAMES.get(voice_id, "Maggie")
-        # Use voice name if system prompt doesn't already specify a name
-        agent_spoken_name = voice_name
+        # Use the agent's configured name
+        agent_spoken_name = user_config.get("name") or user_config.get("agent_name") or "Assistant"
         name_line = f"\n- Your name is {agent_spoken_name}. Introduce yourself by this name."
 
         # Put role clarification FIRST, then user's prompt, then call context
@@ -3038,14 +3208,24 @@ AFTER-HOURS CONTEXT:
         kb_context = await search_knowledge_base(kb_source_ids, kb_query)
         if kb_context:
             kb_section = (
-                "\n\nKNOWLEDGE BASE - USE THIS INFORMATION TO ANSWER QUESTIONS:\n"
+                "\n\nKNOWLEDGE BASE CONTEXT (pre-loaded summary):\n"
                 f"{kb_context}\n\n"
-                "IMPORTANT: Base your answers on the knowledge base information above. "
-                "If the question is not covered in the knowledge base, you can provide a general helpful response, "
-                "but prefer the KB content when relevant."
+                "You also have a search_kb tool to look up specific questions the caller asks. "
+                "Use it when the caller asks something not covered above. "
+                "IMPORTANT: When using search_kb or any tool, always say a brief filler phrase first "
+                "like 'Great question, let me look that up' or 'One moment' so the caller knows you're working on it."
             )
             system_prompt = f"{system_prompt}{kb_section}"
             logger.info(f"📚 Knowledge base context injected into system prompt")
+        else:
+            # No pre-loaded content, but tool is still available
+            kb_fallback = (
+                "\n\nYou have a search_kb tool to look up information from the knowledge base. "
+                "Use it whenever the caller asks a question you don't know the answer to. "
+                "Always say a brief filler phrase first like 'Let me look that up' so the caller knows you're working on it."
+            )
+            system_prompt = f"{system_prompt}{kb_fallback}"
+            logger.info(f"📚 No pre-loaded KB content, but search_kb tool hint added to prompt")
 
     # Inject semantic memory context (similar past conversations) if enabled
     if user_config.get("semantic_memory_enabled") and agent_id:
@@ -3084,7 +3264,7 @@ AFTER-HOURS CONTEXT:
                         matched_topics=caller_topics + semantic_matched_topics,
                         match_count=semantic_match_count,
                         triggering_summary=caller_summary,
-                        agent_name=user_config.get("name", "Maggie"),
+                        agent_name=user_config.get("name") or user_config.get("agent_name") or "Assistant",
                         matched_memory_ids=semantic_memory_ids
                     ))
         else:
@@ -3131,9 +3311,10 @@ AFTER-HOURS CONTEXT:
     _sdk_ver = getattr(llm, '__version__', None) or getattr(AgentSession, '__module__', 'unknown')
     log_call_state(ctx.room.name, "debug_6_custom_funcs", "agent", {"code_version": "CUSTOM-FN-V2", "sdk_version": str(_sdk_ver)})
 
-    # Shared mutable ref — set to session.say after AgentSession is created so that
-    # custom function tools can speak a filler phrase before the webhook call.
+    # Shared mutable refs — set after session/call_record resolution so custom function
+    # tools can access them even though they're created before those values are known.
     say_filler_ref: list = [None]
+    call_record_id_ref: list = [call_record_id]  # Pre-populated if already resolved by early lookup
 
     # Load custom functions for this agent
     custom_tools = []
@@ -3146,7 +3327,7 @@ AFTER-HOURS CONTEXT:
             loaded_names = []
             for func_config in custom_function_configs:
                 try:
-                    tool = create_custom_function_tool(func_config, webhook_secret, say_filler_ref=say_filler_ref)
+                    tool = create_custom_function_tool(func_config, webhook_secret, say_filler_ref=say_filler_ref, call_record_id_ref=call_record_id_ref)
                     custom_tools.append(tool)
                     loaded_names.append(f"{func_config['name']}(type={type(tool).__name__},id={tool.info.name})")
                     logger.info(f"🔧 Registered custom function: {func_config['name']} as {type(tool).__name__} with id={tool.info.name}")
@@ -3286,6 +3467,19 @@ AFTER-HOURS CONTEXT:
         custom_tools.append(collect_data_tool)
         logger.info(f"📝 Registered extract_data/collect tool")
 
+    # KB Search tool — auto-enabled when agent has knowledge bases
+    if kb_source_ids:
+        kb_tool = create_kb_search_tool(kb_source_ids, say_filler_ref)
+        custom_tools.append(kb_tool)
+        logger.info(f"📚 Registered KB search tool with {len(kb_source_ids)} source(s)")
+
+    # Substitute {{variable}} placeholders from call_variables (passed at call initiation time)
+    if call_variables:
+        def _replace_var(m):
+            return str(call_variables.get(m.group(1), m.group(0)))
+        system_prompt = re.sub(r'\{\{(\w+)\}\}', _replace_var, system_prompt)
+        logger.info(f"🔀 Substituted call_variables into system prompt: {list(call_variables.keys())}")
+
     # Create Agent instance with custom function tools
     log_call_state(ctx.room.name, "debug_7_creating_agent", "agent", {})
     if custom_tools:
@@ -3295,13 +3489,19 @@ AFTER-HOURS CONTEXT:
         assistant = Agent(instructions=system_prompt)
     log_call_state(ctx.room.name, "debug_8_agent_created", "agent", {})
 
-    # Get LLM model from config (default to gpt-4o-mini for lowest latency)
-    llm_model = user_config.get("llm_model", "gpt-4o-mini") if user_config else "gpt-4o-mini"
+    # Get LLM model from config (default to gpt-4.1-mini — best quality/latency/cost for voice)
+    llm_model = user_config.get("llm_model", "gpt-4.1-mini") if user_config else "gpt-4.1-mini"
 
     # Get voice settings from voice_config (or use defaults)
-    tts_voice_id = voice_config.get("voice_id", "21m00Tcm4TlvDq8ikWAM") if voice_config else "21m00Tcm4TlvDq8ikWAM"
+    tts_voice_id = voice_config.get("voice_id", "EXAVITQu4vr4xnSDxMaL") if voice_config else "EXAVITQu4vr4xnSDxMaL"
     is_cloned_voice = voice_config.get("is_cloned", False) if voice_config else False
     tts_model = "eleven_multilingual_v2" if is_cloned_voice else "eleven_flash_v2_5"
+    tts_voice_settings = VoiceSettings(
+        stability=float(voice_config.get("stability", 0.5)) if voice_config else 0.5,
+        similarity_boost=float(voice_config.get("similarity_boost", 0.75)) if voice_config else 0.75,
+        style=float(voice_config.get("style", 0.0)) if voice_config else 0.0,
+        use_speaker_boost=bool(voice_config.get("use_speaker_boost", True)) if voice_config else True,
+    )
 
     # Pick STT model based on language (nova-2-phonecall is English-optimized)
     if agent_language == "multi":
@@ -3325,10 +3525,31 @@ AFTER-HOURS CONTEXT:
         vad_threshold = float(user_config.get("vad_activation_threshold", 0.6) or 0.6)
         logger.info(f"🎚️ VAD settings: silence={vad_silence}, speech={vad_speech}, threshold={vad_threshold}")
 
+        # Responsiveness → endpointing delays (0=patient, 1=quick)
+        # Linear mapping: responsiveness=1 → fastest (0.1s), responsiveness=0 → slowest (1.0s)
+        # max_endpointing is the turn-detector fallback — tighter now that ML handles pause detection
+        responsiveness = float(user_config.get("responsiveness", 1.0) or 1.0)
+        min_endpointing = round(1.0 - (responsiveness * 0.9), 3)   # 0→1.0s, 1→0.1s
+        max_endpointing = round(1.0 - (responsiveness * 0.6), 3)   # 0→1.0s, 1→0.4s
+        stt_endpointing_ms = int(500 - (responsiveness * 400))     # 0→500ms, 1→100ms
+        logger.info(f"🎚️ Responsiveness={responsiveness}: min_endpointing={min_endpointing}s, max_endpointing={max_endpointing}s, stt={stt_endpointing_ms}ms")
+
+        # Interrupt sensitivity → min interruption duration (0=hard to interrupt, 1=easy)
+        interrupt_sensitivity = float(user_config.get("interrupt_sensitivity", 0.6) or 0.6)
+        min_interruption = round(0.7 - (interrupt_sensitivity * 0.6), 3)  # 0→0.7s, 1→0.1s
+        logger.info(f"🎚️ Interrupt sensitivity={interrupt_sensitivity}: min_interruption={min_interruption}s")
+
         # Use pre-warmed VAD model if available (avoids ML model load on first call)
         prewarmed_vad = ctx.proc.userdata.get("vad") if hasattr(ctx, "proc") and ctx.proc else None
         if prewarmed_vad:
             logger.info("🔥 Using pre-warmed Silero VAD model")
+
+        # Try to build turn detector; falls back to None if model files are missing
+        turn_detector_instance = _build_turn_detector() if _TURN_DETECTOR_AVAILABLE else None
+        if turn_detector_instance:
+            logger.info("🌍 ML turn detection enabled (MultilingualModel)")
+        else:
+            logger.info("🔇 Using silence-based endpointing (turn detector unavailable)")
 
         session = AgentSession(
             vad=silero.VAD.load(
@@ -3340,8 +3561,8 @@ AFTER-HOURS CONTEXT:
                 model=stt_model,
                 language=stt_language,
                 api_key=os.getenv("DEEPGRAM_API_KEY"),
-                no_delay=True,       # Send audio immediately, don't buffer
-                endpointing_ms=100,  # Wait 100ms of silence before finalizing transcript
+                no_delay=True,                      # Send audio immediately, don't buffer
+                endpointing_ms=stt_endpointing_ms,  # Driven by responsiveness setting
             ),
             llm=lkopenai.LLM(
                 model=llm_model,
@@ -3351,14 +3572,18 @@ AFTER-HOURS CONTEXT:
             tts=elevenlabs.TTS(
                 model=tts_model,
                 voice_id=tts_voice_id,
+                voice_settings=tts_voice_settings,  # Stability, similarity, style from DB
                 api_key=os.getenv("ELEVENLABS_API_KEY") or os.getenv("ELEVEN_API_KEY"),
-                auto_mode=True,  # Auto-manages chunk buffering for lowest latency
+                auto_mode=True,            # Auto-manages chunk buffering for lowest latency
+                streaming_latency=3,       # Reduces time-to-first-audio (0=off, 1-4=increasing)
             ),
-            # --- Latency tuning ---
-            min_endpointing_delay=0.1,    # Start responding 100ms after user stops (default was 500ms — saves ~400ms)
-            max_endpointing_delay=1.5,    # Don't wait more than 1.5s for slow speakers (default 3.0s)
-            preemptive_generation=True,   # Begin LLM generation while user is still speaking (saves LLM TTFT)
-            min_interruption_duration=0.3, # Allow barge-in after 300ms of speech (default 500ms)
+            # ML turn detector — fires end-of-turn semantically rather than waiting for silence
+            **({"turn_detection": turn_detector_instance} if turn_detector_instance is not None else {}),
+            # --- Latency tuning (driven by per-agent config) ---
+            min_endpointing_delay=min_endpointing,      # Driven by responsiveness setting
+            max_endpointing_delay=max_endpointing,      # Fallback if turn detector is uncertain
+            preemptive_generation=True,                 # Begin LLM generation while user is still speaking
+            min_interruption_duration=min_interruption, # Driven by interrupt_sensitivity setting
         )
     except Exception as e:
         log_call_state(ctx.room.name, "debug_session_error", "agent", {"error": str(e)})
@@ -3466,6 +3691,7 @@ AFTER-HOURS CONTEXT:
 
                 if response.data and len(response.data) > 0:
                     call_record_id = response.data[0]["id"]
+                    call_record_id_ref[0] = call_record_id
                     logger.info(f"✅ Found call_record by livekit_call_id: {call_record_id}")
                 else:
                     logger.warning(f"⚠️ No call_record found with livekit_call_id: {call_sid}")
@@ -3490,6 +3716,7 @@ AFTER-HOURS CONTEXT:
 
                     if response.data and len(response.data) > 0:
                         call_record_id = response.data[0]["id"]
+                        call_record_id_ref[0] = call_record_id
                         logger.info(f"Found call_record by service_number: {call_record_id}")
 
                 # If no match, try without service_number (for bridged outbound where LiveKit trunk != caller_id)
@@ -3505,9 +3732,14 @@ AFTER-HOURS CONTEXT:
 
                     if response.data and len(response.data) > 0:
                         call_record_id = response.data[0]["id"]
+                        call_record_id_ref[0] = call_record_id
                         logger.info(f"Found call_record by user_id only: {call_record_id}")
 
             if call_record_id:
+                # Compute call duration early so it can be saved to the call record
+                call_duration = int(asyncio.get_event_loop().time() - call_start_time)
+                logger.info(f"⏱️ Call duration: {call_duration}s")
+
                 # Check PII storage mode
                 pii_mode = user_config.get("pii_storage", "enabled") if user_config else "enabled"
                 logger.info(f"🔒 PII storage mode: {pii_mode}")
@@ -3516,6 +3748,7 @@ AFTER-HOURS CONTEXT:
                     # Disabled mode: only update status, no transcript/summary/extracted data
                     update_data = {
                         "status": "completed",
+                        "duration_seconds": call_duration,
                         "ended_at": "now()"
                     }
                     supabase.table("call_records") \
@@ -3536,6 +3769,7 @@ AFTER-HOURS CONTEXT:
                     update_data = {
                         "transcript": store_transcript,
                         "status": "completed",
+                        "duration_seconds": call_duration,
                         "ended_at": "now()"
                     }
 
@@ -3579,7 +3813,7 @@ AFTER-HOURS CONTEXT:
                         ))
 
                 # Deduct credits for the call (always, regardless of PII mode)
-                call_duration = int(asyncio.get_event_loop().time() - call_start_time)
+                # call_duration was already computed above and saved to DB
                 billing_agent_id = user_config.get("id") if user_config else None
                 # Count TTS characters (agent speech only) for accurate vendor cost tracking
                 tts_characters = sum(len(msg['text']) for msg in transcript_messages if msg['speaker'] == 'agent')
@@ -3651,6 +3885,35 @@ AFTER-HOURS CONTEXT:
                         "status": "completed",
                     }
                     asyncio.create_task(send_webhooks(user_id, "call.completed", webhook_payload))
+
+                # Trigger event-based skills (post-call follow-up, auto-CRM, etc.)
+                asyncio.create_task(trigger_event_skills({
+                    "agent_id": user_config.get("id") if user_config else None,
+                    "call_record_id": str(call_record_id) if call_record_id else None,
+                    "caller_phone": remote_party_phone,
+                    "caller_name": None,
+                    "call_duration_seconds": call_duration,
+                    "call_summary": update_data.get("call_summary"),
+                    "extracted_data": update_data.get("extracted_data") or {},
+                }))
+
+                # If this call belongs to a test run, trigger evaluation now that record is fully saved
+                try:
+                    cr_check = supabase.table("call_records").select("test_run_id").eq("id", call_record_id).single().execute()
+                    test_run_id = cr_check.data.get("test_run_id") if cr_check.data else None
+                    if test_run_id:
+                        supabase_url = os.environ.get("SUPABASE_URL", "")
+                        supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+                        async with aiohttp.ClientSession() as http_session:
+                            await http_session.post(
+                                f"{supabase_url}/functions/v1/test-log-collector",
+                                json={"test_run_id": test_run_id},
+                                headers={"Authorization": f"Bearer {supabase_key}", "Content-Type": "application/json"},
+                                timeout=aiohttp.ClientTimeout(total=15),
+                            )
+                        logger.info(f"🧪 Triggered test-log-collector for test run {test_run_id}")
+                except Exception as te:
+                    logger.warning(f"Could not trigger test-log-collector: {te}")
             else:
                 logger.warning("No call_record found - cannot save transcript")
 
@@ -3833,14 +4096,72 @@ ADMIN MODE ACTIVATED:
                 logger.info("📞 Inbound call - Agent greeted caller (LLM-generated)")
             log_call_state(ctx.room.name, "greeting_spoken", "agent", {"direction": "inbound"})
         else:
-            # Outbound call - speak greeting immediately if configured, otherwise wait
-            if greeting:
-                await session.say(greeting, allow_interruptions=True)
-                logger.info("📞 Outbound call - Agent greeted immediately (configured greeting)")
-                log_call_state(ctx.room.name, "greeting_spoken", "agent", {"direction": "outbound"})
+            # Outbound call — pre-warm the ElevenLabs TTS WebSocket before the callee answers.
+            # With auto_mode=True, the plugin opens a persistent streaming WebSocket. If it sits
+            # idle during the ringing period (10-30s), Render/ElevenLabs closes the stale connection
+            # and the first real response fails with "connection closed".
+            # Firing a warmup say() here keeps the WebSocket alive — the conference discards audio
+            # before the PSTN participant joins so the callee never hears it.
+            # Pre-warm the ElevenLabs TTS WebSocket in the background — do NOT await it.
+            # With auto_mode=True, the plugin opens a persistent streaming WebSocket. If it sits
+            # idle during the ringing period (10-30s), Render/ElevenLabs closes the stale connection
+            # and the first real response fails with "connection closed".
+            # Running as a background task means the poll loop starts immediately — if the callee
+            # answers during warmup, session.say(greeting) below will interrupt it (allow_interruptions=True).
+            logger.info("📞 Outbound call - Warming TTS WebSocket in background (conference discards audio before PSTN joins)")
+            try:
+                asyncio.ensure_future(session.say(".", allow_interruptions=True))
+            except Exception as e:
+                logger.warning(f"TTS pre-warm failed (non-critical): {e}")
+
+            # Poll for pstn_joined_at — written by batch-conf-status when the PSTN callee answers.
+            # This lets us speak the greeting immediately on answer instead of waiting for the callee
+            # to say "Hello?" (saving 2-3s of VAD + LLM latency).
+            # Uses run_in_executor to avoid blocking the event loop during each synchronous DB call.
+            pstn_joined = False
+            call_failed = False
+            TERMINAL_STATUSES = {'completed', 'failed', 'busy', 'no-answer', 'canceled'}
+            if call_record_id:
+                logger.info(f"📞 Outbound: polling for PSTN answer (call_record_id={call_record_id})")
+                loop = asyncio.get_event_loop()
+                for _ in range(300):  # 300 × 0.2s = 60s timeout
+                    await asyncio.sleep(0.2)
+                    try:
+                        def _fetch_call_status():
+                            return supabase.table("call_records") \
+                                .select("pstn_joined_at, status") \
+                                .eq("id", call_record_id) \
+                                .single() \
+                                .execute()
+                        result = await loop.run_in_executor(None, _fetch_call_status)
+                        if result.data:
+                            if result.data.get("pstn_joined_at"):
+                                pstn_joined = True
+                                logger.info("✅ PSTN participant joined — speaking greeting immediately")
+                                break
+                            call_status = result.data.get("status", "")
+                            if call_status in TERMINAL_STATUSES:
+                                call_failed = True
+                                logger.info(f"📞 Outbound call ended before PSTN joined (status={call_status}) — stopping poll")
+                                break
+                    except Exception as poll_err:
+                        logger.warning(f"pstn_joined_at poll error: {poll_err}")
             else:
-                logger.info("📞 Outbound call - No greeting configured, waiting for user to speak")
-                log_call_state(ctx.room.name, "waiting_for_user", "agent", {"direction": "outbound"})
+                logger.warning("⚠️ No call_record_id — cannot poll for PSTN join, agent will respond when callee speaks")
+
+            if pstn_joined:
+                if greeting:
+                    await session.say(greeting, allow_interruptions=True)
+                    logger.info("📞 Outbound greeting spoken immediately on PSTN join")
+                else:
+                    await session.generate_reply()
+                    logger.info("📞 Outbound: LLM greeting spoken on PSTN join")
+            elif call_failed:
+                logger.info("📞 Outbound call failed/busy/no-answer — session will close when room empties")
+            else:
+                logger.warning("⚠️ PSTN join not detected within 60s — agent will respond reactively when callee speaks")
+
+            log_call_state(ctx.room.name, "waiting_for_user", "agent", {"direction": "outbound", "pstn_joined": pstn_joined})
 
     logger.info("✅ Agent session started successfully - ready for calls")
 

@@ -30,7 +30,6 @@ const MIGRATED_FILES = [
   'pages/admin/support-tab.js',
   'pages/admin/monitor-tab.js',
   'pages/agent-detail/index.js',
-  'pages/agent-detail/schedule-tab.js',
   'pages/agent-detail/deployment-tab.js',
   'pages/phone/call-handler.js',
 ];

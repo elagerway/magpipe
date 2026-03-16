@@ -23,7 +23,8 @@ async function extractPdfText(base64Data: string, openaiApiKey: string): Promise
 
     // For now, use a simple regex-based extraction for text-based PDFs
     // This won't work for scanned PDFs but will work for text-based ones
-    const base64Content = base64Data.replace(/^data:[^;]+;base64,/, '');
+    // Strip data URL prefix if present (handles charset variants like data:text/plain;charset=utf-8;base64,)
+    const base64Content = base64Data.includes(',') ? base64Data.split(',').pop()! : base64Data;
     const binaryStr = atob(base64Content);
 
     // Extract text streams from PDF (simple approach)
@@ -66,16 +67,32 @@ async function extractPdfText(base64Data: string, openaiApiKey: string): Promise
 }
 
 /**
- * Extract text from base64 text file
+ * Extract text from base64 text file.
+ * Handles UTF-8, UTF-8 BOM, UTF-16 LE, and UTF-16 BE encodings.
  */
 function extractTextFile(base64Data: string): string {
-  const base64Content = base64Data.replace(/^data:[^;]+;base64,/, '');
+  // Strip data URL prefix if present (handles charset variants like data:text/plain;charset=utf-8;base64,)
+  const base64Content = base64Data.includes(',') ? base64Data.split(',').pop()! : base64Data;
   const binaryStr = atob(base64Content);
   const bytes = new Uint8Array(binaryStr.length);
   for (let i = 0; i < binaryStr.length; i++) {
     bytes[i] = binaryStr.charCodeAt(i);
   }
-  return new TextDecoder('utf-8').decode(bytes);
+
+  // Detect encoding from BOM
+  let encoding = 'utf-8';
+  if (bytes.length >= 2) {
+    if (bytes[0] === 0xFF && bytes[1] === 0xFE) {
+      encoding = 'utf-16le';
+    } else if (bytes[0] === 0xFE && bytes[1] === 0xFF) {
+      encoding = 'utf-16be';
+    }
+    // UTF-8 BOM (EF BB BF) — TextDecoder utf-8 handles it natively
+  }
+
+  const text = new TextDecoder(encoding).decode(bytes);
+  // Strip any null bytes that could cause PostgreSQL text column errors
+  return text.replace(/\x00/g, '');
 }
 
 // Simple text chunking (500-1000 tokens ~= 2000-4000 characters)

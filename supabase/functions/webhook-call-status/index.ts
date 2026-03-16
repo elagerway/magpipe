@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { shouldNotify } from '../_shared/app-function-prefs.ts'
+import { resolveSlackChannelId, fetchAllSlackChannels } from '../_shared/slack-channels.ts'
 
 Deno.serve(async (req) => {
   try {
@@ -17,7 +18,7 @@ Deno.serve(async (req) => {
     // First, get the call record to know user_id and phone info
     const { data: callRecord } = await supabase
       .from('call_records')
-      .select('id, user_id, caller_number, contact_phone, direction, agent_id')
+      .select('id, user_id, caller_number, contact_phone, direction, agent_id, call_summary, user_sentiment, recording_url')
       .or(`vendor_call_id.eq.${callSid},call_sid.eq.${callSid}`)
       .single()
 
@@ -45,84 +46,149 @@ Deno.serve(async (req) => {
     if (error) {
       console.error('Error updating call status:', error)
     } else if (callRecord && (callStatus === 'completed' || callStatus === 'failed' || callStatus === 'busy' || callStatus === 'no-answer')) {
-      // Send Slack notification for terminal call states (if enabled)
       const phoneNumber = callRecord.contact_phone || callRecord.caller_number
+      const isMissed = callStatus === 'failed' || callStatus === 'busy' || callStatus === 'no-answer'
 
-      // Look up agent config to check notification prefs
-      let agentFunctions = null;
-      {
-        const svcPhone = callRecord.direction === 'inbound'
-          ? (callRecord.contact_phone ? callRecord.caller_number : null)
-          : callRecord.caller_number;
-        if (svcPhone) {
-          const { data: svcNum } = await supabase
-            .from('service_numbers')
-            .select('agent_id')
-            .eq('phone_number', svcPhone)
-            .maybeSingle();
-          if (svcNum?.agent_id) {
-            const { data: ac } = await supabase
-              .from('agent_configs')
-              .select('functions')
-              .eq('id', svcNum.agent_id)
-              .single();
-            agentFunctions = ac?.functions;
+      // Run all notification logic in the background so we can return 200 to SignalWire
+      // immediately. Without this, SignalWire retries the webhook (15s timeout) and the
+      // user receives duplicate notifications.
+      const backgroundWork = async () => {
+        // Look up agent config to check notification prefs
+        let agentFunctions = null;
+        {
+          const svcPhone = callRecord.direction === 'inbound'
+            ? (callRecord.contact_phone ? callRecord.caller_number : null)
+            : callRecord.caller_number;
+          if (svcPhone) {
+            const { data: svcNum } = await supabase
+              .from('service_numbers')
+              .select('agent_id')
+              .eq('phone_number', svcPhone)
+              .maybeSingle();
+            if (svcNum?.agent_id) {
+              const { data: ac } = await supabase
+                .from('agent_configs')
+                .select('functions')
+                .eq('id', svcNum.agent_id)
+                .single();
+              agentFunctions = ac?.functions;
+            }
           }
         }
-      }
 
-      if (shouldNotify(agentFunctions, 'slack', 'calls')) {
-        sendSlackCallNotification(
-          supabase,
-          callRecord.id,
-          callRecord.user_id,
-          phoneNumber,
-          callRecord.direction || 'inbound',
-          callStatus.toLowerCase(),
-          durationSeconds,
-          callRecord.agent_id || null
-        ).catch(err => console.error('Failed to send Slack call notification:', err))
-      }
-
-      // Send email/SMS/push notifications for terminal call states
-      const isMissed = callStatus === 'failed' || callStatus === 'busy' || callStatus === 'no-answer'
-      const notificationType = isMissed ? 'missed_call' : 'completed_call'
-      const notificationData = {
-        userId: callRecord.user_id,
-        agentId: callRecord.agent_id,
-        type: notificationType,
-        data: {
-          callerNumber: phoneNumber,
-          timestamp: new Date().toISOString(),
-          duration: durationSeconds,
-          successful: callStatus === 'completed',
+        if (shouldNotify(agentFunctions, 'slack', 'calls')) {
+          sendSlackCallNotification(
+            supabase,
+            callRecord.id,
+            callRecord.user_id,
+            phoneNumber,
+            callRecord.direction || 'inbound',
+            callStatus.toLowerCase(),
+            durationSeconds,
+            callRecord.agent_id || null
+          ).catch(err => console.error('Failed to send Slack call notification:', err))
         }
+
+        // For completed calls, wait for the voice agent to finish writing summary/sentiment
+        // (agent.py needs an OpenAI round-trip after hang-up; this webhook fires immediately)
+        let enrichedSummary: string | null = callRecord.call_summary || null
+        let enrichedSentiment: string | null = callRecord.user_sentiment || null
+        let enrichedRecordingUrl: string | null = callRecord.recording_url || null
+
+        // Look up agent name and recording config upfront (needed for poll condition below)
+        let agentName: string | null = null
+        let agentRecordingEnabled = true
+        if (callRecord.agent_id) {
+          const { data: agentCfg } = await supabase
+            .from('agent_configs')
+            .select('name, recording_enabled')
+            .eq('id', callRecord.agent_id)
+            .maybeSingle()
+          agentName = agentCfg?.name || null
+          agentRecordingEnabled = agentCfg?.recording_enabled !== false
+        }
+
+        // Poll until we have summary, sentiment, AND recording URL (if recording is enabled).
+        // The recording callback fires a few seconds after call end — if summary/sentiment
+        // are already written, the old condition skipped this loop and recording_url was missed.
+        const shouldWaitForRecording = !isMissed && agentRecordingEnabled && !enrichedRecordingUrl
+        if (!isMissed && (!enrichedSummary || shouldWaitForRecording)) {
+          for (let attempt = 0; attempt < 12; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 5000))
+            const { data: freshRecord } = await supabase
+              .from('call_records')
+              .select('call_summary, user_sentiment, recording_url, recordings')
+              .eq('id', callRecord.id)
+              .single()
+            enrichedSummary = freshRecord?.call_summary || null
+            enrichedSentiment = freshRecord?.user_sentiment || null
+            // Derive recording URL from recording_url column OR first non-null URL in recordings JSONB
+            // (sip-recording-callback writes to recordings[] while sync-recording uploads; livekit-egress sets both)
+            const recordingsArr: any[] = freshRecord?.recordings || []
+            const firstRecordingUrl = recordingsArr.find((r: any) => r.url)?.url || null
+            enrichedRecordingUrl = freshRecord?.recording_url || firstRecordingUrl || enrichedRecordingUrl
+            const hasSummary = !!enrichedSummary
+            const hasRecording = !agentRecordingEnabled || !!enrichedRecordingUrl
+            if (hasSummary && hasRecording) {
+              console.log(`✅ Got summary${agentRecordingEnabled ? '+recording' : ''} after ${(attempt + 1) * 5}s`)
+              break
+            }
+            console.log(`⏳ Waiting for summary/recording... attempt ${attempt + 1}/12`)
+          }
+        }
+
+        // Send email/SMS/push notifications for terminal call states
+        const notificationType = isMissed ? 'missed_call' : 'completed_call'
+        const notificationData = {
+          userId: callRecord.user_id,
+          agentId: callRecord.agent_id,
+          type: notificationType,
+          data: {
+            callerNumber: phoneNumber,
+            timestamp: new Date().toISOString(),
+            duration: durationSeconds,
+            successful: callStatus === 'completed',
+            agentName,
+            sessionId: callRecord.id,
+            summary: enrichedSummary,
+            sentiment: enrichedSentiment,
+            recordingUrl: enrichedRecordingUrl,
+          }
+        }
+
+        await Promise.allSettled([
+          fetch(`${supabaseUrl}/functions/v1/send-notification-email`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseKey}` },
+            body: JSON.stringify(notificationData)
+          }),
+          fetch(`${supabaseUrl}/functions/v1/send-notification-sms`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseKey}` },
+            body: JSON.stringify(notificationData)
+          }),
+          fetch(`${supabaseUrl}/functions/v1/send-notification-push`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseKey}` },
+            body: JSON.stringify(notificationData)
+          }),
+          fetch(`${supabaseUrl}/functions/v1/send-notification-slack`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseKey}` },
+            body: JSON.stringify(notificationData)
+          }),
+        ])
       }
 
-      // Fire and forget notifications
-      fetch(`${supabaseUrl}/functions/v1/send-notification-email`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseKey}` },
-        body: JSON.stringify(notificationData)
-      }).catch(err => console.error('Failed to send email notification:', err))
-
-      fetch(`${supabaseUrl}/functions/v1/send-notification-sms`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseKey}` },
-        body: JSON.stringify(notificationData)
-      }).catch(err => console.error('Failed to send SMS notification:', err))
-
-      fetch(`${supabaseUrl}/functions/v1/send-notification-push`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseKey}` },
-        body: JSON.stringify(notificationData)
-      }).catch(err => console.error('Failed to send push notification:', err))
-
-      fetch(`${supabaseUrl}/functions/v1/send-notification-slack`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseKey}` },
-        body: JSON.stringify(notificationData)
-      }).catch(err => console.error('Failed to send Slack notification:', err))
+      // Run background work (polls for summary/sentiment, sends notifications)
+      // Use EdgeRuntime.waitUntil so the function stays alive after returning 200
+      // This prevents SignalWire from retrying the webhook due to timeout
+      // @ts-ignore — EdgeRuntime is available in Supabase edge function environment
+      if (typeof EdgeRuntime !== 'undefined') {
+        EdgeRuntime.waitUntil(backgroundWork())
+      } else {
+        backgroundWork().catch(err => console.error('Background notification error:', err))
+      }
     }
 
     // Deduct credits for completed calls with duration
@@ -282,17 +348,7 @@ async function sendSlackCallNotification(
     }
 
     if (notifPrefs?.slack_channel) {
-      // Resolve channel name (e.g. #general) to ID
-      const name = notifPrefs.slack_channel.replace(/^#/, '').toLowerCase()
-      const listResp = await fetch(
-        'https://slack.com/api/conversations.list?types=public_channel&limit=200&exclude_archived=true',
-        { headers: { 'Authorization': `Bearer ${integration.access_token}` } }
-      )
-      const listResult = await listResp.json()
-      if (listResult.ok && listResult.channels) {
-        const found = listResult.channels.find((c: any) => c.name.toLowerCase() === name)
-        if (found) channelId = found.id
-      }
+      channelId = await resolveSlackChannelId(integration.access_token, notifPrefs.slack_channel)
     }
 
     // Fallback to integration config or first available channel
@@ -300,16 +356,12 @@ async function sendSlackCallNotification(
       channelId = integration.config?.notification_channel
     }
     if (!channelId) {
-      const channelsResponse = await fetch(
-        'https://slack.com/api/conversations.list?types=public_channel&limit=10',
-        { headers: { 'Authorization': `Bearer ${integration.access_token}` } }
-      )
-      const channelsResult = await channelsResponse.json()
-      if (channelsResult.ok && channelsResult.channels?.length > 0) {
-        const magpipeChannel = channelsResult.channels.find((c: any) => c.name === 'magpipe-notifications')
-        const generalChannel = channelsResult.channels.find((c: any) => c.name === 'general')
-        channelId = magpipeChannel?.id || generalChannel?.id || channelsResult.channels[0].id
-      }
+      try {
+        const channels = await fetchAllSlackChannels(integration.access_token)
+        const magpipeChannel = channels.find(c => c.name === 'magpipe-notifications')
+        const generalChannel = channels.find(c => c.name === 'general')
+        channelId = magpipeChannel?.id || generalChannel?.id || channels[0]?.id || null
+      } catch { /* ignore */ }
     }
 
     if (!channelId) return

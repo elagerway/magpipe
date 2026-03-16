@@ -47,6 +47,7 @@ export const viewsMethods = {
         if (this.typeFilter === 'texts') return conv.type === 'sms';
         if (this.typeFilter === 'chat') return conv.type === 'chat';
         if (this.typeFilter === 'email') return conv.type === 'email';
+        if (this.typeFilter === 'whatsapp') return conv.type === 'whatsapp';
         return true;
       });
     }
@@ -107,7 +108,7 @@ export const viewsMethods = {
         if (contactName.includes(query)) return true;
 
         // Search by message content (SMS)
-        if (conv.type === 'sms' && conv.messages?.some(m => m.content?.toLowerCase().includes(query))) return true;
+        if ((conv.type === 'sms' || conv.type === 'whatsapp') && conv.messages?.some(m => m.content?.toLowerCase().includes(query))) return true;
 
         // Search by transcript (calls)
         if (conv.type === 'call' && conv.call?.transcript?.toLowerCase().includes(query)) return true;
@@ -169,7 +170,7 @@ export const viewsMethods = {
     const displayedConversations = visibleConversations.slice(0, this.displayLimit);
 
     const listHtml = displayedConversations.map(conv => {
-      const isSelected = (conv.type === 'sms' && this.selectedContact === conv.phone && this.selectedServiceNumber === conv.serviceNumber && !this.selectedCallId && !this.selectedChatSessionId && !this.selectedEmailThreadId) ||
+      const isSelected = ((conv.type === 'sms' || conv.type === 'whatsapp') && this.selectedContact === conv.phone && this.selectedServiceNumber === conv.serviceNumber && !this.selectedCallId && !this.selectedChatSessionId && !this.selectedEmailThreadId) ||
                         (conv.type === 'call' && this.selectedCallId === conv.callId) ||
                         (conv.type === 'chat' && this.selectedChatSessionId === conv.chatSessionId) ||
                         (conv.type === 'email' && this.selectedEmailThreadId === conv.emailThreadId);
@@ -183,6 +184,7 @@ export const viewsMethods = {
         call: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>`,
         email: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>`,
         chat: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>`,
+        whatsapp: `<svg width="13" height="13" viewBox="0 0 24 24" fill="#15803d"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>`,
       };
 
       if (conv.type === 'chat') {
@@ -327,7 +329,7 @@ export const viewsMethods = {
               </svg>
               <span>Delete</span>
             </div>
-            <div class="conversation-item swipe-content ${isSelected ? 'selected' : ''} ${conv.unreadCount > 0 ? 'unread' : ''}" data-phone="${conv.phone}" data-service-number="${conv.serviceNumber}" data-type="sms" style="display: flex !important; flex-direction: row !important; gap: 0.75rem;">
+            <div class="conversation-item swipe-content ${isSelected ? 'selected' : ''} ${conv.unreadCount > 0 ? 'unread' : ''}" data-phone="${conv.phone}" data-service-number="${conv.serviceNumber}" data-type="${conv.type}" style="display: flex !important; flex-direction: row !important; gap: 0.75rem;">
               ${this.selectMode ? `
               <label class="select-checkbox" style="display: flex; align-items: center; flex-shrink: 0; cursor: pointer;">
                 <input type="checkbox" data-conv-key="sms_${conv.phone}_${conv.serviceNumber}" ${this.selectedForDeletion.has(`sms_${conv.phone}_${conv.serviceNumber}`) ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--primary-color);">
@@ -342,7 +344,7 @@ export const viewsMethods = {
                   <span class="conversation-name">${contactName || formatPhoneNumber(conv.phone)}</span>
                   <div style="display: flex; align-items: center; gap: 0.375rem; margin-left: 0.5rem;">
                     ${conv.unreadCount > 0 ? `<span class="conversation-unread-badge">${conv.unreadCount > 99 ? '99+' : conv.unreadCount}</span>` : ''}
-                    ${typeIcons.sms}
+                    ${typeIcons[conv.type] || typeIcons.sms}
                     <span class="conversation-time" style="white-space: nowrap;">${this.formatTimestamp(conv.lastActivity)}</span>
                   </div>
                 </div>
@@ -395,7 +397,7 @@ export const viewsMethods = {
       return this.renderEmailThreadView(conv);
     }
 
-    const conv = this.conversations.find(c => c.type === 'sms' && c.phone === this.selectedContact && c.serviceNumber === this.selectedServiceNumber);
+    const conv = this.conversations.find(c => (c.type === 'sms' || c.type === 'whatsapp') && c.phone === this.selectedContact && c.serviceNumber === this.selectedServiceNumber);
     if (!conv) return this.renderEmptyState();
 
     // Get contact info if available
@@ -753,7 +755,7 @@ export const viewsMethods = {
         </div>
         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: -5px;">
           <span class="clickable-phone" data-phone="${call.contact_phone}" style="font-size: 0.8rem; color: var(--text-secondary); cursor: pointer;">${formatPhoneNumber(call.contact_phone)}</span>
-          <span style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.7;">Called: <span class="clickable-phone" data-phone="${call.service_number || (call.direction === 'inbound' ? call.callee_number : call.caller_number) || ''}" style="cursor: pointer;">${formatPhoneNumber(call.service_number || (call.direction === 'inbound' ? call.callee_number : call.caller_number) || '')}</span></span>
+          <span style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.7;">Called: <span class="clickable-phone" data-phone="${(call.direction === 'outbound' ? call.caller_number : call.service_number) || ''}" style="cursor: pointer;">${formatPhoneNumber((call.direction === 'outbound' ? call.caller_number : call.service_number) || '')}</span></span>
         </div>
         </div>
       </div>
@@ -1150,7 +1152,7 @@ export const viewsMethods = {
       const audioHtml = rec.url ? `<audio controls src="${rec.url}" style="width: 100%; height: 36px;"></audio>` : '';
 
       return `
-        <div style="width: 100%; margin-bottom: 0.75rem; padding: 0.75rem; background: var(--bg-tertiary); border-radius: 8px;">
+        <div style="width: 100%; padding: 0.75rem; background: var(--bg-tertiary); border-radius: 8px;">
           <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.25rem; display: flex; justify-content: space-between; align-items: center;">
             <span>
               <span style="font-weight: 500;">${this.formatRecordingLabel(rec.label)}</span>
@@ -1185,9 +1187,9 @@ export const viewsMethods = {
     if (!this.translateTo) return;
     const targetLang = this.translateTo.split('-').pop() || 'en';
 
-    // Find the message in current SMS conversation
+    // Find the message in current SMS/WhatsApp conversation
     const conv = this.conversations.find(c =>
-      c.type === 'sms' && c.phone === this.selectedContact && c.serviceNumber === this.selectedServiceNumber
+      (c.type === 'sms' || c.type === 'whatsapp') && c.phone === this.selectedContact && c.serviceNumber === this.selectedServiceNumber
     );
     const msg = conv?.messages?.find(m => m.id === msgId);
     if (!msg) return;
@@ -1284,7 +1286,7 @@ export const viewsMethods = {
     const targetLang = this.translateTo.split('-').pop() || 'en';
 
     const conv = this.conversations.find(c =>
-      c.type === 'sms' && c.phone === this.selectedContact && c.serviceNumber === this.selectedServiceNumber
+      (c.type === 'sms' || c.type === 'whatsapp') && c.phone === this.selectedContact && c.serviceNumber === this.selectedServiceNumber
     );
     if (!conv) return;
 
@@ -2022,7 +2024,7 @@ export const viewsMethods = {
   getConversationSentiment(conv) {
     if (conv.type === 'call') {
       return conv.call?.user_sentiment || null;
-    } else if (conv.type === 'sms') {
+    } else if (conv.type === 'sms' || conv.type === 'whatsapp') {
       // Find most recent inbound message with sentiment
       const inboundWithSentiment = conv.messages
         ?.filter(m => m.direction === 'inbound' && m.sentiment)

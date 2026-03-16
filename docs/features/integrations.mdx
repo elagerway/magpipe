@@ -7,6 +7,10 @@ Integrations let your AI agent access external services like CRMs, calendars, an
 
 ## Overview
 
+<Frame caption="Connect OAuth services and MCP servers to extend your agent's capabilities">
+  <img src="/images/apps-integrations.png" alt="Integrations overview" />
+</Frame>
+
 Magpipe supports three types of integrations:
 
 | Type | Description | Examples |
@@ -60,7 +64,11 @@ Once connected, your agent can:
 | Tool | Description |
 |------|-------------|
 | `slack_send_message` | Send a message to a channel |
-| `slack_list_channels` | List available channels |
+| `slack_list_channels` | List available channels (public and private) |
+
+<Note>
+Private channels are fully supported. The Magpipe bot must be invited to any private channel you want to use. If you connected Slack before March 2026, disconnect and reconnect to grant the updated permissions.
+</Note>
 
 ### Calendar Tools
 
@@ -70,6 +78,10 @@ Once connected, your agent can:
 | `book_calendar_appointment` | Schedule an appointment |
 
 ## MCP Server Catalog
+
+<Frame caption="Browse and connect MCP servers from the catalog">
+  <img src="/images/mcp-servers-catalog.png" alt="MCP server catalog" />
+</Frame>
 
 The MCP (Model Context Protocol) catalog includes 40+ pre-configured servers for popular services.
 

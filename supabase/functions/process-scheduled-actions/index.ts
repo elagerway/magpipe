@@ -21,6 +21,9 @@ Deno.serve(async (req) => {
 
     console.log('Processing scheduled actions...')
 
+    // Check appointment reminders (runs every cron cycle)
+    await checkAppointmentReminders(supabaseUrl, supabaseKey, supabase)
+
     // Get pending actions that are due
     const now = new Date().toISOString()
     const { data: pendingActions, error: fetchError } = await supabase
@@ -81,6 +84,24 @@ Deno.serve(async (req) => {
 
           results.push({ id: action.id, success: true })
           console.log(`Action ${action.id} completed successfully`)
+
+        } else if (action.action_type === 'execute_skill') {
+          await processExecuteSkill(action, supabaseUrl, supabaseKey)
+
+          // Mark as completed
+          await supabase
+            .from('scheduled_actions')
+            .update({
+              status: 'completed',
+              executed_at: new Date().toISOString(),
+            })
+            .eq('id', action.id)
+
+          // Schedule next execution based on skill's schedule_config
+          await scheduleNextExecution(action, supabase)
+
+          results.push({ id: action.id, success: true })
+          console.log(`Action ${action.id} (execute_skill) completed successfully`)
 
         } else {
           // Unknown action type
@@ -239,6 +260,189 @@ async function processSendSms(
   await deductSmsCredits(config.supabaseUrl, action.user_id, 1)
 
   console.log(`Scheduled SMS sent to ${recipient_phone} (SID: ${messageSid})`)
+}
+
+/**
+ * Process a scheduled skill execution action
+ */
+async function processExecuteSkill(
+  action: any,
+  supabaseUrl: string,
+  supabaseKey: string
+) {
+  const { parameters } = action
+  const { agent_skill_id, trigger_context } = parameters
+
+  if (!agent_skill_id) {
+    throw new Error('Missing required parameter: agent_skill_id')
+  }
+
+  const response = await fetch(`${supabaseUrl}/functions/v1/execute-skill`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${supabaseKey}`,
+    },
+    body: JSON.stringify({
+      agent_skill_id,
+      trigger_type: 'schedule',
+      trigger_context: trigger_context || {},
+    }),
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`execute-skill failed (${response.status}): ${errorText}`)
+  }
+
+  const result = await response.json()
+  if (!result.success) {
+    throw new Error(`Skill execution failed: ${result.error || 'Unknown error'}`)
+  }
+
+  console.log(`Skill execution completed: ${result.execution_id}`)
+}
+
+/**
+ * Schedule the next execution of a recurring skill.
+ * Reads the agent_skill's schedule_config to determine the next run time.
+ */
+async function scheduleNextExecution(action: any, supabase: any) {
+  const { parameters } = action
+  const { agent_skill_id } = parameters
+
+  if (!agent_skill_id) return
+
+  // Load the agent skill to get schedule config
+  const { data: agentSkill } = await supabase
+    .from('agent_skills')
+    .select('schedule_config, is_enabled')
+    .eq('id', agent_skill_id)
+    .single()
+
+  if (!agentSkill || !agentSkill.is_enabled) return
+
+  const schedule = agentSkill.schedule_config
+  if (!schedule || !schedule.interval) return
+
+  let nextRun: Date | null = null
+  const now = new Date()
+
+  switch (schedule.interval) {
+    case 'hours': {
+      const hours = schedule.every || 6
+      nextRun = new Date(now.getTime() + hours * 60 * 60 * 1000)
+      break
+    }
+    case 'daily': {
+      // Next day at the configured time
+      const [hours, minutes] = (schedule.time || '09:00').split(':').map(Number)
+      nextRun = new Date(now)
+      nextRun.setDate(nextRun.getDate() + 1)
+      nextRun.setHours(hours, minutes, 0, 0)
+      break
+    }
+    case 'weekly': {
+      // Next occurrence of configured days
+      const days = schedule.days || ['mon']
+      const dayMap: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 }
+      const [hours, minutes] = (schedule.time || '09:00').split(':').map(Number)
+      const currentDay = now.getDay()
+
+      // Find next matching day
+      let daysToAdd = 7
+      for (const day of days) {
+        const targetDay = dayMap[day]
+        if (targetDay === undefined) continue
+        let diff = targetDay - currentDay
+        if (diff <= 0) diff += 7
+        if (diff < daysToAdd) daysToAdd = diff
+      }
+
+      nextRun = new Date(now)
+      nextRun.setDate(nextRun.getDate() + daysToAdd)
+      nextRun.setHours(hours, minutes, 0, 0)
+      break
+    }
+    case 'monthly': {
+      const day = schedule.day || 1
+      const [hours, minutes] = (schedule.time || '09:00').split(':').map(Number)
+      nextRun = new Date(now)
+      nextRun.setMonth(nextRun.getMonth() + 1)
+      nextRun.setDate(day)
+      nextRun.setHours(hours, minutes, 0, 0)
+      break
+    }
+  }
+
+  if (nextRun) {
+    const { error: insertError } = await supabase.from('scheduled_actions').insert({
+      user_id: action.user_id,
+      action_type: 'execute_skill',
+      scheduled_at: nextRun.toISOString(),
+      parameters: {
+        agent_skill_id,
+        ...parameters,
+      },
+      created_via: 'agent',
+    })
+    if (insertError) {
+      console.error(`Failed to schedule next skill execution:`, insertError)
+    } else {
+      console.log(`Next skill execution scheduled for ${nextRun.toISOString()}`)
+    }
+  }
+}
+
+/**
+ * Check all enabled appointment_reminder skills and execute them.
+ * Runs every cron cycle. The handler itself handles dedup per booking.
+ */
+async function checkAppointmentReminders(
+  supabaseUrl: string,
+  supabaseKey: string,
+  supabase: any
+) {
+  try {
+    // Find all enabled appointment_reminder skills
+    const { data: reminderSkills, error } = await supabase
+      .from('agent_skills')
+      .select('id, agent_id, skill_definitions!inner(slug, handler_id)')
+      .eq('is_enabled', true)
+      .eq('skill_definitions.slug', 'appointment_reminder')
+
+    if (error || !reminderSkills || reminderSkills.length === 0) return
+
+    console.log(`Found ${reminderSkills.length} active appointment reminder skill(s)`)
+
+    for (const skill of reminderSkills) {
+      try {
+        const response = await fetch(`${supabaseUrl}/functions/v1/execute-skill`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseKey}`,
+          },
+          body: JSON.stringify({
+            agent_skill_id: skill.id,
+            trigger_type: 'event',
+            trigger_context: { event: 'appointment_check' },
+          }),
+        })
+
+        if (response.ok) {
+          const result = await response.json()
+          console.log(`Appointment reminder check for skill ${skill.id}: ${result.result?.summary || 'done'}`)
+        } else {
+          console.error(`Appointment reminder check failed for skill ${skill.id}:`, await response.text())
+        }
+      } catch (err) {
+        console.error(`Error checking appointment reminders for skill ${skill.id}:`, err)
+      }
+    }
+  } catch (err) {
+    console.error('Error in checkAppointmentReminders:', err)
+  }
 }
 
 /**
