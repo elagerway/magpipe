@@ -169,13 +169,20 @@ export function parseGmailMessage(msg: any, gmailAddress: string, sendAsEmail?: 
 
     const { text, html } = extractBody(msg.payload)
 
+    // Normalize: replace raw Gmail address with send-as alias in from/to
+    // so the underlying help@webrtc.is never leaks into stored records
+    const normalizeEmail = (email: string) => {
+      if (!sendAsEmail || !gmailAddress) return email
+      return email.replace(new RegExp(gmailAddress.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), sendAsEmail)
+    }
+
     return {
       gmail_message_id: msg.id,
       thread_id: msg.threadId,
       message_id_header: messageIdHeader,
-      from_email: fromEmail,
+      from_email: isOutbound && sendAsEmail ? sendAsEmail : fromEmail,
       from_name: fromName,
-      to_email: to,
+      to_email: normalizeEmail(to),
       subject,
       body_text: text,
       body_html: html,
@@ -188,6 +195,20 @@ export function parseGmailMessage(msg: any, gmailAddress: string, sendAsEmail?: 
   }
 }
 
+/**
+ * Decode a base64url-encoded string to UTF-8 text.
+ * Gmail API returns base64url; plain atob() mangles multi-byte UTF-8
+ * characters (e.g. curly quotes → â, non-breaking space → Â).
+ */
+export function decodeBase64Url(data: string): string {
+  const binary = atob(data.replace(/-/g, '+').replace(/_/g, '/'))
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i)
+  }
+  return new TextDecoder('utf-8').decode(bytes)
+}
+
 export function extractBody(payload: any): { text: string; html: string } {
   let text = ''
   let html = ''
@@ -195,7 +216,7 @@ export function extractBody(payload: any): { text: string; html: string } {
   if (!payload) return { text, html }
 
   if (payload.body?.data) {
-    const decoded = atob(payload.body.data.replace(/-/g, '+').replace(/_/g, '/'))
+    const decoded = decodeBase64Url(payload.body.data)
     if (payload.mimeType === 'text/plain') text = decoded
     if (payload.mimeType === 'text/html') html = decoded
   }
@@ -203,10 +224,10 @@ export function extractBody(payload: any): { text: string; html: string } {
   if (payload.parts) {
     for (const part of payload.parts) {
       if (part.mimeType === 'text/plain' && part.body?.data) {
-        text = atob(part.body.data.replace(/-/g, '+').replace(/_/g, '/'))
+        text = decodeBase64Url(part.body.data)
       }
       if (part.mimeType === 'text/html' && part.body?.data) {
-        html = atob(part.body.data.replace(/-/g, '+').replace(/_/g, '/'))
+        html = decodeBase64Url(part.body.data)
       }
       if (part.parts) {
         const nested = extractBody(part)
@@ -227,7 +248,8 @@ export function isSystemEmail(fromEmail: string): boolean {
     lower.includes('postmaster') ||
     lower.includes('notifications@') ||
     lower.includes('notification@') ||
-    lower.includes('systemgenerated')
+    lower.includes('systemgenerated') ||
+    lower.includes('@magpipe.ai')
 }
 
 // ─── Contact Enrichment ─────────────────────────────────────────────
@@ -414,7 +436,8 @@ export async function generateAiReply(
   config: any,
   agent: any,
   sendFrom: string,
-  msg: any
+  msg: any,
+  integration?: any  // optional; when present and composio_managed, send via Composio
 ) {
   const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
   if (!openaiApiKey) {
@@ -531,7 +554,9 @@ export async function generateAiReply(
     const replySubject = msg.subject?.startsWith('Re:') ? msg.subject : `Re: ${msg.subject || ''}`
 
     if (config.agent_mode === 'auto') {
-      const gmailResult = await sendGmailReply(accessToken, sendFrom, msg, draftText, replySubject)
+      const gmailResult = isComposioManaged(integration)
+        ? await sendGmailReplyComposio(integration.user_id, msg, draftText, replySubject)
+        : await sendGmailReply(accessToken, sendFrom, msg, draftText, replySubject)
 
       if (gmailResult) {
         await supabase.from('email_messages').insert({
@@ -636,6 +661,236 @@ export async function sendGmailReply(
   }
 
   return await response.json()
+}
+
+// ─── Bulk / Spam filtering ─────────────────────────────────────────
+// Bad actors subscribe help@magpipe.ai to free services; the welcome/verify
+// emails would otherwise become support tickets and trigger AI replies.
+// Headers from automated/transactional mail are reliable enough to drop on
+// (humans don't send via these channels). Apply BEFORE creating any rows.
+
+const KNOWN_ESP_X_MAILER_PATTERNS: RegExp[] = [
+  /mailchimp/i,
+  /sendgrid/i,
+  /mailgun/i,
+  /hubspot/i,
+  /klaviyo/i,
+  /brevo|sendinblue/i,
+  /constantcontact|constant contact/i,
+  /campaignmonitor|campaign monitor/i,
+  /amazonses|amazon ses/i,
+  /postmark/i,
+  /mandrill/i,
+  /salesforce.*marketing/i,
+  /iterable/i,
+  /customer\.io/i,
+]
+
+export interface BulkCheckResult {
+  isBulk: boolean
+  reason: string | null
+  matchedHeader: string | null
+  matchedValue: string | null
+}
+
+// Returns {isBulk:false} for normal 1:1 mail; isBulk:true when the message
+// carries a header that's only set by automated/list/transactional senders.
+export function isBulkOrAutomated(payload: any): BulkCheckResult {
+  if (!payload?.headers) return { isBulk: false, reason: null, matchedHeader: null, matchedValue: null }
+  const headers: Array<{ name: string; value: string }> = payload.headers
+  const get = (n: string): string | null => {
+    const h = headers.find(x => x.name.toLowerCase() === n.toLowerCase())
+    return h?.value ?? null
+  }
+
+  const listUnsub = get('List-Unsubscribe')
+  if (listUnsub) {
+    return { isBulk: true, reason: 'list_unsubscribe', matchedHeader: 'List-Unsubscribe', matchedValue: listUnsub.substring(0, 200) }
+  }
+
+  const listId = get('List-ID') || get('List-Id')
+  if (listId) {
+    return { isBulk: true, reason: 'list_id', matchedHeader: 'List-ID', matchedValue: listId.substring(0, 200) }
+  }
+
+  const precedence = (get('Precedence') || '').toLowerCase().trim()
+  if (precedence === 'bulk' || precedence === 'list' || precedence === 'junk') {
+    return { isBulk: true, reason: `precedence_${precedence}`, matchedHeader: 'Precedence', matchedValue: precedence }
+  }
+
+  const autoSub = (get('Auto-Submitted') || '').toLowerCase().trim()
+  if (autoSub && autoSub !== 'no') {
+    return { isBulk: true, reason: `auto_submitted_${autoSub.replace(/[^a-z0-9_-]/g, '_')}`, matchedHeader: 'Auto-Submitted', matchedValue: autoSub }
+  }
+
+  if (get('Feedback-ID')) {
+    return { isBulk: true, reason: 'feedback_id', matchedHeader: 'Feedback-ID', matchedValue: get('Feedback-ID')!.substring(0, 200) }
+  }
+
+  if (get('X-Campaign-Id') || get('X-Campaign-ID')) {
+    return { isBulk: true, reason: 'x_campaign_id', matchedHeader: 'X-Campaign-Id', matchedValue: (get('X-Campaign-Id') || get('X-Campaign-ID') || '').substring(0, 200) }
+  }
+
+  const xMailer = get('X-Mailer') || ''
+  for (const re of KNOWN_ESP_X_MAILER_PATTERNS) {
+    if (re.test(xMailer)) {
+      return { isBulk: true, reason: 'x_mailer_esp', matchedHeader: 'X-Mailer', matchedValue: xMailer.substring(0, 200) }
+    }
+  }
+
+  return { isBulk: false, reason: null, matchedHeader: null, matchedValue: null }
+}
+
+// Persists a one-row audit record for a dropped email. Failure is non-fatal —
+// never let logging block the pipeline.
+export async function quarantineEmail(
+  supabase: any,
+  args: {
+    userId: string | null
+    parsedMsg: any  // output of parseGmailMessage
+    reason: string
+    reasonDetail?: Record<string, unknown> | null
+  }
+): Promise<void> {
+  try {
+    await supabase.from('quarantined_emails').insert({
+      user_id: args.userId,
+      gmail_message_id: args.parsedMsg.gmail_message_id,
+      thread_id: args.parsedMsg.thread_id,
+      from_email: args.parsedMsg.from_email,
+      from_name: args.parsedMsg.from_name,
+      to_email: args.parsedMsg.to_email,
+      subject: args.parsedMsg.subject,
+      reason: args.reason,
+      reason_detail: args.reasonDetail ?? null,
+      body_text_preview: (args.parsedMsg.body_text || '').substring(0, 500),
+      received_at: args.parsedMsg.received_at
+    })
+    console.log(`Quarantined ${args.parsedMsg.gmail_message_id} reason=${args.reason}`)
+  } catch (err) {
+    console.error('quarantineEmail insert failed (non-fatal):', err)
+  }
+}
+
+// Backstop against reply storms — at most one AI reply per sender per window.
+// Returns true if we've already AI-replied to this address recently.
+export async function hasRecentAiReplyToSender(
+  supabase: any,
+  fromEmail: string,
+  withinHours = 24
+): Promise<boolean> {
+  if (!fromEmail) return false
+  const since = new Date(Date.now() - withinHours * 3600 * 1000).toISOString()
+  const { count } = await supabase
+    .from('email_messages')
+    .select('id', { count: 'exact', head: true })
+    .ilike('to_email', fromEmail)
+    .eq('direction', 'outbound')
+    .eq('is_ai_generated', true)
+    .gte('sent_at', since)
+  return (count || 0) > 0
+}
+
+// ─── Composio-routed Gmail (CASA off-load) ─────────────────────────
+// When user_integrations.config.composio_managed === true, we don't have a
+// raw OAuth token. Composio holds it; we call their tools/execute proxy
+// keyed on the Magpipe user_id (which equals the Composio user_id).
+
+const COMPOSIO_API_BASE = 'https://backend.composio.dev'
+
+export function isComposioManaged(integration: any): boolean {
+  return integration?.config?.composio_managed === true
+}
+
+async function composioExecute(
+  userId: string,
+  slug: string,
+  args: Record<string, unknown>
+): Promise<any> {
+  const apiKey = Deno.env.get('COMPOSIO_API_KEY')
+  if (!apiKey) {
+    console.error('COMPOSIO_API_KEY not set — cannot route Gmail through Composio')
+    return null
+  }
+  try {
+    const res = await fetch(`${COMPOSIO_API_BASE}/api/v3/tools/execute/${slug}`, {
+      method: 'POST',
+      headers: { 'x-api-key': apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, arguments: args })
+    })
+    const json = await res.json()
+    if (!res.ok || !json.successful) {
+      console.error(`Composio ${slug} failed:`, res.status, json?.error || json)
+      return null
+    }
+    return json.data
+  } catch (err) {
+    console.error(`Composio ${slug} threw:`, err)
+    return null
+  }
+}
+
+// Send a threaded reply via Composio. Returns { id, threadId } on success
+// (matching the shape sendGmailReply returns) or null on failure.
+export async function sendGmailReplyComposio(
+  userId: string,
+  originalMsg: any,
+  body: string,
+  _subject: string  // Composio's GMAIL_REPLY_TO_THREAD reuses the thread's subject
+): Promise<{ id: string; threadId: string } | null> {
+  const data = await composioExecute(userId, 'GMAIL_REPLY_TO_THREAD', {
+    thread_id: originalMsg.thread_id,
+    recipient_email: originalMsg.from_email,
+    message_body: body
+  })
+  if (!data) return null
+  const r = data.response_data || data
+  return {
+    id: r.id || r.message_id || originalMsg.gmail_message_id,
+    threadId: r.threadId || r.thread_id || originalMsg.thread_id
+  }
+}
+
+// Poll inbox via Composio. Returns Gmail-API-shaped message objects (same
+// structure as fetchRecentMessages so parseGmailMessage reuses as-is).
+export async function fetchRecentMessagesComposio(
+  userId: string,
+  query: string | null,
+  maxResults: number
+): Promise<any[]> {
+  const data = await composioExecute(userId, 'GMAIL_FETCH_EMAILS', {
+    max_results: maxResults,
+    include_payload: true,
+    ...(query ? { query } : {})
+  })
+  if (!data) return []
+  const msgs = data.messages || data.response_data?.messages || []
+  // Composio's response uses `messageId` as the top-level id; copy to `id` so
+  // existing parsers (which read msg.id) work without modification.
+  return msgs.map((m: any) => ({
+    ...m,
+    id: m.id || m.messageId,
+    threadId: m.threadId || m.thread_id,
+    internalDate: m.internalDate || (m.messageTimestamp ? String(new Date(m.messageTimestamp).getTime()) : '0')
+  }))
+}
+
+// Send a top-level email (not a reply) via Composio.
+export async function sendGmailEmailComposio(
+  userId: string,
+  args: {
+    recipient_email: string
+    subject?: string
+    body?: string
+    is_html?: boolean
+    cc?: string[]
+    bcc?: string[]
+  }
+): Promise<{ id: string; threadId?: string } | null> {
+  const data = await composioExecute(userId, 'GMAIL_SEND_EMAIL', args)
+  if (!data) return null
+  const r = data.response_data || data
+  return { id: r.id || r.message_id || '', threadId: r.threadId || r.thread_id }
 }
 
 // ─── Gmail Watch (Pub/Sub) ──────────────────────────────────────────

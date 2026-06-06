@@ -1,0 +1,2 @@
+[functions.whatsapp-connect]
+verify_jwt = false

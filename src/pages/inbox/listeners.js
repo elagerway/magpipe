@@ -808,7 +808,7 @@ export const listenersMethods = {
         this.viewedConversations.add(smsKey);
 
         // Clear unread count for this conversation
-        const conv = this.conversations.find(c => c.type === 'sms' && c.phone === this.selectedContact && c.serviceNumber === this.selectedServiceNumber);
+        const conv = this.conversations.find(c => (c.type === 'sms' || c.type === 'whatsapp') && c.phone === this.selectedContact && c.serviceNumber === this.selectedServiceNumber);
         if (conv) {
           conv.unreadCount = 0;
         }
@@ -827,7 +827,7 @@ export const listenersMethods = {
       }
 
       // Attach input listeners for SMS and chat threads
-      if (type === 'sms' || type === 'chat') {
+      if (type === 'sms' || type === 'whatsapp' || type === 'chat') {
         this.attachMessageInputListeners();
       }
 
@@ -1662,9 +1662,38 @@ export const listenersMethods = {
 
       // Get the service number from the current conversation
       // Use the most recent message's service number (the one they last texted)
-      const conv = this.conversations.find(c => c.type === 'sms' && c.phone === this.selectedContact && c.serviceNumber === this.selectedServiceNumber);
+      const conv = this.conversations.find(c => (c.type === 'sms' || c.type === 'whatsapp') && c.phone === this.selectedContact && c.serviceNumber === this.selectedServiceNumber);
       if (!conv || !conv.messages || conv.messages.length === 0) {
         await showAlertModal('Error', 'No conversation found.');
+        return;
+      }
+
+      // WhatsApp conversations use a different send endpoint
+      if (conv.type === 'whatsapp') {
+        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-whatsapp-message`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            phone_number_id: conv.serviceNumber,
+            recipient_wa_id: conv.phone,
+            message,
+          }),
+        });
+
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({}));
+          throw new Error(err.error || 'Failed to send WhatsApp message');
+        }
+
+        await this.loadConversations(this.userId);
+        const threadElement = document.getElementById('message-thread');
+        if (threadElement) threadElement.innerHTML = this.renderMessageThread();
+        const threadMessages = document.getElementById('thread-messages');
+        if (threadMessages) setTimeout(() => { threadMessages.scrollTop = threadMessages.scrollHeight; }, 50);
+        this.attachMessageInputListeners();
         return;
       }
 
@@ -1785,7 +1814,7 @@ export const listenersMethods = {
       const { data: { session } } = await supabase.auth.getSession();
 
       // Get the service number from the current conversation
-      const conv = this.conversations.find(c => c.type === 'sms' && c.phone === this.selectedContact && c.serviceNumber === this.selectedServiceNumber);
+      const conv = this.conversations.find(c => (c.type === 'sms' || c.type === 'whatsapp') && c.phone === this.selectedContact && c.serviceNumber === this.selectedServiceNumber);
       if (!conv || !conv.messages || conv.messages.length === 0) {
         throw new Error('No conversation found');
       }

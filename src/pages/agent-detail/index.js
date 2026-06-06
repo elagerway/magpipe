@@ -41,6 +41,7 @@ export default class AgentDetailPage {
     this.autoSaveTimeout = null;
     this.clonedVoices = [];
     this.serviceNumbers = [];
+    this.whatsappAccounts = []; // WhatsApp Business accounts connected by this user
     this.chatWidget = null; // Chat widget for this agent
     this.gmailIntegration = null; // Gmail integration for this user
     this.emailConfig = null; // Agent email config
@@ -147,6 +148,10 @@ export default class AgentDetailPage {
     this.serviceNumbers = [...regularNumbers, ...sipNumbers];
 
     this.isCalComConnected = !!userDataResult.data?.cal_com_access_token;
+
+    if (this.agent.agent_type === 'whatsapp') {
+      await this.loadWhatsAppAccounts();
+    }
     this.chatWidget = chatWidgetResult.widget;
     this.customFunctions = customFunctionsResult.functions || [];
     this.semanticActions = semanticActionsResult.actions || [];

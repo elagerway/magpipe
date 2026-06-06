@@ -1,0 +1,2 @@
+[functions.signup-with-captcha]
+verify_jwt = false

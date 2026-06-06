@@ -15,6 +15,26 @@ import { messagingMethods } from './messaging.js';
 import { callInterfaceMethods } from './call-interface.js';
 import { listenersMethods } from './listeners.js';
 
+// Re-sign an inbox media <img> whose stored signed URL has expired. The durable
+// storage path lives on the message; sign-inbox-media mints a fresh URL scoped to
+// the caller's own messages. `data-refreshed` guards against an onerror loop.
+if (typeof window !== 'undefined' && !window.__refreshInboxMedia) {
+  window.__refreshInboxMedia = async (img) => {
+    if (!img || img.dataset.refreshed) return;
+    img.dataset.refreshed = '1';
+    const msgId = img.dataset.msgId;
+    const idx = parseInt(img.dataset.mediaIdx || '0', 10);
+    if (!msgId) return;
+    try {
+      const { data } = await supabase.functions.invoke('sign-inbox-media', { body: { message_ids: [msgId] } });
+      const fresh = data?.media?.[msgId]?.[idx]?.url;
+      if (fresh) img.src = fresh;
+    } catch (e) {
+      console.error('inbox media refresh failed:', e);
+    }
+  };
+}
+
 class InboxPage {
   constructor() {
     this.conversations = [];
@@ -791,7 +811,7 @@ class InboxPage {
   async loadConversations(userId) {
     // Load all data in parallel for speed
     const [messagesResult, callsResult, contactsResult, chatSessionsResult, agentConfigsResult, serviceNumbersResult, emailResult] = await Promise.all([
-      supabase.from('sms_messages').select('id, user_id, sender_number, recipient_number, content, sent_at, created_at, direction, status, sentiment').eq('user_id', userId).order('sent_at', { ascending: false }).limit(500),
+      supabase.from('sms_messages').select('id, user_id, sender_number, recipient_number, content, sent_at, created_at, direction, status, sentiment, channel, metadata').eq('user_id', userId).order('sent_at', { ascending: false }).limit(500),
       supabase.from('call_records').select('id, user_id, caller_number, contact_phone, started_at, ended_at, duration, direction, status, recording_url, transcript, call_summary, user_sentiment, service_number, agent_id, created_at').eq('user_id', userId).order('started_at', { ascending: false }).limit(300),
       supabase.from('contacts').select('id, user_id, name, phone_number, email, first_name, last_name, company, avatar_url').eq('user_id', userId),
       ChatSession.getRecentWithPreview(userId, 50),
@@ -862,7 +882,7 @@ class InboxPage {
 
       if (!smsGrouped[convKey]) {
         smsGrouped[convKey] = {
-          type: 'sms',
+          type: msg.channel === 'whatsapp' ? 'whatsapp' : 'sms',
           phone,
           serviceNumber, // Which of our numbers this conversation is on
           messages: [],
@@ -1130,7 +1150,7 @@ class InboxPage {
           this.selectedContact = null;
           this.selectedServiceNumber = null;
         } else if (lastViewedContact && lastViewedServiceNumber &&
-                   this.conversations.some(c => c.type === 'sms' && c.phone === lastViewedContact && c.serviceNumber === lastViewedServiceNumber)) {
+                   this.conversations.some(c => (c.type === 'sms' || c.type === 'whatsapp') && c.phone === lastViewedContact && c.serviceNumber === lastViewedServiceNumber)) {
           this.selectedContact = lastViewedContact;
           this.selectedServiceNumber = lastViewedServiceNumber;
           this.selectedCallId = null;
@@ -1410,6 +1430,7 @@ class InboxPage {
               <button class="inbox-filter-btn ${this.typeFilter === 'all' && this.directionFilter === 'all' && !this.missedFilter && this.sentimentFilter === 'all' && !this.unreadFilter ? 'active' : ''}" data-filter-type="all" data-filter-reset="true">All</button>
               <button class="inbox-filter-btn ${this.typeFilter === 'calls' ? 'active' : ''}" data-filter-type="calls">Calls</button>
               <button class="inbox-filter-btn ${this.typeFilter === 'texts' ? 'active' : ''}" data-filter-type="texts">Texts</button>
+              <button class="inbox-filter-btn ${this.typeFilter === 'whatsapp' ? 'active' : ''}" data-filter-type="whatsapp">WhatsApp</button>
               <button class="inbox-filter-btn ${this.typeFilter === 'chat' ? 'active' : ''}" data-filter-type="chat">Chat</button>
               <button class="inbox-filter-btn ${this.typeFilter === 'email' ? 'active' : ''}" data-filter-type="email">Email</button>
             </div>

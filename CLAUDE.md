@@ -80,14 +80,14 @@ All modals use the `contact-modal-*` CSS pattern. Reference implementation: `src
 - Apply with `npx supabase db push` or run SQL manually via Supabase MCP
 - All new tables need RLS policies
 - **CRITICAL**: When enabling RLS on a table, ALWAYS create policies in the same migration. `ENABLE ROW LEVEL SECURITY` without policies = all queries return empty (silent failure).
-- **Supabase project ref**: `mtxbiyilvgwhbdptysex`
+- **Supabase project ref**: `your-project-ref`
 
 ### MCP Servers
 Six MCP servers are configured for this project (in `~/.claude.json`):
 Supabase, Playwright, Vercel, Magpipe (`packages/mcp-server`), Stripe, Postmark
 
 ## Deployment
-- **Vercel auto-deploy is NOT configured** — deploy manually: `npx vercel --prod`
+- **Vercel auto-deploys from `master` branch** — pushes to master go live automatically
 - **Edge functions**: deploy via Supabase MCP or `npx supabase functions deploy <name>`
 - **Edge function secrets** are write-only — values cannot be read back
 

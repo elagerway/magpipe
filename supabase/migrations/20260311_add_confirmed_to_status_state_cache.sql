@@ -1,0 +1,1 @@
+ALTER TABLE status_state_cache ADD COLUMN IF NOT EXISTS confirmed BOOLEAN NOT NULL DEFAULT true;
