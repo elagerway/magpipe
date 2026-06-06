@@ -22,7 +22,8 @@
     "supabase:reset": "supabase db reset",
     "test:functions": "node scripts/test-functions.js",
     "test:telephony": "node scripts/test-functions.js telephony",
-    "test:live-call": "node scripts/test-functions.js live-call"
+    "test:live-call": "node scripts/test-functions.js live-call",
+    "prepare": "git config core.hooksPath .githooks || true"
   },
   "keywords": [
     "pwa",

@@ -4,6 +4,8 @@
 
 set -e
 
+bash "$(dirname "$0")/secret-scan.sh" || exit 1
+
 echo "🔍 Running pre-commit checks..."
 
 # Colors
