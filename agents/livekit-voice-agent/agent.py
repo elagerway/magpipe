@@ -3132,10 +3132,30 @@ AFTER-HOURS CONTEXT:
 
         if sms_from_number:
             sms_description = sms_config.get("description")
-            # Load SMS templates for this user
+            # Load SMS templates for this agent.
+            # Filtered on agent_id as well as user_id: templates are injected into
+            # the tool description as "use ONLY the content from these templates",
+            # so a row belonging to a sibling agent becomes something THIS agent
+            # will happily send. A user with several agents was seeing every
+            # agent's templates offered by all of them.
+            # agent_id IS NULL is kept deliberately — that's an account-wide
+            # template, which every agent should still get.
             sms_templates = []
             try:
-                templates_result = supabase.table("sms_templates").select("name, content").eq("user_id", user_id).execute()
+                templates_query = (
+                    supabase.table("sms_templates")
+                    .select("name, content")
+                    .eq("user_id", user_id)
+                )
+                if agent_id:
+                    templates_query = templates_query.or_(
+                        f"agent_id.eq.{agent_id},agent_id.is.null"
+                    )
+                else:
+                    # No agent resolved — take only the account-wide templates
+                    # rather than every agent's.
+                    templates_query = templates_query.is_("agent_id", "null")
+                templates_result = templates_query.execute()
                 if templates_result.data:
                     sms_templates = templates_result.data
                     logger.info(f"📱 Loaded {len(sms_templates)} SMS templates")
