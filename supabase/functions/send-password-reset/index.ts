@@ -48,9 +48,15 @@ Deno.serve(async (req) => {
     const userName = profile?.name || null
 
     // Generate link using Supabase Auth
+    const frontendUrl = Deno.env.get('FRONTEND_URL') || 'https://magpipe.ai'
+    const redirectTo = type === 'recovery'
+      ? `${frontendUrl}/reset-password`
+      : `${frontendUrl}/inbox`
+
     const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
       type: type,
       email: email,
+      options: { redirectTo },
     })
 
     if (linkError || !linkData) {
@@ -174,7 +180,7 @@ ${expiryNote}
         'X-Postmark-Server-Token': postmarkApiKey,
       },
       body: JSON.stringify({
-        From: Deno.env.get('NOTIFICATION_EMAIL') || 'notifications@snapsonic.com',
+        From: Deno.env.get('NOTIFICATION_EMAIL') || 'info@magpipe.ai',
         To: email,
         Subject: emailSubject,
         HtmlBody: emailHtml,

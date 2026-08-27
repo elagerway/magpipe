@@ -435,6 +435,7 @@ export function createKnowledgeSourceManager(container) {
 
     const form = document.createElement('form');
     form.className = 'add-source-form';
+    form.noValidate = true; // JS handles validation; browser validation blocks silently on hidden fields
 
     const formTitle = document.createElement('h3');
     formTitle.textContent = 'Add Knowledge Source';
@@ -917,10 +918,10 @@ export function createKnowledgeSourceManager(container) {
 
           submitBtn.textContent = 'Reading file...';
 
-          // Read file as base64
+          // Read file as base64 (extract only the base64 portion, not the full data URL)
           const fileData = await new Promise((resolve, reject) => {
             const reader = new FileReader();
-            reader.onload = () => resolve(reader.result);
+            reader.onload = () => resolve(reader.result.split(',')[1]);
             reader.onerror = () => reject(new Error('Failed to read file'));
             reader.readAsDataURL(file);
           });

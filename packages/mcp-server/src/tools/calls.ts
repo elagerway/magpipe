@@ -49,6 +49,18 @@ export function registerCallTools(server: McpServer, client: MagpipeClient) {
       caller_id: z
         .string()
         .describe("Caller ID — must be one of your provisioned service numbers"),
+      agent_id: z
+        .string()
+        .optional()
+        .describe("Agent UUID to use for this call — overrides the service number's assigned agent"),
+      outbound_system_prompt: z
+        .string()
+        .optional()
+        .describe("Per-call system prompt override — replaces the agent's configured prompt for this call only"),
+      metadata: z
+        .record(z.unknown())
+        .optional()
+        .describe("Arbitrary key/value metadata stored on the call record (e.g. { lead_id: '123', campaign: 'Q1' })"),
       purpose: z.string().optional().describe("Purpose / context for the call"),
       goal: z.string().optional().describe("Goal for the agent during the call"),
       template_id: z.string().optional().describe("Call template UUID"),

@@ -159,9 +159,9 @@ Snapsonic Support`
         'X-Postmark-Server-Token': postmarkApiKey
       },
       body: JSON.stringify({
-        From: 'support@snapsonic.com',
+        From: 'help@magpipe.ai',
         To: 'Support@signalwire.com',
-        ReplyTo: 'support@snapsonic.com',
+        ReplyTo: 'help@magpipe.ai',
         Subject: subject,
         HtmlBody: htmlBody,
         TextBody: textBody,
@@ -188,7 +188,7 @@ Snapsonic Support`
         postmark_message_id: emailResult.MessageID,
         email_thread: [{
           direction: 'outbound',
-          from: 'support@snapsonic.com',
+          from: 'help@magpipe.ai',
           to: 'Support@signalwire.com',
           subject: subject,
           body: textBody,

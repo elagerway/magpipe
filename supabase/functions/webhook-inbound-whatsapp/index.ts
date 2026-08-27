@@ -4,10 +4,12 @@
  * Routes messages to the assigned WhatsApp agent for AI reply
  */
 
+import { isFraudBlocked } from '../_shared/fraud.ts'
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { processAndReplyWhatsApp, transcribeWhatsAppAudio, sendWhatsAppMessage } from './ai-reply.ts'
 import { fetchAndStoreWhatsAppMedia, type ForwardedMedia } from './media.ts'
 import { normalizeE164 } from '../_shared/phone-e164.ts'
+import { reportError } from '../_shared/error-reporter.ts'
 
 const VERIFY_TOKEN = Deno.env.get('META_WEBHOOK_VERIFY_TOKEN')!
 
@@ -124,8 +126,12 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     )
 
-    // Process each entry (can have multiple)
-    for (const entry of body.entry || []) {
+    // ACK Meta immediately, then run all heavy work (media re-host, Whisper
+    // transcription, AI reply) in the background. Doing it inline blows Meta's
+    // short webhook deadline on a voice note and the isolate gets frozen
+    // mid-chain (ack sent, but transcript/store/reply never finish).
+    const processInbound = async () => {
+     for (const entry of body.entry || []) {
       for (const change of entry.changes || []) {
         if (change.field !== 'messages') continue
 
@@ -134,10 +140,97 @@ Deno.serve(async (req) => {
 
         if (!phoneNumberId) continue
 
-        // Handle message status updates (delivered, read, failed) — just log, no action
+        // Handle message status callbacks (sent / delivered / read / failed).
+        // Meta posts these to the same webhook (field stays "messages", with a
+        // `statuses` array). Persist them so delivery state is visible: prior
+        // code only console.logged, so `delivered_at` was never set and silent
+        // drops (e.g. Meta dropping duplicate templates → error 131049) looked
+        // identical to a successful "sent". Now a drop flips the row to failed
+        // and lands in admin → Support → Errors with Meta's reason code.
         if (value.statuses && !value.messages) {
+          // Monotonic ranking: Meta can deliver callbacks out of order or
+          // duplicate them (it retries non-200s), so we never regress a row
+          // to a lower-ranked status. 'read' and 'failed' are terminal.
+          const STATUS_RANK: Record<string, number> = { sent: 1, delivered: 2, read: 3, failed: 3 }
           for (const status of value.statuses) {
-            console.log(`WhatsApp message status: ${status.status} for ${status.id}`)
+            const wamid: string | undefined = status.id
+            if (!wamid) continue
+            const newStatus: string = status.status // sent | delivered | read | failed
+            const tsIso = status.timestamp
+              ? new Date(Number(status.timestamp) * 1000).toISOString()
+              : new Date().toISOString()
+
+            // One read up front: current status (monotonic guard + failure
+            // dedup), delivered_at (don't clobber a real delivery time), and
+            // user_id (failure attribution).
+            const { data: msgRow } = await supabase
+              .from('sms_messages')
+              .select('status, delivered_at, user_id, metadata')
+              .eq('external_id', wamid)
+              .eq('channel', 'whatsapp')
+              .maybeSingle()
+
+            const curRank = STATUS_RANK[msgRow?.status ?? ''] ?? 0
+            const newRank = STATUS_RANK[newStatus] ?? 0
+            const alreadyFailed = msgRow?.status === 'failed'
+            // Drop stale/duplicate callbacks that wouldn't advance the row.
+            if (newRank < curRank || (newRank === curRank && newStatus === msgRow?.status)) {
+              continue
+            }
+
+            // Parse Meta's failure detail up front so we can both stamp the row
+            // and report it.
+            const metaErr = newStatus === 'failed' && Array.isArray(status.errors) ? status.errors[0] : null
+            const code = metaErr?.code != null ? String(metaErr.code) : 'unknown'
+            const title = metaErr?.title || metaErr?.message || 'WhatsApp message failed'
+
+            const update: Record<string, unknown> = { status: newStatus }
+            // 'delivered' is the authoritative device-arrival event. 'read'
+            // only backfills delivered_at when no 'delivered' callback arrived
+            // (Meta sometimes skips it) — never overwrite a real delivery time.
+            if (newStatus === 'delivered' || (newStatus === 'read' && !msgRow?.delivered_at)) {
+              update.delivered_at = tsIso
+            }
+            // Stamp the failure reason onto the row so get_message/list_messages
+            // can surface WHY a send failed (e.g. 131042 business-eligibility),
+            // not just a bare "failed". Merge into existing metadata — never
+            // clobber the customer/attribution data already stored there.
+            if (newStatus === 'failed') {
+              const existing = (msgRow?.metadata && typeof msgRow.metadata === 'object' && !Array.isArray(msgRow.metadata))
+                ? msgRow.metadata as Record<string, unknown>
+                : {}
+              update.metadata = { ...existing, delivery_error: { code, reason: title, at: tsIso } }
+            }
+
+            const { error: upErr } = await supabase
+              .from('sms_messages')
+              .update(update)
+              .eq('external_id', wamid)
+              .eq('channel', 'whatsapp')
+            if (upErr) console.error(`Failed to persist WA status for ${wamid}:`, upErr)
+
+            // Report a failure once (the first 'failed' callback for this message).
+            if (newStatus === 'failed' && !alreadyFailed) {
+              console.error(`WhatsApp send failed for ${wamid}: [${code}] ${title}`)
+              // severity 'error' for dashboard visibility; this error_type is NOT
+              // in log-error's CRITICAL_ERROR_TYPES, so it does NOT fire SMS/Slack
+              // alerts — benign duplicate-drops shouldn't page anyone.
+              await reportError(supabase, {
+                error_type: 'meta_whatsapp_delivery_failure',
+                error_message: `WhatsApp delivery failed: ${title}`,
+                error_code: code,
+                source: 'webhook-inbound-whatsapp:status',
+                severity: 'error',
+                metadata: {
+                  channel: 'whatsapp',
+                  phone_number_id: phoneNumberId,
+                  recipient_id: status.recipient_id ?? null,
+                  wamid,
+                  meta_error: metaErr ?? null,
+                },
+                user_id: msgRow?.user_id ?? undefined,
+              }).catch(() => {})
+            }
           }
           continue
         }
@@ -169,12 +262,22 @@ Deno.serve(async (req) => {
         // (no inbox row, no notification, no AI reply).
         const normalizedFrom = normalizeE164(contactWaId)
         if (normalizedFrom) {
-          const { data: blockHit, error: blockErr } = await supabase
-            .from('blocked_callers')
-            .select('id, label')
-            .eq('user_id', userId)
-            .eq('caller_number', normalizedFrom)
-            .maybeSingle()
+          const [{ data: blockHit, error: blockErr }, fraud] = await Promise.all([
+            supabase
+              .from('blocked_callers')
+              .select('id, label')
+              .eq('user_id', userId)
+              .eq('caller_number', normalizedFrom)
+              .maybeSingle(),
+            // Global fraud list — same gate as the call and SMS paths.
+            isFraudBlocked(supabase, normalizedFrom, userId, 'whatsapp'),
+          ])
+
+          if (fraud.blocked) {
+            console.log(`Inbound WhatsApp from ${normalizedFrom} → GLOBAL FRAUD BLOCK (risk=${fraud.entry?.risk_score ?? 'n/a'}). Silent drop.`)
+            continue
+          }
+
           if (blockErr) {
             console.warn('[webhook-inbound-whatsapp] blocklist lookup non-fatal:', blockErr.message)
           } else if (blockHit) {
@@ -208,15 +311,38 @@ Deno.serve(async (req) => {
           if (message.type === 'text') {
             messageText = message.text?.body || ''
           } else if (message.type === 'audio') {
+            // Voice notes: re-host the audio (so it persists + forwards as the
+            // customer's fallback, exactly like images) AND best-effort transcribe
+            // it for the agent. NEVER drop the message — a failed transcription
+            // must still leave a trace and forward the media, not silent nothing
+            // (which is the bug this fixes).
             const mediaId: string = message.audio?.id
-            if (!mediaId) { console.log('Audio message missing media ID'); continue }
-            const transcript = await transcribeWhatsAppAudio(mediaId, waAccount.access_token, supabase, { userId, phoneNumberId, from: contactWaId })
-            if (!transcript) {
-              await sendWhatsAppMessage(phoneNumberId, contactWaId, "Sorry, I couldn't transcribe your voice message. Please type your report instead.", waAccount.access_token, supabase, { userId })
-              continue
+            if (mediaId) {
+              // Instant ack while we transcribe; the contextual reply follows
+              // once the transcript reaches the agent's LLM below.
+              try {
+                await sendWhatsAppMessage(phoneNumberId, contactWaId, 'Thanks for that, transcribing now…', waAccount.access_token, supabase, { userId })
+              } catch (e) { console.warn('WA transcribing-ack send failed:', e) }
+              const stored = await fetchAndStoreWhatsAppMedia(supabase, waAccount.access_token, mediaId, null, { phoneNumberId })
+              if (stored) mediaItems.push(stored)
+              else console.warn('WA audio could not be re-hosted:', mediaId)
+              let transcript: string | null = null
+              try {
+                transcript = await transcribeWhatsAppAudio(mediaId, waAccount.access_token, supabase, { userId, phoneNumberId, from: contactWaId }, stored ? { url: stored.url, mime_type: stored.mime_type } : undefined)
+              } catch (e) {
+                console.error('WA audio transcription threw:', e)
+              }
+              if (transcript) {
+                messageText = transcript  // feed to the agent as if it were typed text
+                console.log('Transcribed audio:', transcript.slice(0, 120))
+              } else {
+                messageText = '[Voice note]'
+                console.warn('WA audio transcription returned no text for media:', mediaId)
+              }
+            } else {
+              console.log('Audio message missing media ID')
+              messageText = '[Voice note]'
             }
-            messageText = `[Voice message transcript]: ${transcript}`
-            console.log('Transcribed audio:', messageText)
           } else if (message.type === 'image') {
             // Re-host the photo (Meta media needs our token to download) so it
             // can reach whichever consumer this account uses — the Path B webhook
@@ -230,6 +356,40 @@ Deno.serve(async (req) => {
               else console.warn('WA image could not be re-hosted:', mediaId)
             }
             messageText = caption
+          } else if (message.type === 'video' || message.type === 'document') {
+            // Re-host video/document the same way so they persist + forward to
+            // the customer's webhook (media[]) and surface in the inbox.
+            const media: any = (message as any)[message.type]
+            const mediaId: string = media?.id
+            const caption: string = media?.caption || media?.filename || ''
+            let stored: ForwardedMedia | null = null
+            if (mediaId) {
+              stored = await fetchAndStoreWhatsAppMedia(supabase, waAccount.access_token, mediaId, caption || null, { phoneNumberId })
+              if (stored) mediaItems.push(stored)
+              else console.warn(`WA ${message.type} could not be re-hosted:`, mediaId)
+            }
+            // An audio recording shared as a FILE/attachment (not a push-to-talk
+            // voice note) arrives as document/video — still transcribe it so the
+            // agent gets the report text, exactly like a voice note.
+            const mimeType: string = stored?.mime_type || media?.mime_type || ''
+            const isAudioFile = mimeType.startsWith('audio') ||
+              /\.(opus|ogg|mp3|m4a|aac|wav|amr|mpeg|mpga)$/i.test(media?.filename || '')
+            if (mediaId && isAudioFile) {
+              try {
+                await sendWhatsAppMessage(phoneNumberId, contactWaId, 'Thanks for that, transcribing now…', waAccount.access_token, supabase, { userId })
+              } catch (e) { console.warn('WA transcribing-ack send failed:', e) }
+              let transcript: string | null = null
+              try {
+                transcript = await transcribeWhatsAppAudio(mediaId, waAccount.access_token, supabase, { userId, phoneNumberId, from: contactWaId }, stored ? { url: stored.url, mime_type: stored.mime_type } : undefined)
+              } catch (e) {
+                console.error('WA audio-file transcription threw:', e)
+              }
+              messageText = transcript || caption || '[Voice note]'
+              if (transcript) console.log('Transcribed audio file:', transcript.slice(0, 120))
+              else console.warn('WA audio-file transcription returned no text for media:', mediaId)
+            } else {
+              messageText = caption || (message.type === 'video' ? '[video]' : '[document]')
+            }
           } else {
             console.log('Ignoring unsupported WhatsApp message type:', message.type)
             continue
@@ -237,7 +397,9 @@ Deno.serve(async (req) => {
 
           // content is NOT NULL — label any image (even one whose re-host failed,
           // so a dropped photo still surfaces as a non-empty event downstream).
-          const storedContent: string = messageText || (isImage ? '[image]' : '')
+          // Cap to stay under the sms_messages content CHECK (<=20000): a long
+          // voice-note transcript must store + reply, never be rejected outright.
+          const storedContent: string = (messageText || (isImage ? '[image]' : '')).slice(0, 19000)
 
           console.log('Inbound WhatsApp message:', {
             from: contactWaId,
@@ -425,8 +587,10 @@ Deno.serve(async (req) => {
             continue
           }
 
-          // Fire-and-forget AI reply
-          processAndReplyWhatsApp(
+          // AI reply — awaited so the background processInbound() (run via
+          // EdgeRuntime.waitUntil) stays alive until the reply is actually sent,
+          // instead of the isolate freezing mid-reply.
+          await processAndReplyWhatsApp(
             userId,
             contactWaId,
             phoneNumberId,
@@ -438,6 +602,14 @@ Deno.serve(async (req) => {
           ).catch(err => console.error('Error processing WhatsApp reply:', err))
         }
       }
+     }
+    }
+    // @ts-ignore EdgeRuntime is provided by the Supabase Edge runtime
+    if (typeof EdgeRuntime !== 'undefined' && (EdgeRuntime as any)?.waitUntil) {
+      // @ts-ignore
+      EdgeRuntime.waitUntil(processInbound().catch((e) => console.error('WA inbound processing error:', e)))
+    } else {
+      await processInbound().catch((e) => console.error('WA inbound processing error:', e))
     }
 
     return new Response('OK', { status: 200 })

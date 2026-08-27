@@ -440,7 +440,7 @@ async function sendEmailDigest(results: SearchResult[]) {
     .eq('id', '00000000-0000-0000-0000-000000000100')
     .single()
 
-  const toEmail = config?.email_address || 'erik@snapsonic.com'
+  const toEmail = config?.email_address || 'info@magpipe.ai'
 
   const resp = await fetch('https://api.postmarkapp.com/email', {
     method: 'POST',
@@ -450,7 +450,7 @@ async function sendEmailDigest(results: SearchResult[]) {
       'X-Postmark-Server-Token': postmarkApiKey,
     },
     body: JSON.stringify({
-      From: Deno.env.get('NOTIFICATION_EMAIL') || 'notifications@snapsonic.com',
+      From: Deno.env.get('NOTIFICATION_EMAIL') || 'info@magpipe.ai',
       To: toEmail,
       Subject: `[Social Listening] ${results.length} new mention${results.length !== 1 ? 's' : ''} found`,
       TextBody: textBody,

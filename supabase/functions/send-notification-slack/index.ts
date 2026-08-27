@@ -8,6 +8,9 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { resolveUser } from '../_shared/api-auth.ts'
 import { corsHeaders, handleCors } from '../_shared/cors.ts'
+import { fetchAllSlackChannels, resolveSlackChannelId } from '../_shared/slack-channels.ts'
+import { buildSlackBody, callSummaryLine } from '../_shared/build-notification-body.ts'
+import { refreshSlackToken } from '../mcp-execute/slack.ts'
 
 const SLACK_PROVIDER_ID = 'fc067ae0-0682-4a60-83c0-19600369656f'
 
@@ -55,25 +58,18 @@ async function handleListChannels(req: Request, _body: any) {
     return jsonResponse({ error: 'No Slack integration connected' }, 400)
   }
 
-  const resp = await fetch('https://slack.com/api/conversations.list?types=public_channel&limit=200&exclude_archived=true', {
-    headers: { 'Authorization': `Bearer ${integration.access_token}` },
-  })
-  const result = await resp.json()
-
-  if (!result.ok) {
-    return jsonResponse({ error: `Slack API error: ${result.error}` }, 500)
+  try {
+    const channels = await fetchAllSlackChannels(integration.access_token)
+    channels.sort((a, b) => a.name.localeCompare(b.name))
+    return jsonResponse({ channels })
+  } catch (e: any) {
+    return jsonResponse({ error: e.message }, 500)
   }
-
-  const channels = (result.channels || [])
-    .map((c: any) => ({ id: c.id, name: c.name }))
-    .sort((a: any, b: any) => a.name.localeCompare(b.name))
-
-  return jsonResponse({ channels })
 }
 
 
 async function handleSendNotification(body: any) {
-  const { userId, agentId, type, data } = body
+  const { userId, agentId, type, data, content_config: reqContentConfig, test: isTest } = body
 
   if (!userId || !type) {
     return jsonResponse({ error: 'Missing required fields' }, 400)
@@ -88,7 +84,7 @@ async function handleSendNotification(body: any) {
   if (agentId) {
     const { data: agentPrefs } = await supabase
       .from('notification_preferences')
-      .select('slack_enabled, slack_channel, slack_inbound_calls, slack_all_calls, slack_inbound_messages, slack_all_messages')
+      .select('slack_enabled, slack_channel, slack_inbound_calls, slack_all_calls, slack_inbound_messages, slack_all_messages, content_config')
       .eq('user_id', userId)
       .eq('agent_id', agentId)
       .maybeSingle()
@@ -97,45 +93,63 @@ async function handleSendNotification(body: any) {
   if (!prefs) {
     const { data: userPrefs } = await supabase
       .from('notification_preferences')
-      .select('slack_enabled, slack_channel, slack_inbound_calls, slack_all_calls, slack_inbound_messages, slack_all_messages')
+      .select('slack_enabled, slack_channel, slack_inbound_calls, slack_all_calls, slack_inbound_messages, slack_all_messages, content_config')
       .eq('user_id', userId)
       .is('agent_id', null)
       .maybeSingle()
     prefs = userPrefs
   }
 
-  if (!prefs || !prefs.slack_enabled) {
-    console.log('Slack notifications not enabled for user:', userId)
-    return jsonResponse({ message: 'Notifications not enabled' })
+  // Skill executions bypass notification prefs — they have their own delivery config
+  const isSkillExecution = type === 'skill_execution'
+
+  // A completed call where the caller never spoke is not posted to Slack at all
+  // — those channels are read as a work queue and a silent call isn't work.
+  // Backstop for callers that pass the flag but don't gate themselves; SMS and
+  // email still report the call, so nothing is hidden from the owner. Missed
+  // calls are deliberately NOT covered: nobody spoke there either, but "we
+  // missed one" is exactly what a channel should show.
+  if (type === 'completed_call' && data?.callerSpoke === false && !isTest) {
+    console.log('Skipping Slack call notification — caller never spoke')
+    return jsonResponse({ message: 'Caller never spoke — Slack notification skipped' })
   }
 
-  if (!prefs.slack_channel) {
-    console.log('No Slack channel configured for user:', userId)
-    return jsonResponse({ message: 'No Slack channel configured' })
-  }
+  if (!isSkillExecution) {
+    if (!prefs || !prefs.slack_enabled) {
+      console.log('Slack notifications not enabled for user:', userId)
+      return jsonResponse({ message: 'Notifications not enabled' })
+    }
 
-  // Check if this notification type is enabled
-  let typeEnabled = false
+    if (!prefs.slack_channel) {
+      console.log('No Slack channel configured for user:', userId)
+      return jsonResponse({ message: 'No Slack channel configured' })
+    }
 
-  if (type === 'completed_call') {
-    typeEnabled = prefs.slack_inbound_calls || prefs.slack_all_calls
-  } else if (type === 'missed_call') {
-    typeEnabled = prefs.slack_all_calls
-  } else if (type === 'new_message' || type === 'new_chat') {
-    typeEnabled = prefs.slack_inbound_messages || prefs.slack_all_messages
-  } else if (type === 'outbound_message') {
-    typeEnabled = prefs.slack_all_messages
-  }
+    // Check if this notification type is enabled (skip for test notifications)
+    if (!isTest) {
+      let typeEnabled = false
 
-  if (!typeEnabled) {
-    console.log(`Slack notifications for ${type} not enabled for user:`, userId)
-    return jsonResponse({ message: 'Notification type not enabled' })
+      if (type === 'completed_call') {
+        typeEnabled = prefs.slack_inbound_calls || prefs.slack_all_calls
+      } else if (type === 'missed_call') {
+        typeEnabled = prefs.slack_all_calls
+      } else if (type === 'new_message' || type === 'new_chat') {
+        typeEnabled = prefs.slack_inbound_messages || prefs.slack_all_messages
+      } else if (type === 'outbound_message') {
+        typeEnabled = prefs.slack_all_messages
+      }
+
+      if (!typeEnabled) {
+        console.log(`Slack notifications for ${type} not enabled for user:`, userId)
+        return jsonResponse({ message: 'Notification type not enabled' })
+      }
+    }
   }
 
   // Get user's Slack access token
   const { data: integration, error: integrationError } = await supabase
     .from('user_integrations')
-    .select('access_token')
+    .select('id, access_token, refresh_token, token_expires_at')
     .eq('user_id', userId)
     .eq('provider_id', SLACK_PROVIDER_ID)
     .eq('status', 'connected')
@@ -146,21 +160,52 @@ async function handleSendNotification(body: any) {
     return jsonResponse({ message: 'Slack not connected' })
   }
 
-  // Resolve channel name to ID
-  const channelId = await resolveChannelId(integration.access_token, prefs.slack_channel)
+  // Refresh token if expired or expiring within 5 minutes
+  let accessToken = integration.access_token
+  if (integration.token_expires_at) {
+    const expiresAt = new Date(integration.token_expires_at).getTime()
+    const fiveMinFromNow = Date.now() + 5 * 60 * 1000
+    if (expiresAt < fiveMinFromNow) {
+      console.log('Slack token expired/expiring, refreshing for user:', userId)
+      const refreshResult = await refreshSlackToken(supabase, integration)
+      if (refreshResult.success && refreshResult.access_token) {
+        accessToken = refreshResult.access_token
+      } else {
+        console.error('Failed to refresh Slack token for user:', userId)
+        return jsonResponse({ error: 'Slack token expired and refresh failed' }, 500)
+      }
+    }
+  }
+
+  // Resolve channel name to ID — skill executions use data.channel, otherwise prefs
+  const targetChannel = isSkillExecution ? (data?.channel || prefs?.slack_channel) : prefs.slack_channel
+  if (!targetChannel) {
+    console.log('No Slack channel specified')
+    return jsonResponse({ message: 'No Slack channel configured' })
+  }
+  const channelId = await resolveChannelId(accessToken, targetChannel)
   if (!channelId) {
-    console.error('Could not resolve Slack channel:', prefs.slack_channel)
+    console.error('Could not resolve Slack channel:', targetChannel)
     return jsonResponse({ error: 'Slack channel not found' }, 400)
   }
 
-  // Build Slack message
-  const message = buildSlackMessage(type, data)
+  // Resolve content_config: per-request override → prefs.content_config.slack
+  const contentConfig = reqContentConfig || prefs?.content_config?.slack || null
+
+  // Build Slack message — use content_config if set (non-skill types)
+  const customSlack = (contentConfig && type !== 'skill_execution') ? buildSlackBody(data, contentConfig, type) : null
+  const message = customSlack || buildSlackMessage(type, data)
+
+  // Trailing divider separates consecutive notifications in the channel
+  if (message.blocks && message.blocks.length > 0) {
+    message.blocks.push({ type: 'divider' })
+  }
 
   // Join channel (no-op if already joined)
   await fetch('https://slack.com/api/conversations.join', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${integration.access_token}`,
+      'Authorization': `Bearer ${accessToken}`,
       'Content-Type': 'application/x-www-form-urlencoded',
     },
     body: `channel=${encodeURIComponent(channelId)}`,
@@ -170,7 +215,7 @@ async function handleSendNotification(body: any) {
   const resp = await fetch('https://slack.com/api/chat.postMessage', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${integration.access_token}`,
+      'Authorization': `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -203,30 +248,21 @@ async function resolveChannelId(accessToken: string, channelName: string): Promi
   if (channelName.startsWith('C') && !channelName.startsWith('#')) {
     return channelName
   }
-
-  const name = channelName.replace(/^#/, '').toLowerCase()
-  const resp = await fetch('https://slack.com/api/conversations.list?types=public_channel&limit=200&exclude_archived=true', {
-    headers: { 'Authorization': `Bearer ${accessToken}` },
-  })
-  const result = await resp.json()
-
-  if (result.ok && result.channels) {
-    const found = result.channels.find((c: any) => c.name.toLowerCase() === name)
-    return found ? found.id : null
-  }
-
-  return null
+  return resolveSlackChannelId(accessToken, channelName)
 }
 
 
 function buildSlackMessage(type: string, data: any): { text: string; blocks: any[] } {
   let text = ''
-  let emoji = ''
   const timestamp = data?.timestamp ? new Date(data.timestamp).toLocaleString() : new Date().toLocaleString()
+  // Which of the user's numbers rang and which agent answered — in the default
+  // template too, not just the content_config path.
+  const callContext =
+    (data?.serviceNumber ? `\n*${data?.direction === 'outbound' ? 'From' : 'To'}:* ${data.serviceNumber}` : '') +
+    (data?.agentName ? `\n*Agent:* ${data.agentName}` : '')
 
   switch (type) {
     case 'missed_call':
-      emoji = ':phone:'
       text = `Missed call from ${data?.callerNumber || 'Unknown'}`
       return {
         text,
@@ -235,14 +271,13 @@ function buildSlackMessage(type: string, data: any): { text: string; blocks: any
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `${emoji} *Missed Call*\n*From:* ${data?.callerNumber || 'Unknown'}\n*Time:* ${timestamp}`,
+              text: `*Missed Call*\n*From:* ${data?.callerNumber || 'Unknown'}${callContext}\n*Time:* ${timestamp}`,
             },
           },
         ],
       }
 
     case 'completed_call':
-      emoji = ':white_check_mark:'
       text = `Call ${data?.successful ? 'completed' : 'ended'} with ${data?.callerNumber || 'Unknown'}`
       return {
         text,
@@ -251,14 +286,13 @@ function buildSlackMessage(type: string, data: any): { text: string; blocks: any
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `${emoji} *Call ${data?.successful ? 'Completed' : 'Ended'}*\n*From:* ${data?.callerNumber || 'Unknown'}\n*Time:* ${timestamp}${data?.duration ? `\n*Duration:* ${data.duration}s` : ''}`,
+              text: `*Call ${data?.successful ? 'Completed' : 'Ended'}*\n*From:* ${data?.callerNumber || 'Unknown'}${callContext}\n*Time:* ${timestamp}${data?.duration ? `\n*Duration:* ${data.duration}s` : ''}\n\n*Summary:*\n${callSummaryLine(data || {})}`,
             },
           },
         ],
       }
 
     case 'new_message':
-      emoji = ':envelope:'
       text = `New message from ${data?.senderNumber || 'Unknown'}`
       return {
         text,
@@ -267,7 +301,7 @@ function buildSlackMessage(type: string, data: any): { text: string; blocks: any
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `${emoji} *New Message*\n*From:* ${data?.senderNumber || 'Unknown'}\n*Time:* ${timestamp}`,
+              text: `*New Message*\n*From:* ${data?.senderNumber || 'Unknown'}\n*Time:* ${timestamp}`,
             },
           },
           ...(data?.content ? [{
@@ -281,7 +315,6 @@ function buildSlackMessage(type: string, data: any): { text: string; blocks: any
       }
 
     case 'new_chat':
-      emoji = ':speech_balloon:'
       text = 'New website chat message'
       return {
         text,
@@ -290,14 +323,13 @@ function buildSlackMessage(type: string, data: any): { text: string; blocks: any
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `${emoji} *Website Chat*\n*Time:* ${timestamp}${data?.content ? `\n> ${data.content.substring(0, 500)}` : ''}`,
+              text: `*Website Chat*\n*Time:* ${timestamp}${data?.content ? `\n> ${data.content.substring(0, 500)}` : ''}`,
             },
           },
         ],
       }
 
     case 'outbound_message':
-      emoji = ':outbox_tray:'
       text = `Message sent to ${data?.recipientNumber || 'Unknown'}`
       return {
         text,
@@ -306,7 +338,7 @@ function buildSlackMessage(type: string, data: any): { text: string; blocks: any
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `${emoji} *Message Sent*\n*To:* ${data?.recipientNumber || 'Unknown'}\n*Time:* ${timestamp}`,
+              text: `*Message Sent*\n*To:* ${data?.recipientNumber || 'Unknown'}\n*Time:* ${timestamp}`,
             },
           },
           ...(data?.content ? [{
@@ -318,6 +350,40 @@ function buildSlackMessage(type: string, data: any): { text: string; blocks: any
           }] : []),
         ],
       }
+
+    case 'skill_execution': {
+      text = data?.message?.substring(0, 200) || 'Skill execution completed'
+      const fullMessage = data?.message || ''
+      // Split on --- dividers for natural section breaks
+      const sections = fullMessage.split(/\n---\n/).filter(Boolean)
+      const messageBlocks: any[] = []
+      for (const section of sections) {
+        if (section.length <= 2900) {
+          messageBlocks.push({ type: 'section', text: { type: 'mrkdwn', text: section.trim() } })
+        } else {
+          // Chunk by lines if too long
+          let current = ''
+          for (const line of section.split('\n')) {
+            if (current.length + line.length > 2900 && current.length > 0) {
+              messageBlocks.push({ type: 'section', text: { type: 'mrkdwn', text: current.trim() } })
+              current = line
+            } else {
+              current += (current ? '\n' : '') + line
+            }
+          }
+          if (current.trim()) messageBlocks.push({ type: 'section', text: { type: 'mrkdwn', text: current.trim() } })
+        }
+        if (sections.indexOf(section) < sections.length - 1) {
+          messageBlocks.push({ type: 'divider' })
+        }
+      }
+      return {
+        text,
+        blocks: messageBlocks.length > 0
+          ? messageBlocks
+          : [{ type: 'section', text: { type: 'mrkdwn', text: fullMessage.substring(0, 2900) } }],
+      }
+    }
 
     default:
       return { text: 'New notification', blocks: [] }

@@ -9,6 +9,8 @@ import { showDeleteConfirmModal, showAlertModal } from '../../components/Confirm
 import { showToast } from '../../lib/toast.js';
 import { User, ChatSession } from '../../models/index.js';
 import { loadVoiceRecognition } from './voice-loader.js';
+import { computeThreadId } from '../../lib/thread-id.js';
+import { normalizeE164 } from '../../lib/phone-e164.js';
 
 import { viewsMethods } from './views.js';
 import { messagingMethods } from './messaging.js';
@@ -38,6 +40,7 @@ if (typeof window !== 'undefined' && !window.__refreshInboxMedia) {
 class InboxPage {
   constructor() {
     this.conversations = [];
+    this.blockedCallers = new Map(); // normalized E.164 → { id, label } (spam blocklist; #spam-label)
     this.selectedContact = null;
     this.selectedServiceNumber = null; // Which of our numbers the conversation is on
     this.selectedCallId = null;
@@ -49,6 +52,7 @@ class InboxPage {
     this.phoneLinkHandlerAttached = false;
     this.lastFetchTime = 0;
     this.hiddenConversations = new Set(); // Track hidden conversations locally
+    this.pinnedConversations = new Set(); // Track pinned conversations locally
     // Load viewed conversations from localStorage (persists across page navigation)
     const savedViewed = localStorage.getItem('inbox_viewed_conversations');
     this.viewedConversations = savedViewed ? new Set(JSON.parse(savedViewed)) : new Set();
@@ -151,6 +155,9 @@ class InboxPage {
       console.log('Hidden conversations loaded:', Array.from(this.hiddenConversations));
     }
 
+    // Load pinned conversations from localStorage
+    this.loadPinnedConversations();
+
     const now = Date.now();
     const needsFetch = this.conversations.length === 0 || (now - this.lastFetchTime) > 30000;
     const appElement = document.getElementById('app');
@@ -167,6 +174,7 @@ class InboxPage {
       await Promise.all([
         User.getProfile(user.id),
         this.loadConversations(user.id).then(() => { this.lastFetchTime = Date.now(); }),
+        this.loadBlockedCallers(),
       ]);
 
       // Apply deep-link / restore selection now that data is ready
@@ -184,6 +192,7 @@ class InboxPage {
         const messageThreadEl = document.getElementById('message-thread');
         if (messageThreadEl) {
           messageThreadEl.innerHTML = this.renderMessageThread();
+          this.attachMessageInputListeners();
         }
       }
     } else {
@@ -211,10 +220,24 @@ class InboxPage {
             conversationsEl.innerHTML = this.renderConversationList();
             this.attachConversationListeners();
           }
+          this.syncActiveThreadStatuses();
         }
       }
     };
     document.addEventListener('visibilitychange', this._visibilityHandler);
+
+    // Poll for new messages in the active conversation (fallback when Realtime is broken)
+    this._pollInterval = setInterval(async () => {
+      if (!this.selectedContact || document.hidden || !this.userId) return;
+      await this.loadConversations(this.userId);
+      this.lastFetchTime = Date.now();
+      const conversationsEl = document.getElementById('conversations');
+      if (conversationsEl) {
+        conversationsEl.innerHTML = this.renderConversationList();
+        this.attachConversationListeners();
+      }
+      this.syncActiveThreadStatuses();
+    }, 5000);
 
     // Expose showCallInterface globally for phone nav button
     window.showDialpad = () => this.showCallInterface();
@@ -380,6 +403,21 @@ class InboxPage {
         console.log('Inbox subscription status:', status);
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           console.warn('⚠️ Inbox realtime disconnected, reconnecting in 5s...');
+          // Realtime has no replay, so re-fetch on disconnect and re-render
+          // the sidebar + active-thread status icons. (New inbound bubbles in
+          // the active thread aren't re-rendered here — they appear once
+          // realtime reconnects, or on the next visibilitychange.)
+          if (this.userId) {
+            this.loadConversations(this.userId).then(() => {
+              this.lastFetchTime = Date.now();
+              const conversationsEl = document.getElementById('conversations');
+              if (conversationsEl) {
+                conversationsEl.innerHTML = this.renderConversationList();
+                this.attachConversationListeners();
+              }
+              this.syncActiveThreadStatuses();
+            }).catch(err => console.error('Reconnect refresh failed:', err));
+          }
           setTimeout(() => this.subscribeToMessages(), 5000);
         }
       });
@@ -525,7 +563,7 @@ class InboxPage {
 
   async handleNewCall(call) {
     // Auto-enrich contact for new calls
-    const contactPhone = call.direction === 'inbound' ? call.caller_number : call.callee_number;
+    const contactPhone = call.direction === 'inbound' ? call.caller_number : call.caller_number;
     this.autoEnrichContact(contactPhone); // Fire and forget - don't await
 
     // Unhide conversation if it was hidden (user swipe-deleted it)
@@ -619,6 +657,47 @@ class InboxPage {
         const newStatusHtml = this.getDeliveryStatusIcon(message);
         if (newStatusHtml) {
           statusEl.outerHTML = newStatusHtml;
+        }
+      }
+    }
+  }
+
+  // Reconcile every visible outbound bubble's delivery-status icon against
+  // the latest data in this.conversations. Catches updates that arrived via
+  // loadConversations() polling or visibility refresh (but where the bubble
+  // DOM was never re-rendered) and updates missed during a realtime drop.
+  syncActiveThreadStatuses() {
+    if (!this.selectedContact || !this.selectedServiceNumber) {
+      return;
+    }
+    const conv = this.conversations?.find(
+      c => (c.type === 'sms' || c.type === 'whatsapp')
+        && c.phone === this.selectedContact
+        && c.serviceNumber === this.selectedServiceNumber
+    );
+    if (!conv || !Array.isArray(conv.messages)) {
+      return;
+    }
+
+    for (const msg of conv.messages) {
+      if (msg.direction !== 'outbound') {
+        continue;
+      }
+      const bubble = document.querySelector(`.message-bubble[data-message-id="${msg.id}"]`);
+      if (!bubble) {
+        continue;
+      }
+      const newStatusHtml = this.getDeliveryStatusIcon(msg);
+      if (!newStatusHtml) {
+        continue;
+      }
+      const statusEl = bubble.querySelector('.delivery-status');
+      if (statusEl) {
+        statusEl.outerHTML = newStatusHtml;
+      } else {
+        const timeEl = bubble.querySelector('.message-time');
+        if (timeEl) {
+          timeEl.insertAdjacentHTML('beforeend', newStatusHtml);
         }
       }
     }
@@ -787,6 +866,10 @@ class InboxPage {
       document.removeEventListener('visibilitychange', this._visibilityHandler);
       this._visibilityHandler = null;
     }
+    if (this._pollInterval) {
+      clearInterval(this._pollInterval);
+      this._pollInterval = null;
+    }
     if (this.subscription) {
       this.subscription.unsubscribe();
       this.subscription = null;
@@ -808,16 +891,43 @@ class InboxPage {
     resetInboxManagedCount();
   }
 
+  // Load the workspace spam blocklist into this.blockedCallers (normalized E.164
+  // → { id, label }) so the thread view can show a "Spam · Undo" label on callers
+  // already marked spam, instead of always offering "Mark spam". Best-effort.
+  async loadBlockedCallers() {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-blocked-callers`, {
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      });
+      if (!res.ok) return;
+      const { entries } = await res.json();
+      const map = new Map();
+      (entries || []).forEach(e => {
+        const key = normalizeE164(e.caller_number) || e.caller_number;
+        if (key) map.set(key, { id: e.id, label: e.label });
+      });
+      this.blockedCallers = map;
+    } catch (err) {
+      console.warn('loadBlockedCallers failed (non-fatal):', err);
+    }
+  }
+
   async loadConversations(userId) {
     // Load all data in parallel for speed
-    const [messagesResult, callsResult, contactsResult, chatSessionsResult, agentConfigsResult, serviceNumbersResult, emailResult] = await Promise.all([
-      supabase.from('sms_messages').select('id, user_id, sender_number, recipient_number, content, sent_at, created_at, direction, status, sentiment, channel, metadata').eq('user_id', userId).order('sent_at', { ascending: false }).limit(500),
-      supabase.from('call_records').select('id, user_id, caller_number, contact_phone, started_at, ended_at, duration, direction, status, recording_url, transcript, call_summary, user_sentiment, service_number, agent_id, created_at').eq('user_id', userId).order('started_at', { ascending: false }).limit(300),
+    const [messagesResult, callsResult, contactsResult, chatSessionsResult, agentConfigsResult, serviceNumbersResult, emailResult, supportTicketsResult] = await Promise.all([
+      supabase.from('sms_messages').select('id, user_id, sender_number, recipient_number, content, sent_at, created_at, direction, status, sentiment, channel, metadata, translation, source_language').eq('user_id', userId).order('sent_at', { ascending: false }).limit(500),
+      supabase.from('call_records').select('*').eq('user_id', userId).order('started_at', { ascending: false }).limit(300),
       supabase.from('contacts').select('id, user_id, name, phone_number, email, first_name, last_name, company, avatar_url').eq('user_id', userId),
       ChatSession.getRecentWithPreview(userId, 50),
       supabase.from('agent_configs').select('id, translate_to, language').eq('user_id', userId),
       supabase.from('service_numbers').select('phone_number, agent_id, text_agent_id').eq('user_id', userId).eq('is_active', true),
       supabase.from('email_messages').select('*').eq('user_id', userId).order('sent_at', { ascending: false }).limit(500),
+      // Support ticket refs for the email thread header (#103). RLS-gated to admins,
+      // so non-admins get an empty set. Runs concurrently rather than as an extra
+      // serial round-trip after grouping (#review). map by thread_id below.
+      supabase.from('support_tickets').select('thread_id, ticket_ref').not('ticket_ref', 'is', null),
     ]);
 
     // Log any query errors (these were previously silently swallowed)
@@ -920,8 +1030,53 @@ class InboxPage {
       });
     });
 
-    // Add SMS conversations to list
-    conversationsList.push(...Object.values(smsGrouped));
+    // Attach the stable thread id (matches the API/MCP `thread_id`) so it can be
+    // shown in the header and used to reference a thread externally (SiteSuper).
+    await Promise.all(Object.values(smsGrouped).map(async conv => {
+      conv.threadId = await computeThreadId(userId, conv.phone, conv.serviceNumber);
+    }));
+
+    // Detect post-call SMS summaries: outbound-only SMS threads sent within 5 minutes
+    // of a call to the same phone number. Attach them to the call instead of showing separately.
+    const POST_CALL_WINDOW_MS = 5 * 60 * 1000;
+    const postCallSmsKeys = new Set();
+
+    if (calls?.length > 0) {
+      for (const [convKey, smsConv] of Object.entries(smsGrouped)) {
+        // Only consider threads where ALL messages are outbound (no back-and-forth)
+        const allOutbound = smsConv.messages.every(m => m.direction === 'outbound');
+        if (!allOutbound) continue;
+
+        // Find the most recent completed call to/from the same phone within 5 minutes before the first SMS
+        const firstSmsSent = new Date(smsConv.messages[0].sent_at || smsConv.messages[0].created_at).getTime();
+        const matchingCall = calls
+          .filter(call => {
+            if (!call.ended_at) return false;
+            const callPhone = call.contact_phone || call.caller_number;
+            if (callPhone !== smsConv.phone) return false;
+            const callEnd = new Date(call.ended_at).getTime();
+            return firstSmsSent >= callEnd && (firstSmsSent - callEnd) < POST_CALL_WINDOW_MS;
+          })
+          .reduce((best, call) => {
+            if (!best) return call;
+            return new Date(call.ended_at) > new Date(best.ended_at) ? call : best;
+          }, null);
+
+        if (matchingCall) {
+          // Attach SMS messages to the call record for display in the call detail view
+          if (!matchingCall._postCallMessages) matchingCall._postCallMessages = [];
+          matchingCall._postCallMessages.push(...smsConv.messages);
+          postCallSmsKeys.add(convKey);
+        }
+      }
+    }
+
+    // Add SMS conversations to list (excluding post-call summaries attached to calls)
+    for (const [convKey, smsConv] of Object.entries(smsGrouped)) {
+      if (!postCallSmsKeys.has(convKey)) {
+        conversationsList.push(smsConv);
+      }
+    }
 
     // Add each call as a separate conversation
     calls?.forEach(call => {
@@ -1037,6 +1192,16 @@ class InboxPage {
         if (em.direction === 'inbound' && em.from_name) {
           emailGrouped[em.thread_id].fromName = em.from_name;
         }
+      }
+    });
+
+    // Attach the support ticket ref (TKT-…) to email threads that map to a
+    // support_tickets row (by thread_id), for the thread-header chip. Tickets were
+    // fetched concurrently in the Promise.all above (no extra serial round-trip);
+    // RLS scopes them to admins, so non-admins get nothing. (#103)
+    (supportTicketsResult?.data || []).forEach(t => {
+      if (t.thread_id && t.ticket_ref && emailGrouped[t.thread_id]) {
+        emailGrouped[t.thread_id].ticketRef = t.ticket_ref;
       }
     });
 
@@ -1430,9 +1595,9 @@ class InboxPage {
               <button class="inbox-filter-btn ${this.typeFilter === 'all' && this.directionFilter === 'all' && !this.missedFilter && this.sentimentFilter === 'all' && !this.unreadFilter ? 'active' : ''}" data-filter-type="all" data-filter-reset="true">All</button>
               <button class="inbox-filter-btn ${this.typeFilter === 'calls' ? 'active' : ''}" data-filter-type="calls">Calls</button>
               <button class="inbox-filter-btn ${this.typeFilter === 'texts' ? 'active' : ''}" data-filter-type="texts">Texts</button>
-              <button class="inbox-filter-btn ${this.typeFilter === 'whatsapp' ? 'active' : ''}" data-filter-type="whatsapp">WhatsApp</button>
               <button class="inbox-filter-btn ${this.typeFilter === 'chat' ? 'active' : ''}" data-filter-type="chat">Chat</button>
               <button class="inbox-filter-btn ${this.typeFilter === 'email' ? 'active' : ''}" data-filter-type="email">Email</button>
+              <button class="inbox-filter-btn ${this.typeFilter === 'whatsapp' ? 'active' : ''}" data-filter-type="whatsapp">WhatsApp</button>
             </div>
             <div class="inbox-filters" id="inbox-filters-status" style="justify-content: center; gap: 0.5rem; padding-top: 0.375rem; border-bottom: none; padding-bottom: 0;">
               <button class="inbox-filter-btn ${this.directionFilter === 'inbound' ? 'active' : ''}" data-filter-direction="inbound">In</button>

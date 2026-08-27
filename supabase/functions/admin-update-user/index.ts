@@ -13,10 +13,54 @@ import {
 interface UpdateUserRequest {
   userId: string
   role?: 'user' | 'viewer' | 'editor' | 'support' | 'admin' | 'god'
-  action?: 'suspend' | 'ban' | 'reactivate' | 'set_phone'
+  action?: 'suspend' | 'ban' | 'reactivate' | 'set_phone' | 'set_email' | 'set_name'
   reason?: string
   phone_number?: string | null
   phone_verified?: boolean
+  email?: string
+  name?: string
+}
+
+const esc = (v: string) => (v || '').replace(/[&<>"']/g, (c) =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string))
+
+/**
+ * Tell the account holder their email was changed on their behalf.
+ *
+ * Sent to the OLD address as well as the new one, deliberately: if an account is
+ * ever compromised, notifying only the new address tells the attacker and nobody
+ * else. Best-effort — a mail failure must not roll back a completed change.
+ */
+async function notifyEmailChanged(
+  supabase: any,
+  oldEmail: string | null,
+  newEmail: string,
+  adminEmail: string,
+) {
+  const key = Deno.env.get('POSTMARK_API_KEY')
+  if (!key) return
+  const from = `MAGPIPE <${Deno.env.get('NOTIFICATION_EMAIL') || 'info@magpipe.ai'}>`
+  const body = `<p>The email address on your MAGPIPE account was changed to <strong>${esc(newEmail)}</strong>.</p>
+<p>This was done by ${esc(adminEmail)} on your behalf, and the new address is already active — you do not need to confirm anything.</p>
+<p>If you were not expecting this, reply to this email immediately.</p>`
+  const targets = [...new Set([oldEmail, newEmail].filter(Boolean) as string[])]
+  for (const to of targets) {
+    try {
+      await fetch('https://api.postmarkapp.com/email', {
+        method: 'POST',
+        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'X-Postmark-Server-Token': key },
+        body: JSON.stringify({
+          From: from,
+          To: to,
+          Subject: 'Your MAGPIPE email address was changed',
+          HtmlBody: body,
+          MessageStream: 'outbound',
+        }),
+      })
+    } catch (e) {
+      console.error('admin-update-user: email-change notice failed for', to, e)
+    }
+  }
 }
 
 Deno.serve(async (req) => {
@@ -138,6 +182,47 @@ Deno.serve(async (req) => {
           updates.phone_verified = body.phone_verified ?? false
           break
 
+        case 'set_name':
+          if (!body.name || !body.name.trim()) {
+            return errorResponse('name is required', 400)
+          }
+          updates.name = body.name.trim()
+          break
+
+        case 'set_email': {
+          const newEmail = (body.email || '').trim().toLowerCase()
+          if (!newEmail || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(newEmail)) {
+            return errorResponse('A valid email is required', 400)
+          }
+          if (newEmail === (targetUser.email || '').toLowerCase()) {
+            return errorResponse('That is already the account email', 400)
+          }
+
+          // Auth is the source of truth for sign-in, so it moves first: if this
+          // fails we must not leave public.users pointing at an address the user
+          // cannot actually log in with.
+          //
+          // email_confirm: true marks the new address verified immediately. The
+          // self-serve path (supabase.auth.updateUser) instead sends a
+          // confirmation link and waits — which is wrong here, because an admin
+          // acting on a customer's behalf usually cannot click a link delivered
+          // to that customer's mailbox, so the change would hang unapplied.
+          const { error: authErr } = await supabase.auth.admin.updateUserById(
+            body.userId,
+            { email: newEmail, email_confirm: true },
+          )
+          if (authErr) {
+            console.error('set_email auth update failed:', authErr)
+            const already = /already|registered|exists/i.test(authErr.message || '')
+            return errorResponse(
+              already ? 'That email is already in use by another account' : `Failed to update login email: ${authErr.message}`,
+              already ? 409 : 500,
+            )
+          }
+          updates.email = newEmail
+          break
+        }
+
         default:
           return errorResponse('Invalid action', 400)
       }
@@ -157,6 +242,12 @@ Deno.serve(async (req) => {
     if (updateError) {
       console.error('Update error:', updateError)
       return errorResponse('Failed to update user', 500)
+    }
+
+    // Notify the account holder. After the write, so a mail outage can't make a
+    // completed change look like it failed.
+    if (body.action === 'set_email' && updates.email) {
+      await notifyEmailChanged(supabase, targetUser.email, updates.email, adminUser.email)
     }
 
     // Log admin action

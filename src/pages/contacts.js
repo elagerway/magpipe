@@ -8,6 +8,7 @@ import { renderBottomNav } from '../components/BottomNav.js';
 import { User } from '../models/index.js';
 import { showToast } from '../lib/toast.js';
 import { showConfirmModal } from '../components/ConfirmModal.js';
+import { formatPhoneNumber } from '../lib/formatters.js';
 
 export default class ContactsPage {
   constructor() {
@@ -330,7 +331,7 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
                   : ''
                 }
               </div>
-              ${contact.phone_number ? `<div class="text-sm text-muted">${this.formatPhoneNumber(contact.phone_number)}</div>` : ''}
+              ${contact.phone_number ? `<div class="text-sm text-muted">${formatPhoneNumber(contact.phone_number)}</div>` : ''}
               ${contact.job_title || contact.company ? `
                 <div class="text-sm text-muted" style="margin-top: 0.25rem;">
                   ${[contact.job_title, contact.company].filter(Boolean).join(' at ')}
@@ -398,18 +399,6 @@ John,Doe,+14155551234,john@example.com,"123 Main St, City, State"
         }
       )
       .join('');
-  }
-
-  formatPhoneNumber(phoneNumber) {
-    if (!phoneNumber) return '';
-    const cleaned = phoneNumber.replace(/\D/g, '');
-    const match = cleaned.match(/^1?(\d{3})(\d{3})(\d{4})$/);
-
-    if (match) {
-      return `(${match[1]}) ${match[2]}-${match[3]}`;
-    }
-
-    return phoneNumber;
   }
 
   attachEventListeners() {

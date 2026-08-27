@@ -12,6 +12,7 @@ const TYPE_COLORS = {
   text:           { bg: '#dcfce7', text: '#15803d', label: 'Text' },
   email:          { bg: '#fce7f3', text: '#9d174d', label: 'Email' },
   chat_widget:    { bg: '#e0e7ff', text: '#4338ca', label: 'Chat Widget' },
+  whatsapp:       { bg: '#dcfce7', text: '#15803d', label: 'WhatsApp' },
   // Legacy types (backward compat)
   inbound:  { bg: '#e0f2fe', text: '#0369a1', label: 'Inbound Voice' },
   outbound: { bg: '#fef3c7', text: '#b45309', label: 'Outbound Voice' },

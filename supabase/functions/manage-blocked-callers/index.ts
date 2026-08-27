@@ -8,7 +8,7 @@
  * PATCH  { id, label? }                            → update the label only (number is immutable; remove + re-add to change)
  * DELETE ?id=<uuid>                                → unblock
  *
- * `caller_number` accepts any common format ("(555) 555-1234", etc.)
+ * `caller_number` accepts any common format ("(604) 562-8647", etc.)
  * and is normalized via _shared/phone-e164.ts before insert. The DB
  * CHECK constraint on the column is the final gate.
  *
@@ -77,7 +77,7 @@ Deno.serve(async (req) => {
       if (!normalized) {
         return err(
           'invalid_number',
-          'Invalid phone number — provide a number like (555) 555-1234 or +15555551234',
+          'Invalid phone number — provide a number like (604) 562-8647 or +16045628647',
         )
       }
 
@@ -101,6 +101,29 @@ Deno.serve(async (req) => {
         }
         throw error
       }
+
+      // Feed the global fraud list. A single workspace block only FLAGS the
+      // number — it means "I don't want this caller", which is not evidence of
+      // fraud. report-fraud-number promotes it to a global block once
+      // independent workspaces agree. Fire-and-forget: blocking a caller must
+      // not wait on, or fail because of, the fraud list.
+      const notifyFraud = fetch(`${supabaseUrl}/functions/v1/report-fraud-number`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+        },
+        body: JSON.stringify({
+          e164: normalized,
+          user_id: user.id,
+          source: 'workspace_block',
+          category: 'other',
+          evidence: label || null,
+        }),
+      }).catch(e => console.warn('[manage-blocked-callers] fraud list notify failed:', e))
+
+      // @ts-ignore — EdgeRuntime is available in the Supabase edge runtime
+      if (typeof EdgeRuntime !== 'undefined') EdgeRuntime.waitUntil(notifyFraud)
 
       return json({ entry: data }, 201)
     }

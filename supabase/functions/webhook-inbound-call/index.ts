@@ -1,6 +1,9 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { isFraudBlocked } from '../_shared/fraud.ts'
+import { MAGPIPE_MAIN_NUMBER } from '../_shared/sms-compliance.ts'
 import { checkBalance } from '../_shared/balance-check.ts'
 import { corsHeaders, handleCors } from '../_shared/cors.ts'
+import { reportError } from '../_shared/error-reporter.ts'
 
 // This webhook is called by SignalWire, which doesn't send auth headers
 // We handle auth by validating the phone number exists in our database
@@ -50,6 +53,65 @@ Deno.serve(async (req) => {
     }
 
     console.log('Number is active, processing call for user:', serviceNumber.user_id)
+
+    // ── Spam blocklist ──────────────────────────────────────────────
+    // Workspace-wide check: is this caller_number on the user's
+    // blocked_callers list? If yes, return <Reject reason="busy"/> so
+    // the carrier signals busy back to the caller without ringing
+    // through to an agent, billing credits, or producing a call
+    // record. Single indexed query on (user_id, caller_number).
+    //
+    // Trade-off note: SignalWire <Reject> renders SIP 486 Busy Here →
+    // standard busy tone. If we want the SIT / "fast busy" sequence
+    // specifically, swap reason to "rejected" (SIP 603) — some
+    // carriers map that to SIT instead. Started with "busy" because
+    // it's unambiguous; revisit if customers report it doesn't
+    // discourage the spammer enough.
+    if (from) {
+      // Global fraud list runs alongside the per-workspace blocklist — a number
+      // caught defrauding one workspace is rejected for all of them. A
+      // workspace can override its own entry via fraud_allowlist. Both checks
+      // are indexed point lookups and both fail open.
+      const [{ data: blockHit, error: blockErr }, fraud] = await Promise.all([
+        supabase
+          .from('blocked_callers')
+          .select('id, label')
+          .eq('user_id', serviceNumber.user_id)
+          .eq('caller_number', from)
+          .maybeSingle(),
+        isFraudBlocked(supabase, from, serviceNumber.user_id, 'call'),
+      ])
+
+      if (fraud.blocked) {
+        console.log(`Inbound call from ${from} → GLOBAL FRAUD BLOCK (categories=${(fraud.entry?.categories || []).join(',') || 'n/a'}, risk=${fraud.entry?.risk_score ?? 'n/a'}). Returning busy.`)
+        return new Response(
+          `<?xml version="1.0" encoding="UTF-8"?>
+          <Response>
+            <Reject reason="busy"/>
+          </Response>`,
+          { headers: { 'Content-Type': 'text/xml' }, status: 200 }
+        )
+      }
+
+      if (blockErr) {
+        // Don't fail the call if the lookup blows up — log and continue
+        // to the regular agent path. Better to ring through than to
+        // strand a legit caller because the blocklist query timed out.
+        console.warn('[webhook-inbound-call] blocklist lookup non-fatal:', blockErr.message)
+      } else if (blockHit) {
+        console.log(`Inbound call from ${from} → blocked (entry ${blockHit.id}, label=${blockHit.label ?? '(none)'}). Returning busy.`)
+        return new Response(
+          `<?xml version="1.0" encoding="UTF-8"?>
+          <Response>
+            <Reject reason="busy"/>
+          </Response>`,
+          {
+            headers: { 'Content-Type': 'text/xml' },
+            status: 200,
+          }
+        )
+      }
+    }
 
     // Check if the user has sufficient credits
     const { allowed: hasCredits } = await checkBalance(supabase, serviceNumber.user_id)
@@ -142,17 +204,88 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Check if within calls schedule
+    // Check if within calls schedule. Outside scheduled hours the AI must NOT
+    // answer: forward straight to after_hours_call_forwarding via a blind
+    // <Dial> (same hardened pattern as the whitelist forward below — caller-ID
+    // passthrough, XML-escaped callback URLs), or play the off-duty message if
+    // no forwarding number is set.
     if (agentConfig.calls_schedule) {
       const inSchedule = isWithinSchedule(agentConfig.calls_schedule, agentConfig.schedule_timezone)
       if (!inSchedule) {
-        const forwardingNumber = agentConfig.after_hours_call_forwarding
-        if (forwardingNumber) {
-          // Has forwarding number - route to LiveKit so agent can transfer
-          console.log('Call outside scheduled hours - routing to LiveKit for after-hours transfer to', forwardingNumber)
+        // Normalize UI-entered numbers like "+1 (780) 800-8423" before validating
+        const forwardingNumber = (agentConfig.after_hours_call_forwarding || '').replace(/[\s().-]/g, '')
+        const AH_E164 = /^\+[1-9]\d{6,14}$/
+        if (AH_E164.test(forwardingNumber)) {
+          console.log('Call outside scheduled hours - blind-forwarding to', forwardingNumber)
+
+          const fnBase = `${supabaseUrl}/functions/v1`
+          const { data: ahRecord, error: ahRecordError } = await supabase
+            .from('call_records')
+            .insert({
+              user_id: serviceNumber.user_id,
+              agent_id: agentConfig.id,
+              caller_number: from,
+              contact_phone: from,
+              service_number: to,
+              vendor_call_id: callSid,
+              call_sid: callSid,
+              telephony_vendor: 'signalwire',
+              direction: 'inbound',
+              status: 'in-progress',
+              disposition: 'forwarding',
+              metadata: { forward_reason: 'after_hours' },
+              started_at: new Date().toISOString(),
+            })
+            .select('id')
+            .single()
+
+          if (ahRecordError) {
+            console.error('after-hours: failed to create call record:', ahRecordError)
+          }
+
+          if (ahRecord) {
+            autoEnrichContact(serviceNumber.user_id, from, supabase)
+              .catch(err => console.error('Auto-enrich error:', err))
+          }
+
+          const ahRecordingCb = ahRecord?.id
+            ? `${fnBase}/sip-recording-callback?call_record_id=${ahRecord.id}&label=main`
+            : `${fnBase}/sip-recording-callback?label=main`
+          // whitelist-call-complete finalizes any 'forwarding' record (status,
+          // disposition, duration); its spoofing-cooldown branch no-ops when the
+          // caller has no whitelist entry.
+          const ahActionUrl = ahRecord?.id
+            ? `${fnBase}/whitelist-call-complete?call_record_id=${ahRecord.id}`
+            : `${fnBase}/whitelist-call-complete`
+
+          // Raw '&' in a cXML attribute is illegal XML — SignalWire kills the
+          // call sub-second. Must be &amp; (see whitelist forward below).
+          const ahXmlAttr = (s: string) =>
+            s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+          // Present the SERVICE NUMBER (a number we own) as caller ID, NOT the
+          // original caller. SignalWire can't STIR/SHAKEN-attest a passthrough
+          // number, and screening carriers (e.g. Iristel) answer-and-drop
+          // unattested forwards in ~2s. The service number is fully attested
+          // and reads as "forwarded business call" to whoever answers. The
+          // whitelist forward below keeps passthrough deliberately — its
+          // destinations are user-chosen and confirmed working.
+          const ahCallerId = to && AH_E164.test(to) ? to : MAGPIPE_MAIN_NUMBER
+          const ahResponse = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Dial callerId="${ahXmlAttr(ahCallerId)}" record="record-from-answer" recordingStatusCallback="${ahXmlAttr(ahRecordingCb)}" action="${ahXmlAttr(ahActionUrl)}">
+    <Number>${ahXmlAttr(forwardingNumber)}</Number>
+  </Dial>
+</Response>`
+
+          return new Response(ahResponse, { headers: { 'Content-Type': 'text/xml' }, status: 200 })
         } else {
-          // No forwarding number - play off-duty message and hang up
-          console.log('Call outside scheduled hours, no forwarding number - playing off-duty message')
+          // No (or malformed) forwarding number - play off-duty message and hang up
+          if (agentConfig.after_hours_call_forwarding) {
+            console.error('after-hours: forwarding number is not valid E.164, playing off-duty message instead:', agentConfig.after_hours_call_forwarding)
+          } else {
+            console.log('Call outside scheduled hours, no forwarding number - playing off-duty message')
+          }
           return new Response(
             `<?xml version="1.0" encoding="UTF-8"?>
             <Response>
@@ -170,6 +303,105 @@ Deno.serve(async (req) => {
 
     console.log('Using agent:', agentConfig.id, agentConfig.name || 'Unnamed')
 
+    // ── Call Whitelist: auto-forward whitelisted callers ──────────────────
+    const { data: whitelistEntry } = await supabase
+      .from('call_whitelist')
+      .select('forward_to, label, cooldown_until')
+      .eq('agent_id', agentConfig.id)
+      .eq('caller_number', from)
+      .maybeSingle()
+
+    const E164_RE = /^\+[1-9]\d{7,14}$/;
+    if (!whitelistEntry && !E164_RE.test(from)) {
+      console.warn(`Whitelist: from number '${from}' is not E.164 — lookup may have missed a whitelist entry`)
+    }
+
+    // Cooldown: if this entry was recently abused by a sub-second failure burst
+    // (set by whitelist-call-complete on suspected caller-ID spoofing), suppress
+    // the forward and fall through to the AI agent path. Auto-expires.
+    const cooldownActive = whitelistEntry?.cooldown_until
+      && new Date(whitelistEntry.cooldown_until).getTime() > Date.now()
+    if (cooldownActive) {
+      console.warn(
+        `[webhook-inbound-call] whitelist forward suppressed: from=${from} agent=${agentConfig.id} ` +
+        `cooldown_until=${whitelistEntry!.cooldown_until} (entry '${whitelistEntry!.label ?? '(unlabeled)'}' ` +
+        `in cooldown after sub-second failure burst — likely spoofing). Routing to agent.`
+      )
+    }
+
+    if (!cooldownActive && whitelistEntry && E164_RE.test(whitelistEntry.forward_to)) {
+      console.log(`Whitelist match: forwarding ${from} → ${whitelistEntry.forward_to} (${whitelistEntry.label || 'unlabeled'})`)
+
+      const fnBase = `${supabaseUrl}/functions/v1`
+
+      // Create call record for the forwarded call
+      const { data: callRecord, error: callRecordError } = await supabase
+        .from('call_records')
+        .insert({
+          user_id: serviceNumber.user_id,
+          agent_id: agentConfig.id,
+          caller_number: from,
+          contact_phone: from,
+          service_number: to,
+          vendor_call_id: callSid,
+          call_sid: callSid,
+          telephony_vendor: 'signalwire',
+          direction: 'inbound',
+          status: 'in-progress',
+          disposition: 'forwarding',
+          started_at: new Date().toISOString(),
+        })
+        .select('id')
+        .single()
+
+      if (callRecordError) {
+        console.error('whitelist: failed to create call record:', callRecordError)
+      }
+
+      // Auto-enrich contact (fire and forget)
+      if (callRecord) {
+        autoEnrichContact(serviceNumber.user_id, from, supabase)
+          .catch(err => console.error('Auto-enrich error:', err))
+      }
+
+      const recordingCb = callRecord?.id
+        ? `${fnBase}/sip-recording-callback?call_record_id=${callRecord.id}&label=main`
+        : `${fnBase}/sip-recording-callback?label=main`
+      const actionUrl = callRecord?.id
+        ? `${fnBase}/whitelist-call-complete?call_record_id=${callRecord.id}`
+        : `${fnBase}/whitelist-call-complete`
+
+      // XML-escape any value interpolated into a cXML attribute. The recording
+      // callback URL carries TWO query params (?call_record_id=…&label=main), so
+      // it contains a raw '&'. A bare '&' is illegal in XML — SignalWire fails to
+      // parse the <Dial> document and kills the call sub-second, before any B-leg
+      // or the action callback fires. (The AI/LiveKit path never hit this because
+      // its recording URL has a single param and no '&'.) Must be &amp;.
+      const xmlAttr = (s: string) =>
+        s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+      // Present the ORIGINAL caller's number so the user sees who's actually
+      // calling (standard call-forwarding caller-ID passthrough; SignalWire
+      // permits this, unlike Twilio's owned-number restriction). This was
+      // previously pinned to +16043377899 as a workaround, but the real cause of
+      // the sub-second forward failures was the unescaped '&' in the callback URL
+      // (fixed above via xmlAttr) — not the caller ID. Fall back to the owned
+      // Snapsonic number only if `from` is missing/malformed (so the leg still
+      // has a valid callerId and connects).
+      const E164 = /^\+[1-9]\d{6,14}$/
+      const forwardCallerId = from && E164.test(from) ? from : MAGPIPE_MAIN_NUMBER
+      console.log('Whitelist forward callerId:', forwardCallerId, '(original caller:', from, ')')
+      const response = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Dial callerId="${xmlAttr(forwardCallerId)}" record="record-from-answer" recordingStatusCallback="${xmlAttr(recordingCb)}" action="${xmlAttr(actionUrl)}">
+    <Number>${xmlAttr(whitelistEntry.forward_to)}</Number>
+  </Dial>
+</Response>`
+
+      return new Response(response, { headers: { 'Content-Type': 'text/xml' }, status: 200 })
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
     // Route to LiveKit voice AI stack
     console.log('=== ROUTING TO LIVEKIT ===')
 
@@ -183,7 +415,7 @@ Deno.serve(async (req) => {
     console.log('Dialing SIP URI:', sipUri)
 
     // Log the call to database with agent_id
-    const { error: insertError } = await supabase
+    const { data: callRecord, error: insertError } = await supabase
       .from('call_records')
       .insert({
         user_id: serviceNumber.user_id,
@@ -201,6 +433,8 @@ Deno.serve(async (req) => {
         disposition: 'answered_by_pat',
         started_at: new Date().toISOString(),
       })
+      .select('id')
+      .single()
 
     if (insertError) {
       console.error('Error logging call:', insertError)
@@ -208,16 +442,41 @@ Deno.serve(async (req) => {
       // Auto-enrich contact if not exists (fire and forget)
       autoEnrichContact(serviceNumber.user_id, from, supabase)
         .catch(err => console.error('Auto-enrich error:', err))
+
+      // If this is a test call, link it to the pending test run immediately
+      if (callRecord?.id) {
+        const { data: configRow } = await supabase
+          .from('test_framework_config').select('test_phone_number').eq('id', 1).single()
+        if (configRow?.test_phone_number && from === configRow.test_phone_number) {
+          // Find the most recent running test_run targeting this agent, not yet linked
+          const { data: linkedRun } = await supabase
+            .from('test_runs')
+            .select('id, test_cases!inner(agent_id)')
+            .eq('status', 'running')
+            .is('call_record_id', null)
+            .eq('test_cases.agent_id', agentConfig.id)
+            .order('started_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+          if (linkedRun) {
+            await supabase.from('test_runs').update({ call_record_id: callRecord.id }).eq('id', linkedRun.id)
+            await supabase.from('call_records').update({ test_run_id: linkedRun.id }).eq('id', callRecord.id)
+            console.log(`Linked test run ${linkedRun.id} to call record ${callRecord.id} on inbound`)
+          }
+        }
+      }
     }
 
     // Return TwiML to connect to LiveKit via SIP
-    // SignalWire records the call
-    const supabaseFunctionsUrl = supabaseUrl.replace('.supabase.co', '.supabase.co/functions/v1')
-    const recordingCallback = `${supabaseFunctionsUrl}/sip-recording-callback?label=main`
+    const supabaseFunctionsUrl = `${supabaseUrl}/functions/v1`
+    const recordingEnabled = agentConfig?.recording_enabled !== false // default true
+    const recordingAttrs = recordingEnabled
+      ? `record="record-from-ringing" recordingStatusCallback="${supabaseFunctionsUrl}/sip-recording-callback?label=main"`
+      : ''
 
     const response = `<?xml version="1.0" encoding="UTF-8"?>
     <Response>
-      <Dial record="record-from-ringing" recordingStatusCallback="${recordingCallback}">
+      <Dial ${recordingAttrs}>
         <Sip>${sipUri}</Sip>
       </Dial>
     </Response>`
@@ -228,6 +487,8 @@ Deno.serve(async (req) => {
     })
   } catch (error) {
     console.error('Error in webhook-inbound-call:', error)
+    const _sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+    await reportError(_sb, { error_type: 'edge_function_error', error_message: String(error.message || error), error_code: 'webhook-inbound-call:outer', source: 'supabase' })
 
     // Return error TwiML
     return new Response(
@@ -264,7 +525,7 @@ function isWithinSchedule(
       weekday: 'long',
       hour: '2-digit',
       minute: '2-digit',
-      hour12: false,
+      hourCycle: 'h23', // hour12:false can yield "24:xx" at midnight, breaking string compares
     })
 
     const parts = formatter.formatToParts(now)
@@ -280,21 +541,34 @@ function isWithinSchedule(
     const currentTime = `${hour}:${minute}`
     const daySchedule = schedule[weekday]
 
+    // An overnight window (start > end, e.g. 23:00-05:00) spills past midnight
+    // into the NEXT day, so the early-morning portion is owned by yesterday's row
+    const DAY_ORDER = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+    const prevDay = DAY_ORDER[(DAY_ORDER.indexOf(weekday) + 6) % 7]
+    const prevSchedule = schedule[prevDay]
+    const inPrevOvernight = !!(
+      prevSchedule?.enabled &&
+      prevSchedule.start > prevSchedule.end &&
+      currentTime <= prevSchedule.end
+    )
+
     if (!daySchedule) {
       console.log(`No schedule defined for ${weekday}, defaulting to available`)
       return true
     }
 
     if (!daySchedule.enabled) {
-      console.log(`Schedule disabled for ${weekday}`)
-      return false
+      console.log(`Schedule disabled for ${weekday}${inPrevOvernight ? ' but within previous day overnight window' : ''}`)
+      return inPrevOvernight
     }
 
     // Compare times as strings (HH:MM format)
-    const isWithin = currentTime >= daySchedule.start && currentTime <= daySchedule.end
-    console.log(`Schedule check: ${weekday} ${currentTime} in ${daySchedule.start}-${daySchedule.end}: ${isWithin}`)
+    const isWithin = daySchedule.start <= daySchedule.end
+      ? currentTime >= daySchedule.start && currentTime <= daySchedule.end
+      : currentTime >= daySchedule.start // overnight: tonight's portion; morning spill handled via prev day
+    console.log(`Schedule check: ${weekday} ${currentTime} in ${daySchedule.start}-${daySchedule.end}: ${isWithin} (prevOvernight: ${inPrevOvernight})`)
 
-    return isWithin
+    return isWithin || inPrevOvernight
   } catch (error) {
     console.error('Error checking schedule:', error)
     return true // Default to available on error

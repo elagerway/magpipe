@@ -15,7 +15,7 @@ const LINKEDIN_CLIENT_SECRET = Deno.env.get('LINKEDIN_CLIENT_SECRET')!
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
-const CALLBACK_URL = `${SUPABASE_URL}/functions/v1/linkedin-oauth-callback`
+const CALLBACK_URL = 'https://api.magpipe.ai/functions/v1/linkedin-oauth-callback'
 const SCOPES = 'openid profile w_member_social'
 
 function generateRandomString(length: number): string {

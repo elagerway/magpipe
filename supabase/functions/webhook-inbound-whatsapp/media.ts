@@ -33,6 +33,7 @@ export async function fetchAndStoreWhatsAppMedia(
     // Resolve the media id to Meta's temporary, token-gated download URL.
     const metaRes = await fetch(`https://graph.facebook.com/v21.0/${mediaId}`, {
       headers: { Authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(15000),
     })
     if (!metaRes.ok) {
       console.error('WA media: metadata fetch failed:', await metaRes.text())

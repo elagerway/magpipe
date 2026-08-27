@@ -86,11 +86,8 @@ export default class BlogPage {
       <div class="blog-page">
         ${renderPublicHeader({ activePage: 'blog' })}
 
-        <div class="blog-back-bar">
-          <button class="blog-back-btn" onclick="navigateTo('/blog')">← Back to Blog</button>
-        </div>
-
-        <header class="blog-article-header">
+        <header class="blog-article-header" ${post.featured_image_url ? `style="background-image: url('${post.featured_image_url}')"` : ''}>
+          ${post.featured_image_url ? '<div class="blog-article-header-overlay"></div>' : ''}
           <div class="blog-article-header-content">
             <h1>${this.escape(post.title)}</h1>
             <div class="blog-article-meta">
@@ -107,9 +104,20 @@ export default class BlogPage {
         </header>
 
         <article class="blog-article">
+          <div class="blog-back-bar">
+            <button class="blog-back-btn" onclick="navigateTo('/blog')">← Back to Blog</button>
+          </div>
           <div class="blog-article-content">
             ${post.content}
           </div>
+          ${post.tweet_id ? `
+            <div class="blog-share-bar">
+              <a href="https://x.com/i/web/status/${post.tweet_id}" target="_blank" rel="noopener" class="blog-share-x-link">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+                Discuss on X
+              </a>
+            </div>
+          ` : ''}
         </article>
 
         <!-- CTA -->

@@ -64,7 +64,7 @@ export class ChatSession {
    * @returns {Promise<{messages: Array, error: Error|null}>}
    */
   static async getMessages(sessionId, options = {}) {
-    const { limit = 100, offset = 0 } = options;
+    const { limit = 1000, offset = 0 } = options;
 
     const { data, error } = await supabase
       .from('chat_messages')
@@ -210,25 +210,26 @@ export class ChatSession {
       return { sessions: [], error };
     }
 
-    // Get last message for each session
-    const sessionsWithPreview = await Promise.all(
-      (sessions || []).map(async (session) => {
-        const { data: lastMessage } = await supabase
-          .from('chat_messages')
-          .select('content, role, created_at')
-          .eq('session_id', session.id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single();
+    // Get the last message for every session in ONE call (get_chat_last_messages
+    // RPC, DISTINCT ON server-side). The previous per-session queries fired
+    // 30-50 parallel requests on every inbox load.
+    let lastBySession = new Map();
+    if (sessions?.length) {
+      const { data: lastMessages, error: lastError } = await supabase
+        .rpc('get_chat_last_messages', { p_session_ids: sessions.map(s => s.id) });
+      if (lastError) console.error('get_chat_last_messages error:', lastError);
+      (lastMessages || []).forEach(m => lastBySession.set(m.session_id, m));
+    }
 
-        return {
-          ...session,
-          lastMessage: lastMessage?.content || null,
-          lastMessageRole: lastMessage?.role || null,
-          lastMessageAt: lastMessage?.created_at || session.last_message_at,
-        };
-      })
-    );
+    const sessionsWithPreview = (sessions || []).map((session) => {
+      const lastMessage = lastBySession.get(session.id);
+      return {
+        ...session,
+        lastMessage: lastMessage?.content || null,
+        lastMessageRole: lastMessage?.role || null,
+        lastMessageAt: lastMessage?.created_at || session.last_message_at,
+      };
+    });
 
     return { sessions: sessionsWithPreview, error: null };
   }

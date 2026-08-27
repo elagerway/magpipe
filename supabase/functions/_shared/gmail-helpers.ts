@@ -147,6 +147,7 @@ export function parseGmailMessage(msg: any, gmailAddress: string, sendAsEmail?: 
 
     const from = getHeader('From')
     const to = getHeader('To')
+    const cc = getHeader('Cc')
     const subject = getHeader('Subject')
     const date = getHeader('Date')
     const messageIdHeader = getHeader('Message-ID') || getHeader('Message-Id')
@@ -183,6 +184,7 @@ export function parseGmailMessage(msg: any, gmailAddress: string, sendAsEmail?: 
       from_email: isOutbound && sendAsEmail ? sendAsEmail : fromEmail,
       from_name: fromName,
       to_email: normalizeEmail(to),
+      cc_email: cc ? normalizeEmail(cc) : '',
       subject,
       body_text: text,
       body_html: html,
@@ -836,12 +838,14 @@ export async function sendGmailReplyComposio(
   userId: string,
   originalMsg: any,
   body: string,
-  _subject: string  // Composio's GMAIL_REPLY_TO_THREAD reuses the thread's subject
+  _subject: string,  // Composio's GMAIL_REPLY_TO_THREAD reuses the thread's subject
+  cc?: string[]      // additional CC recipients (reply-all)
 ): Promise<{ id: string; threadId: string } | null> {
   const data = await composioExecute(userId, 'GMAIL_REPLY_TO_THREAD', {
     thread_id: originalMsg.thread_id,
     recipient_email: originalMsg.from_email,
-    message_body: body
+    message_body: body,
+    ...(cc && cc.length ? { cc } : {})
   })
   if (!data) return null
   const r = data.response_data || data
@@ -873,6 +877,134 @@ export async function fetchRecentMessagesComposio(
     threadId: m.threadId || m.thread_id,
     internalDate: m.internalDate || (m.messageTimestamp ? String(new Date(m.messageTimestamp).getTime()) : '0')
   }))
+}
+
+// Fetch a single message (full payload, incl. attachment ids + Content-IDs)
+// via Composio. Returns the Composio `data` object (has `.payload`).
+export async function fetchMessageByIdComposio(userId: string, messageId: string): Promise<any | null> {
+  const data = await composioExecute(userId, 'GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID', {
+    message_id: messageId,
+    user_id: 'me',
+    format: 'full',
+  })
+  return data || null
+}
+
+// ─── Inline image / attachment handling ─────────────────────────────
+// Composio-managed mailboxes have no raw Gmail token, so attachment bytes can't
+// be pulled from gmail.googleapis.com directly. We go through Composio's
+// GMAIL_GET_ATTACHMENT (which stages the bytes to a temp s3url), re-host in the
+// support-attachments bucket, and rewrite inline `cid:` refs to the public URL.
+
+export interface ImagePart {
+  attachmentId: string
+  filename: string
+  mimeType: string
+  contentId: string | null  // Content-ID with <> stripped; null for non-inline
+}
+
+export interface UploadedAttachment {
+  filename: string
+  url: string
+  mime_type: string
+  size_bytes: number
+  content_id: string | null
+}
+
+// Walk the MIME tree and collect image parts together with their Content-ID,
+// which is what inline `cid:` references in the HTML body point at.
+export function extractImagePartsWithCid(payload: any): ImagePart[] {
+  const out: ImagePart[] = []
+  const walk = (p: any) => {
+    if (!p) return
+    const body = p.body || {}
+    const mime: string = p.mimeType || ''
+    if (mime.startsWith('image/') && body.attachmentId) {
+      const cidHeader = (p.headers || []).find((h: any) => h.name?.toLowerCase() === 'content-id')?.value || null
+      out.push({
+        attachmentId: body.attachmentId,
+        filename: p.filename || 'image',
+        mimeType: mime,
+        contentId: cidHeader ? cidHeader.replace(/^<|>$/g, '') : null,
+      })
+    }
+    for (const c of (p.parts || [])) walk(c)
+  }
+  walk(payload)
+  return out
+}
+
+// Composio route: fetch each image via GMAIL_GET_ATTACHMENT → download the
+// returned s3url → upload to support-attachments. Returns uploaded metadata
+// (incl. content_id) so callers can rewrite inline cid refs.
+export async function downloadAndUploadAttachmentsComposio(
+  userId: string,
+  messageId: string,
+  threadId: string,
+  parts: ImagePart[],
+  supabase: any
+): Promise<UploadedAttachment[]> {
+  const results: UploadedAttachment[] = []
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+
+  for (const part of parts) {
+    try {
+      const data = await composioExecute(userId, 'GMAIL_GET_ATTACHMENT', {
+        message_id: messageId,
+        attachment_id: part.attachmentId,
+        file_name: part.filename,
+        user_id: 'me',
+      })
+      const s3url: string | undefined = data?.file?.s3url
+      if (!s3url) {
+        console.error(`GMAIL_GET_ATTACHMENT returned no s3url for ${part.filename}`)
+        continue
+      }
+
+      const fileResp = await fetch(s3url)
+      if (!fileResp.ok) {
+        console.error(`Failed to download attachment s3url (${fileResp.status}) for ${part.filename}`)
+        continue
+      }
+      const bytes = new Uint8Array(await fileResp.arrayBuffer())
+
+      const timestamp = Date.now()
+      const safeName = (part.filename || 'image').replace(/[^a-zA-Z0-9._-]/g, '_')
+      const storagePath = `${threadId}/${timestamp}-${safeName}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('support-attachments')
+        .upload(storagePath, bytes, { contentType: part.mimeType, upsert: false })
+      if (uploadError) {
+        console.error(`Failed to upload ${part.filename}:`, uploadError.message)
+        continue
+      }
+
+      results.push({
+        filename: part.filename,
+        url: `${supabaseUrl}/storage/v1/object/public/support-attachments/${storagePath}`,
+        mime_type: part.mimeType,
+        size_bytes: bytes.length,
+        content_id: part.contentId,
+      })
+    } catch (e) {
+      console.error(`Error fetching/uploading attachment ${part.filename}:`, e)
+    }
+  }
+  return results
+}
+
+// Rewrite inline `cid:<content-id>` references in HTML to the re-hosted URLs so
+// they render in the admin UI (browsers can't resolve cid: refs).
+export function rewriteCidReferences(html: string | null, uploaded: UploadedAttachment[]): string {
+  if (!html) return html || ''
+  let out = html
+  for (const u of uploaded) {
+    if (!u.content_id) continue
+    const esc = u.content_id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    out = out.replace(new RegExp(`cid:${esc}`, 'gi'), u.url)
+  }
+  return out
 }
 
 // Send a top-level email (not a reply) via Composio.

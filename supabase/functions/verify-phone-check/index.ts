@@ -93,16 +93,19 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Send welcome email now that phone is verified
+    // Send the onboarding welcome email once per user — not on every re-verification
+    // (Settings now verifies inline, so existing customers changing their number reach here too)
     const postmarkApiKey = Deno.env.get('POSTMARK_API_KEY')
     if (postmarkApiKey) {
       const { data: userData } = await supabase
         .from('users')
-        .select('email, name')
+        .select('email, name, welcome_email_sent')
         .eq('id', user.id)
         .single()
 
-      if (userData?.email) {
+      if (userData?.email && !userData.welcome_email_sent) {
+        // Claim the send first so concurrent verifies can't double-email
+        await supabase.from('users').update({ welcome_email_sent: true }).eq('id', user.id)
         const userName = userData.name || userData.email.split('@')[0]
         const appUrl = APP_URL || 'https://app.magpipe.ai'
         const welcomeHtml = `

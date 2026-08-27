@@ -8,6 +8,9 @@ import { OrganizationMember } from '../models/OrganizationMember.js';
 import { renderPublicFooter, getPublicFooterStyles } from '../components/PublicFooter.js';
 import { renderPublicHeader, getPublicHeaderStyles } from '../components/PublicHeader.js';
 import { showToast } from '../lib/toast.js';
+import { renderTurnstile, getTurnstileToken, resetTurnstile } from '../lib/turnstile.js';
+import { REQUIRE_PHONE_VERIFICATION } from '../lib/feature-flags.js';
+import { isPushSupported, subscribeToPush } from '../services/pushNotifications.js';
 
 export default class SignupPage {
   async render() {
@@ -38,6 +41,7 @@ export default class SignupPage {
         invitation = data;
       }
     }
+    this.invitation = invitation;
 
     appElement.innerHTML = `
       <div class="signup-page">
@@ -140,6 +144,8 @@ export default class SignupPage {
                     minlength="8"
                   />
                 </div>
+
+                <div id="signup-turnstile" style="margin-bottom: 1rem;"></div>
 
                 <button type="submit" class="btn btn-primary btn-full" id="submit-btn">
                   Create Account
@@ -540,6 +546,15 @@ export default class SignupPage {
     const form = document.getElementById('signup-form');
     const submitBtn = document.getElementById('submit-btn');
 
+    // Render Turnstile widget
+    let turnstileWidgetId = null;
+    renderTurnstile('signup-turnstile')
+      .then(id => { turnstileWidgetId = id; })
+      .catch(() => {
+        document.getElementById('signup-turnstile').innerHTML =
+          '<p style="color: var(--danger); font-size: 0.85rem;">Verification failed to load. Please disable ad blockers and refresh.</p>';
+      });
+
     // SSO button listeners
     document.getElementById('google-btn').addEventListener('click', async () => {
       await this.handleOAuthSignup('google');
@@ -563,16 +578,36 @@ export default class SignupPage {
         return;
       }
 
+      // Verify Turnstile
+      const turnstileToken = getTurnstileToken(turnstileWidgetId);
+      if (!turnstileToken) {
+        showToast('Please complete the verification.', 'error');
+        return;
+      }
+
       // Disable form
       submitBtn.disabled = true;
       submitBtn.textContent = 'Creating account...';
 
       try {
-        const { user, error } = await User.signUp(email, password, name);
+        // Atomic signup with CAPTCHA verification (server-side)
+        const signupRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/signup-with-captcha`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password, name, turnstileToken }),
+        });
+        const signupData = await signupRes.json();
+        if (!signupRes.ok || signupData.error) {
+          throw new Error(signupData.error || 'Signup failed. Please try again.');
+        }
 
+        // Sign in the newly created user to get a session
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) {
           throw error;
         }
+
+        const user = signupData.user;
 
         // Profile is created automatically by database trigger (handle_new_user)
         // No need to call User.createProfile() here
@@ -603,21 +638,39 @@ export default class SignupPage {
         }
 
         // If this signup was from a team invitation, approve membership
-        if (invitation && user) {
+        if (this.invitation && user) {
           try {
-            await OrganizationMember.approve(invitation.id, user.id);
+            await OrganizationMember.approve(this.invitation.id, user.id);
             // Set user's current organization
             await supabase
               .from('users')
-              .update({ current_organization_id: invitation.organization_id })
+              .update({ current_organization_id: this.invitation.organization_id })
               .eq('id', user.id);
           } catch (inviteErr) {
             console.error('Failed to process invitation:', inviteErr);
           }
         }
 
-        // Redirect to phone verification
-        navigateTo('/verify-phone');
+        // Web-push opt-in used to live on the /verify-phone page; with phone
+        // verification disabled, new signups skip that page, so prompt here
+        // (mobile only, best-effort, non-blocking) to restore missed-call/message
+        // notifications for new cohorts.
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        if (!REQUIRE_PHONE_VERIFICATION && isMobile && user && isPushSupported()) {
+          subscribeToPush().then(async (res) => {
+            if (res?.success) {
+              await supabase.from('notification_preferences').upsert({
+                user_id: user.id,
+                push_enabled: true,
+                push_inbound_calls: true,
+                push_inbound_messages: true,
+              }, { onConflict: 'user_id' });
+            }
+          }).catch(() => {});
+        }
+
+        // Same post-auth destination logic as login.js
+        navigateTo(REQUIRE_PHONE_VERIFICATION ? '/verify-phone' : '/inbox');
       } catch (error) {
         console.error('Signup error:', error);
         showToast(error.message || 'Failed to create account. Please try again.', 'error');
@@ -625,6 +678,7 @@ export default class SignupPage {
         // Re-enable form
         submitBtn.disabled = false;
         submitBtn.textContent = 'Create Account';
+        resetTurnstile(turnstileWidgetId);
       }
     });
   }

@@ -57,6 +57,7 @@ export function createIntegrationCard(integration, isConnected, { onConnect, onD
         <div class="integration-name">${integration.name}</div>
         <div class="integration-description">${integration.description || ''}</div>
         ${integration.category ? `<span class="integration-category">${CATEGORY_LABELS[integration.category] || integration.category}</span>` : ''}
+        ${integration.partner ? `<div class="integration-partner-note">Managed via ${integration.partner} (our integrations partner)</div>` : ''}
       </div>
       <div class="integration-actions">
         ${isConnected ? `
@@ -173,6 +174,13 @@ export function addIntegrationCardStyles() {
       padding: 0.125rem 0.5rem;
       border-radius: var(--radius-sm);
       margin-top: 0.5rem;
+    }
+
+    .integration-partner-note {
+      font-size: 0.72rem;
+      color: var(--text-tertiary);
+      margin-top: 0.4rem;
+      font-style: italic;
     }
 
     .integration-actions {

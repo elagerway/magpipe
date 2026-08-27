@@ -31,12 +31,23 @@ export class Organization {
    * @returns {Promise<{organization: Object|null, error: Error|null}>}
    */
   static async getForUser(userId) {
+    // A user can have more than one approved membership (they own their own
+    // solo org AND belong to a team they were invited to). Resolve via the
+    // user's explicitly-selected current_organization_id — the field the
+    // invite-acceptance flow maintains — so callers agree on which org is
+    // "active". Fall back to the first approved membership deterministically.
+    const { data: userRow } = await supabase
+      .from('users')
+      .select('current_organization_id')
+      .eq('id', userId)
+      .single();
+    const currentOrgId = userRow?.current_organization_id || null;
+
     const { data, error } = await supabase
       .from('organization_members')
       .select('organization_id, organizations(*)')
       .eq('user_id', userId)
-      .eq('status', 'approved')
-      .limit(1);
+      .eq('status', 'approved');
 
     if (error) {
       return { organization: null, error };
@@ -46,7 +57,9 @@ export class Organization {
       return { organization: null, error: null };
     }
 
-    return { organization: data[0]?.organizations, error: null };
+    const chosen =
+      (currentOrgId && data.find((m) => m.organization_id === currentOrgId)) || data[0];
+    return { organization: chosen?.organizations, error: null };
   }
 
   /**

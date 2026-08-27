@@ -9,6 +9,15 @@ import { SupabaseClient } from 'npm:@supabase/supabase-js@2'
 export const USA_SENDER_NUMBER = '+14152518686'      // San Francisco — US destinations only
 export const CANADA_SENDER_NUMBER = '+16042431596'    // Vancouver — Canadian + international
 
+/**
+ * Magpipe's main line. Use this — not the notification senders — for SMS sent
+ * to people who are NOT customers, where the number has to be one we can point
+ * at publicly: verification codes, fraud-dispute codes, anything a stranger
+ * might look up or call back. It's also the owned-number caller-ID fallback on
+ * the forwarding paths.
+ */
+export const MAGPIPE_MAIN_NUMBER = '+16043377899'     // Vancouver — main line
+
 // Opt-out keywords (case insensitive)
 const OPT_OUT_KEYWORDS = ['stop', 'stopall', 'unsubscribe', 'cancel', 'end', 'quit']
 

@@ -5,7 +5,7 @@
  *
  * POST body:
  *   agent_id      — which agent's WhatsApp number to send from
- *   to            — recipient phone number (E.164, e.g. +15555550123)
+ *   to            — recipient phone number (E.164, e.g. +16045628647)
  *   template_name — name of your approved Meta template (required)
  *   language      — optional, defaults to "en_US"
  *   components    — optional array of template components with variable values

@@ -39,7 +39,7 @@ export async function rehostInboundMedia(
   },
 ): Promise<StoredMedia | null> {
   try {
-    const res = await fetch(opts.downloadUrl, { headers: { Authorization: opts.authHeader } })
+    const res = await fetch(opts.downloadUrl, { headers: { Authorization: opts.authHeader }, signal: AbortSignal.timeout(30000) })
     if (!res.ok) {
       console.error('rehostInboundMedia: download failed', res.status)
       return null

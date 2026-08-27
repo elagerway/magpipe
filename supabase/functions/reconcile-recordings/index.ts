@@ -161,12 +161,16 @@ Deno.serve(async (req) => {
 
         // Download and process each missing recording
         for (const swRec of missingRecordings) {
+          // Skip conference recordings — the transferee leg recording
+          // ('transferee_consult') is the canonical transfer recording and
+          // already captures the full 3-way; the conference recording just
+          // duplicated it. Skipping keeps the duplicate from being re-added.
+          if (swRec.conference_sid) continue
+
           // Determine label based on which call the recording belongs to
           let label = 'main'
           if (transferCallSids.has(swRec.call_sid)) {
             label = 'transferee_consult'
-          } else if (swRec.conference_sid) {
-            label = 'transfer_conference'
           }
 
           // Check if we already have a recording with this label

@@ -31,26 +31,42 @@ Deno.serve(async (req) => {
 
   const supabase = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 
-  // Find the transfer state by conference name
-  const { data: stateRecords } = await supabase
-    .from('temp_state')
-    .select('key, value')
-    .like('key', 'warm_transfer_%')
-
+  // Find the transfer state — try direct key lookup first (from room_name param), fall back to scan
+  const roomNameParam = url.searchParams.get('room_name')
   let transferState = null
   let stateKey = null
 
-  for (const record of stateRecords || []) {
-    if (record.value?.conference_name === confName) {
-      transferState = record.value
-      stateKey = record.key
-      break
+  if (roomNameParam) {
+    const directKey = `warm_transfer_${roomNameParam}`
+    const { data: stateData } = await supabase
+      .from('temp_state')
+      .select('key, value')
+      .eq('key', directKey)
+      .single()
+    if (stateData?.value?.conference_name === confName) {
+      transferState = stateData.value
+      stateKey = stateData.key
+    }
+  }
+
+  // Fall back to scanning if direct lookup didn't find it
+  if (!transferState) {
+    const { data: stateRecords } = await supabase
+      .from('temp_state')
+      .select('key, value')
+      .like('key', 'warm_transfer_%')
+
+    for (const record of stateRecords || []) {
+      if (record.value?.conference_name === confName) {
+        transferState = record.value
+        stateKey = record.key
+        break
+      }
     }
   }
 
   if (!transferState) {
     console.error('❌ No transfer state found for conference:', confName)
-    // Return success anyway to not break the AI flow
     return new Response(
       JSON.stringify({ success: true, message: 'State not found, proceeding anyway' }),
       { headers: { 'Content-Type': 'application/json' } }

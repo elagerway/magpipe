@@ -170,10 +170,24 @@ Deno.serve(async (req) => {
 
     console.log(`✅ Stored recording metadata for ${callRecord.id} (label: ${label}, sid: ${RecordingSid})`);
 
-    // Deduct credits for completed calls
-    // Bill for: main, transfer_conference, back_to_agent, reconnect_conversation
-    // Don't bill for: transferee_consult (AI briefing transferee, very short)
-    const billableLabels = ['main', 'transfer_conference', 'back_to_agent', 'reconnect_conversation'];
+    // Eagerly sync the recording in the background (download + upload to Supabase Storage)
+    // This ensures recording_url is populated without waiting for on-demand view.
+    // Use EdgeRuntime.waitUntil so Deno doesn't cancel the fetch when the response is returned.
+    const syncPromise = fetch(`${supabaseUrl}/functions/v1/sync-recording`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${supabaseKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ call_record_id: callRecord.id }),
+    }).catch(err => console.error('Background sync-recording failed:', err));
+    // deno-lint-ignore no-explicit-any
+    (globalThis as any).EdgeRuntime?.waitUntil(syncPromise);
+
+    // Deduct credits for completed calls.
+    // Bill for: main, transferee_consult, back_to_agent, reconnect_conversation.
+    // transferee_consult is the canonical transfer recording — the transferee
+    // call leg captures the full 3-way (we no longer record the conference
+    // separately, which used to duplicate this audio). 'transfer_conference'
+    // is retained here only for legacy records.
+    const billableLabels = ['main', 'transferee_consult', 'transfer_conference', 'back_to_agent', 'reconnect_conversation'];
     const durationSeconds = parseInt(RecordingDuration as string) || 0;
     if (billableLabels.includes(label) && durationSeconds > 0 && callRecord.user_id) {
       deductCallCredits(
@@ -223,18 +237,20 @@ async function deductCallCredits(
     // Get agent config to determine voice, LLM, and add-on rates
     let voiceId = null;
     let aiModel = null;
+    let agentLanguage = null;
     const addons: string[] = [];
 
     if (agentId) {
       const { data: agentConfig } = await supabase
         .from('agent_configs')
-        .select('voice_id, llm_model, memory_enabled, semantic_memory_enabled, knowledge_source_ids, pii_storage')
+        .select('voice_id, llm_model, language, memory_enabled, semantic_memory_enabled, knowledge_source_ids, pii_storage')
         .eq('id', agentId)
         .single();
 
       if (agentConfig) {
         voiceId = agentConfig.voice_id;
         aiModel = agentConfig.llm_model;
+        agentLanguage = agentConfig.language;
         const kbIds = agentConfig.knowledge_source_ids || [];
         if (kbIds.length > 0) addons.push('knowledge_base');
         if (agentConfig.memory_enabled) addons.push('memory');
@@ -256,6 +272,7 @@ async function deductCallCredits(
         durationSeconds,
         voiceId,
         aiModel,
+        agentLanguage,
         addons: addons.length > 0 ? addons : undefined,
         referenceType: 'call',
         referenceId: callRecordId

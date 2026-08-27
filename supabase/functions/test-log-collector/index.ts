@@ -8,7 +8,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const RENDER_API_KEY = Deno.env.get('RENDER_API_KEY') || ''
-const RENDER_SERVICE_ID = Deno.env.get('RENDER_SERVICE_ID') || ''
+const RENDER_SERVICE_ID = Deno.env.get('RENDER_SERVICE_ID') || 'srv-d3g2gvmr433s738si3j0'
 
 interface AssertionResult {
   name: string

@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { API_URL } from '../_shared/config.ts';
 
 // This is a webhook that doesn't require JWT verification
 Deno.serve(async (req) => {
@@ -68,7 +69,7 @@ Deno.serve(async (req) => {
 
     // Exchange code for tokens using PKCE (code_verifier instead of client_secret)
     const clientId = Deno.env.get('CAL_COM_CLIENT_ID')!;
-    const redirectUri = `${supabaseUrl}/functions/v1/cal-com-oauth-callback`;
+    const redirectUri = `${API_URL}/functions/v1/cal-com-oauth-callback`;
 
     const tokenResponse = await fetch('https://app.cal.com/api/auth/oauth/token', {
       method: 'POST',
@@ -104,9 +105,13 @@ Deno.serve(async (req) => {
     });
 
     let calUserId = null;
+    let calUserName = null;
+    let calUserEmail = null;
     if (userInfoResponse.ok) {
       const userInfo = await userInfoResponse.json();
       calUserId = userInfo.data?.id?.toString() || null;
+      calUserName = userInfo.data?.name || null;
+      calUserEmail = userInfo.data?.email || null;
     }
 
     // Store tokens in database
@@ -124,6 +129,36 @@ Deno.serve(async (req) => {
     if (updateError) {
       console.error('Failed to store tokens:', updateError);
       return Response.redirect(`${frontendUrl}/settings?cal_error=storage_failed`);
+    }
+
+    // Also store in user_integrations so skills tab can detect the connection
+    const { data: calProvider } = await supabase
+      .from('integration_providers')
+      .select('id')
+      .eq('slug', 'cal_com')
+      .single();
+
+    if (calProvider) {
+      await supabase
+        .from('user_integrations')
+        .upsert({
+          user_id: stateData.userId,
+          provider_id: calProvider.id,
+          status: 'connected',
+          access_token: tokens.access_token,
+          refresh_token: tokens.refresh_token || null,
+          token_expires_at: expiresAt.toISOString(),
+          external_user_id: calUserEmail || calUserId,
+          config: {
+            user_name: calUserName,
+            user_email: calUserEmail,
+            cal_user_id: calUserId,
+          },
+          connected_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }, {
+          onConflict: 'user_id,provider_id',
+        });
     }
 
     // Success - redirect back to return URL or settings

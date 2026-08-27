@@ -1,6 +1,6 @@
 /**
- * Appointment Reminder Skill Handler
- * Polls Cal.com for upcoming bookings, sends SMS/voice reminders to attendees.
+ * Scheduled Outbound Call Skill Handler (slug: appointment_reminder — unchanged)
+ * Polls Cal.com for upcoming bookings, places SMS/voice reminders to attendees.
  * Deduplicates via skill_executions — won't remind the same booking twice.
  * Requires Cal.com integration.
  */
@@ -138,7 +138,7 @@ const handler: SkillHandler = {
 
     if (isDryRun) {
       return {
-        summary: `${reminders.length} appointment reminder(s) would be sent`,
+        summary: `${reminders.length} scheduled outbound call(s) would be sent`,
         actions_taken: ['preview'],
         preview: reminders.map(r => `To: ${r.contact.name} (${r.contact.email}) — "${r.message}"`).join('\n\n'),
         data: { reminders: reminders.map(r => ({ message: r.message, contact: r.contact.name, booking_uid: r.booking.uid })) },
@@ -168,8 +168,9 @@ const handler: SkillHandler = {
       const attendeePhone = reminder.contact.phoneNumber
       let sent = false
 
-      // Try voice call first if configured
-      if (wantsVoice && attendeePhone) {
+      // Try voice call first if configured. Needs a service number to dial FROM
+      // (caller_id) — without it initiate-bridged-call 400s, so fall through to SMS.
+      if (wantsVoice && attendeePhone && serviceNumber) {
         try {
           const callResponse = await fetch(`${supabaseUrl}/functions/v1/initiate-bridged-call`, {
             method: 'POST',
@@ -177,17 +178,25 @@ const handler: SkillHandler = {
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${supabaseKey}`,
             },
+            // initiate-bridged-call expects snake_case keys. caller_id is REQUIRED
+            // (the service number we dial from) — the prior camelCase body was
+            // missing it, so every voice reminder 400'd and silently fell back to SMS.
+            // NOTE: no `prewarm` — that flag is a no-op (polls a room the agent never
+            // joins) that only adds ~8s of dead air. See outbound-call-api doc.
             body: JSON.stringify({
-              userId,
-              agentId: agentSkill.agent_id,
-              toNumber: attendeePhone,
-              context: `Appointment reminder: ${reminder.message}`,
+              user_id: userId,
+              agent_id: agentSkill.agent_id,
+              phone_number: attendeePhone,
+              caller_id: serviceNumber.phone_number,
+              outbound_system_prompt: `You are placing an outbound reminder call. Greet the person briefly, then deliver this reminder naturally in your own words: "${reminder.message}". Answer any quick questions, then politely end the call.`,
             }),
           })
           if (callResponse.ok) {
             actionsTaken.push(`voice_call_sent:${reminder.booking.uid}`)
             sentBookings.push(reminder.booking.uid)
             sent = true
+          } else {
+            console.error('Voice call failed for reminder:', callResponse.status, await callResponse.text())
           }
         } catch (err) {
           console.error('Voice call failed for reminder:', err)
@@ -224,7 +233,7 @@ const handler: SkillHandler = {
     }
 
     return {
-      summary: `${sentBookings.length}/${reminders.length} appointment reminder(s) sent`,
+      summary: `${sentBookings.length}/${reminders.length} scheduled outbound call(s) sent`,
       actions_taken: actionsTaken,
       data: {
         sent_count: sentBookings.length,

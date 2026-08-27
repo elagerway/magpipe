@@ -2,6 +2,7 @@
  * Mobile Bottom Navigation Component
  * Self-contained component that fetches its own user data
  */
+import { getInitials } from '../lib/formatters.js';
 
 import { supabase, getCurrentUser } from '../lib/supabase.js';
 import { AgentConfig } from '../models/AgentConfig.js';
@@ -18,9 +19,9 @@ import {
 
 // Pricing rates (from /pricing page)
 const VOICE_RATES = {
-  elevenlabs: 0.07,  // 11labs-* voices
-  openai: 0.08,      // openai-* voices
-  default: 0.07      // legacy voices default to ElevenLabs rate
+  elevenlabs: 0.10,  // 11labs Flash/Turbo, en-US (multilingual agents billed $0.20)
+  openai: 0.03,      // openai-* voices (vendor $0.015/min → 50% gross margin)
+  default: 0.07      // legacy voices default rate
 };
 
 const LLM_RATES = {
@@ -31,8 +32,12 @@ const LLM_RATES = {
   'gpt-5': 0.04,
   'gpt-5-mini': 0.012,
   'gpt-5-nano': 0.003,
-  'claude-3.5-sonnet': 0.05,
-  'claude-3-haiku': 0.006,
+  'claude-opus-4.6': 0.21,
+  'claude-sonnet-4.6': 0.056,
+  'claude-sonnet-4.5': 0.07,
+  'claude-haiku-4.5': 0.008,
+  'claude-3.5-sonnet': 0.07,
+  'claude-3-haiku': 0.008,
   'default': 0.006  // Default to GPT 4o mini rate
 };
 
@@ -42,6 +47,7 @@ const MESSAGE_RATE = 0.001;    // Per SMS message
 // Cached user data for nav (avoids refetching on every page)
 let cachedUserData = null;
 let userDataFetchPromise = null;
+let userDataFetchUserId = null; // which user the in-flight promise is fetching for
 
 // Initialize unread message tracking - delegates to unified service
 export async function initUnreadTracking() {
@@ -71,12 +77,12 @@ export { markAsRead, recalculateUnreads }
 export function clearNavUserCache() {
   cachedUserData = null;
   userDataFetchPromise = null;
+  userDataFetchUserId = null;
 }
 
 // Refresh consumption data (clears cache and updates the plan section)
 export async function refreshConsumptionData() {
-  cachedUserData = null;
-  userDataFetchPromise = null;
+  clearNavUserCache();
   const userData = await fetchNavUserData();
   if (userData) {
     updateNavPlanSection(userData);
@@ -86,21 +92,37 @@ export async function refreshConsumptionData() {
 
 // Fetch user data for nav (with caching)
 async function fetchNavUserData() {
+  // Resolve the current user first (cheap: local session + its own cache) so a
+  // logout→login as a different account can never serve the previous user's
+  // cached nav data (stale name/email in the bottom-left chip).
+  const { user: currentUser } = await getCurrentUser();
+  if (!currentUser) {
+    // Transient null (session-resolution timeout on a flaky network while still
+    // logged in) — serve the existing cache rather than wiping it and blanking
+    // the sidebar. A real account switch is handled by the userId guard below.
+    return cachedUserData;
+  }
+  if (cachedUserData && cachedUserData.userId !== currentUser.id) {
+    clearNavUserCache();
+  }
+
   // Return cached data if available
   if (cachedUserData) {
     return cachedUserData;
   }
 
-  // If already fetching, wait for that promise
-  if (userDataFetchPromise) {
+  // Reuse an in-flight fetch only if it's for THIS user — otherwise a fetch
+  // started as user A (still pending across a logout→login) would be handed to
+  // user B and repopulate the cache as A.
+  if (userDataFetchPromise && userDataFetchUserId === currentUser.id) {
     return userDataFetchPromise;
   }
 
-  // Start new fetch
+  // Start new fetch, scoped to the resolved user (no second getCurrentUser call)
+  userDataFetchUserId = currentUser.id;
   userDataFetchPromise = (async () => {
     try {
-      const { user } = await getCurrentUser();
-      if (!user) return null;
+      const user = currentUser;
 
       const { data: profile } = await supabase
         .from('users')
@@ -165,8 +187,8 @@ async function fetchNavUserData() {
         } else {
           voiceRate = VOICE_RATES.elevenlabs;
         }
-        if (agentConfig.ai_model && LLM_RATES[agentConfig.ai_model]) {
-          llmRate = LLM_RATES[agentConfig.ai_model];
+        if (agentConfig.llm_model && LLM_RATES[agentConfig.llm_model]) {
+          llmRate = LLM_RATES[agentConfig.llm_model];
         }
       }
       const perMinuteRate = voiceRate + llmRate + TELEPHONY_RATE;
@@ -185,6 +207,7 @@ async function fetchNavUserData() {
       newPosts = posts || [];
 
       cachedUserData = {
+        userId: user.id,
         name: profile?.name || null,
         email: user.email,
         avatar_url: profile?.avatar_url || null,
@@ -211,16 +234,6 @@ async function fetchNavUserData() {
   return userDataFetchPromise;
 }
 
-// Get user initials for avatar
-function getInitials(name, email) {
-  if (name) {
-    const parts = name.split(' ');
-    return parts.length > 1
-      ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
-      : name.substring(0, 2).toUpperCase();
-  }
-  return email ? email.substring(0, 2).toUpperCase() : 'U';
-}
 
 // Update the favicon in the document head
 function setFaviconHref(url) {
@@ -310,7 +323,119 @@ function updateNavLogoSection(userData) {
   if (userData?.favicon_url) {
     applyFavicon(userData.favicon_url, userData.favicon_white_bg);
   }
+
+  // Fetch status for the LED
+  fetchStatusForLed();
 }
+
+// --- Status LED + Modal ---
+const STATUS_API = 'https://api.magpipe.ai/functions/v1/public-status';
+const STATUS_LABELS = { operational: 'Operational', degraded: 'Partial Outage', down: 'Outage' };
+const STATUS_COLORS = { operational: '#10b981', degraded: '#f59e0b', down: '#ef4444' };
+let cachedStatusData = null;
+
+async function fetchStatusForLed() {
+  try {
+    const res = await fetch(STATUS_API, { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) return;
+    cachedStatusData = await res.json();
+    const dot = document.getElementById('nav-status-dot');
+    if (dot) {
+      dot.style.background = STATUS_COLORS[cachedStatusData.overall] || STATUS_COLORS.operational;
+      dot.style.boxShadow = `0 0 6px ${STATUS_COLORS[cachedStatusData.overall] || STATUS_COLORS.operational}`;
+    }
+    const led = document.getElementById('nav-status-led');
+    if (led) {
+      led.title = cachedStatusData.overall === 'operational' ? 'All Systems Operational' : cachedStatusData.overall === 'degraded' ? 'Partial Service Disruption' : 'Service Disruption';
+    }
+  } catch { /* silent */ }
+}
+
+// Refresh status LED every 5 minutes
+setInterval(fetchStatusForLed, 300000);
+
+window._showStatusModal = async function() {
+  // Remove existing modal if any
+  const existing = document.getElementById('status-modal-overlay');
+  if (existing) existing.remove();
+
+  // Always fetch fresh data so the modal reflects current state
+  try {
+    const res = await fetch(STATUS_API);
+    if (res.ok) cachedStatusData = await res.json();
+  } catch { /* use cached data if fetch fails */ }
+
+  const categories = cachedStatusData?.categories || [];
+  const overall = cachedStatusData?.overall || 'operational';
+  const checkedAt = cachedStatusData?.checked_at ? new Date(cachedStatusData.checked_at).toLocaleTimeString() : '';
+
+  const rows = categories.map(c => {
+    const color = STATUS_COLORS[c.status] || STATUS_COLORS.operational;
+    const label = STATUS_LABELS[c.status] || c.status;
+    const latency = c.latency != null ? `${c.latency}ms` : '';
+    const tooltip = c.detail ? c.detail : `${c.name} — ${label}${latency ? ` (${latency})` : ''}`;
+    return `
+      <div class="status-row" data-tooltip="${tooltip.replace(/"/g, '&quot;')}" style="display:flex;align-items:center;justify-content:space-between;padding:0.25rem 0;border-bottom:1px solid var(--border-color, #e5e7eb);cursor:default;position:relative;">
+        <span style="font-weight:500;font-size:0.8rem;">${c.name}</span>
+        <div style="display:flex;align-items:center;gap:0.4rem;">
+          <span style="font-size:0.7rem;color:var(--text-secondary,#6b7280);">${latency}</span>
+          <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${color};box-shadow:0 0 4px ${color};"></span>
+          <span style="font-size:0.7rem;color:${color};font-weight:500;min-width:70px;text-align:right;">${label}</span>
+        </div>
+      </div>`;
+  }).join('');
+
+  const overallColor = STATUS_COLORS[overall];
+  const overallLabel = overall === 'operational' ? 'All Systems Operational'
+    : overall === 'degraded' ? 'Partial Service Disruption'
+    : 'Service Disruption Detected';
+
+  const modal = document.createElement('div');
+  modal.className = 'contact-modal-overlay';
+  modal.id = 'status-modal-overlay';
+  modal.style.display = 'flex';
+  modal.onclick = () => modal.style.display = 'none';
+  modal.innerHTML = `
+    <style>
+      .status-row[data-tooltip]:hover::after {
+        content: attr(data-tooltip);
+        position: absolute;
+        bottom: calc(100% + 4px);
+        left: 50%;
+        transform: translateX(-50%);
+        background: #fff;
+        border: 1px solid rgba(0,0,0,0.12);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        color: #1e293b;
+        font-size: 0.72rem;
+        font-weight: 400;
+        padding: 4px 8px;
+        border-radius: 6px;
+        white-space: nowrap;
+        z-index: 10;
+        pointer-events: none;
+      }
+    </style>
+    <div class="contact-modal" onclick="event.stopPropagation()" style="max-width:480px;max-height:none;">
+      <div class="contact-modal-header">
+        <h3>System Status</h3>
+        <button class="close-modal-btn" onclick="document.getElementById('status-modal-overlay').style.display='none'">&times;</button>
+      </div>
+      <div class="contact-modal-body" style="overflow-y:visible;max-height:none;">
+        <div style="display:flex;align-items:center;gap:0.4rem;padding:0.5rem 0.6rem;border-radius:6px;background:${overallColor}15;border:1px solid ${overallColor}40;margin-bottom:0.5rem;">
+          <span style="width:8px;height:8px;border-radius:50%;background:${overallColor};box-shadow:0 0 6px ${overallColor};"></span>
+          <span style="font-weight:600;font-size:0.8rem;color:${overallColor};">${overallLabel}</span>
+        </div>
+        ${rows}
+        ${checkedAt ? `<div style="text-align:center;font-size:0.7rem;color:var(--text-secondary,#6b7280);margin-top:0.5rem;">Last checked: ${checkedAt}</div>` : ''}
+      </div>
+      <div class="contact-modal-footer">
+        <a href="https://status.magpipe.ai" target="_blank" rel="noopener" class="btn btn-primary" style="text-decoration:none;">View Full Status Page</a>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+};
 
 // Update the plan summary section in the DOM
 function updateNavPlanSection(userData) {
@@ -323,9 +448,15 @@ function updateNavPlanSection(userData) {
 
   if (plan === 'free') {
     // New user plan: show credits used out of $20 included credits
+    // If balance is 0 and no usage, user hasn't received bonus yet — show 0%
     const startingCredits = 20;
-    const creditsUsed = Math.max(0, startingCredits - (userData.creditsBalance || 0));
-    percentage = (creditsUsed / startingCredits) * 100;
+    const balance = userData.creditsBalance || 0;
+    if (balance === 0 && !hasUsage) {
+      percentage = 0;
+    } else {
+      const creditsUsed = Math.max(0, startingCredits - balance);
+      percentage = (creditsUsed / startingCredits) * 100;
+    }
   } else {
     // Paid plan: show total cost on $0-$2000 scale
     percentage = ((userData.totalCost || 0) / 2000) * 100;
@@ -353,12 +484,12 @@ function updateNavPlanSection(userData) {
     usageLevelClass = 'usage-very-high';
   }
 
-  // What's New card — show most recent post not yet dismissed
-  const dismissed = (localStorage.getItem('whats_new_dismissed') || '').split(',').filter(Boolean);
-  const visiblePosts = (userData.newPosts || []).filter(p => !dismissed.includes(p.id));
+  // What's New card — show most recent post, hide if already dismissed
+  const dismissedPostId = localStorage.getItem('whats_new_dismissed');
+  const latestPost = (userData.newPosts || [])[0];
   let whatsNewHtml = '';
-  if (visiblePosts.length > 0) {
-    const post = visiblePosts[0];
+  if (latestPost && latestPost.id !== dismissedPostId) {
+    const post = latestPost;
     const xUrl = post.tweet_id
       ? `https://x.com/i/web/status/${post.tweet_id}`
       : `https://magpipe.ai/blog/${post.slug}`;
@@ -375,9 +506,14 @@ function updateNavPlanSection(userData) {
   planSection.innerHTML = whatsNewHtml + `
     <button class="nav-feedback-btn" onclick="openContactModal()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        <circle cx="12" cy="12" r="10"/>
+        <circle cx="12" cy="12" r="4"/>
+        <line x1="12" y1="2" x2="12" y2="8"/>
+        <line x1="12" y1="16" x2="12" y2="22"/>
+        <line x1="2" y1="12" x2="8" y2="12"/>
+        <line x1="16" y1="12" x2="22" y2="12"/>
       </svg>
-      Give Feedback
+      Get Support
     </button>
     <div class="nav-plan-card">
       <div class="nav-plan-header">
@@ -417,6 +553,11 @@ function updateNavUserSection(userData) {
   const userInitials = getInitials(userData.name, userData.email);
   const userName = userData.name || 'User';
   const userEmail = userData.email || '';
+
+  // Show Admin button only for the admin account
+  if (userEmail === 'erik@snapsonic.com') {
+    document.querySelectorAll('.nav-admin-btn').forEach(btn => btn.style.display = '');
+  }
 
   userSection.innerHTML = `
     <button class="nav-user-button" id="nav-user-button" onclick="toggleUserModal(event)">
@@ -591,6 +732,14 @@ function generateNavHtml(currentPath) {
             </svg>
             <span>All Documentation</span>
           </button>
+          <button class="nav-modal-item" onclick="window.open('https://docs.magpipe.ai/guides/create-agent', '_blank'); closeUserModal();">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="16"></line>
+              <line x1="8" y1="12" x2="16" y2="12"></line>
+            </svg>
+            <span>Create New Agent</span>
+          </button>
         </div>
 
         <div class="nav-modal-section">
@@ -608,6 +757,18 @@ function generateNavHtml(currentPath) {
             </svg>
             <span>Chat with us</span>
           </button>
+          <button class="nav-modal-item" onclick="navigateTo('/tests'); closeUserModal();">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <span>Tests</span>
+          </button>
+          <button class="nav-modal-item" onclick="closeUserModal(); window._showStatusModal();">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+            </svg>
+            <span>Status</span>
+          </button>
           <button class="nav-modal-item" onclick="openUpgradeModal()">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
@@ -618,6 +779,13 @@ function generateNavHtml(currentPath) {
 
         <div class="nav-modal-divider"></div>
 
+        <button class="nav-modal-item nav-admin-btn${currentPath === '/admin' ? ' active' : ''}" style="display: none;" onclick="navigateTo('/admin'); closeUserModal();">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+          <span>Admin</span>
+        </button>
         <button class="nav-modal-item${currentPath === '/team' ? ' active' : ''}" data-path="/team" onclick="navigateTo('/team'); closeUserModal();">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
@@ -669,7 +837,7 @@ function generateNavHtml(currentPath) {
                   <option value="">Select a category...</option>
                   <option value="Feature Request">Feature Request</option>
                   <option value="Bug/Design Improvement">Bug/Design Improvement</option>
-                  <option value="Help Onboarding">Help Onboarding</option>
+                  <option value="Get Help Onboarding">Get Help Onboarding</option>
                 </select>
               </div>
               <div class="form-group">
@@ -679,6 +847,15 @@ function generateNavHtml(currentPath) {
               <div class="form-group">
                 <label for="contact-message">Message</label>
                 <textarea id="contact-message" name="message" required rows="4" placeholder="Describe your issue or question..."></textarea>
+              </div>
+              <div class="contact-attachments">
+                <input type="file" id="contact-file-input" multiple accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/webm" style="display:none" onchange="handleContactFiles(this)">
+                <button type="button" class="attach-btn" onclick="document.getElementById('contact-file-input').click()">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+                  Attach files
+                </button>
+                <span class="attachment-size-hint">Images &amp; videos, max 3 files</span>
+                <div class="attachment-previews" id="contact-attachment-previews"></div>
               </div>
             </div>
             <div class="contact-modal-footer">
@@ -793,6 +970,15 @@ function generateNavHtml(currentPath) {
   `;
 }
 
+// Deep link (?support=1, stashed in sessionStorage by main.js): open the
+// Get in Touch modal once the nav markup (which contains it) is in the DOM.
+function maybeOpenSupportModal() {
+  if (sessionStorage.getItem('magpipe_open_support')) {
+    sessionStorage.removeItem('magpipe_open_support');
+    setTimeout(() => window.openContactModal?.(), 300);
+  }
+}
+
 export function renderBottomNav(currentPath = '/inbox') {
   // Check if persistent nav container exists
   const persistentNav = document.getElementById('persistent-nav');
@@ -803,11 +989,11 @@ export function renderBottomNav(currentPath = '/inbox') {
     if (persistentNav.querySelector('.bottom-nav')) {
       // Just update active state, don't re-render
       updateNavActiveState(currentPath);
+      maybeOpenSupportModal();
       setTimeout(() => initUnreadTracking(), 100);
       // Refresh consumption data on each navigation to ensure fresh data
       setTimeout(async () => {
-        cachedUserData = null;
-        userDataFetchPromise = null;
+        clearNavUserCache();
         const userData = await fetchNavUserData();
         if (userData) {
           updateNavPlanSection(userData);
@@ -830,6 +1016,7 @@ export function renderBottomNav(currentPath = '/inbox') {
         }
       }, 0);
       setTimeout(() => initUnreadTracking(), 100);
+      maybeOpenSupportModal();
     }, 0);
     return ''; // Return empty - nav will be in persistent container
   }
@@ -981,6 +1168,14 @@ export function renderBottomNav(currentPath = '/inbox') {
             </svg>
             <span>All Documentation</span>
           </button>
+          <button class="nav-modal-item" onclick="window.open('https://docs.magpipe.ai/guides/create-agent', '_blank'); closeUserModal();">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="16"></line>
+              <line x1="8" y1="12" x2="16" y2="12"></line>
+            </svg>
+            <span>Create New Agent</span>
+          </button>
         </div>
 
         <div class="nav-modal-section">
@@ -998,6 +1193,18 @@ export function renderBottomNav(currentPath = '/inbox') {
             </svg>
             <span>Chat with us</span>
           </button>
+          <button class="nav-modal-item" onclick="navigateTo('/tests'); closeUserModal();">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <span>Tests</span>
+          </button>
+          <button class="nav-modal-item" onclick="closeUserModal(); window._showStatusModal();">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+            </svg>
+            <span>Status</span>
+          </button>
           <button class="nav-modal-item" onclick="openUpgradeModal()">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
@@ -1008,6 +1215,13 @@ export function renderBottomNav(currentPath = '/inbox') {
 
         <div class="nav-modal-divider"></div>
 
+        <button class="nav-modal-item nav-admin-btn${currentPath === '/admin' ? ' active' : ''}" style="display: none;" onclick="navigateTo('/admin'); closeUserModal();">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+          <span>Admin</span>
+        </button>
         <button class="nav-modal-item${currentPath === '/team' ? ' active' : ''}" data-path="/team" onclick="navigateTo('/team'); closeUserModal();">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
@@ -1059,7 +1273,7 @@ export function renderBottomNav(currentPath = '/inbox') {
                   <option value="">Select a category...</option>
                   <option value="Feature Request">Feature Request</option>
                   <option value="Bug/Design Improvement">Bug/Design Improvement</option>
-                  <option value="Help Onboarding">Help Onboarding</option>
+                  <option value="Get Help Onboarding">Get Help Onboarding</option>
                 </select>
               </div>
               <div class="form-group">
@@ -1069,6 +1283,15 @@ export function renderBottomNav(currentPath = '/inbox') {
               <div class="form-group">
                 <label for="contact-message">Message</label>
                 <textarea id="contact-message" name="message" required rows="4" placeholder="Describe your issue or question..."></textarea>
+              </div>
+              <div class="contact-attachments">
+                <input type="file" id="contact-file-input" multiple accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/webm" style="display:none" onchange="handleContactFiles(this)">
+                <button type="button" class="attach-btn" onclick="document.getElementById('contact-file-input').click()">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+                  Attach files
+                </button>
+                <span class="attachment-size-hint">Images &amp; videos, max 3 files</span>
+                <div class="attachment-previews" id="contact-attachment-previews"></div>
               </div>
             </div>
             <div class="contact-modal-footer">
@@ -1253,11 +1476,9 @@ window.handleLogout = async function() {
   navigateTo('/login');
 };
 
-// Dismiss What's New card and persist to localStorage
+// Dismiss What's New card — stores current post ID so it stays hidden until a new post appears
 window.dismissWhatsNew = function(postId) {
-  const dismissed = (localStorage.getItem('whats_new_dismissed') || '').split(',').filter(Boolean);
-  dismissed.push(postId);
-  localStorage.setItem('whats_new_dismissed', dismissed.join(','));
+  localStorage.setItem('whats_new_dismissed', postId);
   document.getElementById('nav-whats-new')?.remove();
 };
 
@@ -1284,13 +1505,64 @@ window.openContactModal = function() {
   }
 };
 
+// Track selected attachment files for contact form
+let contactAttachments = [];
+const MAX_CONTACT_ATTACHMENTS = 3;
+const MAX_ATTACHMENT_SIZE = 25 * 1024 * 1024; // 25MB
+
+window.handleContactFiles = function(input) {
+  const files = Array.from(input.files || []);
+  for (const file of files) {
+    if (contactAttachments.length >= MAX_CONTACT_ATTACHMENTS) {
+      showToast(`Maximum ${MAX_CONTACT_ATTACHMENTS} files allowed`, 'error');
+      break;
+    }
+    if (file.size > MAX_ATTACHMENT_SIZE) {
+      showToast(`${file.name} is too large (max 25MB)`, 'error');
+      continue;
+    }
+    contactAttachments.push(file);
+  }
+  input.value = ''; // Reset so same file can be re-selected
+  renderContactPreviews();
+};
+
+window.removeContactAttachment = function(index) {
+  contactAttachments.splice(index, 1);
+  renderContactPreviews();
+};
+
+function renderContactPreviews() {
+  const container = document.getElementById('contact-attachment-previews');
+  if (!container) return;
+  container.innerHTML = contactAttachments.map((file, i) => {
+    const isVideo = file.type.startsWith('video/');
+    const url = URL.createObjectURL(file);
+    return `
+      <div class="attachment-thumb">
+        ${isVideo
+          ? `<video src="${url}" muted></video><span class="video-badge">VIDEO</span>`
+          : `<img src="${url}" alt="${file.name}">`}
+        <button type="button" class="remove-attachment" onclick="removeContactAttachment(${i})">&times;</button>
+      </div>`;
+  }).join('');
+  // Hide attach button if at limit
+  const attachBtn = container.closest('.contact-attachments')?.querySelector('.attach-btn');
+  if (attachBtn) attachBtn.style.display = contactAttachments.length >= MAX_CONTACT_ATTACHMENTS ? 'none' : '';
+}
+
 window.closeContactModal = function() {
   const overlay = document.getElementById('contact-modal-overlay');
   if (overlay) {
     overlay.style.display = 'none';
-    // Reset form
+    // Reset form and attachments
     const form = document.getElementById('contact-form');
     if (form) form.reset();
+    contactAttachments = [];
+    const previews = document.getElementById('contact-attachment-previews');
+    if (previews) previews.innerHTML = '';
+    const attachBtn = previews?.closest('.contact-attachments')?.querySelector('.attach-btn');
+    if (attachBtn) attachBtn.style.display = '';
   }
 };
 
@@ -1319,13 +1591,41 @@ window.submitContactForm = async function(event) {
     const { supabase } = await import('../lib/supabase.js');
     const { data: { session } } = await supabase.auth.getSession();
 
+    // Upload attachments to storage
+    let attachments = [];
+    if (contactAttachments.length > 0) {
+      submitBtn.textContent = 'Uploading files...';
+      const userId = session?.user?.id || 'anonymous';
+      for (const file of contactAttachments) {
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${fileExt}`;
+        const { error: uploadError } = await supabase.storage
+          .from('support-attachments')
+          .upload(fileName, file, { cacheControl: '3600', upsert: false });
+        if (uploadError) {
+          console.error('Upload error:', uploadError);
+          continue;
+        }
+        const { data: { publicUrl } } = supabase.storage
+          .from('support-attachments')
+          .getPublicUrl(fileName);
+        attachments.push({
+          url: publicUrl,
+          name: file.name,
+          type: file.type,
+          size: file.size,
+        });
+      }
+      submitBtn.textContent = 'Sending...';
+    }
+
     const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-contact-email`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': session ? `Bearer ${session.access_token}` : '',
       },
-      body: JSON.stringify({ subject, message, category })
+      body: JSON.stringify({ subject, message, category, attachments })
     });
 
     const result = await response.json();
@@ -1355,7 +1655,7 @@ window.submitContactForm = async function(event) {
     showToast('Failed to send message. Please try again.', 'error');
   } finally {
     submitBtn.disabled = false;
-    submitBtn.textContent = 'Send Message';
+    submitBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.25rem;"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg> Send`;
   }
 };
 

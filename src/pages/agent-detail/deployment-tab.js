@@ -1,19 +1,32 @@
 import { supabase } from '../../lib/supabase.js';
 import { ChatWidget } from '../../models/ChatWidget.js';
 import { showToast } from '../../lib/toast.js';
+import { formatPhoneNumber } from '../../lib/formatters.js';
+import { reportError } from '../../lib/error-reporter.js';
+
+const SYSTEM_AGENT_ID = '00000000-0000-0000-0000-000000000002';
 
 export const deploymentTabMethods = {
   renderDeploymentTab() {
     const agentType = this.agent.agent_type || 'inbound_voice';
-    const showPhone = ['inbound_voice', 'outbound_voice', 'text'].includes(agentType);
     const showEmail = agentType === 'email';
     const showChat = agentType === 'chat_widget';
     const showWhatsApp = agentType === 'whatsapp';
     const isTextAgent = agentType === 'text';
-    const column = isTextAgent ? 'text_agent_id' : 'agent_id';
+    const isOutboundAgent = agentType === 'outbound_voice';
+    const column = isTextAgent ? 'text_agent_id' : isOutboundAgent ? 'outbound_agent_id' : 'agent_id';
 
-    const assignedNumbers = this.serviceNumbers.filter(n => n[column] === this.agent.id);
-    const availableNumbers = this.serviceNumbers.filter(n => !n[column]);
+    const assignedNumbers = this.serviceNumbers.filter(n =>
+      n.agent_id === this.agent.id || n.outbound_agent_id === this.agent.id || n.text_agent_id === this.agent.id
+    );
+    const isPhoneAgent = ['inbound_voice', 'outbound_voice', 'text'].includes(agentType);
+    const showPhone = isPhoneAgent || assignedNumbers.length > 0;
+    // Assignable = any owned number not already on THIS agent in the relevant
+    // column. Includes numbers currently assigned to another agent — assigning
+    // reassigns them (each column holds a single agent). Without this, a user
+    // whose numbers are all in use elsewhere saw only "Add Number" and could
+    // never attach an existing number to a new agent.
+    const availableNumbers = this.serviceNumbers.filter(n => n[column] !== this.agent.id);
 
     return `
       ${showWhatsApp ? this.renderWhatsAppSection() : ''}
@@ -29,7 +42,7 @@ export const deploymentTabMethods = {
               </svg>
               Add Number
             </button>
-            ${availableNumbers.length > 0 ? `
+            ${isPhoneAgent && availableNumbers.length > 0 ? `
               <button class="btn btn-primary btn-sm" id="assign-numbers-btn" style="display: flex; align-items: center;">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.4rem;">
                   <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -45,17 +58,20 @@ export const deploymentTabMethods = {
         ${assignedNumbers.length > 0 ? `
           <div class="assigned-numbers">
             ${assignedNumbers.map(num => {
-              // For SIP trunks, show agent name + trunk name; for regular numbers, show agent name
+              // Determine which slot this agent is actually in (may differ from agent type)
+              const numColumn = num.agent_id === this.agent.id ? 'agent_id'
+                : num.outbound_agent_id === this.agent.id ? 'outbound_agent_id'
+                : 'text_agent_id';
               const label = num.isSipTrunk
                 ? `${this.agent.name} - ${num.trunkName || 'SIP Trunk'}`
                 : this.agent.name;
               return `
               <div class="assigned-number">
                 <div class="number-info">
-                  <span class="number-value">${this.formatPhoneNumber(num.phone_number)}</span>
+                  <span class="number-value">${formatPhoneNumber(num.phone_number)}</span>
                   <span class="number-name">(${label})</span>
                 </div>
-                <button class="btn btn-sm btn-secondary detach-btn" data-number-id="${num.id}" data-is-sip="${num.isSipTrunk || false}">Detach</button>
+                <button class="btn btn-sm btn-secondary detach-btn" data-number-id="${num.id}" data-column="${numColumn}" data-is-sip="${num.isSipTrunk || false}">Detach</button>
               </div>
             `;}).join('')}
           </div>
@@ -148,14 +164,12 @@ export const deploymentTabMethods = {
   },
 
   attachDeploymentTabListeners() {
-    // WhatsApp buttons
-    this.attachWhatsAppListeners();
-
     // Detach buttons
     document.querySelectorAll('.detach-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
         const numberId = btn.dataset.numberId;
-        await this.detachNumber(numberId);
+        const column = btn.dataset.column || null;
+        await this.detachNumber(numberId, column);
       });
     });
 
@@ -173,6 +187,9 @@ export const deploymentTabMethods = {
 
     const getPhoneNumberBtn = document.getElementById('get-phone-number-btn');
     if (getPhoneNumberBtn) { getPhoneNumberBtn.addEventListener('click', () => this.showBuyNumberModal()); }
+
+    // WhatsApp buttons
+    this.attachWhatsAppListeners();
 
     // Chat Widget buttons
     const createWidgetBtn = document.getElementById('create-widget-btn');
@@ -252,7 +269,8 @@ export const deploymentTabMethods = {
       const num = this.serviceNumbers.find(n => n.id === numberId);
       const table = num?.isSipTrunk ? 'external_sip_numbers' : 'service_numbers';
       const isTextAgent = this.agent.agent_type === 'text';
-      const column = isTextAgent ? 'text_agent_id' : 'agent_id';
+      const isOutboundAgent = this.agent.agent_type === 'outbound_voice';
+      const column = isTextAgent ? 'text_agent_id' : isOutboundAgent ? 'outbound_agent_id' : 'agent_id';
 
       const { error } = await supabase
         .from(table)
@@ -271,12 +289,13 @@ export const deploymentTabMethods = {
     }
   },
 
-  async detachNumber(numberId) {
+  async detachNumber(numberId, explicitColumn = null) {
     try {
       const num = this.serviceNumbers.find(n => n.id === numberId);
       const table = num?.isSipTrunk ? 'external_sip_numbers' : 'service_numbers';
       const isTextAgent = this.agent.agent_type === 'text';
-      const column = isTextAgent ? 'text_agent_id' : 'agent_id';
+      const isOutboundAgent = this.agent.agent_type === 'outbound_voice';
+      const column = explicitColumn || (isTextAgent ? 'text_agent_id' : isOutboundAgent ? 'outbound_agent_id' : 'agent_id');
 
       const { error } = await supabase
         .from(table)
@@ -550,12 +569,52 @@ export const deploymentTabMethods = {
 
   showAssignNumbersModal() {
     const isTextAgent = this.agent.agent_type === 'text';
-    const column = isTextAgent ? 'text_agent_id' : 'agent_id';
-    const availableNumbers = this.serviceNumbers.filter(n => !n[column]);
+    const isOutboundAgent = this.agent.agent_type === 'outbound_voice';
+    const column = isTextAgent ? 'text_agent_id' : isOutboundAgent ? 'outbound_agent_id' : 'agent_id';
+    // Every owned number not already on THIS agent is assignable — including ones
+    // currently on another agent, which can be reassigned (with a caution confirm).
+    const availableNumbers = this.serviceNumbers.filter(n => n[column] !== this.agent.id);
 
     if (availableNumbers.length === 0) {
       return;
     }
+
+    // Map agent_id → name so we can warn which agent a number would be pulled from.
+    const agentNameById = {};
+    (this.allAgents || []).forEach(a => { agentNameById[a.id] = a.name || 'Unnamed agent'; });
+    const reassignNameFor = (num) => {
+      const cur = num[column];
+      if (!cur || cur === SYSTEM_AGENT_ID || cur === this.agent.id) return '';
+      return agentNameById[cur] || 'another agent';
+    };
+
+    const capBadges = (num) => {
+      const caps = num.capabilities || {};
+      const present = ['voice', 'sms', 'mms'].filter(c => caps[c]);
+      if (present.length === 0) return '';
+      return `<span style="font-size: 0.72rem; color: var(--text-secondary);">${present.join(' · ')}</span>`;
+    };
+
+    const renderNumberOption = (num, showCaps = false) => {
+      const label = num.isSipTrunk ? (num.trunkName || 'SIP Trunk') : '';
+      const reassignFrom = reassignNameFor(num);
+      return `
+        <label class="number-option" style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; border: 1px solid var(--border-color); border-radius: 8px; cursor: pointer; transition: background 0.15s;">
+          <input type="checkbox" value="${num.id}" data-is-sip="${num.isSipTrunk || false}" data-reassign-from="${reassignFrom.replace(/"/g, '&quot;')}" style="width: 18px; height: 18px; cursor: pointer;" />
+          <div style="flex: 1; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+            <span style="font-weight: 500;">${formatPhoneNumber(num.phone_number)}</span>
+            ${label ? `<span style="font-size: 0.8rem; color: var(--text-secondary);">(${label})</span>` : ''}
+            ${showCaps ? capBadges(num) : ''}
+            ${reassignFrom ? `<span style="font-size: 0.72rem; color: #b45309; background: #fef3c7; padding: 0.1rem 0.4rem; border-radius: 4px; white-space: nowrap;">in use · ${reassignFrom}</span>` : ''}
+          </div>
+        </label>
+      `;
+    };
+
+    // Split inventory into Active | Inactive tabs. Selections persist across tabs.
+    const activeNums = availableNumbers.filter(n => n.is_active !== false);
+    const inactiveNums = availableNumbers.filter(n => n.is_active === false);
+    const emptyMsg = (txt) => `<div style="padding: 1rem; text-align: center; color: var(--text-secondary); font-size: 0.85rem;">${txt}</div>`;
 
     const modal = document.createElement('div');
     modal.className = 'voice-modal-overlay';
@@ -566,32 +625,18 @@ export const deploymentTabMethods = {
           <button class="close-modal-btn">&times;</button>
         </div>
         <div class="voice-modal-content" style="padding: 1rem;">
-          <p style="margin: 0 0 1rem; color: var(--text-secondary); font-size: 0.9rem;">
+          <p style="margin: 0 0 0.75rem; color: var(--text-secondary); font-size: 0.9rem;">
             Select the phone numbers you want to assign to this agent.
           </p>
-          <div class="number-list" style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 300px; overflow-y: auto;">
-            ${availableNumbers.map(num => {
-              // Only show label for SIP trunks
-              const label = num.isSipTrunk ? (num.trunkName || 'SIP Trunk') : '';
-              return `
-                <label class="number-option" style="
-                  display: flex;
-                  align-items: center;
-                  gap: 0.75rem;
-                  padding: 0.75rem;
-                  border: 1px solid var(--border-color);
-                  border-radius: 8px;
-                  cursor: pointer;
-                  transition: background 0.15s;
-                ">
-                  <input type="checkbox" value="${num.id}" data-is-sip="${num.isSipTrunk || false}" style="width: 18px; height: 18px; cursor: pointer;" />
-                  <div style="flex: 1; display: flex; align-items: center; gap: 0.5rem;">
-                    <span style="font-weight: 500;">${this.formatPhoneNumber(num.phone_number)}</span>
-                    ${label ? `<span style="font-size: 0.8rem; color: var(--text-secondary);">(${label})</span>` : ''}
-                  </div>
-                </label>
-              `;
-            }).join('')}
+          <div class="assign-tabs" style="display: flex; gap: 0.25rem; margin-bottom: 0.75rem; border-bottom: 1px solid var(--border-color);">
+            <button class="assign-tab" data-tab="active" style="background: none; border: none; border-bottom: 2px solid var(--primary-color); padding: 0.5rem 0.75rem; font-size: 0.85rem; font-weight: 600; color: var(--text-primary, #111827); cursor: pointer;">Active (${activeNums.length})</button>
+            <button class="assign-tab" data-tab="inactive" style="background: none; border: none; border-bottom: 2px solid transparent; padding: 0.5rem 0.75rem; font-size: 0.85rem; font-weight: 500; color: var(--text-secondary); cursor: pointer;">Inactive (${inactiveNums.length})</button>
+          </div>
+          <div class="number-list" data-list="active" style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 300px; overflow-y: auto;">
+            ${activeNums.length ? activeNums.map(renderNumberOption).join('') : emptyMsg('No active numbers available')}
+          </div>
+          <div class="number-list" data-list="inactive" style="display: none; flex-direction: column; gap: 0.5rem; max-height: 300px; overflow-y: auto;">
+            ${inactiveNums.length ? inactiveNums.map(n => renderNumberOption(n, true)).join('') : emptyMsg('No inactive numbers')}
           </div>
           <button class="assign-selected-btn" style="
             width: 100%;
@@ -635,6 +680,25 @@ export const deploymentTabMethods = {
       });
     });
 
+    // Tab switching (Active | Inactive). Checkbox selections persist across tabs
+    // since both lists stay in the DOM — only their visibility toggles.
+    const tabBtns = modal.querySelectorAll('.assign-tab');
+    const lists = modal.querySelectorAll('.number-list');
+    tabBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tab = btn.getAttribute('data-tab');
+        tabBtns.forEach(b => {
+          const active = b === btn;
+          b.style.borderBottomColor = active ? 'var(--primary-color)' : 'transparent';
+          b.style.color = active ? 'var(--text-primary, #111827)' : 'var(--text-secondary)';
+          b.style.fontWeight = active ? '600' : '500';
+        });
+        lists.forEach(l => {
+          l.style.display = l.getAttribute('data-list') === tab ? 'flex' : 'none';
+        });
+      });
+    });
+
     // Close button
     modal.querySelector('.close-modal-btn').addEventListener('click', () => {
       document.body.removeChild(modal);
@@ -649,13 +713,60 @@ export const deploymentTabMethods = {
 
     // Assign button
     assignBtn.addEventListener('click', async () => {
-      const selectedIds = Array.from(modal.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
-      if (selectedIds.length > 0) {
-        assignBtn.disabled = true;
-        assignBtn.textContent = 'Assigning...';
-        await this.assignMultipleNumbers(selectedIds);
-        document.body.removeChild(modal);
+      const checked = Array.from(modal.querySelectorAll('input[type="checkbox"]:checked'));
+      const selectedIds = checked.map(cb => cb.value);
+      if (selectedIds.length === 0) return;
+
+      // Any selected number currently on another agent → caution before stealing it.
+      const reassignFrom = checked
+        .map(cb => cb.getAttribute('data-reassign-from'))
+        .filter(Boolean);
+      if (reassignFrom.length > 0) {
+        const ok = await this.confirmReassignNumbers(reassignFrom);
+        if (!ok) return;
       }
+
+      assignBtn.disabled = true;
+      assignBtn.textContent = 'Assigning...';
+      await this.assignMultipleNumbers(selectedIds);
+      document.body.removeChild(modal);
+    });
+  },
+
+  // Caution confirm shown when assigning numbers that are currently on another
+  // agent — reassigning pulls the number off that agent. Resolves true to proceed.
+  confirmReassignNumbers(fromAgents) {
+    return new Promise((resolve) => {
+      const uniq = [...new Set(fromAgents)];
+      const n = fromAgents.length;
+      const plural = n > 1;
+      const overlay = document.createElement('div');
+      overlay.className = 'voice-modal-overlay';
+      overlay.innerHTML = `
+        <div class="voice-modal" style="max-width: 420px;">
+          <div class="voice-modal-header">
+            <h3 style="display: flex; align-items: center; gap: 0.5rem;">Reassign number${plural ? 's' : ''}?</h3>
+          </div>
+          <div class="voice-modal-content" style="padding: 1rem;">
+            <p style="margin: 0 0 1.25rem; color: var(--text-secondary); font-size: 0.9rem; line-height: 1.5;">
+              ${plural ? `${n} of the selected numbers are` : 'The selected number is'} currently assigned to
+              <strong>${uniq.join(', ')}</strong>. Assigning ${plural ? 'them' : 'it'} here will remove
+              ${plural ? 'them' : 'it'} from ${uniq.length > 1 ? 'those agents' : 'that agent'} —
+              ${uniq.length > 1 ? 'they' : 'it'} will stop receiving calls and texts on
+              ${plural ? 'those numbers' : 'that number'}.
+            </p>
+            <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+              <button class="btn btn-secondary cancel-reassign">Cancel</button>
+              <button class="btn btn-primary confirm-reassign" style="background: #b45309; border-color: #b45309;">Reassign</button>
+            </div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+      const done = (val) => { overlay.remove(); resolve(val); };
+      overlay.querySelector('.cancel-reassign').addEventListener('click', () => done(false));
+      overlay.querySelector('.confirm-reassign').addEventListener('click', () => done(true));
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) done(false); });
     });
   },
 
@@ -728,7 +839,7 @@ export const deploymentTabMethods = {
             ">
               <input type="radio" name="buy-num-select" value="${n.phone_number}" style="width:18px;height:18px;cursor:pointer;flex-shrink:0;" />
               <div style="flex:1;">
-                <div style="font-weight:600;">${this.formatPhoneNumber(n.phone_number)}</div>
+                <div style="font-weight:600;">${formatPhoneNumber(n.phone_number)}</div>
                 <div style="font-size:0.8rem; color:var(--text-secondary);">${[n.locality, n.region].filter(Boolean).join(', ')}</div>
               </div>
               <div style="display:flex; gap:0.25rem; flex-shrink:0;">
@@ -774,7 +885,7 @@ export const deploymentTabMethods = {
                 <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
               </div>
               <h3 style="margin:0 0 0.5rem;">Your number is ready!</h3>
-              <p style="margin:0; color:var(--text-secondary);">${this.formatPhoneNumber(provisionedNumber)}</p>
+              <p style="margin:0; color:var(--text-secondary);">${formatPhoneNumber(provisionedNumber)}</p>
             </div>
             <div class="contact-modal-footer" style="justify-content:center;">
               <button class="btn btn-primary" id="buy-num-done">Done</button>
@@ -910,7 +1021,7 @@ export const deploymentTabMethods = {
             const response = await fetch(`${supabaseUrl}/functions/v1/provision-phone-number`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-              body: JSON.stringify({ phone_number: selectedNumber, agent_id: this.agent.id }),
+              body: JSON.stringify({ phone_number: selectedNumber, agent_id: this.agent.id, agent_type: this.agent.agent_type }),
             });
             if (!response.ok) {
               const err = await response.json();
@@ -957,7 +1068,8 @@ export const deploymentTabMethods = {
   async assignMultipleNumbers(numberIds) {
     try {
       const isTextAgent = this.agent.agent_type === 'text';
-      const column = isTextAgent ? 'text_agent_id' : 'agent_id';
+      const isOutboundAgent = this.agent.agent_type === 'outbound_voice';
+      const column = isTextAgent ? 'text_agent_id' : isOutboundAgent ? 'outbound_agent_id' : 'agent_id';
 
       for (const numberId of numberIds) {
         const num = this.serviceNumbers.find(n => n.id === numberId);
@@ -981,6 +1093,364 @@ export const deploymentTabMethods = {
       console.error('Error assigning numbers:', err);
       showToast('Failed to assign some numbers. Please try again.', 'error');
     }
+  },
+
+  // --- WhatsApp section methods ---
+
+  renderWhatsAppSection() {
+    const accounts = this.whatsappAccounts || [];
+    const agentAccounts = accounts.filter(a => a.agent_id === this.agent.id);
+    const unassignedAccounts = accounts.filter(a => !a.agent_id);
+
+    return `
+    <div class="config-section">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+        <h3 style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="#15803d"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+          WhatsApp
+        </h3>
+        <button class="btn btn-sm btn-primary" id="connect-whatsapp-btn" style="display: flex; align-items: center; gap: 0.4rem;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          Connect Number
+        </button>
+      </div>
+      <p class="section-desc">Connect a WhatsApp Business number to this agent. Messages will be handled automatically.</p>
+
+      ${agentAccounts.length > 0 ? `
+        <div class="assigned-numbers">
+          ${agentAccounts.map(acc => `
+            <div class="assigned-number">
+              <div class="number-info">
+                <span class="number-value">${acc.phone_number || acc.phone_number_id}</span>
+                <span class="number-name">(${acc.display_name || 'WhatsApp Business'})</span>
+              </div>
+              <button class="btn btn-sm btn-secondary wa-disconnect-btn" data-account-id="${acc.id}" style="color: #ef4444;">Disconnect</button>
+            </div>
+          `).join('')}
+        </div>
+      ` : `
+        <div class="no-numbers-message">No WhatsApp number connected to this agent</div>
+      `}
+
+      ${unassignedAccounts.length > 0 ? `
+        <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border-color);">
+          <p class="section-desc" style="margin-bottom: 0.5rem;">Connected numbers not yet assigned:</p>
+          ${unassignedAccounts.map(acc => `
+            <div class="assigned-number">
+              <div class="number-info">
+                <span class="number-value">${acc.phone_number || acc.phone_number_id}</span>
+                <span class="number-name">(${acc.display_name || 'WhatsApp Business'})</span>
+              </div>
+              <button class="btn btn-sm btn-primary wa-assign-btn" data-account-id="${acc.id}">Assign to Agent</button>
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
+    </div>
+    `;
+  },
+
+  attachWhatsAppListeners() {
+    const connectBtn = document.getElementById('connect-whatsapp-btn');
+    if (connectBtn) {
+      connectBtn.addEventListener('click', () => this.showConnectWhatsAppModal());
+    }
+
+    document.querySelectorAll('.wa-disconnect-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const accountId = btn.dataset.accountId;
+        await this.disconnectWhatsAppAccount(accountId);
+      });
+    });
+
+    document.querySelectorAll('.wa-assign-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const accountId = btn.dataset.accountId;
+        await this.assignWhatsAppAccount(accountId);
+      });
+    });
+  },
+
+  showConnectWhatsAppModal() {
+    const existing = document.getElementById('connect-wa-modal-overlay');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.className = 'contact-modal-overlay';
+    overlay.id = 'connect-wa-modal-overlay';
+    overlay.style.display = 'flex';
+    overlay.onclick = (e) => { if (e.target === overlay) { overlay.remove(); this._cleanupWASignup(); } };
+
+    overlay.innerHTML = `
+      <div class="contact-modal" onclick="event.stopPropagation()">
+        <div class="contact-modal-header">
+          <h3>Connect WhatsApp Number</h3>
+          <button class="close-modal-btn" id="close-wa-modal-btn">&times;</button>
+        </div>
+        <div class="contact-modal-body">
+          <!-- Primary: Embedded Signup -->
+          <div id="wa-embedded-signup-section">
+            <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1.25rem;">
+              Connect your WhatsApp Business number in a few clicks.
+            </p>
+            <button type="button" id="wa-meta-connect-btn" style="
+              display: flex; align-items: center; justify-content: center; gap: 0.6rem;
+              width: 100%; padding: 0.75rem 1rem;
+              background: #1877F2; color: white; border: none; border-radius: 8px;
+              font-size: 0.95rem; font-weight: 600; cursor: pointer;
+            ">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+              Continue with Meta
+            </button>
+            <div id="wa-signup-status" style="display:none; margin-top: 1rem; padding: 0.75rem; border-radius: 8px; font-size: 0.875rem; text-align: center;"></div>
+            <div style="margin-top: 1.25rem; text-align: center;">
+              <button type="button" id="wa-show-manual-btn" style="background:none; border:none; color: var(--text-secondary); font-size: 0.8rem; cursor: pointer; text-decoration: underline;">
+                Enter credentials manually instead
+              </button>
+            </div>
+          </div>
+
+          <!-- Fallback: Manual form -->
+          <form id="connect-wa-form" style="display: none;">
+            <div class="form-group">
+              <label class="form-label">WhatsApp Business Account ID (WABA ID)</label>
+              <input type="text" id="wa-waba-id" class="form-input" placeholder="e.g. 4378166712468208" required />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Phone Number ID</label>
+              <input type="text" id="wa-phone-number-id" class="form-input" placeholder="e.g. 1056136157579586" required />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Access Token</label>
+              <input type="password" id="wa-access-token" class="form-input" placeholder="EAAm..." required />
+            </div>
+            <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 0.75rem; font-size: 0.8rem; color: #15803d; margin-bottom: 0.5rem;">
+              Find these in Meta for Developers → Your App → WhatsApp → API Setup
+            </div>
+            <div style="text-align: center; margin-top: 0.5rem;">
+              <button type="button" id="wa-show-embedded-btn" style="background:none; border:none; color: var(--text-secondary); font-size: 0.8rem; cursor: pointer; text-decoration: underline;">
+                ← Back to Connect with Meta
+              </button>
+            </div>
+          </form>
+        </div>
+        <div class="contact-modal-footer">
+          <button type="button" class="btn btn-secondary" id="wa-cancel-btn">Cancel</button>
+          <button type="submit" form="connect-wa-form" class="btn btn-primary" id="connect-wa-submit-btn" style="display:none;">Connect</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    // Close handlers
+    document.getElementById('close-wa-modal-btn').onclick = () => { overlay.remove(); this._cleanupWASignup(); };
+    document.getElementById('wa-cancel-btn').onclick = () => { overlay.remove(); this._cleanupWASignup(); };
+
+    // Toggle manual form
+    document.getElementById('wa-show-manual-btn').onclick = () => {
+      document.getElementById('wa-embedded-signup-section').style.display = 'none';
+      document.getElementById('connect-wa-form').style.display = 'block';
+      document.getElementById('connect-wa-submit-btn').style.display = '';
+    };
+    document.getElementById('wa-show-embedded-btn').onclick = () => {
+      document.getElementById('connect-wa-form').style.display = 'none';
+      document.getElementById('wa-embedded-signup-section').style.display = 'block';
+      document.getElementById('connect-wa-submit-btn').style.display = 'none';
+    };
+
+    // Load FB SDK and wire up Embedded Signup
+    this._initFBSDK().then(() => {
+      document.getElementById('wa-meta-connect-btn').onclick = () => this._launchEmbeddedSignup(overlay);
+    });
+
+    // Manual form submit
+    document.getElementById('connect-wa-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const wabaId = document.getElementById('wa-waba-id').value.trim();
+      const phoneNumberId = document.getElementById('wa-phone-number-id').value.trim();
+      const accessToken = document.getElementById('wa-access-token').value.trim();
+      const submitBtn = document.getElementById('connect-wa-submit-btn');
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Connecting...';
+      try {
+        await this._connectWhatsAppAccount({ waba_id: wabaId, phone_number_id: phoneNumberId, access_token: accessToken });
+        overlay.remove();
+        this._cleanupWASignup();
+      } catch (err) {
+        showToast(err.message || 'Failed to connect WhatsApp', 'error');
+        reportError('whatsapp_connect_failure', err, 'deployment-tab:manual-connect');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Connect';
+      }
+    });
+  },
+
+  _initFBSDK() {
+    if (window.FB) return Promise.resolve();
+    return new Promise((resolve) => {
+      window.fbAsyncInit = function() {
+        FB.init({ appId: '902326325753936', autoLogAppEvents: true, xfbml: false, version: 'v21.0' });
+        resolve();
+      };
+      if (!document.getElementById('facebook-jssdk')) {
+        const js = document.createElement('script');
+        js.id = 'facebook-jssdk';
+        js.src = 'https://connect.facebook.net/en_US/sdk.js';
+        document.head.appendChild(js);
+      } else {
+        // SDK script already added but fbAsyncInit hasn't fired yet — wait
+        const check = setInterval(() => { if (window.FB) { clearInterval(check); resolve(); } }, 100);
+      }
+    });
+  },
+
+  _launchEmbeddedSignup(overlay) {
+    const btn = document.getElementById('wa-meta-connect-btn');
+    const status = document.getElementById('wa-signup-status');
+
+    const showStatus = (msg, isError = false) => {
+      status.style.display = 'block';
+      status.style.background = isError ? '#fef2f2' : '#f0fdf4';
+      status.style.color = isError ? '#dc2626' : '#15803d';
+      status.textContent = msg;
+    };
+
+    if (!window.FB) {
+      showStatus('Meta is still loading — please try again in a moment.', true);
+      return;
+    }
+
+    // Capture the WABA id + phone number id from the Embedded Signup session.
+    // This message reliably fires through the FB SDK's channel (unlike a raw
+    // OAuth-dialog popup, where it is not delivered to the opener).
+    let sessionInfo = null;
+    this._waMessageHandler = (event) => {
+      if (typeof event.origin !== 'string' || !event.origin.endsWith('facebook.com')) return;
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'WA_EMBEDDED_SIGNUP' && data.event === 'FINISH') {
+          sessionInfo = data.data || {}; // { waba_id, phone_number_id }
+        }
+      } catch (_) {}
+    };
+    window.addEventListener('message', this._waMessageHandler);
+
+    btn.disabled = true;
+    btn.textContent = 'Opening Meta...';
+
+    // FB.login must run inside the click gesture (SDK already initialised) so the
+    // popup isn't blocked. The callback fires after the FINISH message is captured.
+    window.FB.login((response) => {
+      btn.disabled = false;
+      btn.textContent = 'Continue with Meta';
+
+      if (!response || !response.authResponse) {
+        showStatus('Connection cancelled.', true);
+        this._cleanupWASignup();
+        return;
+      }
+
+      const wabaId = sessionInfo?.waba_id;
+      const phoneNumberId = sessionInfo?.phone_number_id;
+      if (!wabaId || !phoneNumberId) {
+        showStatus('Could not retrieve account info. Please use manual entry.', true);
+        reportError('whatsapp_connect_failure', 'Embedded Signup finished but no session info (waba_id/phone_number_id) was delivered', 'deployment-tab:no-session-info');
+        this._cleanupWASignup();
+        return;
+      }
+
+      showStatus('Connecting your number...');
+      this._connectWhatsAppAccount({ waba_id: wabaId, phone_number_id: phoneNumberId })
+        .then(() => { overlay.remove(); this._cleanupWASignup(); })
+        .catch((err) => {
+          showStatus(err.message || 'Connection failed.', true);
+          reportError('whatsapp_connect_failure', err, 'deployment-tab:embedded-connect');
+          this._cleanupWASignup();
+        });
+    }, {
+      config_id: '3230830187113383',
+      response_type: 'code',
+      override_default_response_type: true,
+      extras: { setup: {}, featureType: '', sessionInfoVersion: '3' },
+    });
+  },
+
+  _cleanupWASignup() {
+    if (this._waMessageHandler) {
+      window.removeEventListener('message', this._waMessageHandler);
+      this._waMessageHandler = null;
+    }
+  },
+
+  async _connectWhatsAppAccount(payload) {
+    const { data: { session } } = await supabase.auth.getSession();
+    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-connect`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json();
+    if (!response.ok || result.error) throw new Error(result.error || 'Connection failed');
+
+    // Assign to this agent
+    const assignRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-connect`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      body: JSON.stringify({ account_id: result.account.id, agent_id: this.agent.id }),
+    });
+    if (!assignRes.ok) throw new Error('Failed to assign WhatsApp number to agent');
+
+    // The number is stored + assigned, but may have failed Cloud API registration
+    // (can't send/receive until registered). Tell the user plainly rather than a
+    // blanket "success".
+    if (result.registered === false) {
+      showToast(result.warning || 'Number connected, but it needs registration before it can send or receive.', 'error');
+    } else {
+      showToast('WhatsApp number connected successfully', 'success');
+    }
+    await this.loadWhatsAppAccounts();
+    document.getElementById('tab-content').innerHTML = this.renderDeploymentTab();
+    this.attachDeploymentTabListeners();
+  },
+
+  async loadWhatsAppAccounts() {
+    const { data: { session } } = await supabase.auth.getSession();
+    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-connect`, {
+      headers: { 'Authorization': `Bearer ${session.access_token}` },
+    });
+    const result = await response.json();
+    this.whatsappAccounts = result.accounts || [];
+  },
+
+  async disconnectWhatsAppAccount(accountId) {
+    const { data: { session } } = await supabase.auth.getSession();
+    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-connect?account_id=${accountId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${session.access_token}` },
+    });
+    if (response.ok) {
+      showToast('WhatsApp number disconnected', 'success');
+      await this.loadWhatsAppAccounts();
+      document.getElementById('tab-content').innerHTML = this.renderDeploymentTab();
+      this.attachDeploymentTabListeners();
+    } else {
+      showToast('Failed to disconnect', 'error');
+    }
+  },
+
+  async assignWhatsAppAccount(accountId) {
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-connect`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      body: JSON.stringify({ account_id: accountId, agent_id: this.agent.id }),
+    });
+    if (!res.ok) { showToast('Failed to assign WhatsApp number', 'error'); return; }
+    showToast('WhatsApp number assigned', 'success');
+    await this.loadWhatsAppAccounts();
+    document.getElementById('tab-content').innerHTML = this.renderDeploymentTab();
+    this.attachDeploymentTabListeners();
   },
 
   // --- Email section methods ---
@@ -1260,360 +1730,5 @@ export const deploymentTabMethods = {
       document.body.removeChild(modal);
       this.switchTab('deployment');
     });
-  },
-
-  // --- WhatsApp section methods ---
-
-  renderWhatsAppSection() {
-    const accounts = this.whatsappAccounts || [];
-    const agentAccounts = accounts.filter(a => a.agent_id === this.agent.id);
-    const unassignedAccounts = accounts.filter(a => !a.agent_id);
-
-    return `
-    <div class="config-section">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-        <h3 style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="#15803d"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-          WhatsApp
-        </h3>
-        <button class="btn btn-sm btn-primary" id="connect-whatsapp-btn" style="display: flex; align-items: center; gap: 0.4rem;">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-          Connect Number
-        </button>
-      </div>
-      <p class="section-desc">Connect a WhatsApp Business number to this agent. Messages will be handled automatically.</p>
-
-      ${agentAccounts.length > 0 ? `
-        <div class="assigned-numbers">
-          ${agentAccounts.map(acc => `
-            <div class="assigned-number">
-              <div class="number-info">
-                <span class="number-value">${acc.phone_number || acc.phone_number_id}</span>
-                <span class="number-name">(${acc.display_name || 'WhatsApp Business'})</span>
-              </div>
-              <button class="btn btn-sm btn-secondary wa-disconnect-btn" data-account-id="${acc.id}" style="color: #ef4444;">Disconnect</button>
-            </div>
-          `).join('')}
-        </div>
-      ` : `
-        <div class="no-numbers-message">No WhatsApp number connected to this agent</div>
-      `}
-
-      ${unassignedAccounts.length > 0 ? `
-        <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border-color);">
-          <p class="section-desc" style="margin-bottom: 0.5rem;">Connected numbers not yet assigned:</p>
-          ${unassignedAccounts.map(acc => `
-            <div class="assigned-number">
-              <div class="number-info">
-                <span class="number-value">${acc.phone_number || acc.phone_number_id}</span>
-                <span class="number-name">(${acc.display_name || 'WhatsApp Business'})</span>
-              </div>
-              <button class="btn btn-sm btn-primary wa-assign-btn" data-account-id="${acc.id}">Assign to Agent</button>
-            </div>
-          `).join('')}
-        </div>
-      ` : ''}
-    </div>
-    `;
-  },
-
-  attachWhatsAppListeners() {
-    const connectBtn = document.getElementById('connect-whatsapp-btn');
-    if (connectBtn) {
-      connectBtn.addEventListener('click', () => this.showConnectWhatsAppModal());
-    }
-
-    document.querySelectorAll('.wa-disconnect-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const accountId = btn.dataset.accountId;
-        await this.disconnectWhatsAppAccount(accountId);
-      });
-    });
-
-    document.querySelectorAll('.wa-assign-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const accountId = btn.dataset.accountId;
-        await this.assignWhatsAppAccount(accountId);
-      });
-    });
-  },
-
-  showConnectWhatsAppModal() {
-    const existing = document.getElementById('connect-wa-modal-overlay');
-    if (existing) existing.remove();
-
-    const overlay = document.createElement('div');
-    overlay.className = 'contact-modal-overlay';
-    overlay.id = 'connect-wa-modal-overlay';
-    overlay.style.display = 'flex';
-    overlay.onclick = (e) => { if (e.target === overlay) { overlay.remove(); this._cleanupWASignup(); } };
-
-    overlay.innerHTML = `
-      <div class="contact-modal" onclick="event.stopPropagation()">
-        <div class="contact-modal-header">
-          <h3>Connect WhatsApp Number</h3>
-          <button class="close-modal-btn" id="close-wa-modal-btn">&times;</button>
-        </div>
-        <div class="contact-modal-body">
-          <!-- Primary: Embedded Signup -->
-          <div id="wa-embedded-signup-section">
-            <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1.25rem;">
-              Connect your WhatsApp Business number in a few clicks.
-            </p>
-            <button type="button" id="wa-meta-connect-btn" style="
-              display: flex; align-items: center; justify-content: center; gap: 0.6rem;
-              width: 100%; padding: 0.75rem 1rem;
-              background: #1877F2; color: white; border: none; border-radius: 8px;
-              font-size: 0.95rem; font-weight: 600; cursor: pointer;
-            ">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
-              Continue with Meta
-            </button>
-            <div id="wa-signup-status" style="display:none; margin-top: 1rem; padding: 0.75rem; border-radius: 8px; font-size: 0.875rem; text-align: center;"></div>
-            <div style="margin-top: 1.25rem; text-align: center;">
-              <button type="button" id="wa-show-manual-btn" style="background:none; border:none; color: var(--text-secondary); font-size: 0.8rem; cursor: pointer; text-decoration: underline;">
-                Enter credentials manually instead
-              </button>
-            </div>
-          </div>
-
-          <!-- Fallback: Manual form -->
-          <form id="connect-wa-form" style="display: none;">
-            <div class="form-group">
-              <label class="form-label">WhatsApp Business Account ID (WABA ID)</label>
-              <input type="text" id="wa-waba-id" class="form-input" placeholder="e.g. 123456789012345" required />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Phone Number ID</label>
-              <input type="text" id="wa-phone-number-id" class="form-input" placeholder="e.g. 123456789012345" required />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Access Token</label>
-              <input type="password" id="wa-access-token" class="form-input" placeholder="EAAm..." required />
-            </div>
-            <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 0.75rem; font-size: 0.8rem; color: #15803d; margin-bottom: 0.5rem;">
-              Find these in Meta for Developers → Your App → WhatsApp → API Setup
-            </div>
-            <div style="text-align: center; margin-top: 0.5rem;">
-              <button type="button" id="wa-show-embedded-btn" style="background:none; border:none; color: var(--text-secondary); font-size: 0.8rem; cursor: pointer; text-decoration: underline;">
-                ← Back to Connect with Meta
-              </button>
-            </div>
-          </form>
-        </div>
-        <div class="contact-modal-footer">
-          <button type="button" class="btn btn-secondary" id="wa-cancel-btn">Cancel</button>
-          <button type="submit" form="connect-wa-form" class="btn btn-primary" id="connect-wa-submit-btn" style="display:none;">Connect</button>
-        </div>
-      </div>
-    `;
-
-    document.body.appendChild(overlay);
-
-    // Close handlers
-    document.getElementById('close-wa-modal-btn').onclick = () => { overlay.remove(); this._cleanupWASignup(); };
-    document.getElementById('wa-cancel-btn').onclick = () => { overlay.remove(); this._cleanupWASignup(); };
-
-    // Toggle manual form
-    document.getElementById('wa-show-manual-btn').onclick = () => {
-      document.getElementById('wa-embedded-signup-section').style.display = 'none';
-      document.getElementById('connect-wa-form').style.display = 'block';
-      document.getElementById('connect-wa-submit-btn').style.display = '';
-    };
-    document.getElementById('wa-show-embedded-btn').onclick = () => {
-      document.getElementById('connect-wa-form').style.display = 'none';
-      document.getElementById('wa-embedded-signup-section').style.display = 'block';
-      document.getElementById('connect-wa-submit-btn').style.display = 'none';
-    };
-
-    // Load FB SDK and wire up Embedded Signup
-    this._initFBSDK().then(() => {
-      document.getElementById('wa-meta-connect-btn').onclick = () => this._launchEmbeddedSignup(overlay);
-    });
-
-    // Manual form submit
-    document.getElementById('connect-wa-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const wabaId = document.getElementById('wa-waba-id').value.trim();
-      const phoneNumberId = document.getElementById('wa-phone-number-id').value.trim();
-      const accessToken = document.getElementById('wa-access-token').value.trim();
-      const submitBtn = document.getElementById('connect-wa-submit-btn');
-      submitBtn.disabled = true;
-      submitBtn.textContent = 'Connecting...';
-      try {
-        await this._connectWhatsAppAccount({ waba_id: wabaId, phone_number_id: phoneNumberId, access_token: accessToken });
-        overlay.remove();
-        this._cleanupWASignup();
-      } catch (err) {
-        showToast(err.message || 'Failed to connect WhatsApp', 'error');
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Connect';
-      }
-    });
-  },
-
-  _initFBSDK() {
-    if (window.FB) return Promise.resolve();
-    return new Promise((resolve) => {
-      window.fbAsyncInit = function() {
-        window.FB.init({ appId: import.meta.env.VITE_FB_APP_ID || '', autoLogAppEvents: true, xfbml: false, version: 'v21.0' });
-        resolve();
-      };
-      if (!document.getElementById('facebook-jssdk')) {
-        const js = document.createElement('script');
-        js.id = 'facebook-jssdk';
-        js.src = 'https://connect.facebook.net/en_US/sdk.js';
-        document.head.appendChild(js);
-      } else {
-        // SDK script already added but fbAsyncInit hasn't fired yet — wait
-        const check = setInterval(() => { if (window.FB) { clearInterval(check); resolve(); } }, 100);
-      }
-    });
-  },
-
-  _launchEmbeddedSignup(overlay) {
-    const btn = document.getElementById('wa-meta-connect-btn');
-    const status = document.getElementById('wa-signup-status');
-
-    const showStatus = (msg, isError = false) => {
-      status.style.display = 'block';
-      status.style.background = isError ? '#fef2f2' : '#f0fdf4';
-      status.style.color = isError ? '#dc2626' : '#15803d';
-      status.textContent = msg;
-    };
-
-    if (!window.FB) {
-      showStatus('Meta is still loading — please try again in a moment.', true);
-      return;
-    }
-
-    // Capture the WABA id + phone number id from the Embedded Signup session.
-    // This message reliably fires through the FB SDK's channel (unlike a raw
-    // OAuth-dialog popup, where it is not delivered to the opener).
-    let sessionInfo = null;
-    this._waMessageHandler = (event) => {
-      if (typeof event.origin !== 'string' || !event.origin.endsWith('facebook.com')) return;
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === 'WA_EMBEDDED_SIGNUP' && data.event === 'FINISH') {
-          sessionInfo = data.data || {}; // { waba_id, phone_number_id }
-        }
-      } catch (_) {}
-    };
-    window.addEventListener('message', this._waMessageHandler);
-
-    btn.disabled = true;
-    btn.textContent = 'Opening Meta...';
-
-    // FB.login must run inside the click gesture (SDK already initialised) so the
-    // popup isn't blocked. The callback fires after the FINISH message is captured.
-    window.FB.login((response) => {
-      btn.disabled = false;
-      btn.textContent = 'Continue with Meta';
-
-      if (!response || !response.authResponse) {
-        showStatus('Connection cancelled.', true);
-        this._cleanupWASignup();
-        return;
-      }
-
-      const wabaId = sessionInfo?.waba_id;
-      const phoneNumberId = sessionInfo?.phone_number_id;
-      if (!wabaId || !phoneNumberId) {
-        showStatus('Could not retrieve account info. Please use manual entry.', true);
-        this._cleanupWASignup();
-        return;
-      }
-
-      showStatus('Connecting your number...');
-      this._connectWhatsAppAccount({ waba_id: wabaId, phone_number_id: phoneNumberId })
-        .then(() => { overlay.remove(); this._cleanupWASignup(); })
-        .catch((err) => {
-          showStatus(err.message || 'Connection failed.', true);
-          this._cleanupWASignup();
-        });
-    }, {
-      config_id: import.meta.env.VITE_WHATSAPP_SIGNUP_CONFIG_ID || '',
-      response_type: 'code',
-      override_default_response_type: true,
-      extras: { setup: {}, featureType: '', sessionInfoVersion: '3' },
-    });
-  },
-
-  _cleanupWASignup() {
-    if (this._waMessageHandler) {
-      window.removeEventListener('message', this._waMessageHandler);
-      this._waMessageHandler = null;
-    }
-  },
-
-  async _connectWhatsAppAccount(payload) {
-    const { data: { session } } = await supabase.auth.getSession();
-    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-connect`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-      body: JSON.stringify(payload),
-    });
-    const result = await response.json();
-    if (!response.ok || result.error) throw new Error(result.error || 'Connection failed');
-
-    // Assign to this agent
-    const assignRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-connect`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-      body: JSON.stringify({ account_id: result.account.id, agent_id: this.agent.id }),
-    });
-    if (!assignRes.ok) throw new Error('Failed to assign WhatsApp number to agent');
-
-    // The number is stored + assigned, but may have failed Cloud API registration
-    // (can't send/receive until registered). Tell the user plainly rather than a
-    // blanket "success".
-    if (result.registered === false) {
-      showToast(result.warning || 'Number connected, but it needs registration before it can send or receive.', 'error');
-    } else {
-      showToast('WhatsApp number connected successfully', 'success');
-    }
-    await this.loadWhatsAppAccounts();
-    document.getElementById('tab-content').innerHTML = this.renderDeploymentTab();
-    this.attachDeploymentTabListeners();
-  },
-
-  async loadWhatsAppAccounts() {
-    const { data: { session } } = await supabase.auth.getSession();
-    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-connect`, {
-      headers: { 'Authorization': `Bearer ${session.access_token}` },
-    });
-    const result = await response.json();
-    this.whatsappAccounts = result.accounts || [];
-  },
-
-  async disconnectWhatsAppAccount(accountId) {
-    const { data: { session } } = await supabase.auth.getSession();
-    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-connect?account_id=${accountId}`, {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${session.access_token}` },
-    });
-    if (response.ok) {
-      showToast('WhatsApp number disconnected', 'success');
-      await this.loadWhatsAppAccounts();
-      document.getElementById('tab-content').innerHTML = this.renderDeploymentTab();
-      this.attachDeploymentTabListeners();
-    } else {
-      showToast('Failed to disconnect', 'error');
-    }
-  },
-
-  async assignWhatsAppAccount(accountId) {
-    const { data: { session } } = await supabase.auth.getSession();
-    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-connect`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-      body: JSON.stringify({ account_id: accountId, agent_id: this.agent.id }),
-    });
-    if (!res.ok) { showToast('Failed to assign WhatsApp number', 'error'); return; }
-    showToast('WhatsApp number assigned', 'success');
-    await this.loadWhatsAppAccounts();
-    document.getElementById('tab-content').innerHTML = this.renderDeploymentTab();
-    this.attachDeploymentTabListeners();
   },
 };

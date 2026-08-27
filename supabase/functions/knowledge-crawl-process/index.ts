@@ -5,10 +5,10 @@
  */
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { DOMParser } from 'https://deno.land/x/deno_dom@v0.1.38/deno-dom-wasm.ts';
 import { extractLinks } from '../_shared/link-extractor.ts';
 import { isUrlAllowed, RobotsRules } from '../_shared/robots-parser.ts';
 import { corsHeaders, handleCors } from '../_shared/cors.ts'
+import { extractContent, chunkText, fetchJsFallbacks } from '../_shared/js-content-fetcher.ts';
 
 // Configuration
 const BATCH_SIZE = 10;  // URLs to process per job per run
@@ -42,74 +42,8 @@ interface CrawlJob {
     max_pages: number;
     crawl_depth: number;
     respect_robots_txt: boolean;
+    auth_headers: Record<string, string> | null;
   };
-}
-
-// Simple text chunking
-function chunkText(text: string, maxChunkSize = 3000): string[] {
-  const chunks: string[] = [];
-  const paragraphs = text.split('\n\n');
-  let currentChunk = '';
-
-  for (const para of paragraphs) {
-    if (currentChunk.length + para.length > maxChunkSize && currentChunk.length > 0) {
-      chunks.push(currentChunk.trim());
-      currentChunk = para;
-    } else {
-      currentChunk += (currentChunk ? '\n\n' : '') + para;
-    }
-  }
-
-  if (currentChunk.trim()) {
-    chunks.push(currentChunk.trim());
-  }
-
-  return chunks;
-}
-
-// Extract readable content from HTML
-function extractContent(html: string): { title: string; description: string; text: string } {
-  const doc = new DOMParser().parseFromString(html, 'text/html');
-  if (!doc) {
-    throw new Error('Failed to parse HTML');
-  }
-
-  const titleEl = doc.querySelector('title');
-  const title = titleEl?.textContent?.trim() || 'Untitled';
-
-  const metaDesc = doc.querySelector('meta[name="description"]');
-  const description = metaDesc?.getAttribute('content')?.trim() || '';
-
-  const body = doc.querySelector('body');
-  let text = '';
-
-  if (body) {
-    const scripts = body.querySelectorAll('script, style, nav, header, footer');
-    scripts.forEach(el => el.remove());
-    text = body.textContent || '';
-    text = text.replace(/\s+/g, ' ').trim();
-  }
-
-  return { title, description, text };
-}
-
-// Rate-limited fetch with domain tracking
-async function rateLimitedFetch(url: string, headers: Record<string, string>): Promise<Response> {
-  const domain = new URL(url).hostname;
-  const lastRequest = domainLastRequest.get(domain) || 0;
-  const now = Date.now();
-  const elapsed = now - lastRequest;
-
-  if (elapsed < MIN_DELAY_MS) {
-    await sleep(MIN_DELAY_MS - elapsed);
-  }
-
-  domainLastRequest.set(domain, Date.now());
-
-  return fetch(url, {
-    headers,
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  });
 }
 
 function sleep(ms: number): Promise<void> {
@@ -142,7 +76,8 @@ Deno.serve(async (req) => {
           crawl_mode,
           max_pages,
           crawl_depth,
-          respect_robots_txt
+          respect_robots_txt,
+          auth_headers
         )
       `)
       .in('status', ['pending', 'processing'])
@@ -215,9 +150,14 @@ async function processJob(
   let pagesDiscovered = job.pages_discovered || urlQueue.length;
   let pagesProcessedThisRun = 0;
 
-  const fetchHeaders = {
+  // Build fetch headers with stored auth from parent source
+  const storedAuth = source.auth_headers as Record<string, string> | null;
+  const fetchHeaders: Record<string, string> = {
     'User-Agent': 'Mozilla/5.0 (compatible; MagpipeBot/1.0)',
   };
+  if (storedAuth && typeof storedAuth === 'object') {
+    Object.assign(fetchHeaders, storedAuth);
+  }
 
   // Process up to BATCH_SIZE URLs
   while (urlQueue.length > 0 && pagesProcessedThisRun < BATCH_SIZE) {
@@ -249,22 +189,59 @@ async function processJob(
         continue;
       }
 
-      // Fetch the page with rate limiting
-      const response = await rateLimitedFetch(url, fetchHeaders);
+      // Rate limit before fetching
+      const domain = new URL(url).hostname;
+      const lastRequest = domainLastRequest.get(domain) || 0;
+      const now = Date.now();
+      const elapsed = now - lastRequest;
+      if (elapsed < MIN_DELAY_MS) {
+        await sleep(MIN_DELAY_MS - elapsed);
+      }
+      domainLastRequest.set(domain, Date.now());
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      // For recursive mode, we need raw HTML for link extraction,
+      // so do a direct fetch first, then fall back to JS renderers for content
+      let html: string | null = null;
+      let contentResult: { title: string; text: string; description: string } | null = null;
+
+      try {
+        const response = await fetch(url, {
+          headers: fetchHeaders,
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        });
+
+        if (response.ok) {
+          html = await response.text();
+          if (html.length > MAX_CONTENT_SIZE) {
+            throw new Error('Content too large (max 1MB)');
+          }
+          // Try to extract content from direct HTML
+          const extracted = extractContent(html);
+          const testChunks = chunkText(extracted.text);
+          if (testChunks.length > 0) {
+            contentResult = extracted;
+          }
+        }
+      } catch (fetchErr) {
+        console.log(`Direct fetch failed for ${url}:`, fetchErr.message);
       }
 
-      const html = await response.text();
-
-      if (html.length > MAX_CONTENT_SIZE) {
-        throw new Error('Content too large (max 1MB)');
+      // If no content from direct fetch, use JS rendering fallback cascade
+      // Use fetchJsFallbacks directly (not fetchPageContent) to avoid re-fetching
+      // the same URL we already fetched above
+      if (!contentResult) {
+        const fallback = await fetchJsFallbacks(url, storedAuth || undefined);
+        if (fallback) {
+          contentResult = { title: fallback.title, description: fallback.description, text: fallback.text };
+        }
       }
 
-      // Extract content
-      const { title, description, text } = extractContent(html);
-      const chunks = chunkText(text);
+      if (!contentResult) {
+        throw new Error('No content extracted (tried direct fetch + JS rendering fallbacks)');
+      }
+
+      const { title } = contentResult;
+      const chunks = chunkText(contentResult.text);
 
       if (chunks.length > 0) {
         // Generate embeddings and store chunks
@@ -304,8 +281,8 @@ async function processJob(
         }
       }
 
-      // For recursive mode, extract links from this page
-      if (source.crawl_mode === 'recursive' && depth < source.crawl_depth) {
+      // For recursive mode, extract links from raw HTML (if we have it)
+      if (source.crawl_mode === 'recursive' && depth < source.crawl_depth && html) {
         const links = extractLinks(html, {
           baseUrl: url,
           currentDepth: depth,

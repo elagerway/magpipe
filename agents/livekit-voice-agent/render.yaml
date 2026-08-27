@@ -4,7 +4,7 @@ services:
     env: python
     region: oregon
     plan: starter
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt -c constraints.txt && HF_HOME=/opt/render/project/src/hf_cache python -c "from huggingface_hub import snapshot_download; snapshot_download('livekit/turn-detector', revision='v0.4.1-intl'); snapshot_download('livekit/turn-detector', revision='v1.2.2-en'); print('Turn detector snapshots downloaded (intl + en)')" && python agent.py download-files
     startCommand: python agent.py start
     envVars:
       - key: LIVEKIT_URL
@@ -28,4 +28,6 @@ services:
       - key: DEEPGRAM_API_KEY
         sync: false
       - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: SENTRY_DSN
         sync: false

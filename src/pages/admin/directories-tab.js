@@ -46,7 +46,7 @@ Magpipe is built for businesses that need to handle high call volumes without hi
     'Multi-industry Templates',
     'Real-time Analytics Dashboard',
   ],
-  pricing: 'Pay As You Go — $0 to start, $20 free credits on signup. Voice: $0.07/min, SMS: $0.01/msg, Email AI: $0.01/email. No monthly minimums. Custom enterprise pricing available for 50+ concurrent calls.',
+  pricing: 'Pay As You Go — $0 to start, $20 free credits on signup. Voice: from $0.05/min, SMS: $0.01/msg, Email AI: $0.01/email. No monthly minimums. Custom enterprise pricing available for 50+ concurrent calls.',
   website: 'https://magpipe.ai',
   founded: '2025',
   headquarters: 'Vancouver, BC, Canada',
@@ -213,6 +213,7 @@ export const directoriesTabMethods = {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ action, ...data }),
+        signal: AbortSignal.timeout(5000),
       }
     );
     const result = await response.json();

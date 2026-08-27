@@ -611,7 +611,7 @@ async function getActivityLocations(supabase: ReturnType<typeof createClient>) {
 // Vendor costs (what we pay) - mirrors constants in deduct-credits
 // Updated 2026-02-09 from actual vendor rate cards
 const VENDOR_COSTS = {
-  tts: { elevenlabs: 0.22, openai: 0.015 },
+  tts: { elevenlabs: 0.05, openai: 0.015 },
   stt: { deepgram: 0.0043 },
   telephony: { signalwire: 0.007, sipBridge: 0 },
   livekit: 0.014,
@@ -626,10 +626,14 @@ const VENDOR_COSTS = {
 }
 
 // Retail rates (what we charge users) - mirrors constants in deduct-credits
-// Retail rates match deduct-credits per-component pricing
+// Retail rates match deduct-credits per-component pricing.
+// NOTE: ElevenLabs voice retail is intentionally TWO-TIER in deduct-credits
+// ($0.10 en-US / $0.20 multilingual). Voice revenue/margin below is sourced from
+// actual billed amounts (meta.voiceCost), NOT this constant — do not "refactor"
+// voice revenue to read voiceEngine.elevenlabs or multilingual $0.20 collapses to $0.10.
 const RETAIL_RATES = {
   // Voice is per-component: voiceEngine + LLM + telephony (not a single blended rate)
-  voiceEngine: { elevenlabs: 0.07, openai: 0.08, default: 0.07 },
+  voiceEngine: { elevenlabs: 0.10, openai: 0.03, default: 0.07 },
   llm: {
     'gpt-4o': 0.05, 'gpt-4o-mini': 0.006,
     'gpt-4.1': 0.045, 'gpt-4.1-mini': 0.016,
@@ -1057,7 +1061,8 @@ async function getKpiMetrics(supabase: ReturnType<typeof createClient>, since: s
     rateCard: {
       voice: {
         retailComponents: [
-          { component: 'ElevenLabs/Cartesia', retailRate: RETAIL_RATES.voiceEngine.elevenlabs, vendorRate: VENDOR_COSTS.tts.elevenlabs, unit: '/min' },
+          { component: 'ElevenLabs/Cartesia (en-US)', retailRate: RETAIL_RATES.voiceEngine.elevenlabs, vendorRate: VENDOR_COSTS.tts.elevenlabs, unit: '/min' },
+          { component: 'ElevenLabs (multilingual)', retailRate: 0.20, vendorRate: VENDOR_COSTS.tts.elevenlabs, unit: '/min' },
           { component: 'OpenAI Voices', retailRate: RETAIL_RATES.voiceEngine.openai, vendorRate: VENDOR_COSTS.tts.openai, unit: '/min' },
           { component: 'Telephony', retailRate: RETAIL_RATES.telephony, vendorRate: VENDOR_COSTS.telephony.signalwire, unit: '/min' },
           { component: 'Deepgram STT', retailRate: 0, vendorRate: VENDOR_COSTS.stt.deepgram, unit: '/min' },

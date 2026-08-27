@@ -1,14 +1,19 @@
+import { ELEVENLABS_VOICES, OPENAI_VOICES } from './modals.js';
+import { renderRecommendedHint } from '../../lib/recommended-settings.js';
+
 const AGENT_TYPES = [
   { value: 'inbound_voice', label: 'Inbound Voice', description: 'Answer incoming phone calls' },
   { value: 'outbound_voice', label: 'Outbound Voice', description: 'Make calls on your behalf' },
   { value: 'text', label: 'Text / SMS', description: 'Handle text message conversations' },
   { value: 'email', label: 'Email', description: 'Draft and respond to emails' },
   { value: 'chat_widget', label: 'Chat Widget', description: 'Live chat on your website' },
+  { value: 'whatsapp', label: 'WhatsApp', description: 'Handle WhatsApp conversations' },
 ];
 
 export const configureTabMethods = {
   renderConfigureTab() {
     const isVoice = ['inbound_voice', 'outbound_voice'].includes(this.agent.agent_type);
+    const rec = (field, current) => renderRecommendedHint(this.agent.agent_type, this.agent.llm_model, field, current);
     return `
       <div class="config-section">
         <h3>Identity</h3>
@@ -60,6 +65,9 @@ export const configureTabMethods = {
         <div class="form-group">
           <label class="form-label">Voice</label>
           <div class="voice-selector" id="voice-selector">
+            <button type="button" class="voice-inline-preview" id="voice-preview-btn" title="Preview voice">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+            </button>
             <span class="voice-current">${this.getVoiceDisplayName(this.agent.voice_id)}</span>
             <button type="button" class="btn btn-sm btn-secondary" id="change-voice-btn">Change</button>
           </div>
@@ -248,7 +256,7 @@ export const configureTabMethods = {
             <span>Normal</span>
             <span>Fast</span>
           </div>
-          <p class="form-help">Speech speed of the agent</p>
+          <p class="form-help">Speech speed of the agent ${rec('speed', this.agent.speed || 1.0)}</p>
         </div>
 
         <div class="form-group">
@@ -262,7 +270,7 @@ export const configureTabMethods = {
             <span>Balanced</span>
             <span>Expressive</span>
           </div>
-          <p class="form-help">Lower = consistent tone, Higher = more variation</p>
+          <p class="form-help">Lower = consistent tone, Higher = more variation ${rec('stability', this.agent.stability || 0.75)}</p>
         </div>
 
         <div class="form-group">
@@ -275,7 +283,7 @@ export const configureTabMethods = {
             <option value="mountain-outdoor" ${this.agent.ambient_sound === 'mountain-outdoor' ? 'selected' : ''}>Mountain Outdoor</option>
             <option value="call-center" ${this.agent.ambient_sound === 'call-center' ? 'selected' : ''}>Call Center</option>
           </select>
-          <p class="form-help">Add background ambience to phone calls</p>
+          <p class="form-help">Add background ambience to phone calls ${rec('ambient_sound', this.agent.ambient_sound || 'off')}</p>
         </div>
 
         <div class="form-group">
@@ -299,7 +307,7 @@ export const configureTabMethods = {
             <option value="low" ${this.agent.noise_suppression === 'low' ? 'selected' : ''}>Low</option>
             <option value="off" ${this.agent.noise_suppression === 'off' ? 'selected' : ''}>Off</option>
           </select>
-          <p class="form-help">Reduce background noise on phone calls</p>
+          <p class="form-help">Reduce background noise on phone calls ${rec('noise_suppression', this.agent.noise_suppression || 'medium')}</p>
         </div>
       </div>
 
@@ -314,7 +322,7 @@ export const configureTabMethods = {
               <span class="agent-toggle-slider"></span>
             </label>
           </label>
-          <p class="form-help">Agent says "uh-huh", "I see" while listening</p>
+          <p class="form-help">Agent says "uh-huh", "I see" while listening ${rec('backchannel_enabled', this.agent.backchannel_enabled !== false)}</p>
         </div>
 
         <div class="form-group" id="backchannel-words-group">
@@ -334,6 +342,7 @@ export const configureTabMethods = {
             <span>Occasional</span>
             <span>Frequent</span>
           </div>
+          <p class="form-help">${rec('backchannel_frequency', this.agent.backchannel_frequency || 0.2)}</p>
         </div>
 
         <div class="form-group">
@@ -347,7 +356,7 @@ export const configureTabMethods = {
             <span>Normal</span>
             <span>Easy to interrupt</span>
           </div>
-          <p class="form-help">How easily the user can interrupt the agent</p>
+          <p class="form-help">How easily the user can interrupt the agent ${rec('interrupt_sensitivity', this.agent.interrupt_sensitivity || 0.6)}</p>
         </div>
 
         <div class="form-group">
@@ -361,7 +370,7 @@ export const configureTabMethods = {
             <span>Balanced</span>
             <span>Quick</span>
           </div>
-          <p class="form-help">How quickly the agent responds after you stop talking</p>
+          <p class="form-help">How quickly the agent responds after you stop talking ${rec('responsiveness', this.agent.responsiveness || 1.0)}</p>
         </div>
 
         <div class="form-group">
@@ -400,12 +409,16 @@ export const configureTabMethods = {
         <div class="form-group">
           <label class="form-label">AI Model</label>
           <select id="ai-model" class="form-select">
-            <option value="gpt-4.1" ${this.agent.llm_model === 'gpt-4.1' ? 'selected' : ''}>GPT-4.1 (Recommended)</option>
+            <option value="gpt-4.1-mini" ${this.agent.llm_model === 'gpt-4.1-mini' || !this.agent.llm_model ? 'selected' : ''}>GPT-4.1 Mini (Recommended)</option>
+            <option value="gpt-4.1" ${this.agent.llm_model === 'gpt-4.1' ? 'selected' : ''}>GPT-4.1</option>
             <option value="gpt-4o" ${this.agent.llm_model === 'gpt-4o' ? 'selected' : ''}>GPT-4o</option>
             <option value="gpt-4o-mini" ${this.agent.llm_model === 'gpt-4o-mini' ? 'selected' : ''}>GPT-4o Mini (Faster)</option>
-            <option value="claude-3.5-sonnet" ${this.agent.llm_model === 'claude-3.5-sonnet' ? 'selected' : ''}>Claude 3.5 Sonnet</option>
-            <option value="claude-3-haiku" ${this.agent.llm_model === 'claude-3-haiku' ? 'selected' : ''}>Claude 3 Haiku (Faster)</option>
+            <option value="claude-opus-4.6" ${this.agent.llm_model === 'claude-opus-4.6' ? 'selected' : ''}>Claude Opus 4.6</option>
+            <option value="claude-sonnet-4.6" ${this.agent.llm_model === 'claude-sonnet-4.6' ? 'selected' : ''}>Claude Sonnet 4.6</option>
+            <option value="claude-sonnet-4.5" ${this.agent.llm_model === 'claude-sonnet-4.5' ? 'selected' : ''}>Claude Sonnet 4.5</option>
+            <option value="claude-haiku-4.5" ${this.agent.llm_model === 'claude-haiku-4.5' ? 'selected' : ''}>Claude Haiku 4.5 (Faster)</option>
           </select>
+          <div id="model-price-hint" style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 0.35rem;"></div>
         </div>
 
         <div class="form-group">
@@ -419,13 +432,13 @@ export const configureTabMethods = {
             <span>Balanced</span>
             <span>Creative</span>
           </div>
-          <p class="form-help">Lower = more consistent responses, Higher = more creative</p>
+          <p class="form-help">Lower = more consistent responses, Higher = more creative ${rec('temperature', this.agent.temperature || 0.7)}</p>
         </div>
 
         <div class="form-group">
           <label class="form-label">Max Response Length</label>
           <input type="number" id="max-tokens" class="form-input" value="${this.agent.max_tokens || 150}" min="50" max="1000" />
-          <p class="form-help">Maximum length of AI responses (in tokens)</p>
+          <p class="form-help">Maximum length of AI responses (in tokens) ${rec('max_tokens', this.agent.max_tokens || 150)}</p>
         </div>
 
         <div class="form-group">
@@ -493,13 +506,14 @@ export const configureTabMethods = {
       insertRoleTemplateBtn.addEventListener('click', () => {
         const org = document.getElementById('organization-name')?.value.trim() || '[Organization Name]';
         const owner = document.getElementById('owner-name')?.value.trim() || '[Owner Name]';
-        const agentName = this.agent.name || 'Maggie';
+        const agentName = this.agent.name || 'Assistant';
         const typeLabel = {
           inbound_voice: 'handle incoming calls',
           outbound_voice: 'make outbound calls',
           text: 'handle SMS conversations',
           email: 'draft and respond to emails',
           chat_widget: 'assist website visitors',
+          whatsapp: 'handle WhatsApp conversations',
         }[this.agent.agent_type] || 'handle communications';
 
         const template =
@@ -733,12 +747,29 @@ Always represent ${org} professionally. Do not share sensitive information.`;
       });
     }
 
-    // AI Model dropdown
+    // AI Model dropdown + price hint
+    const MODEL_RATES = {
+      'gpt-4.1-mini': 0.016, 'gpt-4.1': 0.045, 'gpt-4o': 0.05, 'gpt-4o-mini': 0.006,
+      'claude-opus-4.6': 0.21, 'claude-sonnet-4.6': 0.056, 'claude-sonnet-4.5': 0.07, 'claude-haiku-4.5': 0.008,
+    };
     const aiModel = document.getElementById('ai-model');
+    const priceHint = document.getElementById('model-price-hint');
+    const updatePriceHint = () => {
+      if (!priceHint || !aiModel) return;
+      const rate = MODEL_RATES[aiModel.value];
+      if (rate) {
+        const warn = rate >= 0.15 ? ' — higher latency for voice' : '';
+        priceHint.textContent = `~$${rate.toFixed(3)}/min LLM cost${warn}`;
+      } else {
+        priceHint.textContent = '';
+      }
+    };
     if (aiModel) {
       aiModel.addEventListener('change', () => {
         this.scheduleAutoSave({ llm_model: aiModel.value });
+        updatePriceHint();
       });
+      updatePriceHint();
     }
 
     // Priority sequencing toggle
@@ -769,6 +800,33 @@ Always represent ${org} professionally. Do not share sensitive information.`;
     const changeVoiceBtn = document.getElementById('change-voice-btn');
     if (changeVoiceBtn) {
       changeVoiceBtn.addEventListener('click', () => this.showVoiceModal());
+    }
+
+    // Inline voice preview button
+    const voicePreviewBtn = document.getElementById('voice-preview-btn');
+    if (voicePreviewBtn) {
+      let previewAudio = null;
+      voicePreviewBtn.addEventListener('click', () => {
+        if (previewAudio) {
+          previewAudio.pause();
+          previewAudio = null;
+          voicePreviewBtn.classList.remove('playing');
+          voicePreviewBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>';
+          return;
+        }
+        const allVoices = [...ELEVENLABS_VOICES, ...OPENAI_VOICES];
+        const voice = allVoices.find(v => v.id === this.agent.voice_id);
+        if (!voice?.preview) return;
+        previewAudio = new Audio(voice.preview);
+        voicePreviewBtn.classList.add('playing');
+        voicePreviewBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="3" width="4" height="18"></rect><rect x="15" y="3" width="4" height="18"></rect></svg>';
+        previewAudio.play();
+        previewAudio.addEventListener('ended', () => {
+          previewAudio = null;
+          voicePreviewBtn.classList.remove('playing');
+          voicePreviewBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>';
+        });
+      });
     }
 
     // Voice cloning toggle

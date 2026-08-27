@@ -5,7 +5,7 @@
     "description": "Complete API for AI phone agents, calls, SMS, and chat",
     "version": "1.0.0",
     "contact": {
-      "email": "support@magpipe.ai"
+      "email": "help@magpipe.ai"
     }
   },
   "servers": [
@@ -134,19 +134,34 @@
         "type": "object",
         "properties": {
           "id": { "type": "string", "format": "uuid" },
-          "thread_id": { "type": "string", "format": "uuid" },
-          "user_id": { "type": "string", "format": "uuid" },
+          "contact_id": { "type": ["string", "null"], "format": "uuid" },
+          "thread_id": { "type": "string", "format": "uuid", "description": "Stable conversation id — identical for every message between a contact and service number, regardless of direction or number formatting." },
           "from_number": { "type": "string" },
           "to_number": { "type": "string" },
           "body": { "type": "string" },
           "direction": { "type": "string", "enum": ["inbound", "outbound"] },
-          "status": { "type": "string", "enum": ["queued", "sent", "delivered", "undelivered", "failed"] },
+          "status": { "type": "string", "enum": ["pending", "sent", "delivered", "undelivered", "failed"] },
           "is_ai_generated": { "type": "boolean" },
-          "media_urls": { "type": "array", "items": { "type": "string", "format": "uri" } },
-          "segments": { "type": "integer" },
-          "error_code": { "type": "string" },
-          "error_message": { "type": "string" },
-          "created_at": { "type": "string", "format": "date-time" }
+          "sent_at": { "type": "string", "format": "date-time" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "message_sid": { "type": ["string", "null"] },
+          "delivered_at": { "type": ["string", "null"], "format": "date-time" },
+          "sentiment": { "type": ["string", "null"], "enum": ["positive", "neutral", "negative", null] },
+          "agent_id": { "type": ["string", "null"], "format": "uuid" },
+          "translation": { "type": ["string", "null"] },
+          "media": {
+            "type": "array",
+            "description": "Attachments (inbound WhatsApp photos, voice notes, video, documents). Empty when none. URLs are signed per-request and valid 24h.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "url": { "type": "string", "description": "Time-limited (24h) signed download URL; no credentials required." },
+                "mime_type": { "type": ["string", "null"] },
+                "kind": { "type": "string", "enum": ["photo", "audio", "video", "file"] },
+                "caption": { "type": ["string", "null"] }
+              }
+            }
+          }
         }
       },
       "ChatSession": {
@@ -393,7 +408,7 @@
                   "properties": {
                     "success": { "type": "boolean" },
                     "message_id": { "type": "string", "format": "uuid" },
-                    "status": { "type": "string", "enum": ["queued", "sent", "scheduled"] },
+                    "status": { "type": "string", "enum": ["pending", "sent", "scheduled"] },
                     "segments": { "type": "integer" },
                     "from_number": { "type": "string" },
                     "to_number": { "type": "string" },

@@ -5,6 +5,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { shouldNotify } from '../_shared/app-function-prefs.ts'
+import { resolveSlackChannelId, fetchAllSlackChannels } from '../_shared/slack-channels.ts'
 
 Deno.serve(async (req) => {
   try {
@@ -88,7 +89,7 @@ Deno.serve(async (req) => {
       // First get the call record to know user_id and call details
       const { data: callRecord, error: fetchError } = await supabase
         .from('call_records')
-        .select('user_id, phone_number, caller_number, direction, started_at')
+        .select('user_id, agent_id, phone_number, caller_number, direction, started_at')
         .eq('id', callRecordId)
         .single();
 
@@ -145,6 +146,7 @@ Deno.serve(async (req) => {
               supabaseUrl,
               supabaseKey,
               callRecord.user_id,
+              callRecord.agent_id,
               duration,
               callRecordId
             ).catch(err => console.error('Failed to deduct credits:', err));
@@ -178,6 +180,7 @@ async function deductCallCredits(
   supabaseUrl: string,
   supabaseKey: string,
   userId: string,
+  agentId: string | null,
   durationSeconds: number,
   callRecordId: string
 ) {
@@ -185,11 +188,14 @@ async function deductCallCredits(
     // Get user's agent config to determine voice, LLM, and add-on rates
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { data: agentConfig } = await supabase
+    // Prefer THIS call's agent (users can own multiple agents in different
+    // languages; a user-scoped .single() would error/pick wrong → misprice).
+    const agentSel = supabase
       .from('agent_configs')
-      .select('voice_id, ai_model, memory_enabled, semantic_memory_enabled, knowledge_source_ids, pii_storage')
-      .eq('user_id', userId)
-      .single();
+      .select('voice_id, llm_model, language, memory_enabled, semantic_memory_enabled, knowledge_source_ids, pii_storage');
+    const { data: agentConfig } = agentId
+      ? await agentSel.eq('id', agentId).maybeSingle()
+      : await agentSel.eq('user_id', userId).limit(1).maybeSingle();
 
     // Determine active add-ons
     const addons: string[] = [];
@@ -211,7 +217,8 @@ async function deductCallCredits(
         type: 'voice',
         durationSeconds,
         voiceId: agentConfig?.voice_id,
-        aiModel: agentConfig?.ai_model,
+        aiModel: agentConfig?.llm_model,
+        agentLanguage: agentConfig?.language,
         addons: addons.length > 0 ? addons : undefined,
         referenceType: 'call',
         referenceId: callRecordId,
@@ -310,9 +317,8 @@ async function sendSlackCallNotification(
     const seconds = durationSeconds % 60;
     const durationStr = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
 
-    // Determine emoji and status text
+    // Determine status text
     const isInbound = direction === 'inbound';
-    const emoji = status === 'completed' ? (isInbound ? '📞' : '📱') : '❌';
     const directionText = isInbound ? 'Inbound call from' : 'Outbound call to';
     const statusText = status === 'completed' ? `Duration: ${durationStr}` : `Status: ${status}`;
 
@@ -340,32 +346,19 @@ async function sendSlackCallNotification(
     }
 
     if (notifPrefs?.slack_channel) {
-      const name = notifPrefs.slack_channel.replace(/^#/, '').toLowerCase();
-      const listResp = await fetch(
-        'https://slack.com/api/conversations.list?types=public_channel&limit=200&exclude_archived=true',
-        { headers: { 'Authorization': `Bearer ${integration.access_token}` } }
-      );
-      const listResult = await listResp.json();
-      if (listResult.ok && listResult.channels) {
-        const found = listResult.channels.find((c: any) => c.name.toLowerCase() === name);
-        if (found) channelId = found.id;
-      }
+      channelId = await resolveSlackChannelId(integration.access_token, notifPrefs.slack_channel);
     }
 
     if (!channelId) {
       channelId = integration.config?.notification_channel;
     }
     if (!channelId) {
-      const channelsResponse = await fetch(
-        'https://slack.com/api/conversations.list?types=public_channel&limit=10',
-        { headers: { 'Authorization': `Bearer ${integration.access_token}` } }
-      );
-      const channelsResult = await channelsResponse.json();
-      if (channelsResult.ok && channelsResult.channels?.length > 0) {
-        const magpipeChannel = channelsResult.channels.find((c: any) => c.name === 'magpipe-notifications');
-        const generalChannel = channelsResult.channels.find((c: any) => c.name === 'general');
-        channelId = magpipeChannel?.id || generalChannel?.id || channelsResult.channels[0].id;
-      }
+      try {
+        const channels = await fetchAllSlackChannels(integration.access_token);
+        const magpipeChannel = channels.find(c => c.name === 'magpipe-notifications');
+        const generalChannel = channels.find(c => c.name === 'general');
+        channelId = magpipeChannel?.id || generalChannel?.id || channels[0]?.id || null;
+      } catch { /* ignore */ }
     }
 
     if (!channelId) return;
@@ -383,13 +376,13 @@ async function sendSlackCallNotification(
     // Send the notification
     const slackMessage = {
       channel: channelId,
-      text: `${emoji} ${directionText} ${contactName}`,
+      text: `${directionText} ${contactName}`,
       blocks: [
         {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `${emoji} *${directionText} ${contactName}*\n${statusText}`
+            text: `*${directionText} ${contactName}*\n${statusText}`
           }
         },
         {
@@ -400,7 +393,9 @@ async function sendSlackCallNotification(
               text: `${phoneNumber} • ${new Date().toLocaleString()}`
             }
           ]
-        }
+        },
+        // Trailing divider separates consecutive notifications in the channel
+        { type: 'divider' }
       ]
     };
 

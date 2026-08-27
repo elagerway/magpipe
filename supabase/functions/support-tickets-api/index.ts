@@ -1,13 +1,68 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { requireAdmin, corsHeaders, handleCors, errorResponse, successResponse } from '../_shared/admin-auth.ts'
+import { isComposioManaged, sendGmailReplyComposio } from '../_shared/gmail-helpers.ts'
 
 const CONFIG_ID = '00000000-0000-0000-0000-000000000001'
+
+// Which transport should a reply go out on?
+//
+// support_tickets.gmail_message_id holds two different kinds of id:
+//   • Gmail API message ids — bare hex, e.g. "18f2a3b4c5d6e7f8"
+//   • RFC5322 Message-IDs from the Postmark inbound webhook — always
+//     angle-bracketed, e.g. "<CAF...@mail.gmail.com>"
+// plus synthetic "reply-"/"approved-"/"postmark-" markers for our own sends.
+//
+// Only the first kind can be replied to through the Gmail API. Without the
+// angle-bracket test, Postmark-ingested tickets are misrouted to Gmail and the
+// reply fails with "Gmail not connected".
+function isGmailRoutedTicket(gmailMessageId: string | null | undefined): boolean {
+  if (!gmailMessageId) return false
+  if (gmailMessageId.startsWith('<')) return false          // RFC Message-ID → Postmark
+  return !gmailMessageId.startsWith('reply-') &&
+         !gmailMessageId.startsWith('approved-') &&
+         !gmailMessageId.startsWith('postmark-')
+}
 
 function buildReplySubject(subject: string | null, ticketRef: string | null): string {
   let clean = (subject || '').replace(/\s*\[TKT-\d+\]\s*/g, '').trim()
   if (!clean.startsWith('Re:')) clean = `Re: ${clean}`
   if (ticketRef) clean = `${clean} [${ticketRef}]`
   return clean
+}
+
+// Our own support mailbox addresses — never CC these back to ourselves on
+// reply-all. Derived from the support email config (the mailbox/agent that
+// handles tickets) so it tracks automatically if the connected mailbox changes.
+async function getOwnAddresses(supabase: any): Promise<string[]> {
+  const { data: config } = await supabase
+    .from('support_email_config')
+    .select('gmail_address, send_as_email')
+    .eq('id', CONFIG_ID)
+    .single()
+  return [config?.gmail_address, config?.send_as_email]
+    .filter(Boolean)
+    .map((a: string) => a.toLowerCase())
+}
+
+// Extract bare lowercased email addresses from a header value like
+// "Name <a@x.com>, b@y.com" → ["a@x.com", "b@y.com"].
+function extractEmails(header: string | null | undefined): string[] {
+  if (!header) return []
+  return (header.match(/[^\s<>,;"]+@[^\s<>,;"]+/g) || []).map((e) => e.trim().toLowerCase())
+}
+
+// Reply-all CC list: every To/Cc address on the inbound message, minus our own
+// mailbox addresses and the primary recipient, deduped (preserving order).
+function computeReplyAllCc(inboundMsg: any, toEmail: string, ownAddresses: string[]): string[] {
+  const exclude = new Set([toEmail.toLowerCase(), ...ownAddresses.map((a) => a.toLowerCase())])
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const e of [...extractEmails(inboundMsg?.to_email), ...extractEmails(inboundMsg?.cc_email)]) {
+    if (exclude.has(e) || seen.has(e)) continue
+    seen.add(e)
+    out.push(e)
+  }
+  return out
 }
 
 Deno.serve(async (req) => {
@@ -215,7 +270,7 @@ async function handleThread(supabase: any, body: any) {
     author_name: n.author_id ? (authorMap[n.author_id] || 'Unknown') : 'Unknown',
   }))
 
-  return successResponse({ messages: messages || [], notes: enrichedNotes })
+  return successResponse({ messages: messages || [], notes: enrichedNotes, ownAddresses: await getOwnAddresses(supabase) })
 }
 
 
@@ -391,7 +446,7 @@ The Support Team`
 
 
 async function handleSendReply(supabase: any, body: any) {
-  const { threadId, replyBody } = body
+  const { threadId, replyBody, replyBodyHtml, attachments, replyAll } = body
   if (!threadId || !replyBody) return errorResponse('Missing threadId or replyBody')
 
   // Get all thread messages for context
@@ -419,34 +474,28 @@ async function handleSendReply(supabase: any, body: any) {
   const inboundMsg = threadMessages?.find((m: any) => m.direction === 'inbound') || latestMsg
   const toEmail = inboundMsg.from_email
 
-  // Check if this is a Gmail ticket (has gmail_message_id on any message in thread)
-  const isGmailTicket = threadMessages?.some((m: any) => m.gmail_message_id && !m.gmail_message_id.startsWith('reply-') && !m.gmail_message_id.startsWith('approved-'))
+  // Reply-all: CC everyone else who was on the inbound message
+  const ccList = replyAll ? computeReplyAllCc(inboundMsg, toEmail, await getOwnAddresses(supabase)) : []
+  const ccString = ccList.length ? ccList.join(', ') : null
+
+  // Check if this is a Gmail ticket (has a Gmail-routable id on any message in thread)
+  const isGmailTicket = threadMessages?.some((m: any) => isGmailRoutedTicket(m.gmail_message_id))
 
   let sentMsgId: string | undefined
 
   if (isGmailTicket) {
-    // Gmail ticket — send via Gmail API
-    const accessToken = await getGmailAccessToken(supabase)
-    if (!accessToken) return errorResponse('Gmail not connected or token expired')
-
-    const { data: config } = await supabase
-      .from('support_email_config')
-      .select('gmail_address, send_as_email')
-      .eq('id', CONFIG_ID)
-      .single()
-
-    if (!config?.gmail_address) return errorResponse('Gmail address not configured')
-    const sendFrom = config.send_as_email || config.gmail_address
-
-    const sentMsg = await sendGmailReply(
-      accessToken,
-      sendFrom,
+    // Gmail ticket — send via Composio (live mailbox) or native Gmail OAuth
+    const sent = await sendSupportGmailReply(supabase, {
       toEmail,
-      replySubject,
+      subject: replySubject,
       threadId,
-      latestMsg.gmail_message_id,
-      replyBody
-    )
+      inReplyTo: latestMsg.gmail_message_id,
+      bodyText: replyBody,
+      bodyHtml: replyBodyHtml,
+      cc: ccList,
+    })
+    if (!sent) return errorResponse('Gmail not connected or send failed')
+    const { result: sentMsg, sendFrom } = sent
     sentMsgId = sentMsg?.id
 
     // Insert outbound record
@@ -456,30 +505,55 @@ async function handleSendReply(supabase: any, body: any) {
       from_email: sendFrom,
       from_name: '',
       to_email: toEmail,
+      cc_email: ccString,
       subject: replySubject,
       body_text: replyBody,
+      body_html: replyBodyHtml || null,
+      attachments: attachments && attachments.length > 0 ? attachments : [],
       direction: 'outbound',
       status: latestMsg.status || 'open',
       received_at: new Date().toISOString(),
     })
   } else {
-    // Non-Gmail ticket (chat- or manual-) — send via Postmark
-    await sendPostmarkReply(toEmail, replySubject, replyBody)
-    sentMsgId = `postmark-${Date.now()}`
+    // Non-Gmail ticket (Postmark-ingested, chat- or manual-) — send via Postmark.
+    // Thread against the latest inbound RFC Message-ID so the customer's client
+    // groups it, and store ours so their reply threads back onto this ticket.
+    const postmarkMsgId = await sendPostmarkReply(
+      toEmail, replySubject, replyBody, replyBodyHtml, ccList,
+      inboundMsg?.gmail_message_id
+    )
+    sentMsgId = postmarkMsgId
 
     // Insert outbound record
     await supabase.from('support_tickets').insert({
+      gmail_message_id: postmarkMsgId,
       thread_id: threadId,
       from_email: 'help@magpipe.ai',
       from_name: '',
       to_email: toEmail,
+      cc_email: ccString,
       subject: replySubject,
       body_text: replyBody,
+      body_html: replyBodyHtml || null,
+      attachments: attachments && attachments.length > 0 ? attachments : [],
       direction: 'outbound',
       status: latestMsg.status || 'open',
       received_at: new Date().toISOString(),
     })
   }
+
+  // Sync to email_messages so reply appears in inbox
+  await syncToEmailMessages(supabase, {
+    threadId,
+    gmailMessageId: sentMsgId,
+    fromEmail: 'help@magpipe.ai',
+    toEmail,
+    subject: replySubject,
+    bodyText: replyBody,
+    bodyHtml: replyBodyHtml,
+    attachments,
+    cc: ccList,
+  })
 
   // Post reply to chat widget if applicable
   await postReplyToChatWidget(supabase, latestMsg, toEmail, replyBody)
@@ -489,7 +563,7 @@ async function handleSendReply(supabase: any, body: any) {
 
 
 async function handleApproveDraft(supabase: any, body: any) {
-  const { ticketId, editedBody } = body
+  const { ticketId, editedBody, replyAll } = body
   if (!ticketId) return errorResponse('Missing ticketId')
 
   // Get the ticket with the draft
@@ -515,32 +589,25 @@ async function handleApproveDraft(supabase: any, body: any) {
   const draftTicketRef = draftRefRow?.ticket_ref
   const replySubject = buildReplySubject(ticket.subject, draftTicketRef)
 
+  // Reply-all: CC everyone else who was on the inbound (draft) message
+  const ccList = replyAll ? computeReplyAllCc(ticket, ticket.from_email, await getOwnAddresses(supabase)) : []
+  const ccString = ccList.length ? ccList.join(', ') : null
+
   // Check if this is a Gmail ticket
-  const isGmailTicket = !!ticket.gmail_message_id && !ticket.gmail_message_id.startsWith('reply-') && !ticket.gmail_message_id.startsWith('approved-')
+  const isGmailTicket = isGmailRoutedTicket(ticket.gmail_message_id)
 
   if (isGmailTicket) {
-    // Gmail ticket — send via Gmail API
-    const accessToken = await getGmailAccessToken(supabase)
-    if (!accessToken) return errorResponse('Gmail not connected')
-
-    const { data: config } = await supabase
-      .from('support_email_config')
-      .select('gmail_address, send_as_email')
-      .eq('id', CONFIG_ID)
-      .single()
-
-    if (!config?.gmail_address) return errorResponse('Gmail address not configured')
-    const sendFrom = config.send_as_email || config.gmail_address
-
-    const sentMsg = await sendGmailReply(
-      accessToken,
-      sendFrom,
-      ticket.from_email,
-      replySubject,
-      ticket.thread_id,
-      ticket.gmail_message_id,
-      draftText
-    )
+    // Gmail ticket — send via Composio (live mailbox) or native Gmail OAuth
+    const sent = await sendSupportGmailReply(supabase, {
+      toEmail: ticket.from_email,
+      subject: replySubject,
+      threadId: ticket.thread_id,
+      inReplyTo: ticket.gmail_message_id,
+      bodyText: draftText,
+      cc: ccList,
+    })
+    if (!sent) return errorResponse('Gmail not connected or send failed')
+    const { result: sentMsg, sendFrom } = sent
 
     // Update draft status
     await supabase
@@ -554,6 +621,7 @@ async function handleApproveDraft(supabase: any, body: any) {
       thread_id: ticket.thread_id,
       from_email: sendFrom,
       to_email: ticket.from_email,
+      cc_email: ccString,
       subject: replySubject,
       body_text: draftText,
       direction: 'outbound',
@@ -561,8 +629,12 @@ async function handleApproveDraft(supabase: any, body: any) {
       received_at: new Date().toISOString(),
     })
   } else {
-    // Non-Gmail ticket — send via Postmark
-    await sendPostmarkReply(ticket.from_email, replySubject, draftText)
+    // Non-Gmail ticket — send via Postmark, threading against the ticket's own
+    // RFC Message-ID and storing ours so the customer's reply threads back.
+    const postmarkMsgId = await sendPostmarkReply(
+      ticket.from_email, replySubject, draftText, undefined, ccList,
+      ticket.gmail_message_id
+    )
 
     // Update draft status
     await supabase
@@ -572,9 +644,11 @@ async function handleApproveDraft(supabase: any, body: any) {
 
     // Insert outbound record
     await supabase.from('support_tickets').insert({
+      gmail_message_id: postmarkMsgId,
       thread_id: ticket.thread_id,
       from_email: 'help@magpipe.ai',
       to_email: ticket.from_email,
+      cc_email: ccString,
       subject: replySubject,
       body_text: draftText,
       direction: 'outbound',
@@ -582,6 +656,17 @@ async function handleApproveDraft(supabase: any, body: any) {
       received_at: new Date().toISOString(),
     })
   }
+
+  // Sync to email_messages so reply appears in inbox
+  await syncToEmailMessages(supabase, {
+    threadId: ticket.thread_id,
+    gmailMessageId: `approved-${Date.now()}`,
+    fromEmail: 'help@magpipe.ai',
+    toEmail: ticket.from_email,
+    subject: replySubject,
+    bodyText: draftText,
+    cc: ccList,
+  })
 
   // Post reply to chat widget if applicable
   await postReplyToChatWidget(supabase, ticket, ticket.from_email, draftText)
@@ -651,7 +736,7 @@ async function handleGetConfig(supabase: any) {
       .single(),
     supabase
       .from('agent_configs')
-      .select('id, name, agent_name')
+      .select('id, name, agent_name, agent_type')
       .order('name', { ascending: true }),
   ])
 
@@ -682,7 +767,7 @@ async function handleGetConfig(supabase: any) {
 
 
 async function handleUpdateConfig(supabase: any, body: any) {
-  const { sms_alert_enabled, sms_alert_phone, agent_mode, agent_system_prompt, support_agent_id, send_as_email, ticket_creation_enabled } = body
+  const { sms_alert_enabled, sms_alert_phone, agent_mode, agent_system_prompt, support_agent_id, send_as_email, ticket_creation_enabled, sms_agent_id, sms_agent_mode, chat_agent_id, chat_agent_mode } = body
 
   const updates: Record<string, any> = { updated_at: new Date().toISOString() }
   if (sms_alert_enabled !== undefined) updates.sms_alert_enabled = sms_alert_enabled
@@ -692,6 +777,10 @@ async function handleUpdateConfig(supabase: any, body: any) {
   if (support_agent_id !== undefined) updates.support_agent_id = support_agent_id || null
   if (send_as_email !== undefined) updates.send_as_email = send_as_email || null
   if (ticket_creation_enabled !== undefined) updates.ticket_creation_enabled = ticket_creation_enabled
+  if (sms_agent_id !== undefined) updates.sms_agent_id = sms_agent_id || null
+  if (sms_agent_mode !== undefined) updates.sms_agent_mode = sms_agent_mode
+  if (chat_agent_id !== undefined) updates.chat_agent_id = chat_agent_id || null
+  if (chat_agent_mode !== undefined) updates.chat_agent_mode = chat_agent_mode
 
   const { error } = await supabase
     .from('support_email_config')
@@ -824,12 +913,48 @@ async function handleCreateGithubIssue(supabase: any, body: any) {
 }
 
 
-async function sendPostmarkReply(toEmail: string, subject: string, body: string) {
+// Sends via Postmark and returns the RFC Message-ID we stamped on the message.
+//
+// We generate the Message-ID ourselves rather than letting Postmark assign one,
+// because the caller must persist it: when the customer replies, their client
+// puts this id in In-Reply-To, and webhook-inbound-email matches on it to thread
+// the reply onto the same ticket. Passing inReplyTo also makes the customer's
+// own mail client thread our reply under the original.
+async function sendPostmarkReply(
+  toEmail: string,
+  subject: string,
+  body: string,
+  htmlBody?: string,
+  cc?: string[],
+  inReplyTo?: string | null
+): Promise<string> {
   const postmarkApiKey = Deno.env.get('POSTMARK_API_KEY')
   if (!postmarkApiKey) {
     console.error('POSTMARK_API_KEY not set, cannot send reply')
     throw new Error('Email service not configured')
   }
+
+  const messageId = `<support-${crypto.randomUUID()}@magpipe.ai>`
+
+  const headers: Array<{ Name: string; Value: string }> = [
+    { Name: 'Message-ID', Value: messageId },
+  ]
+  // Only thread against a real RFC id — synthetic markers would break clients.
+  if (inReplyTo && inReplyTo.startsWith('<')) {
+    headers.push({ Name: 'In-Reply-To', Value: inReplyTo })
+    headers.push({ Name: 'References', Value: inReplyTo })
+  }
+
+  const emailPayload: Record<string, unknown> = {
+    From: 'help@magpipe.ai',
+    To: toEmail,
+    Subject: subject,
+    TextBody: body,
+    MessageStream: 'outbound',
+    Headers: headers,
+  }
+  if (htmlBody) emailPayload.HtmlBody = htmlBody
+  if (cc && cc.length) emailPayload.Cc = cc.join(', ')
 
   const resp = await fetch('https://api.postmarkapp.com/email', {
     method: 'POST',
@@ -838,13 +963,7 @@ async function sendPostmarkReply(toEmail: string, subject: string, body: string)
       'Content-Type': 'application/json',
       'X-Postmark-Server-Token': postmarkApiKey,
     },
-    body: JSON.stringify({
-      From: 'help@magpipe.ai',
-      To: toEmail,
-      Subject: subject,
-      TextBody: body,
-      MessageStream: 'outbound',
-    }),
+    body: JSON.stringify(emailPayload),
   })
 
   if (!resp.ok) {
@@ -853,7 +972,55 @@ async function sendPostmarkReply(toEmail: string, subject: string, body: string)
     throw new Error('Failed to send email reply via Postmark')
   }
 
-  console.log('Postmark reply sent to', toEmail)
+  console.log('Postmark reply sent to', toEmail, 'as', messageId)
+  return messageId
+}
+
+
+/**
+ * Sync a support reply to email_messages so it appears in the user's inbox.
+ * Looks up user_id from existing email_messages in the same thread.
+ */
+async function syncToEmailMessages(supabase: any, opts: {
+  threadId: string, gmailMessageId?: string, fromEmail: string,
+  toEmail: string, subject: string, bodyText: string,
+  bodyHtml?: string, attachments?: any[], cc?: string[]
+}) {
+  try {
+    // Find user_id from existing email_messages in this thread
+    const { data: existing } = await supabase
+      .from('email_messages')
+      .select('user_id')
+      .eq('thread_id', opts.threadId)
+      .limit(1)
+      .single()
+
+    if (!existing?.user_id) {
+      console.log('No email_messages found for thread, skipping inbox sync:', opts.threadId)
+      return
+    }
+
+    await supabase.from('email_messages').insert({
+      user_id: existing.user_id,
+      thread_id: opts.threadId,
+      gmail_message_id: opts.gmailMessageId || `support-reply-${Date.now()}`,
+      from_email: opts.fromEmail,
+      from_name: '',
+      to_email: opts.toEmail,
+      cc: opts.cc && opts.cc.length ? opts.cc.join(', ') : null,
+      subject: opts.subject,
+      body_text: opts.bodyText,
+      body_html: opts.bodyHtml || null,
+      attachments: opts.attachments && opts.attachments.length > 0 ? opts.attachments : [],
+      direction: 'outbound',
+      status: 'sent',
+      sent_at: new Date().toISOString(),
+    })
+    console.log('Synced support reply to email_messages for inbox:', opts.threadId)
+  } catch (err) {
+    console.error('Failed to sync to email_messages:', err)
+    // Don't fail the support reply if inbox sync fails
+  }
 }
 
 
@@ -901,7 +1068,11 @@ async function postReplyToChatWidget(supabase: any, ticket: any, fromEmail: stri
 }
 
 
-async function getGmailAccessToken(supabase: any): Promise<string | null> {
+// Returns the support mailbox integration row, preferring a Composio-managed
+// connection (the live setup) over any stale native-OAuth rows. Multiple
+// `connected` google_email rows can exist (old dev accounts + the Composio
+// mailbox), so never rely on an unordered limit(1).
+async function getGmailIntegration(supabase: any): Promise<any | null> {
   const { data: provider } = await supabase
     .from('integration_providers')
     .select('id')
@@ -910,15 +1081,19 @@ async function getGmailAccessToken(supabase: any): Promise<string | null> {
 
   if (!provider) return null
 
-  const { data: integration } = await supabase
+  const { data: rows } = await supabase
     .from('user_integrations')
     .select('*')
     .eq('provider_id', provider.id)
     .eq('status', 'connected')
-    .limit(1)
-    .single()
 
-  if (!integration) return null
+  if (!rows || rows.length === 0) return null
+  return rows.find((r: any) => r?.config?.composio_managed === true) || rows[0]
+}
+
+async function getGmailAccessToken(supabase: any): Promise<string | null> {
+  const integration = await getGmailIntegration(supabase)
+  if (!integration || integration.config?.composio_managed) return null
 
   // Refresh if expired
   if (new Date(integration.token_expires_at) < new Date()) {
@@ -926,6 +1101,49 @@ async function getGmailAccessToken(supabase: any): Promise<string | null> {
   }
 
   return integration.access_token
+}
+
+// Sends a threaded support reply, routing through Composio when the mailbox is
+// Composio-managed (the live setup) and falling back to native Gmail OAuth
+// otherwise. Returns the sent message result plus the resolved from-address,
+// or null if the mailbox isn't connected / the send failed.
+async function sendSupportGmailReply(
+  supabase: any,
+  opts: { toEmail: string; subject: string; threadId: string; inReplyTo: string | null; bodyText: string; bodyHtml?: string | null; cc?: string[] }
+): Promise<{ result: { id: string; threadId?: string }; sendFrom: string } | null> {
+  const integration = await getGmailIntegration(supabase)
+  if (!integration) return null
+
+  const { data: config } = await supabase
+    .from('support_email_config')
+    .select('gmail_address, send_as_email')
+    .eq('id', CONFIG_ID)
+    .single()
+  if (!config?.gmail_address) return null
+  const sendFrom = config.send_as_email || config.gmail_address
+
+  let result: { id: string; threadId?: string } | null
+  if (isComposioManaged(integration)) {
+    // Composio's GMAIL_REPLY_TO_THREAD sends plain text and uses the connected
+    // mailbox identity; send the text body.
+    result = await sendGmailReplyComposio(
+      integration.user_id,
+      { thread_id: opts.threadId, from_email: opts.toEmail, gmail_message_id: opts.inReplyTo },
+      opts.bodyText,
+      opts.subject,
+      opts.cc
+    )
+  } else {
+    const accessToken = await getGmailAccessToken(supabase)
+    if (!accessToken) return null
+    const sendBody = opts.bodyHtml || opts.bodyText
+    result = await sendGmailReply(
+      accessToken, sendFrom, opts.toEmail, opts.subject, opts.threadId, opts.inReplyTo || '', sendBody, !!opts.bodyHtml, opts.cc
+    )
+  }
+
+  if (!result) return null
+  return { result, sendFrom }
 }
 
 
@@ -972,15 +1190,18 @@ async function sendGmailReply(
   subject: string,
   threadId: string,
   inReplyTo: string,
-  body: string
+  body: string,
+  isHtml = false,
+  cc?: string[]
 ) {
   const rawMessage = [
     `From: ${fromAddress}`,
     `To: ${toAddress}`,
+    ...(cc && cc.length ? [`Cc: ${cc.join(', ')}`] : []),
     `Subject: ${subject}`,
     `In-Reply-To: ${inReplyTo}`,
     `References: ${inReplyTo}`,
-    'Content-Type: text/plain; charset=UTF-8',
+    isHtml ? 'Content-Type: text/html; charset=UTF-8' : 'Content-Type: text/plain; charset=UTF-8',
     '',
     body,
   ].join('\r\n')

@@ -3,6 +3,8 @@
  * Sends custom plan inquiry form submissions to sales team via Postmark
  */
 
+import { verifyTurnstile } from '../_shared/turnstile.ts'
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -26,13 +28,26 @@ Deno.serve(async (req) => {
       monthlyVolume,
       concurrentCalls,
       useCase,
-      hearAbout
+      hearAbout,
+      turnstileToken,
     } = await req.json()
 
     // Validate required fields
     if (!firstName || !lastName || !email) {
       return new Response(JSON.stringify({ error: 'Missing required fields' }), {
         status: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        }
+      })
+    }
+
+    // Verify Turnstile CAPTCHA
+    const turnstileValid = await verifyTurnstile(turnstileToken)
+    if (!turnstileValid) {
+      return new Response(JSON.stringify({ error: 'CAPTCHA verification failed' }), {
+        status: 403,
         headers: {
           'Content-Type': 'application/json',
           'Access-Control-Allow-Origin': '*'
@@ -136,8 +151,8 @@ Reply directly to this email to respond to the inquiry.
         'X-Postmark-Server-Token': postmarkApiKey
       },
       body: JSON.stringify({
-        From: Deno.env.get('NOTIFICATION_EMAIL') || 'notifications@snapsonic.com',
-        To: 'custompackage@snapsonic.com',
+        From: Deno.env.get('NOTIFICATION_EMAIL') || 'info@magpipe.ai',
+        To: 'help@magpipe.ai',
         ReplyTo: email,
         Subject: subject,
         HtmlBody: htmlBody,

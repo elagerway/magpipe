@@ -6,6 +6,7 @@
 
 import { showToast } from '../../lib/toast.js';
 import { showConfirmModal } from '../../components/ConfirmModal.js';
+import { escapeHtml } from '../../lib/formatters.js';
 
 const PLATFORM_LABELS = {
   reddit: 'Reddit',
@@ -130,6 +131,7 @@ export const monitorTabMethods = {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ action, ...data }),
+        signal: AbortSignal.timeout(5000),
       }
     );
     const result = await response.json();
@@ -410,11 +412,11 @@ export const monitorTabMethods = {
         </td>
         <td style="max-width:300px;">
           <a href="${this.escapeHtmlAttr(r.url)}" target="_blank" rel="noopener" style="color:var(--primary-color);text-decoration:none;font-weight:500;font-size:0.85rem;">
-            ${this.escapeHtml(r.title.length > 80 ? r.title.substring(0, 80) + '...' : r.title)}
+            ${escapeHtml(r.title.length > 80 ? r.title.substring(0, 80) + '...' : r.title)}
           </a>
         </td>
-        <td><span class="tag-pill">${this.escapeHtml(r.keyword_matched)}</span></td>
-        <td style="font-size:0.8rem;color:var(--text-muted);white-space:nowrap;">${r.subreddit ? this.escapeHtml(r.subreddit) : '-'}</td>
+        <td><span class="tag-pill">${escapeHtml(r.keyword_matched)}</span></td>
+        <td style="font-size:0.8rem;color:var(--text-muted);white-space:nowrap;">${r.subreddit ? escapeHtml(r.subreddit) : '-'}</td>
         <td style="text-align:center;font-size:0.85rem;">${r.score != null ? r.score : '-'}</td>
         <td style="text-align:center;font-size:0.85rem;">${r.comment_count != null ? r.comment_count : '-'}</td>
         <td>
@@ -547,7 +549,7 @@ export const monitorTabMethods = {
             ${this.monitorKeywords.map(k => `
               <tr>
                 <td>
-                  <span class="monitor-kw-text" data-id="${k.id}" style="font-weight:500;cursor:pointer;border-bottom:1px dashed var(--border-color);" title="Click to edit">${this.escapeHtml(k.keyword)}</span>
+                  <span class="monitor-kw-text" data-id="${k.id}" style="font-weight:500;cursor:pointer;border-bottom:1px dashed var(--border-color);" title="Click to edit">${escapeHtml(k.keyword)}</span>
                 </td>
                 <td>
                   <select class="dir-status-select monitor-kw-category" data-id="${k.id}" style="font-size:0.8rem;">
@@ -773,15 +775,6 @@ export const monitorTabMethods = {
   },
 
   // --- Helpers ---
-
-  escapeHtml(str) {
-    if (!str) return '';
-    return str
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
-  },
 
   escapeHtmlAttr(str) {
     if (!str) return '';

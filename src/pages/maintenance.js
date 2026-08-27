@@ -7,17 +7,12 @@
 export default class MaintenancePage {
   constructor() {
     this.retryInterval = null;
-    this.abortController = null;
   }
 
   cleanup() {
     if (this.retryInterval) {
       clearInterval(this.retryInterval);
       this.retryInterval = null;
-    }
-    if (this.abortController) {
-      this.abortController.abort();
-      this.abortController = null;
     }
   }
 
@@ -223,7 +218,7 @@ export default class MaintenancePage {
             <span id="maint-status-text">Connection issues identified. Check back for updates.</span>
           </div>
           <a
-            href="https://status.supabase.com"
+            href="https://status.magpipe.ai"
             target="_blank"
             rel="noopener noreferrer"
             class="maint-status-link"
@@ -245,14 +240,12 @@ export default class MaintenancePage {
 
     const check = async () => {
       try {
-        this.abortController = new AbortController();
-        const res = await fetch(`${supabaseUrl}/rest/v1/`, {
+        await fetch(`${supabaseUrl}/rest/v1/`, {
           headers: { apikey: supabaseKey },
           signal: AbortSignal.timeout(3000),
         });
-        if (res.ok) {
-          this.onRestored();
-        }
+        // Any HTTP response means Supabase is reachable (even 401/403)
+        this.onRestored();
       } catch {
         // Still down — keep waiting
       }

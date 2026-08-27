@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { getCalAccessToken } from '../_shared/cal-com.ts'
 import { resolveUser } from '../_shared/api-auth.ts'
 import { corsHeaders, handleCors } from '../_shared/cors.ts'
 
@@ -15,58 +16,6 @@ interface CreateBookingRequest {
 }
 
 // Refresh access token if expired (same as in get-slots)
-async function refreshTokenIfNeeded(
-  supabase: any,
-  userId: string,
-  accessToken: string,
-  refreshToken: string,
-  expiresAt: string
-): Promise<string> {
-  const expiry = new Date(expiresAt);
-  const now = new Date();
-
-  if (expiry.getTime() - now.getTime() > 5 * 60 * 1000) {
-    return accessToken;
-  }
-
-  console.log('Refreshing Cal.com access token...');
-
-  const clientId = Deno.env.get('CAL_COM_CLIENT_ID')!;
-  const clientSecret = Deno.env.get('CAL_COM_CLIENT_SECRET')!;
-
-  const tokenResponse = await fetch('https://app.cal.com/api/auth/oauth/token', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: new URLSearchParams({
-      grant_type: 'refresh_token',
-      client_id: clientId,
-      client_secret: clientSecret,
-      refresh_token: refreshToken,
-    }),
-  });
-
-  if (!tokenResponse.ok) {
-    throw new Error('Failed to refresh Cal.com token');
-  }
-
-  const tokens = await tokenResponse.json();
-  const newExpiresAt = new Date(Date.now() + (tokens.expires_in || 3600) * 1000);
-
-  await supabase
-    .from('users')
-    .update({
-      cal_com_access_token: tokens.access_token,
-      cal_com_refresh_token: tokens.refresh_token || refreshToken,
-      cal_com_token_expires_at: newExpiresAt.toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', userId);
-
-  return tokens.access_token;
-}
-
 Deno.serve(async (req) => {
   // Handle CORS
   if (req.method === 'OPTIONS') {
@@ -126,14 +75,15 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Refresh token if needed
-    const accessToken = await refreshTokenIfNeeded(
-      supabase,
-      userId,
-      userData.cal_com_access_token,
-      userData.cal_com_refresh_token,
-      userData.cal_com_token_expires_at
-    );
+    // Refresh if needed. getCalAccessToken also clears dead credentials, so a
+    // rejected refresh token stops the UI claiming a live connection.
+    const accessToken = await getCalAccessToken(supabase, userId);
+    if (!accessToken) {
+      return new Response(
+        JSON.stringify({ error: 'Cal.com not connected', code: 'NOT_CONNECTED' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // Parse request
     const body: CreateBookingRequest = await req.json();

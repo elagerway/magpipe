@@ -1,11 +1,19 @@
 ---
 title: Webhooks
-description: "Receive real-time event data pushed to your server when calls complete"
+description: "Receive real-time event data pushed to your server when calls, messages, and chats happen"
 ---
 
 ## Overview
 
-Webhooks let you receive real-time notifications when events happen in Magpipe. Instead of polling the API for updates, Magpipe sends a `POST` request to your server with event data as soon as a call completes.
+Webhooks let you receive real-time notifications when events happen in Magpipe. Instead of polling the API for updates, Magpipe sends a `POST` request to your server with event data as soon as the event occurs — voice calls completing, SMS messages arriving or being sent, and chat sessions ending.
+
+<Frame caption="Generate API keys and configure webhook URLs in Settings">
+  <img src="/images/webhooks-api.png" alt="Webhooks and API configuration" />
+</Frame>
+
+<Frame caption="Scroll through API keys, webhook payload reference, and MCP config">
+  <img src="/images/settings-api-scroll.gif" alt="API settings scroll" />
+</Frame>
 
 Each API key can have its own webhook URL, so you can route events to different servers for different integrations.
 
@@ -19,6 +27,10 @@ Each API key can have its own webhook URL, so you can route events to different 
 <Note>
 You can add or change the webhook URL on any existing API key at any time. The signing secret is generated automatically when you first set a URL.
 </Note>
+
+### Per-number scoping
+
+A key scoped to specific service numbers (set up when those numbers are assigned to its agents) receives number-bound events (`sms.received`, `sms.sent`, `call.completed`) **only for its own numbers** — so multiple integrations on one account stay isolated. A key with **no** number scoping receives events for every number, but only when it's the **only** webhook key on the account; on an account with multiple webhook keys an unscoped key receives nothing until it's scoped (so a new key can't accidentally pick up another integration's events). Events without a service number (e.g. `chat.session.completed`) are always delivered.
 
 ## Events
 
@@ -65,6 +77,165 @@ Fired when a call ends and all post-processing (transcript, summary, data extrac
 | `summary` | string \| null | AI-generated call summary. `null` if the call was too short. |
 | `extracted_data` | object \| null | Data extracted via dynamic variables. `null` if not configured on the agent. |
 | `status` | string | Always `completed` |
+
+### `sms.received`
+
+Fired when an inbound SMS lands on one of your Magpipe service numbers.
+
+```json
+{
+  "event": "sms.received",
+  "timestamp": "2026-05-01T22:30:45.123Z",
+  "data": {
+    "sms_message_id": "550e8400-e29b-41d4-a716-446655440000",
+    "agent_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+    "service_number": "+15551234567",
+    "from_number": "+15559876543",
+    "to_number": "+15551234567",
+    "body": "Hi, can you tell me about pricing?",
+    "media_urls": [],
+    "received_at": "2026-05-01T22:30:44.000Z"
+  }
+}
+```
+
+#### Field Reference
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `sms_message_id` | string \| null | Unique ID of the stored SMS row. `null` only on rare paths where no row was persisted. |
+| `agent_id` | string \| null | ID of the agent assigned to the receiving number. `null` if no agent is assigned. |
+| `service_number` | string | Your Magpipe phone number that received the SMS (E.164). |
+| `from_number` | string | Sender's phone number (E.164). |
+| `to_number` | string | Always equal to `service_number` for inbound. |
+| `body` | string \| null | Message body. Respects the agent's PII storage mode — `null` if `disabled`, redacted if `redacted`. |
+| `media_urls` | array | MMS media as **time-limited signed URLs** (valid ~7 days; the inbox re-signs from a durable path after expiry) — Magpipe re-hosts the carrier media so you can fetch it directly with a plain `GET`, no credentials. Download promptly; don't hot-link long-term. Empty array if no media. |
+| `received_at` | string | ISO 8601 timestamp when Magpipe ingested the SMS. |
+
+<Note>
+`sms.received` does **not** fire for content-loop traps (the same message repeated 3+ times by the same sender — Magpipe stops responding to break the loop). It still fires for opt-out/opt-in replies so you can track them.
+</Note>
+
+### `sms.sent`
+
+Fired when an outbound SMS is dispatched. Covers manual sends from the portal, AI-generated agent replies, notification SMS, and API-initiated sends.
+
+```json
+{
+  "event": "sms.sent",
+  "timestamp": "2026-05-01T22:30:45.123Z",
+  "data": {
+    "sms_message_id": "9c4f8b0e-3d2a-4f1e-b6c5-8a7f3e2d1b0c",
+    "agent_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+    "service_number": "+15551234567",
+    "from_number": "+15551234567",
+    "to_number": "+15559876543",
+    "body": "Thanks for reaching out — here's the pricing info you asked about...",
+    "trigger": "agent_reply",
+    "sent_at": "2026-05-01T22:30:45.000Z"
+  }
+}
+```
+
+#### Field Reference
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `sms_message_id` | string \| null | Unique ID of the stored SMS row. `null` for notification SMS (no row is persisted today). |
+| `notification_id` | string | Present only when `trigger` is `notification`. Use this for customer-side dedup on the notification path. |
+| `agent_id` | string \| null | ID of the agent that originated the message, or `null` for portal/manual sends. |
+| `service_number` | string | The number the SMS was sent from (E.164). |
+| `from_number` | string | Same as `service_number`. |
+| `to_number` | string | Recipient's phone number (E.164). |
+| `body` | string \| null | Message body. Respects PII storage mode same as `sms.received`. |
+| `trigger` | string | Why the SMS was sent — one of: `manual` (portal), `agent_reply` (AI auto-reply), `notification` (Magpipe notifying the owner of an inbound), `api` (API/MCP send). |
+| `sent_at` | string | ISO 8601 timestamp when Magpipe handed the SMS to the carrier. |
+
+### `whatsapp.received`
+
+Fired when an inbound WhatsApp message lands on a number whose WhatsApp account has a `webhook_url` set. This is a **per-WhatsApp-number forward** configured on the WhatsApp account (not the API-key webhook above), and it routes raw inbound messages to your endpoint instead of the AI agent replying.
+
+```json
+{
+  "event": "whatsapp.received",
+  "conversation_id": "8f3a2b1c-...",
+  "from": "16045551234",
+  "content": "footing rebar done",
+  "media": [
+    { "url": "https://...signed-7d...", "mime_type": "image/jpeg", "caption": "..." }
+  ],
+  "phone_number_id": "1059545750567735",
+  "whatsapp_account_id": "...",
+  "message_id": "wamid.ABC...",
+  "context": { "in_reply_to_message_id": "wamid.XYZ..." },
+  "metadata": { "schedule_id": "..." },
+  "timestamp": "1718000000",
+  "contact_name": "Erik"
+}
+```
+
+#### Field Reference
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `conversation_id` | string \| null | Stable thread id for this contact × number. |
+| `from` | string | Sender's WhatsApp number (bare digits). |
+| `content` | string | Message text, or the caption (`[image]` if a photo with no caption). |
+| `media` | array | Inbound photos as `{ url, mime_type, caption }` — `url` is a **time-limited signed URL** (~7 days). Empty if none. |
+| `message_id` | string | The inbound WhatsApp message id (wamid). |
+| `context` | object \| null | `{ in_reply_to_message_id }` when the sender replied to one of your outbound messages. |
+| `metadata` | object \| null | The `metadata` you attached to the originating outbound send, echoed back for attribution. |
+| `contact_name` | string \| null | WhatsApp profile name, if available. |
+
+<Note>
+`whatsapp.received` is delivered to the WhatsApp account's `webhook_url` and is **not HMAC-signed** (no `x-magpipe-signature`). Setting a WhatsApp account's `webhook_url` suppresses the AI agent for that number — use one model or the other.
+</Note>
+
+### `chat.session.completed`
+
+Fired when a website chat session ends — either when the visitor explicitly closes the widget or after 30 minutes of inactivity.
+
+```json
+{
+  "event": "chat.session.completed",
+  "timestamp": "2026-05-01T22:30:45.123Z",
+  "data": {
+    "chat_session_id": "550e8400-e29b-41d4-a716-446655440000",
+    "widget_id": "8f7e6d5c-4b3a-2918-7065-4f3e2d1c0b9a",
+    "agent_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+    "visitor_id": "v_a1b2c3d4",
+    "started_at": "2026-05-01T22:00:12.000Z",
+    "ended_at": "2026-05-01T22:30:00.000Z",
+    "message_count": 14,
+    "transcript": [
+      { "role": "visitor", "content": "Hi", "timestamp": "2026-05-01T22:00:14.000Z" },
+      { "role": "agent",   "content": "Hello! How can I help?", "timestamp": "2026-05-01T22:00:15.000Z" }
+    ],
+    "summary": "Visitor asked about senior living options in Edmonton...",
+    "extracted_data": {
+      "location": "Edmonton",
+      "care_needs": "memory care"
+    },
+    "ended_reason": "inactivity"
+  }
+}
+```
+
+#### Field Reference
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `chat_session_id` | string | Unique ID of the chat session. |
+| `widget_id` | string | The widget the session belonged to. |
+| `agent_id` | string \| null | ID of the agent that handled the session. |
+| `visitor_id` | string | Visitor identifier (cookie or signed-in user ID). |
+| `started_at` | string | ISO 8601 timestamp when the first message was sent. |
+| `ended_at` | string | ISO 8601 timestamp when the session ended. |
+| `message_count` | integer | Total messages exchanged. |
+| `transcript` | array | Full ordered transcript: `{role, content, timestamp}` per message. `role` is `visitor`, `agent`, or `system`. |
+| `summary` | string \| null | AI-generated 3-sentence summary. `null` when the visitor said too little to summarise. |
+| `extracted_data` | object \| null | Data extracted via dynamic variables (mirrors `call.completed`). `null` if extraction yielded nothing. |
+| `ended_reason` | string | One of `visitor_closed`, `inactivity`, `manual_close`. |
 
 ## Verifying Signatures
 
@@ -164,10 +335,80 @@ Always use a timing-safe comparison function (e.g., `crypto.timingSafeEqual` in 
 |----------|-------|
 | **Method** | `POST` |
 | **Content-Type** | `application/json` |
-| **Timeout** | 10 seconds |
-| **Retries** | None (fire once) |
+| **Timeout** | 10 seconds per attempt |
+| **Retries** | Up to 4 (5 total attempts) on transient failure |
+| **Backoff** | 5s → 30s → 2 min → 10 min (with ±25% jitter) |
+| **Stop signal** | Return `410 Gone` to tell Magpipe never to retry |
 
-All delivery attempts are logged in the `webhook_deliveries` table for debugging, including the HTTP status code, response body, and duration.
+All delivery attempts are logged in the `webhook_deliveries` table for debugging, including the HTTP status code, response body, attempt number, and duration.
+
+### Retry Policy
+
+Magpipe retries delivery on:
+
+- Network errors and timeouts
+- HTTP `408 Request Timeout`
+- HTTP `429 Too Many Requests`
+- HTTP `5xx` errors
+
+Magpipe does **not** retry on:
+
+- `2xx` and `3xx` responses (treated as success)
+- `410 Gone` — stops retries permanently for this delivery
+- Other `4xx` responses — treated as a permanent client error and sent to the dead-letter queue immediately for replay
+
+### Idempotency
+
+Because retries can deliver the same event more than once, your handler should be idempotent. **Dedupe on the event-specific ID:**
+
+| Event | Dedup key |
+|-------|-----------|
+| `call.completed` | `data.call_record_id` |
+| `sms.received` | `data.sms_message_id` |
+| `sms.sent` | `data.sms_message_id` (when present), or `data.notification_id` for `trigger: "notification"` |
+| `chat.session.completed` | `data.chat_session_id` |
+
+A simple `INSERT ... ON CONFLICT DO NOTHING` keyed on the dedup column on your side is enough.
+
+### Dead-letter queue
+
+If all retries fail (or a non-retryable `4xx` is returned), the event is moved to the `webhook_dead_letter` table. It can be inspected via the same database row-level visibility that exposes `webhook_deliveries`, and replayed manually via the [Replay API](#replay-api) below.
+
+## Replay API
+
+`POST /functions/v1/replay-webhook-delivery`
+
+Authenticate with your `mgp_` API key. Two modes are supported:
+
+### Replay one delivery
+
+```bash
+curl -X POST https://your-project.supabase.co/functions/v1/replay-webhook-delivery \
+  -H "Authorization: Bearer mgp_your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{ "delivery_id": "9c4f8b0e-3d2a-4f1e-b6c5-8a7f3e2d1b0c" }'
+```
+
+`delivery_id` may reference a row in `webhook_deliveries` or `webhook_dead_letter`. The original event envelope is sent verbatim — same body, same HMAC. The replayed delivery is logged as a fresh attempt 1, separate from any prior retry chain.
+
+### Replay a window
+
+```bash
+curl -X POST https://your-project.supabase.co/functions/v1/replay-webhook-delivery \
+  -H "Authorization: Bearer mgp_your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "event_type": "sms.received",
+    "from": "2026-05-01T00:00:00Z",
+    "to":   "2026-05-01T23:59:59Z"
+  }'
+```
+
+Replays every successful delivery of `event_type` in the time window (deduplicated, so multi-attempt deliveries replay once). Capped at 500 events per call. Use this to backfill after your endpoint has had downtime.
+
+<Note>
+Replays are scoped to deliveries that belong to one of your `api_keys`. You can never replay another tenant's events.
+</Note>
 
 ## Managing Webhook Secrets
 

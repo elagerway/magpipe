@@ -1,0 +1,45 @@
+# gitleaks configuration — picked up automatically by `gitleaks detect` when it
+# sits at the repo root, so the same rules apply to master CI, the open-source
+# mirror's CI, and scripts/sync-opensource.sh.
+#
+# Only PLACEHOLDER SHAPES are allowlisted, never paths and never real values.
+# A path allowlist would let a real key pasted into that file sail through;
+# these patterns can only match strings that are structurally incapable of
+# being a credential. The one exception (the chat widget's anon key) is
+# covered by the JWT-role gate in scripts/opensource-leak-gate.sh, which
+# independently rejects any non-anon JWT in that file.
+
+title = "magpipe"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "documentation placeholders"
+regexTarget = "match"
+regexes = [
+  # Generic doc placeholders
+  '''YOUR_API_KEY''',
+  '''YOUR_ANON_KEY''',
+  '''your_sync_secret''',
+  # Magpipe API key placeholders: our real keys are mgp_ + 40 hex, so anything
+  # after mgp_ that is not hex is a placeholder by construction.
+  '''mgp_(your|x{8,})[A-Za-z_x]*''',
+  # Chat-widget key placeholder used throughout the API docs
+  '''wgt_a1b2c3d4e5f6789012345678''',
+  # Webhook secret placeholder
+  '''whsec_example0+''',
+  # A JWT header fragment followed by a literal "..." is a truncated example;
+  # a real JWT never contains three consecutive dots.
+  '''eyJ[A-Za-z0-9_\-]{0,60}\.\.\.''',
+  # False positive: a hyphenated word in CHANGELOG matched generic-api-key
+  '''E\.164-normalized''',
+]
+
+# The public chat widget embeds the Supabase ANON key, which is publishable by
+# design (RLS enforces access) and is already served from magpipe.ai. It is the
+# only file allowed to carry a JWT, and scripts/opensource-leak-gate.sh still
+# decodes every JWT in the tree and aborts if any has a role other than "anon".
+paths = [
+  '''public/widget/magpipe-chat\.js''',
+]

@@ -3,12 +3,38 @@
  */
 
 import { User, Organization } from '../models/index.js';
-import { getCurrentUser, signOut, supabase } from '../lib/supabase.js';
+import { getCurrentUser, signOut, supabase, getImpersonationAdminToken } from '../lib/supabase.js';
 import { renderBottomNav, clearNavUserCache } from '../components/BottomNav.js';
 import { createAccessCodeSettings, addAccessCodeSettingsStyles } from '../components/AccessCodeSettings.js';
 import { addKnowledgeSourceManagerStyles } from '../components/KnowledgeSourceManager.js';
 import { createExternalTrunkSettings, addExternalTrunkSettingsStyles } from '../components/ExternalTrunkSettings.js';
 import { showToast } from '../lib/toast.js';
+import { escapeHtml, formatPhoneNumber, getInitials } from '../lib/formatters.js';
+import { createPhoneInput } from '../components/PhoneInput.js';
+
+// Robust clipboard copy: prefers navigator.clipboard in secure contexts,
+// falls back to a hidden textarea + execCommand('copy') for insecure
+// contexts and older Safari where the async Clipboard API can fail.
+async function copyTextToClipboard(value) {
+  if (!value) return false;
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return true;
+    } catch { /* fall through to execCommand */ }
+  }
+  const ta = document.createElement('textarea');
+  ta.value = value;
+  ta.setAttribute('readonly', '');
+  ta.style.position = 'absolute';
+  ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch { ok = false; }
+  document.body.removeChild(ta);
+  return ok;
+}
 
 export default class SettingsPage {
   constructor() {
@@ -79,11 +105,6 @@ export default class SettingsPage {
       Object.assign(profile, billingInfo);
     }
 
-    console.log('Profile data:', {
-      phone_number: profile?.phone_number,
-      phone_verified: profile?.phone_verified
-    });
-
     // Store organization for event listeners
     this.organization = organization;
 
@@ -91,7 +112,7 @@ export default class SettingsPage {
     const inactiveNumbers = serviceNumbers?.filter(n => !n.is_active) || [];
 
     // Get user initials for avatar fallback
-    const userInitials = this.getInitials(profile?.name, user.email);
+    const userInitials = getInitials(profile?.name, user.email);
 
     // Check for billing, credits and Cal.com success/error in URL
     const urlParams = new URLSearchParams(window.location.search);
@@ -265,6 +286,171 @@ export default class SettingsPage {
             font-size: 0.775rem;
           }
         }
+
+        /* API Keys table */
+        .api-keys-table-wrap {
+          overflow-x: auto;
+          margin: 0 -0.25rem;
+        }
+        .api-keys-table {
+          width: 100%;
+          /* border-collapse: separate is required for position:sticky on
+             <td> to actually work — collapse silently breaks sticky in
+             every browser. */
+          border-collapse: separate;
+          border-spacing: 0;
+          font-size: 0.85rem;
+        }
+        .api-keys-table thead th {
+          border-bottom: 2px solid var(--border-color);
+        }
+        .api-keys-table tbody td {
+          border-bottom: 1px solid var(--border-color);
+        }
+        .api-keys-table thead tr {
+          text-align: left;
+        }
+        .api-keys-table th {
+          padding: 0.5rem;
+          font-weight: 600;
+          white-space: nowrap;
+        }
+        .api-keys-table td {
+          padding: 0.5rem;
+          vertical-align: middle;
+        }
+        .api-keys-name-cell {
+          font-weight: 500;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 180px;
+        }
+        .api-keys-key-cell {
+          white-space: nowrap;
+        }
+        .api-keys-key-cell code {
+          font-size: 0.78rem;
+          background: var(--bg-secondary);
+          padding: 0.15rem 0.35rem;
+          border-radius: 3px;
+        }
+        /* Action column sticks to the right edge so Revoke is always
+           reachable even when the table needs to scroll horizontally.
+           Requires border-collapse: separate on the parent table. */
+        .api-keys-table .api-keys-action-col {
+          position: sticky;
+          right: 0;
+          background: var(--bg-primary);
+          padding-left: 0.75rem;
+          box-shadow: -4px 0 6px -4px rgba(0, 0, 0, 0.08);
+        }
+        .api-keys-table th.api-keys-action-col {
+          background: var(--bg-primary);
+        }
+        .api-keys-webhook-cell {
+          color: var(--text-secondary);
+          white-space: nowrap;
+        }
+        .api-keys-webhook-url {
+          font-size: 0.8rem;
+          max-width: 160px;
+          display: inline-block;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          vertical-align: middle;
+        }
+        .api-keys-date-cell {
+          color: var(--text-secondary);
+          white-space: nowrap;
+          font-size: 0.8rem;
+        }
+        .api-keys-action-col {
+          text-align: right;
+          white-space: nowrap;
+          width: 1%;
+        }
+        .api-keys-mini-btn {
+          font-size: 0.72rem;
+          padding: 0.25rem 0.5rem;
+          line-height: 1.2;
+        }
+        .api-keys-webhook-cell .api-keys-mini-btn {
+          margin-left: 0.35rem;
+        }
+        .api-keys-dash {
+          font-size: 0.8rem;
+        }
+        .api-keys-revoked {
+          color: var(--text-secondary);
+          font-size: 0.75rem;
+        }
+
+        @media (max-width: 1024px) {
+          .api-keys-table .api-keys-extra {
+            display: none;
+          }
+        }
+
+        /* API key created — post-create copy panel */
+        .api-key-created-card {
+          margin-bottom: 1rem;
+          padding: 1.25rem;
+          background: var(--bg-secondary);
+          border: 1px solid var(--primary-color);
+          border-radius: var(--radius-md);
+        }
+        .api-key-created-header {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          margin-bottom: 0.75rem;
+          color: var(--primary-color);
+        }
+        .api-key-created-header strong {
+          font-size: 0.9rem;
+        }
+        .api-key-created-row {
+          display: flex;
+          gap: 0.5rem;
+          align-items: stretch;
+        }
+        .api-key-created-value {
+          flex: 1;
+          background: var(--bg-primary);
+          border: 1px solid var(--border-color);
+          padding: 0.625rem 0.75rem;
+          border-radius: var(--radius-md);
+          font-size: 0.85rem;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          word-break: break-all;
+          user-select: all;
+          line-height: 1.4;
+          display: flex;
+          align-items: center;
+        }
+        .api-key-copy-action {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.4rem;
+          white-space: nowrap;
+        }
+        .api-key-copy-icon {
+          flex-shrink: 0;
+        }
+        .api-key-dismiss-action {
+          margin-top: 0.75rem;
+          width: 100%;
+        }
+        @media (max-width: 600px) {
+          .api-key-created-row {
+            flex-direction: column;
+          }
+          .api-key-copy-action {
+            justify-content: center;
+          }
+        }
       </style>
       ${renderBottomNav('/settings')}
     `;
@@ -276,27 +462,6 @@ export default class SettingsPage {
     if (this.profile?.favicon_url) {
       this.applyFavicon(this.profile.favicon_url, this.profile?.favicon_white_bg);
     }
-  }
-
-  formatPhoneNumber(phoneNumber) {
-    const cleaned = phoneNumber.replace(/\D/g, '');
-    const match = cleaned.match(/^1?(\d{3})(\d{3})(\d{4})$/);
-
-    if (match) {
-      return `(${match[1]}) ${match[2]}-${match[3]}`;
-    }
-
-    return phoneNumber;
-  }
-
-  getInitials(name, email) {
-    if (name) {
-      const parts = name.split(' ');
-      return parts.length > 1
-        ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
-        : name.substring(0, 2).toUpperCase();
-    }
-    return email ? email.substring(0, 2).toUpperCase() : 'U';
   }
 
   renderActiveTab() {
@@ -447,34 +612,52 @@ export default class SettingsPage {
           <div id="phone-display" style="cursor: pointer; padding: 0.5rem; border-radius: var(--radius-sm); transition: background 0.2s; display: flex; align-items: center; min-height: 44px; gap: 0.5rem;">
             <span style="flex: 1;">
               ${this.profile?.phone_number || '<span style="color: var(--text-tertiary);">Tap to add</span>'}
-              ${this.profile?.phone_verified ? '<span style="color: var(--success-color); margin-left: 0.5rem; font-size: 0.8125rem;">✓ Verified</span>' : ''}
+              ${this.profile?.phone_number && this.profile?.phone_verified ? '<span style="color: var(--success-color); margin-left: 0.5rem; font-size: 0.8125rem;">✓ Verified</span>' : ''}
             </span>
             ${pencilIcon}
           </div>
           <div id="phone-edit" style="display: none;">
-            <input type="tel" id="phone-input" class="form-input" value="${this.profile?.phone_number || ''}" placeholder="+1 (555) 123-4567" style="margin-bottom: 0.5rem;" />
+            <div id="phone-input-container" style="margin-bottom: 0.5rem;"></div>
             <div style="display: flex; gap: 0.5rem;">
               <button class="btn btn-sm btn-primary" id="save-phone-btn">Save</button>
               <button class="btn btn-sm btn-secondary" id="cancel-phone-btn">Cancel</button>
             </div>
             <p class="text-muted" style="margin-top: 0.5rem; font-size: 0.875rem;">You'll need to verify your new phone number</p>
           </div>
+          <div id="phone-verify" style="display: none;">
+            <p class="text-muted" style="margin: 0 0 0.5rem 0; font-size: 0.875rem;">Enter the 6-digit code we sent to <strong id="phone-verify-number"></strong></p>
+            <input type="text" id="phone-code-input" class="form-input" placeholder="123456" maxlength="6" pattern="[0-9]{6}" autocomplete="one-time-code" style="margin-bottom: 0.5rem;" />
+            <div style="display: flex; gap: 0.5rem;">
+              <button class="btn btn-sm btn-primary" id="verify-phone-code-btn">Verify</button>
+              <button class="btn btn-sm btn-secondary" id="cancel-phone-verify-btn">Cancel</button>
+            </div>
+            <p class="text-muted" style="margin-top: 0.5rem; font-size: 0.8125rem; display: flex; gap: 0.75rem; flex-wrap: wrap;">
+              <a href="#" id="phone-code-resend">Resend code</a>
+              <a href="#" id="phone-code-call">Call me instead</a>
+            </p>
+          </div>
         </div>
 
         <!-- Organization -->
         <div class="form-group" style="border-bottom: 1px solid var(--border-color); padding-bottom: 1rem; margin-bottom: 1rem;">
           <label style="font-weight: 600; margin: 0 0 0.25rem 0;">Organization</label>
+          ${this.organization?.owner_id === this.user?.id ? `
           <div id="org-display" style="cursor: pointer; padding: 0.5rem; border-radius: var(--radius-sm); transition: background 0.2s; display: flex; align-items: center; min-height: 44px; gap: 0.5rem;">
-            <span style="flex: 1;">${this.organization?.name || '<span style="color: var(--text-tertiary);">Tap to add</span>'}</span>
+            <span style="flex: 1;">${this.organization?.name ? escapeHtml(this.organization.name) : '<span style="color: var(--text-tertiary);">Tap to add</span>'}</span>
             ${pencilIcon}
           </div>
           <div id="org-edit" style="display: none;">
-            <input type="text" id="org-input" class="form-input" value="${this.organization?.name || ''}" style="margin-bottom: 0.5rem;" />
+            <input type="text" id="org-input" class="form-input" value="${escapeHtml(this.organization?.name || '')}" style="margin-bottom: 0.5rem;" />
             <div style="display: flex; gap: 0.5rem;">
               <button class="btn btn-sm btn-primary" id="save-org-btn">Save</button>
               <button class="btn btn-sm btn-secondary" id="cancel-org-btn">Cancel</button>
             </div>
           </div>
+          <button id="transfer-ownership-btn" style="margin-top: 0.5rem; background: none; border: none; padding: 0.25rem 0; color: var(--primary-color); font-size: 0.8rem; cursor: pointer;">Transfer ownership…</button>` : `
+          <div style="padding: 0.5rem; min-height: 44px; display: flex; align-items: center;">
+            <span style="flex: 1;">${this.organization?.name ? escapeHtml(this.organization.name) : '—'}</span>
+          </div>`}
+          <div id="incoming-transfer-mount"></div>
         </div>
 
         <!-- User ID (subtle, at the bottom of the profile card) -->
@@ -508,7 +691,7 @@ export default class SettingsPage {
           </div>
           ${this.activeNumbers.map(num => `
             <div class="form-group" style="padding-left: 1rem;">
-              ${this.formatPhoneNumber(num.phone_number)}
+              ${formatPhoneNumber(num.phone_number)}
             </div>
           `).join('')}
         ` : ''}
@@ -519,7 +702,7 @@ export default class SettingsPage {
           </div>
           ${this.inactiveNumbers.map(num => `
             <div class="form-group" style="padding-left: 1rem; color: var(--text-secondary);">
-              ${this.formatPhoneNumber(num.phone_number)}
+              ${formatPhoneNumber(num.phone_number)}
             </div>
           `).join('')}
         ` : ''}
@@ -613,7 +796,7 @@ export default class SettingsPage {
           const { error: updateError } = await supabase.from('users').update({ avatar_url: null, updated_at: new Date().toISOString() }).eq('id', user.id);
           if (updateError) throw updateError;
           const preview = document.getElementById('avatar-preview');
-          preview.innerHTML = this.getInitials(profile?.name, user.email);
+          preview.innerHTML = getInitials(profile?.name, user.email);
           document.getElementById('upload-avatar-btn').textContent = 'Upload Photo';
           removeAvatarBtn.style.display = 'none';
           this.cachedData = null;
@@ -674,6 +857,27 @@ export default class SettingsPage {
       try {
         const { user } = await getCurrentUser();
         const newEmail = document.getElementById('email-input').value;
+
+        // Admin acting on a customer's behalf: go through admin-update-user,
+        // which sets the address AND marks it verified in one service-role call.
+        // The self-serve path below can't work here — it mails a confirmation
+        // link to the customer's inbox, which the admin can't open, so the change
+        // would sit unapplied forever. The customer still gets an email telling
+        // them it changed (sent to both old and new address).
+        const adminToken = getImpersonationAdminToken();
+        if (adminToken) {
+          const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-update-user`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: user.id, action: 'set_email', email: newEmail }),
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok) throw new Error(data.error || 'Failed to update email');
+          showToast('Email updated and verified. The account holder has been notified.', 'success');
+          setTimeout(() => window.location.reload(), 1500);
+          return;
+        }
+
         const { error: authError } = await supabase.auth.updateUser({ email: newEmail });
         if (authError) throw authError;
         const { error } = await supabase.from('users').update({ email: newEmail, updated_at: new Date().toISOString() }).eq('id', user.id);
@@ -682,56 +886,151 @@ export default class SettingsPage {
         setTimeout(() => navigateTo('/verify-email'), 2000);
       } catch (error) {
         console.error('Save email error:', error);
-        showToast('Failed to save email. Please try again.', 'error');
+        showToast(error?.message || 'Failed to save email. Please try again.', 'error');
         saveBtn.disabled = false;
         saveBtn.textContent = 'Save';
       }
     });
 
-    // Phone inline editing
+    // Phone inline editing — country-code picker + formatting (same widget as verify-phone)
     document.getElementById('phone-display')?.addEventListener('click', () => {
       document.getElementById('phone-display').style.display = 'none';
       document.getElementById('phone-edit').style.display = 'block';
-      document.getElementById('phone-input').focus();
+      // Re-create on every open: this.render() replaces the DOM, so a cached
+      // instance would point at detached nodes
+      this._phonePicker = createPhoneInput(
+        document.getElementById('phone-input-container'),
+        { initialValue: this.profile?.phone_number || '' }
+      );
+      this._phonePicker.focus();
     });
     document.getElementById('cancel-phone-btn')?.addEventListener('click', () => {
       document.getElementById('phone-display').style.display = 'block';
       document.getElementById('phone-edit').style.display = 'none';
     });
+    // Inline phone verification: verify-phone-send texts (or calls with) a code,
+    // verify-phone-check confirms it and sets users.phone_verified (service role)
+    const phoneVerifyApi = async (fn, payload) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${fn}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Verification request failed');
+      return data;
+    };
+
+    const showPhoneVerifyPanel = (phoneNumber) => {
+      this._pendingVerifyPhone = phoneNumber;
+      document.getElementById('phone-display').style.display = 'none';
+      document.getElementById('phone-edit').style.display = 'none';
+      document.getElementById('phone-verify').style.display = 'block';
+      document.getElementById('phone-verify-number').textContent = phoneNumber;
+      document.getElementById('phone-code-input').value = '';
+      document.getElementById('phone-code-input').focus();
+    };
+
     document.getElementById('save-phone-btn')?.addEventListener('click', async () => {
       const saveBtn = document.getElementById('save-phone-btn');
+      // Picker guarantees E.164 or null; getE164 enforces per-country length
+      const newPhone = this._phonePicker ? this._phonePicker.getE164() : null;
+      if (!newPhone) {
+        showToast('Please enter a valid phone number', 'error');
+        return;
+      }
+      const unchanged = newPhone === (this.profile?.phone_number || null);
+      if (unchanged && this.profile?.phone_verified) {
+        showToast('No changes made.', 'info');
+        document.getElementById('phone-display').style.display = 'block';
+        document.getElementById('phone-edit').style.display = 'none';
+        return;
+      }
       saveBtn.disabled = true;
       saveBtn.textContent = 'Saving...';
       try {
-        const { user } = await getCurrentUser();
-        const { profile } = await User.getProfile(user.id);
-        const newPhone = document.getElementById('phone-input').value;
-        const normalizePhone = (phone) => phone ? phone.replace(/\D/g, '') : '';
-        const oldPhoneNormalized = normalizePhone(profile?.phone_number);
-        const newPhoneNormalized = normalizePhone(newPhone);
-        const phoneChanged = oldPhoneNormalized !== newPhoneNormalized;
-        if (!phoneChanged) {
-          if (!profile?.phone_verified) {
-            showToast('Redirecting to verification...', 'success');
-            setTimeout(() => navigateTo('/verify-phone'), 1000);
-          } else {
-            showToast('No changes made.', 'info');
-            document.getElementById('phone-display').style.display = 'block';
-            document.getElementById('phone-edit').style.display = 'none';
-            saveBtn.disabled = false;
-            saveBtn.textContent = 'Save';
-          }
+        // Admin acting on a customer's behalf: set and verify directly. The SMS
+        // code path below is unusable here — the code goes to the customer's
+        // handset, which the admin doesn't have, so the number could never be
+        // confirmed and would never persist.
+        const adminToken = getImpersonationAdminToken();
+        if (adminToken) {
+          const { user } = await getCurrentUser();
+          const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-update-user`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: user.id, action: 'set_phone', phone_number: newPhone, phone_verified: true }),
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok) throw new Error(data.error || 'Failed to update phone');
+          showToast('Phone updated and verified.', 'success');
+          setTimeout(() => window.location.reload(), 1200);
           return;
         }
-        const { error } = await supabase.from('users').update({ phone_number: newPhone, phone_verified: false, updated_at: new Date().toISOString() }).eq('id', user.id);
-        if (error) throw error;
-        showToast('Phone number updated. Redirecting to verification...', 'success');
-        setTimeout(() => navigateTo('/verify-phone'), 1500);
+
+        // Do NOT write users.phone_number here: verify-phone-check persists the
+        // number and sets phone_verified only after the code is confirmed. This
+        // keeps the existing verified number intact if the send fails or the user
+        // abandons verification (no rollback needed, no stale-badge on Cancel).
+        await phoneVerifyApi('verify-phone-send', { phoneNumber: newPhone });
+        showToast(`Verification code sent to ${newPhone}`, 'success');
+        showPhoneVerifyPanel(newPhone);
       } catch (error) {
-        console.error('Save phone error:', error);
-        showToast('Failed to save phone number. Please try again.', 'error');
+        console.error('Send verification error:', error);
+        showToast(error.message || 'Failed to send verification code. Please try again.', 'error');
+      } finally {
         saveBtn.disabled = false;
         saveBtn.textContent = 'Save';
+      }
+    });
+
+    const verifyPhoneCode = async () => {
+      const verifyBtn = document.getElementById('verify-phone-code-btn');
+      const code = document.getElementById('phone-code-input').value.trim();
+      if (!/^\d{6}$/.test(code)) {
+        showToast('Please enter the 6-digit code', 'error');
+        return;
+      }
+      verifyBtn.disabled = true;
+      verifyBtn.textContent = 'Verifying...';
+      try {
+        await phoneVerifyApi('verify-phone-check', { phoneNumber: this._pendingVerifyPhone, code });
+        showToast('Phone number verified!', 'success');
+        this.cachedData = null;
+        this.render();
+      } catch (error) {
+        console.error('Verify phone error:', error);
+        showToast(error.message || 'Invalid code. Please try again.', 'error');
+        verifyBtn.disabled = false;
+        verifyBtn.textContent = 'Verify';
+      }
+    };
+    document.getElementById('verify-phone-code-btn')?.addEventListener('click', verifyPhoneCode);
+    document.getElementById('phone-code-input')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); verifyPhoneCode(); }
+    });
+    document.getElementById('cancel-phone-verify-btn')?.addEventListener('click', () => {
+      document.getElementById('phone-verify').style.display = 'none';
+      document.getElementById('phone-display').style.display = 'flex';
+    });
+    document.getElementById('phone-code-resend')?.addEventListener('click', async (e) => {
+      e.preventDefault();
+      try {
+        await phoneVerifyApi('verify-phone-send', { phoneNumber: this._pendingVerifyPhone });
+        showToast('Verification code resent', 'success');
+      } catch (error) {
+        showToast(error.message || 'Failed to resend code', 'error');
+      }
+    });
+    document.getElementById('phone-code-call')?.addEventListener('click', async (e) => {
+      e.preventDefault();
+      try {
+        await phoneVerifyApi('verify-phone-send', { phoneNumber: this._pendingVerifyPhone, channel: 'voice' });
+        showToast(`Calling ${this._pendingVerifyPhone} with your code now`, 'success');
+      } catch (error) {
+        showToast(error.message || 'Failed to start verification call', 'error');
       }
     });
 
@@ -751,6 +1050,12 @@ export default class SettingsPage {
       saveBtn.textContent = 'Saving...';
       try {
         if (!this.organization?.id) throw new Error('No organization found');
+        // Only the org owner can rename it (a user can belong to a team they
+        // don't own). The edit UI is already hidden for non-owners; this is the
+        // defensive backstop.
+        if (this.organization?.owner_id !== this.user?.id) {
+          throw new Error('Only the organization owner can rename it');
+        }
         const newName = document.getElementById('org-input').value.trim();
         if (!newName) throw new Error('Organization name cannot be empty');
         const { error } = await Organization.update(this.organization.id, { name: newName });
@@ -769,6 +1074,105 @@ export default class SettingsPage {
         saveBtn.textContent = 'Save';
       }
     });
+
+    // ── Organization ownership transfer (#114) ──────────────────────────
+    const callTransferFn = async (fn, body) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+      const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${fn}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(data.error || 'Request failed');
+      return data;
+    };
+
+    // Owner initiates a transfer.
+    document.getElementById('transfer-ownership-btn')?.addEventListener('click', () => {
+      const orgLabel = this.organization?.name ? `"${escapeHtml(this.organization.name)}"` : 'this organization';
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:1000;padding:1rem;';
+      overlay.innerHTML = `
+        <div style="background:var(--bg-primary);border-radius:var(--radius-lg);padding:1.5rem;max-width:420px;width:100%;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);">
+          <h2 style="margin:0 0 0.5rem;font-size:1.1rem;">Transfer ownership</h2>
+          <p style="margin:0 0 1rem;font-size:0.85rem;color:var(--text-secondary);">The new owner must accept before anything changes. You'll become an editor of ${orgLabel}.</p>
+          <label class="form-label">New owner's email</label>
+          <input type="email" id="transfer-email-input" class="form-input" placeholder="person@example.com" style="margin-bottom:0.75rem;" />
+          <label style="display:flex;align-items:flex-start;gap:0.5rem;font-size:0.85rem;line-height:1.4;">
+            <input type="checkbox" id="transfer-billing-check" style="margin-top:0.15rem;" />
+            <span>Also move billing (your paid plan &amp; Stripe subscription) to the new owner. If you're on the free plan this has no effect.</span>
+          </label>
+          <div style="display:flex;gap:0.75rem;justify-content:flex-end;margin-top:1.5rem;">
+            <button class="btn btn-secondary" id="transfer-cancel-btn">Cancel</button>
+            <button class="btn btn-primary" id="transfer-send-btn">Send request</button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+      const close = () => overlay.remove();
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+      overlay.querySelector('#transfer-cancel-btn').addEventListener('click', close);
+      overlay.querySelector('#transfer-send-btn').addEventListener('click', async () => {
+        const btn = overlay.querySelector('#transfer-send-btn');
+        const email = overlay.querySelector('#transfer-email-input').value.trim();
+        if (!email) { showToast("Enter the new owner's email", 'error'); return; }
+        btn.disabled = true; btn.textContent = 'Sending…';
+        try {
+          await callTransferFn('org-transfer-initiate', {
+            toEmail: email,
+            moveBilling: overlay.querySelector('#transfer-billing-check').checked,
+          });
+          showToast('Transfer request sent — awaiting their confirmation', 'success');
+          close();
+        } catch (e) {
+          showToast(e.message || 'Failed to send request', 'error');
+          btn.disabled = false; btn.textContent = 'Send request';
+        }
+      });
+    });
+
+    // Recipient sees a prompt if there's a pending incoming transfer.
+    (async () => {
+      try {
+        if (!this.user?.id) return;
+        const { data: incoming } = await supabase
+          .from('organization_ownership_transfers')
+          .select('id, move_billing, organizations(name)')
+          .eq('to_user_id', this.user.id)
+          .eq('status', 'pending')
+          .gt('expires_at', new Date().toISOString())
+          .limit(1)
+          .maybeSingle();
+        const mount = document.getElementById('incoming-transfer-mount');
+        if (!incoming || !mount) return;
+        // Escape: the org name is set by the initiator (a different user) and
+        // rendered in the recipient's browser — must not allow HTML injection.
+        const orgName = escapeHtml(incoming.organizations?.name || 'an organization');
+        mount.innerHTML = `
+          <div style="margin-top:0.75rem;padding:0.75rem;border:1px solid var(--primary-color);border-radius:var(--radius-md);background:var(--bg-secondary);">
+            <div style="font-size:0.85rem;margin-bottom:0.5rem;">You've been offered ownership of <strong>${orgName}</strong>${incoming.move_billing ? ' (including billing)' : ''}.</div>
+            <div style="display:flex;gap:0.5rem;">
+              <button class="btn btn-sm btn-primary" id="incoming-accept-btn">Accept</button>
+              <button class="btn btn-sm btn-secondary" id="incoming-decline-btn">Decline</button>
+            </div>
+          </div>`;
+        const respond = async (action) => {
+          mount.querySelectorAll('button').forEach(b => { b.disabled = true; });
+          try {
+            await callTransferFn('org-transfer-respond', { transferId: incoming.id, action });
+            showToast(action === 'accept' ? 'You are now the owner' : 'Transfer declined', 'success');
+            this.cachedData = null;
+            setTimeout(() => window.location.reload(), 800);
+          } catch (e) {
+            showToast(e.message || 'Failed', 'error');
+            mount.querySelectorAll('button').forEach(b => { b.disabled = false; });
+          }
+        };
+        mount.querySelector('#incoming-accept-btn').addEventListener('click', () => respond('accept'));
+        mount.querySelector('#incoming-decline-btn').addEventListener('click', () => respond('decline'));
+      } catch (e) { console.error('incoming ownership transfer check failed', e); }
+    })();
 
     // Initialize External SIP Trunk Settings (mobile only)
     const externalTrunkContainer = document.getElementById('external-trunk-settings-container');
@@ -895,13 +1299,23 @@ export default class SettingsPage {
             <button class="btn btn-secondary btn-sm" id="cancel-credits-btn" style="width: 100%;">Cancel</button>
           </div>
 
+          <!-- Redeem Coupon Code -->
+          <div style="border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1rem;">
+            <h3 style="margin: 0 0 0.25rem 0; font-size: 1rem;">Redeem a Code</h3>
+            <p class="text-muted" style="margin: 0 0 0.75rem 0; font-size: 0.75rem;">Have a coupon code? Redeem it for free credits.</p>
+            <div style="display: flex; gap: 0.5rem;">
+              <input type="text" id="coupon-code-input" class="form-input" placeholder="Enter coupon code" style="flex: 1; text-transform: uppercase;" />
+              <button class="btn btn-secondary" id="redeem-coupon-btn">Redeem</button>
+            </div>
+          </div>
+
           <!-- Pricing Info -->
           <div style="border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem;">
             <h3 style="margin: 0 0 0.75rem 0; font-size: 1rem;">Usage Rates</h3>
             <div style="display: grid; gap: 0.5rem; color: var(--text-secondary); font-size: 0.875rem;">
               <div style="display: flex; justify-content: space-between;">
                 <span>Voice calls</span>
-                <span>~$0.07-0.10/min</span>
+                <span>~$0.05-0.20/min</span>
               </div>
               <div style="display: flex; justify-content: space-between;">
                 <span>SMS messages</span>
@@ -1278,6 +1692,54 @@ export default class SettingsPage {
 
     if (rechargeThreshold) rechargeThreshold.addEventListener('change', saveAutoRechargeSettings);
     if (rechargeAmount) rechargeAmount.addEventListener('change', saveAutoRechargeSettings);
+
+    // Redeem coupon code
+    const redeemCouponBtn = document.getElementById('redeem-coupon-btn');
+    const couponCodeInput = document.getElementById('coupon-code-input');
+    if (redeemCouponBtn && couponCodeInput) {
+      const redeemCoupon = async () => {
+        const code = couponCodeInput.value.trim();
+        if (!code) {
+          showToast('Please enter a coupon code', 'error');
+          return;
+        }
+        redeemCouponBtn.disabled = true;
+        redeemCouponBtn.textContent = 'Redeeming...';
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session) throw new Error('Not authenticated');
+          const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/redeem-coupon`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code })
+          });
+          const data = await response.json();
+          if (!response.ok) {
+            // Most coupons require a card on file (fraud guard) — point the user at setup
+            if (data.code === 'payment_method_required') {
+              showToast('Add a payment method first, then redeem your code.', 'error');
+              document.getElementById('setup-payment-btn')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              redeemCouponBtn.disabled = false;
+              redeemCouponBtn.textContent = 'Redeem';
+              return;
+            }
+            throw new Error(data.error || 'Could not redeem coupon');
+          }
+          showToast(`$${Number(data.amount).toFixed(2)} in credits added to your account!`, 'success');
+          this.cachedData = null; // Force refresh
+          this.render();
+        } catch (error) {
+          console.error('Redeem coupon error:', error);
+          showToast(error.message || 'Failed to redeem coupon', 'error');
+          redeemCouponBtn.disabled = false;
+          redeemCouponBtn.textContent = 'Redeem';
+        }
+      };
+      redeemCouponBtn.addEventListener('click', redeemCoupon);
+      couponCodeInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); redeemCoupon(); }
+      });
+    }
 
     // Bonus credits card listeners
     const claimCcBonusBtn = document.getElementById('claim-cc-bonus-btn');
@@ -1882,12 +2344,16 @@ export default class SettingsPage {
         </div>
 
         <!-- Generate key form (hidden by default) -->
-        <div id="api-key-generate-form" class="hidden" style="margin-bottom: 1rem; padding: 1rem; background: var(--bg-secondary); border-radius: var(--radius-sm);">
-          <label style="font-weight: 600; display: block; margin-bottom: 0.5rem;">Key Name</label>
-          <input type="text" id="api-key-name-input" placeholder="e.g. Production, CI/CD, Testing" style="width: 100%; margin-bottom: 0.75rem;" maxlength="64" />
-          <label style="font-weight: 600; display: block; margin-bottom: 0.5rem;">Webhook URL <span style="font-weight: 400; color: var(--text-secondary);">(optional)</span></label>
-          <input type="url" id="api-key-webhook-input" placeholder="https://your-server.com/webhook" style="width: 100%; margin-bottom: 0.75rem;" maxlength="2048" />
-          <p style="margin: 0 0 0.75rem 0; font-size: 0.8rem; color: var(--text-secondary);">Receives POST with call data when calls complete.</p>
+        <div id="api-key-generate-form" class="hidden" style="margin-bottom: 1rem; padding: 1.25rem; background: var(--bg-secondary); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+          <div class="form-group" style="margin-bottom: 1rem;">
+            <label class="form-label" for="api-key-name-input">Key Name</label>
+            <input type="text" id="api-key-name-input" class="form-input" placeholder="e.g. Production, CI/CD, Testing" maxlength="64" />
+          </div>
+          <div class="form-group" style="margin-bottom: 0.75rem;">
+            <label class="form-label" for="api-key-webhook-input">Webhook URL <span style="font-weight: 400; color: var(--text-secondary);">(optional)</span></label>
+            <input type="url" id="api-key-webhook-input" class="form-input" placeholder="https://your-server.com/webhook" maxlength="2048" />
+            <p class="form-help">Receives POST events for calls, SMS, and chat sessions.</p>
+          </div>
           <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
             <button class="btn btn-secondary" id="api-key-cancel-btn">Cancel</button>
             <button class="btn btn-primary" id="api-key-create-btn">Create</button>
@@ -1895,26 +2361,24 @@ export default class SettingsPage {
         </div>
 
         <!-- Newly created key display (hidden by default) -->
-        <div id="api-key-created-display" class="hidden" style="margin-bottom: 1rem; padding: 1rem; background: var(--bg-secondary); border: 1px solid var(--primary-color); border-radius: var(--radius-sm);">
-          <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
-            <svg width="16" height="16" fill="none" stroke="var(--primary-color)" viewBox="0 0 24 24">
+        <div id="api-key-created-display" class="hidden api-key-created-card">
+          <div class="api-key-created-header">
+            <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
             </svg>
-            <strong style="color: var(--primary-color);">Copy your API key now — it won't be shown again.</strong>
+            <strong>Copy your API key now — it won't be shown again.</strong>
           </div>
-          <div style="display: flex; gap: 0.5rem; align-items: center;">
-            <code id="api-key-full-value" style="
-              flex: 1;
-              background: var(--bg-primary);
-              padding: 0.5rem;
-              border-radius: var(--radius-sm);
-              font-size: 0.8rem;
-              word-break: break-all;
-              user-select: all;
-            "></code>
-            <button class="btn btn-secondary" id="api-key-copy-btn" style="white-space: nowrap;">Copy</button>
+          <div class="api-key-created-row">
+            <code id="api-key-full-value" class="api-key-created-value"></code>
+            <button class="btn btn-primary api-key-copy-action" id="api-key-copy-btn" type="button">
+              <svg class="api-key-copy-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+              <span class="api-key-copy-label">Copy key</span>
+            </button>
           </div>
-          <button class="btn btn-secondary" id="api-key-dismiss-btn" style="margin-top: 0.75rem; width: 100%;">Done</button>
+          <button class="btn btn-secondary api-key-dismiss-action" id="api-key-dismiss-btn" type="button">I've saved it</button>
         </div>
 
         <!-- Keys list -->
@@ -1931,15 +2395,17 @@ export default class SettingsPage {
           </summary>
           <div style="margin-top: 1rem;">
             <p style="margin: 0 0 0.75rem 0; font-size: 0.85rem; color: var(--text-secondary);">
-              When a call completes, each API key with a webhook URL receives a <code>POST</code> request with <code>Content-Type: application/json</code>. Timeout is 10 seconds. Each request includes an <code>x-magpipe-signature</code> header containing an HMAC-SHA256 signature of the body, signed with your webhook signing secret.
+              Each API key with a webhook URL receives a <code>POST</code> request with <code>Content-Type: application/json</code> when one of the events below fires. Timeout is 10 seconds. Failed deliveries retry up to 5 times with exponential backoff. Each request includes an <code>x-magpipe-signature</code> header containing an HMAC-SHA256 signature of the body, signed with your webhook signing secret.
             </p>
-            <p style="margin: 0 0 0.75rem 0; font-size: 0.85rem; color: var(--text-secondary);">
-              Verify: compute <code>HMAC-SHA256(secret, raw_body)</code> and compare to the header value (format: <code>sha256=&lt;hex&gt;</code>).
+            <p style="margin: 0 0 1rem 0; font-size: 0.85rem; color: var(--text-secondary);">
+              Verify: compute <code>HMAC-SHA256(secret, raw_body)</code> and compare to the header value (format: <code>sha256=&lt;hex&gt;</code>). Return <code>410 Gone</code> from your endpoint to permanently stop deliveries.
             </p>
-            <p style="margin: 0 0 0.5rem 0; font-weight: 600; font-size: 0.85rem;">call.completed</p>
+
+            <p style="margin: 1rem 0 0.5rem 0; font-weight: 600; font-size: 0.85rem;">call.completed</p>
+            <p style="margin: 0 0 0.5rem 0; font-size: 0.8rem; color: var(--text-secondary);">Fires when a voice call ends.</p>
 <pre style="background: var(--bg-secondary); padding: 0.75rem; border-radius: var(--radius-sm); font-size: 0.78rem; overflow-x: auto; margin: 0; line-height: 1.5;">{
   "event": "call.completed",
-  "timestamp": "2026-02-18T15:30:45.123456Z",
+  "timestamp": "2026-02-18T15:30:45.123Z",
   "data": {
     "call_record_id": "uuid",
     "direction": "inbound | outbound",
@@ -1954,7 +2420,74 @@ export default class SettingsPage {
     "status": "completed"
   }
 }</pre>
-            <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-top: 0.75rem;">
+
+            <p style="margin: 1.25rem 0 0.5rem 0; font-weight: 600; font-size: 0.85rem;">sms.received</p>
+            <p style="margin: 0 0 0.5rem 0; font-size: 0.8rem; color: var(--text-secondary);">Fires on every inbound SMS to one of your service numbers (skipped only for content-loop traps).</p>
+<pre style="background: var(--bg-secondary); padding: 0.75rem; border-radius: var(--radius-sm); font-size: 0.78rem; overflow-x: auto; margin: 0; line-height: 1.5;">{
+  "event": "sms.received",
+  "timestamp": "2026-02-18T15:30:45.123Z",
+  "data": {
+    "sms_message_id": "uuid",
+    "agent_id": "uuid | null",
+    "service_number": "+16042101966",
+    "from_number": "+16045551234",
+    "to_number": "+16042101966",
+    "body": "Hi, can you call me back?",
+    "media_urls": [],
+    "received_at": "2026-02-18T15:30:45.000Z"
+  }
+}</pre>
+
+            <p style="margin: 1.25rem 0 0.5rem 0; font-weight: 600; font-size: 0.85rem;">sms.sent</p>
+            <p style="margin: 0 0 0.5rem 0; font-size: 0.8rem; color: var(--text-secondary);">
+              Fires on every outbound SMS. The <code>trigger</code> field tells you the source:
+              <code>manual</code> (sent from inbox), <code>agent_reply</code> (AI auto-reply),
+              <code>notification</code> (owner notification SMS — no <code>sms_message_id</code>; dedup on <code>notification_id</code>),
+              <code>api</code> (sent via REST/MCP API).
+            </p>
+<pre style="background: var(--bg-secondary); padding: 0.75rem; border-radius: var(--radius-sm); font-size: 0.78rem; overflow-x: auto; margin: 0; line-height: 1.5;">{
+  "event": "sms.sent",
+  "timestamp": "2026-02-18T15:30:46.456Z",
+  "data": {
+    "sms_message_id": "uuid | null",
+    "notification_id": "uuid | undefined",
+    "agent_id": "uuid | null",
+    "service_number": "+16042101966",
+    "from_number": "+16042101966",
+    "to_number": "+16045551234",
+    "body": "Thanks — we'll be in touch shortly.",
+    "trigger": "manual | agent_reply | notification | api",
+    "sent_at": "2026-02-18T15:30:46.456Z"
+  }
+}</pre>
+
+            <p style="margin: 1.25rem 0 0.5rem 0; font-weight: 600; font-size: 0.85rem;">chat.session.completed</p>
+            <p style="margin: 0 0 0.5rem 0; font-size: 0.8rem; color: var(--text-secondary);">
+              Fires when a website-chat session closes — either explicitly via <code>close-chat-session</code> or automatically after 30 minutes of inactivity.
+            </p>
+<pre style="background: var(--bg-secondary); padding: 0.75rem; border-radius: var(--radius-sm); font-size: 0.78rem; overflow-x: auto; margin: 0; line-height: 1.5;">{
+  "event": "chat.session.completed",
+  "timestamp": "2026-02-18T15:30:45.123Z",
+  "data": {
+    "chat_session_id": "uuid",
+    "widget_id": "uuid",
+    "agent_id": "uuid",
+    "visitor_id": "uuid",
+    "started_at": "2026-02-18T15:00:12.000Z",
+    "ended_at": "2026-02-18T15:30:00.000Z",
+    "message_count": 8,
+    "transcript": [
+      { "role": "user", "content": "...", "timestamp": "..." },
+      { "role": "assistant", "content": "...", "timestamp": "..." }
+    ],
+    "summary": "Visitor asked about pricing.",
+    "extracted_data": { "email": "user@example.com" },
+    "ended_reason": "explicit | inactivity"
+  }
+}</pre>
+
+            <p style="margin: 1.25rem 0 0.5rem 0; font-weight: 600; font-size: 0.85rem;">Field notes</p>
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-top: 0.5rem;">
               <thead>
                 <tr style="text-align: left; border-bottom: 1px solid var(--border-color);">
                   <th style="padding: 0.35rem 0.5rem 0.35rem 0;">Field</th>
@@ -1964,18 +2497,75 @@ export default class SettingsPage {
               <tbody>
                 <tr style="border-bottom: 1px solid var(--border-color);">
                   <td style="padding: 0.35rem 0.5rem 0.35rem 0;"><code>transcript</code></td>
-                  <td style="padding: 0.35rem 0.5rem; color: var(--text-secondary);">null when PII storage is disabled</td>
+                  <td style="padding: 0.35rem 0.5rem; color: var(--text-secondary);">null when the agent's PII storage is disabled</td>
+                </tr>
+                <tr style="border-bottom: 1px solid var(--border-color);">
+                  <td style="padding: 0.35rem 0.5rem 0.35rem 0;"><code>body</code> <span style="color: var(--text-secondary);">(SMS)</span></td>
+                  <td style="padding: 0.35rem 0.5rem; color: var(--text-secondary);">redacted or null per agent's PII storage setting</td>
                 </tr>
                 <tr style="border-bottom: 1px solid var(--border-color);">
                   <td style="padding: 0.35rem 0.5rem 0.35rem 0;"><code>summary</code></td>
-                  <td style="padding: 0.35rem 0.5rem; color: var(--text-secondary);">null if call was too short for a summary</td>
+                  <td style="padding: 0.35rem 0.5rem; color: var(--text-secondary);">null if interaction was too short to summarize</td>
                 </tr>
                 <tr style="border-bottom: 1px solid var(--border-color);">
                   <td style="padding: 0.35rem 0.5rem 0.35rem 0;"><code>extracted_data</code></td>
-                  <td style="padding: 0.35rem 0.5rem; color: var(--text-secondary);">null if no dynamic variables configured on agent</td>
+                  <td style="padding: 0.35rem 0.5rem; color: var(--text-secondary);">null if no dynamic variables are configured on the agent</td>
+                </tr>
+                <tr style="border-bottom: 1px solid var(--border-color);">
+                  <td style="padding: 0.35rem 0.5rem 0.35rem 0;"><code>media_urls</code> <span style="color: var(--text-secondary);">(SMS)</span></td>
+                  <td style="padding: 0.35rem 0.5rem; color: var(--text-secondary);">array of MMS attachment URLs, empty if none</td>
                 </tr>
               </tbody>
             </table>
+
+            <p style="margin: 1.25rem 0 0.5rem 0; font-size: 0.8rem; color: var(--text-secondary);">
+              <strong>WhatsApp:</strong> inbound WhatsApp messages forward to the per-account webhook URL configured under WhatsApp settings (separate from API key webhooks).
+            </p>
+          </div>
+        </details>
+      </div>
+
+      <!-- Voice API Reference -->
+      <div class="card" style="margin-top: 1rem;">
+        <details>
+          <summary style="cursor: pointer; font-weight: 600; font-size: 1rem; user-select: none;">
+            Voice API Reference
+          </summary>
+          <div style="margin-top: 1rem;">
+            <p style="margin: 0 0 0.75rem 0; font-size: 0.85rem; color: var(--text-secondary);">
+              List available voices and update an agent's voice via the REST API using your API key.
+            </p>
+
+            <p style="font-weight: 600; font-size: 0.85rem; margin: 0.75rem 0 0.35rem 0;">List voices</p>
+<pre style="background: var(--bg-secondary); padding: 0.75rem; border-radius: var(--radius-sm); font-size: 0.78rem; overflow-x: auto; margin: 0; line-height: 1.5;">POST https://api.magpipe.ai/functions/v1/list-voices
+Authorization: Bearer mgp_your_key_here
+Content-Type: application/json
+
+{}
+
+// Optional filters:
+{ "provider": "elevenlabs" }   // or "openai"
+{ "include_builtin": false }   // custom/cloned voices only</pre>
+
+            <p style="font-weight: 600; font-size: 0.85rem; margin: 0.75rem 0 0.35rem 0;">Response</p>
+<pre style="background: var(--bg-secondary); padding: 0.75rem; border-radius: var(--radius-sm); font-size: 0.78rem; overflow-x: auto; margin: 0; line-height: 1.5;">{
+  "voices": [
+    { "id": "EXAVITQu4vr4xnSDxMaL", "name": "Sarah", "description": "Soft, American female", "provider": "elevenlabs", "is_custom": false },
+    { "id": "openai-alloy",          "name": "Alloy",  "description": "Neutral, professional",  "provider": "openai",      "is_custom": false },
+    ...
+  ]
+}</pre>
+
+            <p style="font-weight: 600; font-size: 0.85rem; margin: 0.75rem 0 0.35rem 0;">Set agent voice</p>
+            <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 0 0 0.5rem 0;">Pass a <code>voice_id</code> from the list above to <code>update-agent</code>:</p>
+<pre style="background: var(--bg-secondary); padding: 0.75rem; border-radius: var(--radius-sm); font-size: 0.78rem; overflow-x: auto; margin: 0; line-height: 1.5;">POST https://api.magpipe.ai/functions/v1/update-agent
+Authorization: Bearer mgp_your_key_here
+Content-Type: application/json
+
+{
+  "agent_id": "uuid",
+  "voice_id": "EXAVITQu4vr4xnSDxMaL"
+}</pre>
           </div>
         </details>
       </div>
@@ -2067,42 +2657,42 @@ export default class SettingsPage {
       }
 
       listContainer.innerHTML = `
-        <div style="overflow-x: auto;">
-          <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+        <div class="api-keys-table-wrap">
+          <table class="api-keys-table">
             <thead>
-              <tr style="text-align: left; border-bottom: 2px solid var(--border-color);">
-                <th style="padding: 0.5rem 0.5rem 0.5rem 0; white-space: nowrap;">Name</th>
-                <th style="padding: 0.5rem; white-space: nowrap;">Key</th>
-                <th style="padding: 0.5rem; white-space: nowrap;" class="api-keys-extra">Webhook</th>
-                <th style="padding: 0.5rem; white-space: nowrap;" class="api-keys-extra">Created</th>
-                <th style="padding: 0.5rem; white-space: nowrap;" class="api-keys-extra">Last Used</th>
-                <th style="padding: 0.5rem; text-align: right; white-space: nowrap;"></th>
+              <tr>
+                <th>Name</th>
+                <th>Key</th>
+                <th class="api-keys-extra">Webhook</th>
+                <th class="api-keys-extra">Created</th>
+                <th class="api-keys-extra">Last Used</th>
+                <th class="api-keys-action-col"></th>
               </tr>
             </thead>
             <tbody>
               ${keys.map(key => `
-                <tr style="border-bottom: 1px solid var(--border-color);">
-                  <td style="padding: 0.5rem 0.5rem 0.5rem 0; font-weight: 500; white-space: nowrap;">${this.escapeHtml(key.name)}</td>
-                  <td style="padding: 0.5rem; white-space: nowrap;">
-                    <code style="font-size: 0.8rem; background: var(--bg-secondary); padding: 0.15rem 0.35rem; border-radius: 3px;">${key.key_prefix}...</code>
+                <tr>
+                  <td class="api-keys-name-cell">${escapeHtml(key.name)}</td>
+                  <td class="api-keys-key-cell">
+                    <code>${key.key_prefix}...</code>
                   </td>
-                  <td style="padding: 0.5rem; color: var(--text-secondary); white-space: nowrap;" class="api-keys-extra">
+                  <td class="api-keys-extra api-keys-webhook-cell">
                     ${key.is_active ? (key.webhook_url
-                      ? `<span style="font-size: 0.8rem; max-width: 180px; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;" title="${this.escapeHtml(key.webhook_url)}">${this.escapeHtml(key.webhook_url)}</span>
-                         <button class="btn btn-secondary api-key-edit-webhook-btn" data-key-id="${key.id}" data-webhook-url="${this.escapeHtml(key.webhook_url)}" data-webhook-secret="${this.escapeHtml(key.webhook_secret || '')}" style="font-size: 0.7rem; padding: 0.15rem 0.35rem; margin-left: 0.25rem; vertical-align: middle;">Edit</button>`
-                      : `<button class="btn btn-secondary api-key-edit-webhook-btn" data-key-id="${key.id}" data-webhook-url="" data-webhook-secret="" style="font-size: 0.7rem; padding: 0.15rem 0.35rem;">+ Add</button>`
-                    ) : '<span style="font-size: 0.75rem;">—</span>'}
+                      ? `<span class="api-keys-webhook-url" title="${escapeHtml(key.webhook_url)}">${escapeHtml(key.webhook_url)}</span>
+                         <button class="btn btn-secondary api-key-edit-webhook-btn api-keys-mini-btn" data-key-id="${key.id}" data-webhook-url="${escapeHtml(key.webhook_url)}" data-webhook-secret="${escapeHtml(key.webhook_secret || '')}">Edit</button>`
+                      : `<button class="btn btn-secondary api-key-edit-webhook-btn api-keys-mini-btn" data-key-id="${key.id}" data-webhook-url="" data-webhook-secret="">+ Add</button>`
+                    ) : '<span class="api-keys-dash">—</span>'}
                   </td>
-                  <td style="padding: 0.5rem; color: var(--text-secondary); white-space: nowrap;" class="api-keys-extra">
+                  <td class="api-keys-extra api-keys-date-cell">
                     ${new Date(key.created_at).toLocaleDateString()}
                   </td>
-                  <td style="padding: 0.5rem; color: var(--text-secondary); white-space: nowrap;" class="api-keys-extra">
+                  <td class="api-keys-extra api-keys-date-cell">
                     ${key.last_used_at ? new Date(key.last_used_at).toLocaleDateString() : 'Never'}
                   </td>
-                  <td style="padding: 0.5rem; text-align: right; white-space: nowrap;">
+                  <td class="api-keys-action-col">
                     ${key.is_active
-                      ? `<button class="btn btn-secondary api-key-revoke-btn" data-key-id="${key.id}" data-key-name="${this.escapeHtml(key.name)}" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">Revoke</button>`
-                      : `<span style="color: var(--text-secondary); font-size: 0.75rem;">Revoked</span>`
+                      ? `<button class="btn btn-secondary api-key-revoke-btn api-keys-mini-btn" data-key-id="${key.id}" data-key-name="${escapeHtml(key.name)}">Revoke</button>`
+                      : `<span class="api-keys-revoked">Revoked</span>`
                     }
                   </td>
                 </tr>
@@ -2121,6 +2711,7 @@ export default class SettingsPage {
       listContainer.querySelectorAll('.api-key-edit-webhook-btn').forEach(btn => {
         btn.addEventListener('click', () => this.showEditWebhookModal(btn.dataset.keyId, btn.dataset.webhookUrl, btn.dataset.webhookSecret));
       });
+
     } catch (error) {
       console.error('Error loading API keys:', error);
       listContainer.innerHTML = `
@@ -2165,12 +2756,6 @@ export default class SettingsPage {
     }
   }
 
-  escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  }
-
   showEditWebhookModal(keyId, currentUrl, currentSecret) {
     // Remove any existing modal
     const existing = document.getElementById('webhook-edit-overlay');
@@ -2189,8 +2774,10 @@ export default class SettingsPage {
         </div>
         <form id="webhook-edit-form">
           <div class="contact-modal-body">
-            <label style="font-weight: 600; display: block; margin-bottom: 0.5rem;">Webhook URL</label>
-            <input type="url" id="webhook-edit-url" value="${this.escapeHtml(currentUrl || '')}" placeholder="https://your-server.com/webhook" style="width: 100%;" maxlength="2048" />
+            <div class="form-group">
+              <label class="form-label" for="webhook-edit-url">Webhook URL</label>
+              <input type="url" id="webhook-edit-url" class="form-input" value="${escapeHtml(currentUrl || '')}" placeholder="https://your-server.com/webhook" maxlength="2048" />
+            </div>
             <p style="margin: 0.5rem 0 0 0; font-size: 0.8rem; color: var(--text-secondary);">
               Receives a POST request with call data when calls complete. Leave empty to disable.
             </p>
@@ -2198,7 +2785,7 @@ export default class SettingsPage {
               <div style="margin-top: 1rem; padding: 0.75rem; background: var(--bg-secondary); border-radius: var(--radius-sm);">
                 <label style="font-weight: 600; display: block; margin-bottom: 0.35rem; font-size: 0.85rem;">Signing Secret</label>
                 <div style="display: flex; gap: 0.5rem; align-items: center;">
-                  <code id="webhook-secret-display" style="flex: 1; font-size: 0.75rem; word-break: break-all; user-select: all;">${this.escapeHtml(currentSecret)}</code>
+                  <code id="webhook-secret-display" style="flex: 1; font-size: 0.75rem; word-break: break-all; user-select: all;">${escapeHtml(currentSecret)}</code>
                   <button type="button" class="btn btn-secondary" id="webhook-secret-copy-btn" style="font-size: 0.7rem; padding: 0.2rem 0.4rem; white-space: nowrap;">Copy</button>
                 </div>
                 <p style="margin: 0.35rem 0 0 0; font-size: 0.75rem; color: var(--text-secondary);">
@@ -2362,17 +2949,22 @@ export default class SettingsPage {
 
     // Copy key
     if (copyBtn) {
+      const labelEl = copyBtn.querySelector('.api-key-copy-label');
+      const setLabel = (text) => { if (labelEl) labelEl.textContent = text; };
+
       copyBtn.addEventListener('click', async () => {
-        try {
-          await navigator.clipboard.writeText(fullValueEl.textContent);
-          copyBtn.textContent = 'Copied!';
-          setTimeout(() => { copyBtn.textContent = 'Copy'; }, 2000);
-        } catch {
-          // Fallback: select the text
+        const copied = await copyTextToClipboard(fullValueEl.textContent || '');
+        if (copied) {
+          setLabel('Copied!');
+          setTimeout(() => setLabel('Copy key'), 2000);
+        } else {
+          // Last-resort: select the value so user can Cmd/Ctrl+C manually
           const range = document.createRange();
           range.selectNodeContents(fullValueEl);
           window.getSelection().removeAllRanges();
           window.getSelection().addRange(range);
+          setLabel('Press Cmd/Ctrl+C');
+          setTimeout(() => setLabel('Copy key'), 2500);
         }
       });
     }

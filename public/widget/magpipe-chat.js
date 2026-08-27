@@ -19,7 +19,7 @@
   // Configuration
   const API_URL = 'https://api.magpipe.ai/functions/v1/webhook-chat-message';
   const SUPABASE_URL = 'https://api.magpipe.ai';
-  const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_KEY';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im10eGJpeWlsdmd3aGJkcHR5c2V4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkxNzE2OTksImV4cCI6MjA3NDc0NzY5OX0.VpOfuXl7S_ZdSpRjD8DGkSbbT4Y5g4rsezYNYGdtNPs';
 
   // State
   let config = null;

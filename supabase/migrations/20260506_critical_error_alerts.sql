@@ -38,7 +38,7 @@ COMMENT ON TABLE error_alerts IS
 -- The row id is the documented sentinel constant referenced by log-error
 -- and admin-notifications-api (see CONFIG_ID = 00000000-0000-0000-0000-000000000100).
 INSERT INTO admin_notification_config (id, sms_phone, errors_sms)
-VALUES ('00000000-0000-0000-0000-000000000100', '+15555550100', true)
+VALUES ('00000000-0000-0000-0000-000000000100', '+16045628647', true)
 ON CONFLICT (id) DO UPDATE
 SET sms_phone = EXCLUDED.sms_phone,
     errors_sms = true,

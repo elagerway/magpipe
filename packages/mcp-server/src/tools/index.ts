@@ -10,6 +10,7 @@ import { registerVoiceTools } from "./voices.js";
 import { registerCalendarTools } from "./calendar.js";
 import { registerApiKeyTools } from "./api-keys.js";
 import { registerMiscTools } from "./misc.js";
+import { registerTestTools } from "./tests.js";
 
 export function registerAllTools(server: McpServer, client: MagpipeClient) {
   registerAgentTools(server, client);
@@ -22,4 +23,5 @@ export function registerAllTools(server: McpServer, client: MagpipeClient) {
   registerCalendarTools(server, client);
   registerApiKeyTools(server, client);
   registerMiscTools(server, client);
+  registerTestTools(server, client);
 }

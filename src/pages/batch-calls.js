@@ -7,6 +7,7 @@ import { getCurrentUser, supabase } from '../lib/supabase.js';
 import { renderBottomNav } from '../components/BottomNav.js';
 import { showToast } from '../lib/toast.js';
 import { showConfirmModal } from '../components/ConfirmModal.js';
+import { escapeHtml } from '../lib/formatters.js';
 
 export default class BatchCallsPage {
   constructor() {
@@ -660,7 +661,7 @@ export default class BatchCallsPage {
 
     this.agents = agents;
     select.innerHTML = '<option value="">Select an agent</option>' +
-      agents.map(a => `<option value="${a.id}">${this.escapeHtml(a.name)}</option>`).join('');
+      agents.map(a => `<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('');
   }
 
   async loadAgentNumbers(agentId) {
@@ -817,7 +818,7 @@ export default class BatchCallsPage {
         ${this.recipients.map((r, i) => `
           <div class="recipient-row">
             <span class="recipient-index">${i + 1}</span>
-            <span class="recipient-name">${this.escapeHtml(r.name)}</span>
+            <span class="recipient-name">${escapeHtml(r.name)}</span>
             <span class="recipient-phone">${r.phone_number}</span>
           </div>
         `).join('')}
@@ -831,12 +832,6 @@ export default class BatchCallsPage {
       const hasRecipients = this.recipients.length > 0;
       btn.classList.toggle('enabled', hasRecipients);
     }
-  }
-
-  escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
   }
 
   recipientStatusLabel(status) {
@@ -1116,7 +1111,7 @@ export default class BatchCallsPage {
           return `
           <div class="batch-history-row" data-batch-id="${b.id}">
             <div>
-              <div class="batch-history-name">${this.escapeHtml(b.name)} ${recurrenceBadge}</div>
+              <div class="batch-history-name">${escapeHtml(b.name)} ${recurrenceBadge}</div>
               <div class="batch-history-date">${new Date(b.created_at).toLocaleDateString()} ${new Date(b.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
             </div>
             <span class="batch-status-badge batch-status-${b.status}">${b.status}</span>
@@ -1158,7 +1153,7 @@ export default class BatchCallsPage {
            onclick="if(event.target===this)this.style.display='none'">
         <div class="contact-modal" onclick="event.stopPropagation()" style="max-width: 650px;">
           <div class="contact-modal-header">
-            <h3>${this.escapeHtml(batch.name)}</h3>
+            <h3>${escapeHtml(batch.name)}</h3>
             <button class="close-modal-btn" onclick="document.getElementById('batch-detail-modal').style.display='none'">&times;</button>
           </div>
           <div class="contact-modal-body scrollable">
@@ -1172,10 +1167,10 @@ export default class BatchCallsPage {
                 <span class="recipient-index">${i + 1}</span>
                 <div style="flex: 1; min-width: 0;">
                   <div style="display: flex; align-items: center; gap: 0.5rem;">
-                    <span style="font-weight: 500;">${this.escapeHtml(r.name || r.phone_number)}</span>
+                    <span style="font-weight: 500;">${escapeHtml(r.name || r.phone_number)}</span>
                     <span style="color: var(--text-secondary); font-size: 0.85rem;">${r.phone_number}</span>
                   </div>
-                  ${r.error_message ? `<div class="recipient-error" style="font-size: 0.75rem; color: #ef4444; margin-top: 0.2rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${this.escapeHtml(r.error_message)}</div>` : ''}
+                  ${r.error_message ? `<div class="recipient-error" style="font-size: 0.75rem; color: #ef4444; margin-top: 0.2rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(r.error_message)}</div>` : ''}
                 </div>
                 <span class="recipient-status-badge" style="${this.recipientBadgeStyle(r.status)}">${this.recipientStatusLabel(r.status)}</span>
                 ${batch.status !== 'running' && batch.status !== 'draft' ? `<button class="retry-recipient-btn" data-recipient-id="${r.id}" data-phone="${r.phone_number}" style="border: none; background: none; color: var(--primary-color, #6366f1); cursor: pointer; font-size: 0.75rem; font-weight: 500; padding: 0.2rem 0.4rem; border-radius: 6px; white-space: nowrap;" title="Retry this call">Retry</button>` : ''}
@@ -1406,13 +1401,13 @@ export default class BatchCallsPage {
            onclick="if(event.target===this)this.style.display='none'">
         <div class="contact-modal" onclick="event.stopPropagation()" style="max-width: 650px;">
           <div class="contact-modal-header">
-            <h3>${this.escapeHtml(batch.name)}</h3>
+            <h3>${escapeHtml(batch.name)}</h3>
             <button class="close-modal-btn" onclick="document.getElementById('batch-detail-modal').style.display='none'">&times;</button>
           </div>
           <div class="contact-modal-body scrollable">
             <div style="display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; align-items: center;">
               <span class="batch-status-badge batch-status-${batch.status}" style="font-size: 0.85rem;">${batch.status}</span>
-              <span class="recurrence-badge">${this.escapeHtml(recurrenceLabel)}</span>
+              <span class="recurrence-badge">${escapeHtml(recurrenceLabel)}</span>
               <span style="font-size: 0.85rem; color: var(--text-secondary);">From: ${batch.caller_id}</span>
               <span style="font-size: 0.85rem; color: var(--text-secondary);">${batch.total_recipients} recipients</span>
             </div>

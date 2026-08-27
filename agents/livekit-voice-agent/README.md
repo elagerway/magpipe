@@ -12,6 +12,29 @@ Python-based LiveKit agent for handling real-time voice conversations with custo
 - ✅ Dynamic user configuration from Supabase
 - ✅ Custom voice settings per user
 
+## Deployment architecture: two workers (English vs Multilingual)
+
+The agent runs as **two Render services** in the Magpipe project, split by turn-detector
+model footprint (GH #95 / #96):
+
+| Service | Render | agent name | env | turn detector | ~RAM |
+|---|---|---|---|---|---|
+| **English** | `magpipe` (`srv-d3g2gvmr433s738si3j0`) | `SW Telephony Agent` | (none) | English EOU only | ~0.7GB |
+| **Multilingual** | `magpipe-multilingual` (`srv-d8q7svsm0tmc73a3eamg`) | `SW Telephony Agent ML` | `ENABLE_MULTILINGUAL_TURN_DETECTOR=1` | English + Multilingual | ~1.5GB |
+
+**Why:** the LiveKit inference process eagerly loads every *registered* turn-detector
+runner's ONNX model at startup. Importing `turn_detector.multilingual` registers it →
+loads **~888MB** (vs ~66MB for English) — the bulk of idle RAM, which caused memory-pressure
+stalls (`inference is slower than realtime`) on a 2GB dyno. `agent.py` imports Multilingual
+**only** when `ENABLE_MULTILINGUAL_TURN_DETECTOR` is set; `_build_turn_detector` then uses it
+for non-English agents, else English, else silence-based.
+
+Only multilingual agents (`language ∈ multi/fr/es/de`) need the ML worker (currently just
+**John / HelloMD**). Routing multilingual numbers → the ML worker is **WIP (GH #96)** — needs
+a dedicated trunk + a DB-driven sync (a specific `inbound_numbers` rule does NOT override an
+empty catch-all on the same trunk). Until then, master still has both models, so multilingual
+agents work on Service A.
+
 ## Prerequisites
 
 1. **LiveKit Cloud Account** (already configured)
@@ -52,20 +75,125 @@ This starts the agent in development mode, connecting to your LiveKit Cloud.
 
 ### 4. Local Testing with Dedicated Number (Recommended)
 
-To avoid conflicts with the production Render agent:
+A separate LiveKit dispatch rule routes a test number to your **local** agent so it
+never competes with the production Render agent. Both run in the same LiveKit project
+(`wss://plug-bq7kgzpt.livekit.cloud`); they're kept apart purely by **agent name**.
 
-1. **LiveKit Cloud Dashboard**: Create a dispatch rule for test number (+16042101966) that routes to agent name "SW Telephony Agent Local"
+**LiveKit dispatch rules (verified 2026-06-18 via the API):**
 
-2. **Run local agent with different name**:
+| Dispatch rule | Trunk | Agent name | Used by |
+|---|---|---|---|
+| `SDR_ALV2JP5LqHxi` ("SW Agent Local") | `ST_jKuUnR9Lo5zW` | **`SW Agent Local`** | **local** |
+| `SDR_Zy9ZYV5YLNFA` ("SW-calls") | `ST_wTNU9hLWs9GD` | `SW Telephony Agent` | prod |
+| `SDR_gn6yBMqXXugT` ("External-Twilio") | `ST_D37mjvGygAuh` | `SW Telephony Agent` | prod |
+
+⚠️ The local agent name is **`SW Agent Local`** — NOT "SW Telephony Agent Local".
+The worker's `agent_name` must match the dispatch rule's agent name *exactly* or
+LiveKit silently never hands it the job (worker registers fine, no error, no call).
+
+**Test number:** `+16042101966` (inbound routes to the local dispatch).
+
+**Run the local agent:**
 ```bash
-export LIVEKIT_AGENT_NAME="SW Telephony Agent Local"
+cd agents/livekit-voice-agent
+export LIVEKIT_AGENT_NAME="SW Agent Local"     # MUST match the local dispatch rule
 export SSL_CERT_FILE=$(python3 -c "import certifi; print(certifi.where())")
-python agent.py dev
+export HF_HOME="$HOME/.cache/huggingface"      # else agent.py defaults HF_HOME to a
+                                               # Render path → "model_q8.onnx not found"
+export LK_LOAD_THRESHOLD="0.99"                # laptops exceed the default 0.7 load
+                                               # threshold and flap to "unavailable",
+                                               # causing missed dispatches
+./venv/bin/python agent.py download-files      # one-time: fetch VAD + turn-detector models
+./venv/bin/python agent.py start
 ```
 
-3. **Assign test number to an agent** in the database (service_numbers table)
+Confirm it registered under the right name:
+```
+registered worker ... "agent_name": "SW Agent Local"
+```
 
-4. **Call the test number** to test your changes locally before deploying
+**Then test:** call `+16042101966` from a phone (or trigger an outbound call from a
+number routed to trunk `ST_jKuUnR9Lo5zW`). Watch the local log for the entrypoint and
+`✅ Turn detector in use: ...`; query `call_state_logs` for that room to inspect timing.
+
+**Diagnosing "no agent answers" (dead air, no errors in the local log):**
+- Worker `agent_name` ≠ dispatch rule agent name (most common — see warning above).
+- Worker flapping to "unavailable" on load → raise `LK_LOAD_THRESHOLD`.
+- Wrong LiveKit project in `.env` (`LIVEKIT_URL`).
+- Verify with the API: `lk.sip.list_dispatch_rule(...)` and `lk.room.list_rooms(...)`
+  (an orphan room with `participants=0` = a call that found no agent).
+
+### 5. Sending an outbound test call to a real phone
+
+To ring a real cell from the local agent, POST to `initiate-bridged-call` with the
+**local-routed** number as `caller_id`:
+
+```bash
+cd agents/livekit-voice-agent
+source ./.env        # ⚠️ the AGENT .env has SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY.
+                     # the repo-ROOT .env does NOT — sourcing it leaves $SUPABASE_URL
+                     # empty and curl fails "URL malformed" (exit 3). This bit me repeatedly.
+curl -s -X POST "$SUPABASE_URL/functions/v1/initiate-bridged-call" \
+  -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" -H "Content-Type: application/json" \
+  -d '{"phone_number":"<your cell>","caller_id":"+16042101966","user_id":"<user uuid>"}'
+```
+
+`caller_id: +16042101966` routes the agent leg to trunk `ST_jKuUnR9Lo5zW` → the local
+agent. Watch the log for `✅ PSTN picked up — playing greeting`.
+
+**For the greeting to play on pickup, two things are required:**
+1. **`outbound-call-status` deployed with the `pstn_joined_at` stamp** — it stamps when the
+   PSTN leg reports `answered`/`in-progress` (the "callee connected" signal). The agent
+   *cannot* detect pickup itself: the callee is bridged in via SignalWire's conference, so
+   it never appears as a LiveKit participant. This edge-function signal is the only way.
+2. **A static `greeting` on the outbound agent** (`agent_configs.greeting`). With none, the
+   agent falls back to `generate_reply()`, which **400s** ("text content blocks must contain
+   non-whitespace text") because there's no conversation to reply to yet — that's the
+   `voice_llm_failure` alert. The greeting plays via `session.say(..., allow_interruptions=False)`
+   after a ~1s beat so it isn't cut off by the callee's reflexive "hello?".
+
+**Gotchas that cost me time here:**
+- After editing `agent.py`, restart the worker and **wait for `registered worker`** before
+  dialing — dialing before it's up = dead air. Verify `ps -p <pid>` shows it alive (a
+  restart that silently exits will look "started" but isn't registered).
+- `service_numbers.outbound_agent_id` must point at the agent you expect — outbound calls
+  resolve `outbound_agent_id` first, then fall back to `agent_id`.
+- Run the dial `curl` from a shell script file, not inline, if the harness sandbox blocks
+  inline network calls.
+
+### 6. Testing prewarm (instant greeting on outbound)
+
+Outbound/scheduled calls support **prewarm**: the agent is fully warmed *before* the
+callee's phone rings, so they answer into an instant greeting instead of waiting out
+the ~6s session startup.
+
+**How it works:**
+1. `initiate-bridged-call` fires the agent SIP leg, then — if `prewarm: true` — **polls
+   `call_records.agent_warmed_at`** (keyed on `call_record_id`) for up to 15s before
+   dialing the PSTN leg.
+2. The agent stamps `call_records.agent_warmed_at` right after `session.start()`
+   (STT/LLM/TTS connected) — look for `🔥 Stamped agent_warmed_at` in the agent log.
+3. Once stamped (or on timeout), the edge function dials the callee. The ~6s warmup
+   thus happens during ring time, not after pickup.
+
+This signal is keyed on `call_record_id` (NOT room name), so it works on any
+worker/room/dispatch — unlike the old room-poll prewarm, which was a no-op (it polled
+a room the agent never joins). See `prewarm-call-debacle.md`.
+
+**Test it locally:**
+```bash
+# local agent running as "SW Agent Local"; initiate-bridged-call deployed with the poll.
+curl -s -X POST "$SUPABASE_URL/functions/v1/initiate-bridged-call" \
+  -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" -H "Content-Type: application/json" \
+  -d '{"phone_number":"<your cell>","caller_id":"+16042101966","user_id":"<user>","prewarm":true}'
+```
+Watch the agent log for `🔥 Stamped agent_warmed_at`, then verify `call_records.agent_warmed_at`
+is set. The callee's phone rings only *after* that stamp → instant greeting.
+
+⚠️ **Don't test within ~30s of a Render deploy.** During a rolling deploy the old and
+new workers both register under the same `agent_name` briefly; a call in that window can
+get a **second spurious dispatch** that resolves to "number not assigned" and disconnects
+the room (symptom: greeting, then silence). Wait for the deploy to fully settle before testing.
 
 ## Deployment on Render
 
@@ -84,9 +212,9 @@ python agent.py dev
 
 6. Add Environment Variables (from Render dashboard):
    ```
-   LIVEKIT_URL=wss://plug-bq7kgzpt.livekit.cloud
-   LIVEKIT_API_KEY=APIJrWftyj6qS8w
-   LIVEKIT_API_SECRET=9oafeK3kiHb8vAN0rlJrnmsCPpgQqLFhfekBAmfr6pzH
+   LIVEKIT_URL=wss://<your-livekit-subdomain>.livekit.cloud
+   LIVEKIT_API_KEY=<your_livekit_api_key>
+   LIVEKIT_API_SECRET=<your_livekit_api_secret>
    SUPABASE_URL=<your_supabase_url>
    SUPABASE_SERVICE_ROLE_KEY=<your_service_role_key>
    SIGNALWIRE_SPACE=<your_space>.signalwire.com

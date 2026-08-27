@@ -89,7 +89,7 @@ BEGIN
   SELECT * INTO response
   FROM http((
     'POST',
-    'https://YOUR_PROJECT_REF.supabase.co/functions/v1/close-stale-chat-sessions',
+    'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/close-stale-chat-sessions',
     ARRAY[
       http_header('Content-Type', 'application/json'),
       http_header('Authorization', 'Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY')
@@ -161,7 +161,7 @@ BEGIN
   SELECT * INTO response
   FROM http((
     'POST',
-    'https://YOUR_PROJECT_REF.supabase.co/functions/v1/webhook-retry-worker',
+    'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/webhook-retry-worker',
     ARRAY[
       http_header('Content-Type', 'application/json'),
       http_header('Authorization', 'Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY')

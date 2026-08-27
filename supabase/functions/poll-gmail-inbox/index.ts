@@ -1,5 +1,14 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { analyzeSentiment } from '../_shared/sentiment-analysis.ts'
+import {
+  extractBody,
+  isComposioManaged,
+  fetchRecentMessagesComposio,
+  sendGmailReplyComposio,
+  isBulkOrAutomated,
+  quarantineEmail,
+  hasRecentAiReplyToSender
+} from '../_shared/gmail-helpers.ts'
 
 Deno.serve(async (req) => {
   try {
@@ -63,23 +72,46 @@ Deno.serve(async (req) => {
         continue
       }
 
-      // Refresh token if expired
-      let accessToken = integration.access_token
-      if (new Date(integration.token_expires_at) < new Date()) {
-        accessToken = await refreshGoogleToken(supabase, integration)
-        if (!accessToken) {
-          console.error(`Failed to refresh token for config ${config.id}`)
-          continue
+      // Determine routing: Composio-managed rows have NULL access_token —
+      // we proxy through Composio's tools/execute instead.
+      const composioRoute = isComposioManaged(integration)
+      let accessToken: string | null = null
+      if (!composioRoute) {
+        accessToken = integration.access_token
+        if (new Date(integration.token_expires_at) < new Date()) {
+          accessToken = await refreshGoogleToken(supabase, integration)
+          if (!accessToken) {
+            console.error(`Failed to refresh token for config ${config.id}`)
+            continue
+          }
         }
       }
 
       // 3. Fetch new messages from Gmail
       let messages: any[] = []
-      if (config.last_history_id) {
-        messages = await fetchViaHistory(accessToken, config.last_history_id)
+      if (composioRoute) {
+        // Composio doesn't surface Gmail's history-ID watermark via tools/execute.
+        // Fetch a 24h window and dedup by gmail_message_id (enforced below).
+        // Read/unread filtering is unreliable here — a user marking a message
+        // read on their phone between polls would cause us to miss it.
+        messages = await fetchRecentMessagesComposio(integration.user_id, 'newer_than:1d', 25)
+        // Stamp last_history_id so subsequent runs widen the query (but still
+        // dedup) — repurpose the column as a "have we run before?" flag for
+        // Composio rows. Setting to a sentinel so the column isn't NULL.
+        if (!config.last_history_id) {
+          await supabase
+            .from('agent_email_configs')
+            .update({
+              last_history_id: 'composio',
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', config.id)
+        }
+      } else if (config.last_history_id) {
+        messages = await fetchViaHistory(accessToken!, config.last_history_id)
       } else {
         // First run: just set the history_id baseline, don't import old emails
-        const historyId = await getLatestHistoryId(accessToken)
+        const historyId = await getLatestHistoryId(accessToken!)
         await supabase
           .from('agent_email_configs')
           .update({
@@ -113,7 +145,7 @@ Deno.serve(async (req) => {
           if (!isToUs) continue
         }
 
-        // Skip system/automated emails
+        // Skip system/automated emails (keep in sync with _shared/gmail-helpers.ts isSystemEmail)
         const fromLower = (parsed.from_email || '').toLowerCase()
         if (fromLower.includes('mailer-daemon') ||
             fromLower.includes('noreply') ||
@@ -121,8 +153,23 @@ Deno.serve(async (req) => {
             fromLower.includes('postmaster') ||
             fromLower.includes('notifications@') ||
             fromLower.includes('notification@') ||
-            fromLower.includes('systemgenerated')) {
+            fromLower.includes('systemgenerated') ||
+            fromLower.includes('@magpipe.ai')) {
           console.log(`Skipping system email from: ${parsed.from_email}`)
+          continue
+        }
+
+        // Bulk/automated header filter — drops marketing, newsletters,
+        // welcome/verify mail. Audit row in quarantined_emails.
+        const bulkCheck = isBulkOrAutomated(msg.payload)
+        if (bulkCheck.isBulk) {
+          console.log(`[poll-inbox] Quarantining ${parsed.gmail_message_id} (${bulkCheck.reason})`)
+          await quarantineEmail(supabase, {
+            userId: integration.user_id,
+            parsedMsg: parsed,
+            reason: bulkCheck.reason!,
+            reasonDetail: { matchedHeader: bulkCheck.matchedHeader, matchedValue: bulkCheck.matchedValue }
+          })
           continue
         }
 
@@ -145,14 +192,18 @@ Deno.serve(async (req) => {
           }
         }
 
-        // Extract image attachments
+        // Extract image attachments. For Composio-managed integrations we
+        // don't have a raw access token, so attachment download is deferred
+        // to a follow-up (would need GMAIL_GET_ATTACHMENT proxy). Skip cleanly.
         let attachments: any[] = []
         const attachmentMetas = extractImageAttachments(msg.payload)
-        if (attachmentMetas.length > 0) {
+        if (attachmentMetas.length > 0 && !composioRoute && accessToken) {
           attachments = await downloadAndUploadAttachments(
             accessToken, parsed.gmail_message_id, parsed.thread_id, attachmentMetas, supabase, supabaseUrl
           )
           console.log(`email_messages: uploaded ${attachments.length} attachment(s) for msg ${parsed.gmail_message_id}`)
+        } else if (attachmentMetas.length > 0 && composioRoute) {
+          console.log(`Composio route: skipping attachment download for msg ${parsed.gmail_message_id} (deferred)`)
         }
 
         // Insert into email_messages
@@ -196,15 +247,18 @@ Deno.serve(async (req) => {
         }
       }
 
-      // 5. Update last_history_id
-      const latestHistoryId = await getLatestHistoryId(accessToken)
-      await supabase
-        .from('agent_email_configs')
-        .update({
-          last_history_id: latestHistoryId,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', config.id)
+      // 5. Update last_history_id (direct path only — Composio rows don't have a
+      // Gmail history-ID watermark exposed via tools/execute)
+      if (!composioRoute) {
+        const latestHistoryId = await getLatestHistoryId(accessToken!)
+        await supabase
+          .from('agent_email_configs')
+          .update({
+            last_history_id: latestHistoryId,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', config.id)
+      }
 
       // 6. Generate AI replies for new inbound messages
       // Fetch agent details separately
@@ -248,7 +302,13 @@ Deno.serve(async (req) => {
             continue
           }
 
-          await generateAiReply(supabase, accessToken, config, agent, sendFrom, msg)
+          // Per-sender rate limit (24h) — backstop against reply storms.
+          if (await hasRecentAiReplyToSender(supabase, msg.from_email, 24)) {
+            console.log(`[poll-inbox] rate-limited AI reply to ${msg.from_email}`)
+            continue
+          }
+
+          await generateAiReply(supabase, accessToken, config, agent, sendFrom, msg, integration)
         }
       }
     }
@@ -450,13 +510,19 @@ function parseGmailMessage(msg: any, gmailAddress: string, sendAsEmail?: string)
 
     const { text, html } = extractBody(msg.payload)
 
+    // Normalize: replace raw Gmail address with send-as alias in from/to
+    const normalizeEmail = (email: string) => {
+      if (!sendAsEmail || !gmailAddress) return email
+      return email.replace(new RegExp(gmailAddress.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), sendAsEmail)
+    }
+
     return {
       gmail_message_id: msg.id,
       thread_id: msg.threadId,
       message_id_header: messageIdHeader,
-      from_email: fromEmail,
+      from_email: isOutbound && sendAsEmail ? sendAsEmail : fromEmail,
       from_name: fromName,
-      to_email: to,
+      to_email: normalizeEmail(to),
       subject,
       body_text: text,
       body_html: html,
@@ -470,45 +536,16 @@ function parseGmailMessage(msg: any, gmailAddress: string, sendAsEmail?: string)
 }
 
 
-function extractBody(payload: any): { text: string; html: string } {
-  let text = ''
-  let html = ''
-
-  if (!payload) return { text, html }
-
-  if (payload.body?.data) {
-    const decoded = atob(payload.body.data.replace(/-/g, '+').replace(/_/g, '/'))
-    if (payload.mimeType === 'text/plain') text = decoded
-    if (payload.mimeType === 'text/html') html = decoded
-  }
-
-  if (payload.parts) {
-    for (const part of payload.parts) {
-      if (part.mimeType === 'text/plain' && part.body?.data) {
-        text = atob(part.body.data.replace(/-/g, '+').replace(/_/g, '/'))
-      }
-      if (part.mimeType === 'text/html' && part.body?.data) {
-        html = atob(part.body.data.replace(/-/g, '+').replace(/_/g, '/'))
-      }
-      if (part.parts) {
-        const nested = extractBody(part)
-        if (nested.text) text = nested.text
-        if (nested.html) html = nested.html
-      }
-    }
-  }
-
-  return { text, html }
-}
 
 
 async function generateAiReply(
   supabase: any,
-  accessToken: string,
+  accessToken: string | null,
   config: any,
   agent: any,
   sendFrom: string,
-  msg: any
+  msg: any,
+  integration?: any
 ) {
   const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
   if (!openaiApiKey) {
@@ -630,8 +667,11 @@ async function generateAiReply(
     const replySubject = msg.subject?.startsWith('Re:') ? msg.subject : `Re: ${msg.subject || ''}`
 
     if (config.agent_mode === 'auto') {
-      // Auto-send: send via Gmail and record
-      const gmailResult = await sendGmailReply(accessToken, sendFrom, msg, draftText, replySubject)
+      // Auto-send: send via Gmail and record. Composio-managed rows route
+      // through Composio's GMAIL_REPLY_TO_THREAD action (no raw token needed).
+      const gmailResult = isComposioManaged(integration)
+        ? await sendGmailReplyComposio(integration.user_id, msg, draftText, replySubject)
+        : await sendGmailReply(accessToken!, sendFrom, msg, draftText, replySubject)
 
       if (gmailResult) {
         await supabase.from('email_messages').insert({

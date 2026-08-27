@@ -83,13 +83,22 @@ export async function processAndReplyWhatsApp(
       .not('metadata', 'is', null)
       .gt('sent_at', mediaSince)
       .order('sent_at', { ascending: false })
-      .limit(10)
-    const imageUrls: string[] = []
-    for (const m of recentMedia ?? []) {
+      .limit(50)
+    // Structured image media for the report tool: {url, mime_type, caption}.
+    // IMAGES ONLY — the same conversation re-hosts voice notes (audio/ogg) and
+    // other docs into metadata.media, and those must not be sent as photos.
+    // Reversed to chronological (oldest-first) so attached photos match send order.
+    const imageMedia: { url: string; mime_type: string | null; caption: string | null }[] = []
+    const seenMediaUrls = new Set<string>()
+    for (const m of (recentMedia ?? []).slice().reverse()) {
       for (const item of (m.metadata?.media ?? [])) {
-        if (item?.url && !imageUrls.includes(item.url)) imageUrls.push(item.url)
+        if (!item?.url || !String(item.mime_type ?? '').startsWith('image/')) continue
+        if (seenMediaUrls.has(item.url)) continue
+        seenMediaUrls.add(item.url)
+        imageMedia.push({ url: item.url, mime_type: item.mime_type ?? null, caption: item.caption ?? null })
       }
     }
+    const imageUrls: string[] = imageMedia.map((m) => m.url)
 
     // Memory
     let memoryContext = ''
@@ -207,9 +216,13 @@ ${hasExistingConversation ? '- This is an ONGOING conversation - continue natura
           channel: 'whatsapp',
           session_id: sessionId,
           from,
-          ...(imageUrls.length ? { images: imageUrls, media_urls: imageUrls } : {}),
+          // Photos the super sent this report cycle. `media` is the rich shape
+          // (url + mime_type + caption); `images`/`media_urls` are bare-URL
+          // aliases so the consumer can read whichever it prefers. Added only
+          // when photos exist, to avoid changing the payload shape otherwise.
+          ...(imageMedia.length ? { media: imageMedia, images: imageUrls, media_urls: imageUrls } : {}),
         }
-        if (imageUrls.length) reportedImages = true
+        if (imageMedia.length) reportedImages = true
         const fn = customFunctions.find((f: any) => f.name === fnName)
 
         let toolResult = 'error: function not found'
@@ -282,30 +295,48 @@ export async function transcribeWhatsAppAudio(
   mediaId: string,
   accessToken: string,
   supabase: any,
-  context: { userId?: string; phoneNumberId?: string; from?: string } = {}
+  context: { userId?: string; phoneNumberId?: string; from?: string } = {},
+  rehosted?: { url: string; mime_type?: string },
 ): Promise<string | null> {
   try {
-    // Step 1: Get the media download URL from Meta
-    const mediaRes = await fetch(`https://graph.facebook.com/v21.0/${mediaId}`, {
-      headers: { 'Authorization': `Bearer ${accessToken}` },
-    })
-    if (!mediaRes.ok) {
-      console.error('Failed to fetch media metadata:', await mediaRes.text())
-      return null
-    }
-    const mediaData = await mediaRes.json()
-    const mediaUrl: string = mediaData.url
-    const mimeType: string = mediaData.mime_type || 'audio/ogg'
+    let audioBuffer: ArrayBuffer
+    let mimeType: string
+    if (rehosted?.url) {
+      // Transcribe from the copy we already re-hosted to storage — avoids a
+      // second round-trip to Meta's media endpoint (which intermittently
+      // stalls and hung the whole reply chain for file-attachment audio).
+      const reRes = await fetch(rehosted.url, { signal: AbortSignal.timeout(30000) })
+      if (!reRes.ok) {
+        console.error('Failed to download re-hosted audio:', reRes.status)
+        return null
+      }
+      mimeType = rehosted.mime_type || reRes.headers.get('content-type') || 'audio/ogg'
+      audioBuffer = await reRes.arrayBuffer()
+    } else {
+      // Step 1: Get the media download URL from Meta
+      const mediaRes = await fetch(`https://graph.facebook.com/v21.0/${mediaId}`, {
+        headers: { 'Authorization': `Bearer ${accessToken}` },
+        signal: AbortSignal.timeout(15000),
+      })
+      if (!mediaRes.ok) {
+        console.error('Failed to fetch media metadata:', await mediaRes.text())
+        return null
+      }
+      const mediaData = await mediaRes.json()
+      const mediaUrl: string = mediaData.url
+      mimeType = mediaData.mime_type || 'audio/ogg'
 
-    // Step 2: Download the audio binary
-    const audioRes = await fetch(mediaUrl, {
-      headers: { 'Authorization': `Bearer ${accessToken}` },
-    })
-    if (!audioRes.ok) {
-      console.error('Failed to download audio:', await audioRes.text())
-      return null
+      // Step 2: Download the audio binary
+      const audioRes = await fetch(mediaUrl, {
+        headers: { 'Authorization': `Bearer ${accessToken}` },
+        signal: AbortSignal.timeout(30000),
+      })
+      if (!audioRes.ok) {
+        console.error('Failed to download audio:', await audioRes.text())
+        return null
+      }
+      audioBuffer = await audioRes.arrayBuffer()
     }
-    const audioBuffer = await audioRes.arrayBuffer()
 
     // Step 3: Transcribe via OpenAI Whisper
     const ext = mimeType.includes('ogg') ? 'ogg' : mimeType.includes('mp4') ? 'mp4' : mimeType.includes('mpeg') ? 'mp3' : 'ogg'
@@ -317,6 +348,7 @@ export async function transcribeWhatsAppAudio(
       method: 'POST',
       headers: { 'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}` },
       body: formData,
+      signal: AbortSignal.timeout(60000),
     })
     if (!whisperRes.ok) {
       const errorText = await whisperRes.text()

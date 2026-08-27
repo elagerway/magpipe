@@ -4,6 +4,7 @@
  */
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { reportError } from '../_shared/error-reporter.ts';
 
 Deno.serve(async (req) => {
   try {
@@ -63,9 +64,37 @@ Deno.serve(async (req) => {
       updateData.delivered_at = new Date().toISOString();
     }
 
-    // Add error info to metadata if failed
+    // Log failed deliveries to system_error_logs for observability
     if (status === 'failed' || status === 'undelivered') {
       console.log(`SMS delivery failed: ${ErrorCode} - ${ErrorMessage}`);
+      reportError(supabase, {
+        error_type: 'sms_delivery_failure',
+        error_message: `SMS ${status}: ${ErrorMessage || 'No error message'}`,
+        error_code: ErrorCode || status,
+        source: 'signalwire',
+        severity: 'warning',
+        metadata: { message_sid: MessageSid, to: To, from: From, status: MessageStatus },
+      }).catch(() => {});
+
+      // Stamp the carrier failure reason onto the row so get_message /
+      // list_messages surface WHY it failed (matches the WhatsApp path).
+      // Merge into existing metadata — never clobber attribution data.
+      const { data: existingRow } = await supabase
+        .from('sms_messages')
+        .select('metadata')
+        .eq('message_sid', MessageSid)
+        .maybeSingle();
+      const existingMeta = (existingRow?.metadata && typeof existingRow.metadata === 'object' && !Array.isArray(existingRow.metadata))
+        ? existingRow.metadata as Record<string, unknown>
+        : {};
+      updateData.metadata = {
+        ...existingMeta,
+        delivery_error: {
+          code: ErrorCode || status,
+          reason: ErrorMessage || `SMS ${status}`,
+          at: new Date().toISOString(),
+        },
+      };
     }
 
     const { data, error } = await supabase

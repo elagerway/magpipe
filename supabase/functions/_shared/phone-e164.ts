@@ -1,6 +1,6 @@
 // Phone number normalization to E.164. Accepts the common formats real
-// humans type — "(555) 555-0100", "555.555.0100", "1 555 555 0100",
-// "+1 555-555-0100", "+15555550100" — and outputs "+15555550100".
+// humans type — "(604) 562-8647", "604.562.8647", "1 604 562 8647",
+// "+1 604-562-8647", "+16045628647" — and outputs "+16045628647".
 //
 // Heuristic-only (no libphonenumber). Magpipe is North-America-focused;
 // any input without an explicit + prefix is assumed NANP (US/Canada).
@@ -57,7 +57,7 @@ export function normalizeE164(input: string | null | undefined): string | null {
 export function requireE164(input: string | null | undefined, fieldName = 'phone'): string {
   const normalized = normalizeE164(input)
   if (!normalized) {
-    throw new Error(`Invalid ${fieldName}: "${input}" — provide a number like (555) 555-0100 or +15555550100`)
+    throw new Error(`Invalid ${fieldName}: "${input}" — provide a number like (604) 562-8647 or +16045628647`)
   }
   return normalized
 }

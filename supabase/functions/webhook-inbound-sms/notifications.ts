@@ -1,4 +1,5 @@
 import { SupabaseClient } from 'npm:@supabase/supabase-js@2'
+import { resolveSlackChannelId, fetchAllSlackChannels } from '../_shared/slack-channels.ts'
 
 export async function autoEnrichContact(
   userId: string,
@@ -129,7 +130,7 @@ export function isWithinSchedule(
       weekday: 'long',
       hour: '2-digit',
       minute: '2-digit',
-      hour12: false,
+      hourCycle: 'h23', // hour12:false can yield "24:xx" at midnight, breaking string compares
     })
 
     const parts = formatter.formatToParts(now)
@@ -145,21 +146,34 @@ export function isWithinSchedule(
     const currentTime = `${hour}:${minute}`
     const daySchedule = schedule[weekday]
 
+    // An overnight window (start > end, e.g. 23:00-05:00) spills past midnight
+    // into the NEXT day, so the early-morning portion is owned by yesterday's row
+    const DAY_ORDER = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+    const prevDay = DAY_ORDER[(DAY_ORDER.indexOf(weekday) + 6) % 7]
+    const prevSchedule = schedule[prevDay]
+    const inPrevOvernight = !!(
+      prevSchedule?.enabled &&
+      prevSchedule.start > prevSchedule.end &&
+      currentTime <= prevSchedule.end
+    )
+
     if (!daySchedule) {
       console.log(`No schedule defined for ${weekday}, defaulting to available`)
       return true
     }
 
     if (!daySchedule.enabled) {
-      console.log(`Schedule disabled for ${weekday}`)
-      return false
+      console.log(`Schedule disabled for ${weekday}${inPrevOvernight ? ' but within previous day overnight window' : ''}`)
+      return inPrevOvernight
     }
 
     // Compare times as strings (HH:MM format)
-    const isWithin = currentTime >= daySchedule.start && currentTime <= daySchedule.end
-    console.log(`Schedule check: ${weekday} ${currentTime} in ${daySchedule.start}-${daySchedule.end}: ${isWithin}`)
+    const isWithin = daySchedule.start <= daySchedule.end
+      ? currentTime >= daySchedule.start && currentTime <= daySchedule.end
+      : currentTime >= daySchedule.start // overnight: tonight's portion; morning spill handled via prev day
+    console.log(`Schedule check: ${weekday} ${currentTime} in ${daySchedule.start}-${daySchedule.end}: ${isWithin} (prevOvernight: ${inPrevOvernight})`)
 
-    return isWithin
+    return isWithin || inPrevOvernight
   } catch (error) {
     console.error('Error checking schedule:', error)
     return true // Default to available on error
@@ -217,32 +231,20 @@ export async function sendSlackNotification(
       .single()
 
     if (notifPrefs?.slack_channel) {
-      const name = notifPrefs.slack_channel.replace(/^#/, '').toLowerCase()
-      const listResp = await fetch(
-        'https://slack.com/api/conversations.list?types=public_channel&limit=200&exclude_archived=true',
-        { headers: { 'Authorization': `Bearer ${integration.access_token}` } }
-      )
-      const listResult = await listResp.json()
-      if (listResult.ok && listResult.channels) {
-        const found = listResult.channels.find((c: any) => c.name.toLowerCase() === name)
-        if (found) channelId = found.id
-      }
+      channelId = await resolveSlackChannelId(integration.access_token, notifPrefs.slack_channel)
     }
 
     if (!channelId) {
       channelId = integration.config?.notification_channel
     }
     if (!channelId) {
-      const channelsResponse = await fetch(
-        'https://slack.com/api/conversations.list?types=public_channel&limit=10',
-        { headers: { 'Authorization': `Bearer ${integration.access_token}` } }
-      )
-      const channelsResult = await channelsResponse.json()
-      if (channelsResult.ok && channelsResult.channels?.length > 0) {
-        const magpipeChannel = channelsResult.channels.find((c: any) => c.name === 'magpipe-notifications')
-        const generalChannel = channelsResult.channels.find((c: any) => c.name === 'general')
-        channelId = magpipeChannel?.id || generalChannel?.id || channelsResult.channels[0].id
-      }
+      // Fallback: find well-known channel
+      try {
+        const channels = await fetchAllSlackChannels(integration.access_token)
+        const magpipeChannel = channels.find(c => c.name === 'magpipe-notifications')
+        const generalChannel = channels.find(c => c.name === 'general')
+        channelId = magpipeChannel?.id || generalChannel?.id || channels[0]?.id || null
+      } catch { /* ignore */ }
     }
 
     if (!channelId) {
@@ -263,13 +265,13 @@ export async function sendSlackNotification(
     // Format the message nicely
     const slackMessage = {
       channel: channelId,
-      text: `📱 New SMS from ${senderName}`,
+      text: `New SMS from ${senderName}`,
       blocks: [
         {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `📱 *New SMS from ${senderName}*\n>${messageContent.replace(/\n/g, '\n>')}`
+            text: `*New SMS from ${senderName}*\n>${messageContent.replace(/\n/g, '\n>')}`
           }
         },
         {
@@ -280,7 +282,9 @@ export async function sendSlackNotification(
               text: `From: ${senderPhone} • ${new Date().toLocaleString()}`
             }
           ]
-        }
+        },
+        // Trailing divider separates consecutive notifications in the channel
+        { type: 'divider' }
       ]
     }
 
@@ -323,13 +327,13 @@ export async function sendSlackAgentReply(
     const slackMessage = {
       channel: slackThread.channel,
       thread_ts: slackThread.ts,
-      text: `🤖 ${agentName} replied`,
+      text: `${agentName} replied`,
       blocks: [
         {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `🤖 *${agentName} replied:*\n>${agentReply.replace(/\n/g, '\n>')}`
+            text: `*${agentName} replied:*\n>${agentReply.replace(/\n/g, '\n>')}`
           }
         }
       ]

@@ -2,6 +2,7 @@ import { supabase } from '../../lib/supabase.js';
 import { showAlertModal } from '../../components/ConfirmModal.js';
 import { User } from '../../models/index.js';
 import { setPhoneNavActive } from '../../components/BottomNav.js';
+import { formatPhoneNumber } from '../../lib/formatters.js';
 
 // Lazy load SIP client
 let sipClient = null;
@@ -407,7 +408,7 @@ export const callInterfaceMethods = {
                 ${contact.first_name || ''} ${contact.last_name || ''}
               </div>
               <div style="font-size: 0.875rem; color: var(--text-secondary);">
-                ${this.formatPhoneNumber(contact.phone_number)}
+                ${formatPhoneNumber(contact.phone_number)}
               </div>
             </div>
           `).join('');
@@ -1100,7 +1101,7 @@ export const callInterfaceMethods = {
             <div style="display: flex; justify-content: space-between; align-items: center;">
               <div>
                 <div style="font-weight: 600; color: var(--text-primary);">
-                  ${this.formatPhoneNumber(item.phone)}
+                  ${formatPhoneNumber(item.phone)}
                 </div>
                 <div style="font-size: 0.75rem; color: var(--text-secondary);">
                   ${item.direction === 'outbound' ? '↗ Outbound' : '↙ Inbound'} • ${this.formatRelativeTime(item.date)}
@@ -1367,7 +1368,7 @@ export const callInterfaceMethods = {
       // Populate dropdown with service numbers
       callerIdSelect.innerHTML = serviceNumbers.map((number, index) => {
         const flag = this.getCountryFlag(number.phone_number);
-        const formattedNumber = this.formatPhoneNumber(number.phone_number);
+        const formattedNumber = formatPhoneNumber(number.phone_number);
         return `<option value="${number.phone_number}" ${index === 0 ? 'selected' : ''}>
           ${flag} ${formattedNumber}
         </option>`;

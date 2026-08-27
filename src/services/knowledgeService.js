@@ -82,15 +82,21 @@ export async function addSource(url, syncPeriod = '7d', authHeaders = null, craw
     });
 
     const { data, error } = response;
-    console.log('knowledge-source-add full response:', response);
-    console.log('knowledge-source-add data:', data);
-    console.log('knowledge-source-add error:', error);
-
-    // Check for errors - supabase.functions.invoke puts error response body in data when status is non-2xx
-    const errorMsg = error?.message || data?.error || '';
 
     if (error || data?.error) {
-      console.log('Function error detected:', errorMsg);
+      // FunctionsHttpError has a `context` Response — read the real body from it
+      let errorMsg = data?.error || '';
+      if (!errorMsg && error?.context) {
+        try {
+          const body = await error.context.json();
+          errorMsg = body?.error || body?.message || '';
+        } catch {
+          errorMsg = error?.message || '';
+        }
+      }
+      if (!errorMsg) errorMsg = error?.message || '';
+
+      console.error('knowledge-source-add error:', errorMsg);
 
       if (errorMsg.includes('401') || errorMsg.includes('Invalid authorization')) {
         throw new Error('Authentication required. Please log in again.');
@@ -406,19 +412,26 @@ export async function addManualSource(title, options = {}) {
     });
 
     const { data, error } = response;
-    console.log('knowledge-source-manual response:', { data, error });
-
-    const errorMsg = error?.message || data?.error || '';
 
     if (error || data?.error) {
+      // FunctionsHttpError has a `context` Response — read the real body from it
+      let errorMsg = data?.error || '';
+      if (!errorMsg && error?.context) {
+        try {
+          const body = await error.context.json();
+          errorMsg = body?.error || body?.message || '';
+        } catch {
+          errorMsg = error?.message || '';
+        }
+      }
+      if (!errorMsg) errorMsg = error?.message || '';
+
+      console.error('knowledge-source-manual error:', errorMsg);
+
       if (errorMsg.includes('401') || errorMsg.includes('Invalid authorization')) {
         throw new Error('Authentication required. Please log in again.');
       } else if (errorMsg.includes('Maximum 50')) {
         throw new Error('You have reached the maximum of 50 knowledge sources.');
-      } else if (errorMsg.includes('Content must be')) {
-        throw new Error(errorMsg);
-      } else if (errorMsg.includes('Failed to parse PDF')) {
-        throw new Error(errorMsg);
       } else if (errorMsg) {
         throw new Error(errorMsg);
       } else {

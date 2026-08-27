@@ -1,5 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { analyzeSentiment } from '../_shared/sentiment-analysis.ts'
+import { SUPPORT_EMAIL } from '../_shared/config.ts'
+import { isComposioManaged, sendGmailEmailComposio } from '../_shared/gmail-helpers.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -37,7 +39,7 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json()
-    const { to_email, cc, bcc, subject, body_html, body_text, agent_id, thread_id, in_reply_to } = body
+    const { to_email, cc, bcc, subject, body_html, body_text, agent_id, thread_id, in_reply_to, attachments } = body
 
     if (!to_email || !subject) {
       return new Response(JSON.stringify({ error: 'to_email and subject are required' }), {
@@ -64,10 +66,21 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Get Gmail access token
-    const accessToken = await getGmailAccessToken(supabase, user.id, integrationId)
-    if (!accessToken) {
+    // Resolve the integration row first so we can dispatch direct Gmail
+    // vs. Composio-managed routing without re-querying.
+    const integration = await getGmailIntegration(supabase, user.id, integrationId)
+    if (!integration) {
       return new Response(JSON.stringify({ error: 'Gmail not connected. Please connect Gmail in Integrations.' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    const composioRoute = isComposioManaged(integration)
+    const accessToken = composioRoute
+      ? null
+      : await ensureFreshAccessToken(supabase, integration)
+    if (!composioRoute && !accessToken) {
+      return new Response(JSON.stringify({ error: 'Gmail token unavailable — please reconnect Gmail.' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
@@ -102,6 +115,22 @@ Deno.serve(async (req) => {
       })
     }
 
+    // Append attachment links/images to HTML body
+    let finalHtml = body_html || body_text || ''
+    if (attachments && Array.isArray(attachments) && attachments.length > 0) {
+      const attachmentHtml = attachments.map((a: { url: string; filename: string; type?: string }) => {
+        if (a.type?.startsWith('image/')) {
+          // Images are already inline in body_html via execCommand, but add as links too for email clients
+          return `<p><a href="${a.url}" target="_blank">${a.filename}</a></p>`
+        } else if (a.type?.startsWith('video/')) {
+          return `<p>🎬 <a href="${a.url}" target="_blank">${a.filename}</a></p>`
+        } else {
+          return `<p>📎 <a href="${a.url}" target="_blank">${a.filename}</a></p>`
+        }
+      }).join('')
+      finalHtml += `<br><div style="border-top:1px solid #eee;padding-top:8px;margin-top:12px;font-size:13px;color:#666;">Attachments:<br>${attachmentHtml}</div>`
+    }
+
     // Build MIME message
     const mimeLines = [
       `From: ${sendAsEmail}`,
@@ -116,7 +145,7 @@ Deno.serve(async (req) => {
     }
     mimeLines.push('Content-Type: text/html; charset=UTF-8')
     mimeLines.push('')
-    mimeLines.push(body_html || body_text || '')
+    mimeLines.push(finalHtml)
 
     const rawMessage = mimeLines.join('\r\n')
     const encoded = btoa(unescape(encodeURIComponent(rawMessage)))
@@ -124,29 +153,48 @@ Deno.serve(async (req) => {
       .replace(/\//g, '_')
       .replace(/=+$/, '')
 
-    // Send via Gmail API
-    const sendPayload: Record<string, string> = { raw: encoded }
-    if (thread_id) sendPayload.threadId = thread_id
-
-    const gmailResponse = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(sendPayload),
-    })
-
-    if (!gmailResponse.ok) {
-      const errorText = await gmailResponse.text()
-      console.error('Failed to send Gmail message:', errorText)
-      return new Response(JSON.stringify({ error: 'Failed to send email: ' + errorText }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    // Send via Gmail — direct API or Composio depending on integration routing
+    let gmailResult: { id?: string; threadId?: string } | null = null
+    if (composioRoute) {
+      const composioResult = await sendGmailEmailComposio(user.id, {
+        recipient_email: to_email,
+        subject,
+        body: finalHtml,
+        is_html: true,
+        ...(cc ? { cc: Array.isArray(cc) ? cc : [cc] } : {}),
+        ...(bcc ? { bcc: Array.isArray(bcc) ? bcc : [bcc] } : {})
       })
-    }
+      if (!composioResult) {
+        return new Response(JSON.stringify({ error: 'Failed to send email via Composio' }), {
+          status: 502,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+      gmailResult = composioResult
+    } else {
+      const sendPayload: Record<string, string> = { raw: encoded }
+      if (thread_id) sendPayload.threadId = thread_id
 
-    const gmailResult = await gmailResponse.json()
+      const gmailResponse = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(sendPayload),
+      })
+
+      if (!gmailResponse.ok) {
+        const errorText = await gmailResponse.text()
+        console.error('Failed to send Gmail message:', errorText)
+        return new Response(JSON.stringify({ error: 'Failed to send email: ' + errorText }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+
+      gmailResult = await gmailResponse.json()
+    }
 
     // Analyze sentiment of email content
     let emailSentiment: string | null = null
@@ -178,6 +226,7 @@ Deno.serve(async (req) => {
         is_read: true,
         sentiment: emailSentiment,
         sent_at: new Date().toISOString(),
+        attachments: attachments && Array.isArray(attachments) && attachments.length > 0 ? attachments : [],
       })
       .select()
       .single()
@@ -185,6 +234,45 @@ Deno.serve(async (req) => {
     if (insertError) {
       console.error('Failed to save email record:', insertError)
       // Still return success since the email was sent
+    }
+
+    // Cross-post to support_tickets if this thread belongs to a support ticket
+    const finalThreadId = gmailResult.threadId || thread_id || gmailResult.id
+    try {
+      const { data: supportTicket } = await supabase
+        .from('support_tickets')
+        .select('thread_id, status')
+        .eq('thread_id', finalThreadId)
+        .limit(1)
+        .single()
+
+      if (supportTicket) {
+        const { error: stInsertError } = await supabase
+          .from('support_tickets')
+          .insert({
+            gmail_message_id: gmailResult.id,
+            thread_id: finalThreadId,
+            from_email: SUPPORT_EMAIL,
+            from_name: '',
+            to_email,
+            subject,
+            body_text: body_text || null,
+            body_html: body_html || null,
+            attachments: attachments && Array.isArray(attachments) && attachments.length > 0 ? attachments : [],
+            direction: 'outbound',
+            status: supportTicket.status || 'open',
+            received_at: new Date().toISOString(),
+          })
+
+        if (stInsertError) {
+          console.error('Failed to cross-post to support_tickets:', stInsertError)
+        } else {
+          console.log('Cross-posted inbox reply to support_tickets thread:', finalThreadId)
+        }
+      }
+    } catch (err) {
+      // Don't fail the send if cross-posting fails
+      console.error('Support ticket cross-post error:', err)
     }
 
     // Deduct email credits (fire and forget)
@@ -230,46 +318,41 @@ async function deductEmailCredits(supabaseUrl: string, supabaseKey: string, user
   }
 }
 
-async function getGmailAccessToken(supabase: any, userId: string, integrationId?: string | null): Promise<string | null> {
-  let integration: any = null
-
+async function getGmailIntegration(supabase: any, userId: string, integrationId?: string | null): Promise<any | null> {
   if (integrationId) {
-    // Use specific integration
     const { data } = await supabase
       .from('user_integrations')
       .select('*')
       .eq('id', integrationId)
       .eq('status', 'connected')
       .single()
-    integration = data
-  } else {
-    // Find any connected google_email integration for this user
-    const { data: provider } = await supabase
-      .from('integration_providers')
-      .select('id')
-      .eq('slug', 'google_email')
-      .single()
-
-    if (!provider) return null
-
-    const { data } = await supabase
-      .from('user_integrations')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('provider_id', provider.id)
-      .eq('status', 'connected')
-      .limit(1)
-      .single()
-    integration = data
+    return data || null
   }
 
-  if (!integration) return null
+  const { data: provider } = await supabase
+    .from('integration_providers')
+    .select('id')
+    .eq('slug', 'google_email')
+    .single()
 
-  // Refresh if expired
-  if (new Date(integration.token_expires_at) < new Date()) {
+  if (!provider) return null
+
+  const { data } = await supabase
+    .from('user_integrations')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('provider_id', provider.id)
+    .eq('status', 'connected')
+    .limit(1)
+    .single()
+  return data || null
+}
+
+async function ensureFreshAccessToken(supabase: any, integration: any): Promise<string | null> {
+  if (!integration?.access_token) return null
+  if (integration.token_expires_at && new Date(integration.token_expires_at) < new Date()) {
     return await refreshGoogleToken(supabase, integration)
   }
-
   return integration.access_token
 }
 

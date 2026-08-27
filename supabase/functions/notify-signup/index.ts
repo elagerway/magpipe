@@ -33,29 +33,25 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseKey)
 
-    // Update user with IP address and try to get geolocation
+    // Update user with IP address and geo lookup from local ip_geolocation table
     if (ip) {
       let city = null
+      let state = null
       let country = null
       let lat = null
       let lng = null
 
-      // Try to get geolocation from IP (using ipapi.co - free HTTPS)
       try {
-        const geoResponse = await fetch(`https://ipapi.co/${ip}/json/`, {
-          signal: AbortSignal.timeout(3000)
-        })
-        if (geoResponse.ok) {
-          const geoData = await geoResponse.json()
-          if (geoData.city && geoData.country_name) {
-            city = geoData.city
-            country = geoData.country_name
-            lat = geoData.latitude || null
-            lng = geoData.longitude || null
-          }
+        const { data: geo } = await supabase.rpc('lookup_ip_geo', { p_ip: ip })
+        if (geo && geo.length > 0) {
+          city = geo[0].city || null
+          state = geo[0].state || null
+          country = geo[0].country || null
+          lat = geo[0].lat || null
+          lng = geo[0].lng || null
         }
       } catch (geoError) {
-        console.log('Geolocation lookup failed:', geoError.message)
+        console.log('Geo lookup failed:', geoError.message)
       }
 
       // Update user record with IP and location

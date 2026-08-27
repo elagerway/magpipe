@@ -1,60 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { DOMParser } from 'https://deno.land/x/deno_dom@v0.1.38/deno-dom-wasm.ts';
 import { corsHeaders, handleCors } from '../_shared/cors.ts'
-
-// Simple text chunking (500-1000 tokens ~= 2000-4000 characters)
-function chunkText(text: string, maxChunkSize = 3000): string[] {
-  const chunks: string[] = [];
-  const paragraphs = text.split('\n\n');
-  let currentChunk = '';
-
-  for (const para of paragraphs) {
-    if (currentChunk.length + para.length > maxChunkSize && currentChunk.length > 0) {
-      chunks.push(currentChunk.trim());
-      currentChunk = para;
-    } else {
-      currentChunk += (currentChunk ? '\n\n' : '') + para;
-    }
-  }
-
-  if (currentChunk.trim()) {
-    chunks.push(currentChunk.trim());
-  }
-
-  return chunks;
-}
-
-// Extract readable content from HTML
-function extractContent(html: string): { title: string; description: string; text: string } {
-  const doc = new DOMParser().parseFromString(html, 'text/html');
-  if (!doc) {
-    throw new Error('Failed to parse HTML');
-  }
-
-  // Extract title
-  const titleEl = doc.querySelector('title');
-  const title = titleEl?.textContent?.trim() || 'Untitled';
-
-  // Extract meta description
-  const metaDesc = doc.querySelector('meta[name="description"]');
-  const description = metaDesc?.getAttribute('content')?.trim() || '';
-
-  // Extract main content (simple approach - get all text from body)
-  const body = doc.querySelector('body');
-  let text = '';
-
-  if (body) {
-    // Remove script and style tags
-    const scripts = body.querySelectorAll('script, style, nav, header, footer');
-    scripts.forEach(el => el.remove());
-
-    text = body.textContent || '';
-    // Clean up whitespace
-    text = text.replace(/\s+/g, ' ').trim();
-  }
-
-  return { title, description, text };
-}
+import { chunkText, fetchPageContent } from '../_shared/js-content-fetcher.ts';
 
 Deno.serve(async (req) => {
   // Handle CORS
@@ -121,34 +67,23 @@ Deno.serve(async (req) => {
           .update({ sync_status: 'syncing' })
           .eq('id', source.id);
 
-        // Fetch URL
-        let htmlContent: string;
-        try {
-          const fetchResponse = await fetch(source.url, {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (compatible; PatAI/1.0)',
-            },
-            signal: AbortSignal.timeout(10000), // 10 second timeout
-          });
-
-          if (!fetchResponse.ok) {
-            throw new Error(`HTTP ${fetchResponse.status} ${fetchResponse.statusText}`);
-          }
-
-          htmlContent = await fetchResponse.text();
-
-          // Check size
-          if (htmlContent.length > 1024 * 1024) { // 1MB limit
-            throw new Error('Content too large (max 1MB)');
-          }
-        } catch (error) {
-          throw new Error(`Failed to fetch URL: ${error.message}`);
+        // Build fetch headers with stored auth
+        const fetchHeaders: Record<string, string> = {
+          'User-Agent': 'Mozilla/5.0 (compatible; MagpipeBot/1.0)',
+        };
+        const storedAuth = source.auth_headers as Record<string, string> | null;
+        if (storedAuth && typeof storedAuth === 'object') {
+          Object.assign(fetchHeaders, storedAuth);
         }
 
-        // Extract content
-        const { title, description, text } = extractContent(htmlContent);
+        // Fetch page content with JS rendering fallback cascade
+        const result = await fetchPageContent(source.url, fetchHeaders, storedAuth || undefined);
 
-        // Chunk text
+        if (!result) {
+          throw new Error('No content extracted from URL (tried direct fetch + JS rendering fallbacks)');
+        }
+
+        const { title, description, text } = result;
         const chunks = chunkText(text);
 
         if (chunks.length === 0) {

@@ -257,6 +257,19 @@ export class User {
       return { profile: null, error };
     }
 
+    // Grant $5 welcome credits (fire and forget)
+    supabase.rpc('add_credits', {
+      p_user_id: userId,
+      p_amount: 5.00,
+      p_transaction_type: 'bonus',
+      p_description: 'Welcome credits',
+      p_reference_type: 'signup',
+      p_reference_id: null,
+      p_metadata: null,
+    }).then(({ error: creditError }) => {
+      if (creditError) console.error('Failed to add welcome credits:', creditError);
+    });
+
     return { profile: data, error: null };
   }
 }

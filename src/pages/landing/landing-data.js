@@ -458,7 +458,7 @@ export const landingPages = {
     faq: [
       {
         question: 'I\'m a one-person operation. Can I afford this?',
-        answer: 'At $0.07/minute, a typical 2-minute call costs $0.14. One captured lead from a call you would have missed pays for months of service. Start with $20 in free credits.',
+        answer: 'From $0.05/minute, a typical 2-minute call costs $0.10. One captured lead from a call you would have missed pays for months of service. Start with $20 in free credits.',
       },
       {
         question: 'Can the AI give quotes?',

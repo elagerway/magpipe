@@ -3,10 +3,26 @@
  * Handles routing, authentication state, and app initialization
  */
 
-import { supabase, getCurrentUser } from './lib/supabase.js';
+import { initSentry, setSentryUser } from './lib/sentry.js';
+import { supabase, getCurrentUser, safeGetSession } from './lib/supabase.js';
 import { Router } from './router.js';
 import { ChatWidget } from './models/ChatWidget.js';
 import { initPushNotifications } from './services/pushNotifications.js';
+import { startVersionCheck } from './lib/version-check.js';
+import { REQUIRE_PHONE_VERIFICATION } from './lib/feature-flags.js';
+
+// Initialize error monitoring before anything else so early boot errors are caught
+initSentry();
+
+// Deep link from the docs site: ?support=1 opens the Get in Touch modal once
+// the app finishes loading. Stash the intent in sessionStorage because the
+// router drops query params on auth redirects (e.g. bounce through /login).
+if (new URLSearchParams(window.location.search).has('support')) {
+  sessionStorage.setItem('magpipe_open_support', '1');
+  const url = new URL(window.location.href);
+  url.searchParams.delete('support');
+  window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+}
 
 class App {
   constructor() {
@@ -18,48 +34,100 @@ class App {
   }
 
   async init() {
-    // Check if Supabase is reachable before doing anything
-    const supabaseHealthy = await this.checkSupabaseHealth();
-    if (!supabaseHealthy) {
-      const { default: MaintenancePage } = await import('./pages/maintenance.js');
-      const page = new MaintenancePage();
-      await page.render();
-      return; // Don't initialize anything else
-    }
+    let initCompleted = false;
 
-    // Check authentication state
-    await this.checkAuth();
+    // Master timeout: if init hasn't completed in 10s, force-show login page
+    const initTimeout = setTimeout(() => {
+      if (initCompleted) return;
+      initCompleted = true;
+      console.warn('App init timed out after 10s, showing login page');
+      const spinner = document.getElementById('loading-screen') || document.querySelector('.loading-screen');
+      if (spinner) spinner.style.display = 'none';
+      this.router.init();
+      window.router = this.router;
+      this.router.navigate('/login');
+    }, 10000);
 
-    // Set up auth state listener
-    supabase.auth.onAuthStateChange((event, session) => {
-      console.log('Auth state changed:', event);
-      this.handleAuthStateChange(event, session);
-    });
+    try {
+      // Clear any leftover maintenance page from a previous load
+      const maintRoot = document.querySelector('.maint-root');
+      if (maintRoot) maintRoot.remove();
 
-    // Initialize router
-    this.router.init();
+      // Handle expired/invalid password reset links — Supabase redirects with #error= hash
+      const hash = window.location.hash;
+      if (hash.includes('error=') && hash.includes('error_code=') &&
+          (hash.includes('otp_expired') || hash.includes('type=recovery'))) {
+        initCompleted = true;
+        clearTimeout(initTimeout);
+        window.location.replace('/reset-password');
+        return;
+      }
 
-    // Expose router globally for navigation
-    window.router = this.router;
+      // Check if Supabase is reachable before doing anything
+      const supabaseHealthy = await this.checkSupabaseHealth();
+      if (!supabaseHealthy) {
+        initCompleted = true;
+        clearTimeout(initTimeout);
+        const { default: MaintenancePage } = await import('./pages/maintenance.js');
+        const page = new MaintenancePage();
+        await page.render();
+        return; // Don't initialize anything else
+      }
 
-    // Expose supabase for debugging
-    window.supabase = supabase;
+      // Check authentication state
+      await this.checkAuth();
 
-    // Set up global dialpad function
-    this.setupGlobalDialpad();
+      // If master timeout already fired, don't double-init
+      if (initCompleted) return;
+      initCompleted = true;
+      clearTimeout(initTimeout);
 
-    // Listen for route changes to update widget visibility
-    window.addEventListener('popstate', () => this.updateWidgetVisibility());
-    // Also listen for pushstate changes (SPA navigation)
-    const originalPushState = history.pushState;
-    history.pushState = (...args) => {
-      originalPushState.apply(history, args);
-      setTimeout(() => this.updateWidgetVisibility(), 100);
-    };
+      // Initialize router
+      this.router.init();
 
-    // Register service worker for PWA
-    if ('serviceWorker' in navigator) {
-      this.registerServiceWorker();
+      // Expose router globally for navigation
+      window.router = this.router;
+
+      // Set up auth state listener (after router.init so navigate works)
+      supabase.auth.onAuthStateChange((event, session) => {
+        console.log('Auth state changed:', event);
+        this.handleAuthStateChange(event, session);
+      });
+
+      // Expose supabase for debugging
+      window.supabase = supabase;
+
+      // Set up global dialpad function
+      this.setupGlobalDialpad();
+
+      // Listen for route changes to update widget visibility
+      window.addEventListener('popstate', () => this.updateWidgetVisibility());
+      // Also listen for pushstate changes (SPA navigation)
+      const originalPushState = history.pushState;
+      history.pushState = (...args) => {
+        originalPushState.apply(history, args);
+        setTimeout(() => this.updateWidgetVisibility(), 100);
+      };
+
+      // Register service worker for PWA
+      if ('serviceWorker' in navigator) {
+        this.registerServiceWorker();
+      }
+
+      // Global error handler — report uncaught JS errors to admin dashboard
+      this.setupGlobalErrorHandler();
+
+      // Check for new deployments and show reload banner
+      startVersionCheck(() => !!this.currentUser);
+    } catch (err) {
+      console.error('App init error:', err);
+      if (!initCompleted) {
+        initCompleted = true;
+        clearTimeout(initTimeout);
+        this.router.init();
+        window.router = this.router;
+        this.router.navigate('/login');
+      }
     }
   }
 
@@ -67,19 +135,21 @@ class App {
     try {
       const url = import.meta.env.VITE_SUPABASE_URL;
       const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      const res = await fetch(`${url}/rest/v1/`, {
+      await fetch(`${url}/rest/v1/`, {
         headers: { apikey: key },
         signal: AbortSignal.timeout(3000),
       });
-      return res.ok;
+      // Any HTTP response means Supabase is reachable (even 401/403)
+      return true;
     } catch {
+      // Network error or timeout — Supabase is truly unreachable
       return false;
     }
   }
 
   async checkAuth() {
     // First try to get the existing session (restores from storage)
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    const { data: { session }, error: sessionError } = await safeGetSession();
 
     if (sessionError) {
       console.error('Error restoring session:', sessionError);
@@ -127,8 +197,14 @@ class App {
       const currentPath = window.location.pathname;
 
       if (!authRedirectRoutes.includes(currentPath)) {
-        // User is on a protected route or public content page, don't redirect
-        console.log('Auth state change, staying on:', currentPath);
+        // User is already on a protected route — only redirect if phone not verified
+        if (REQUIRE_PHONE_VERIFICATION && currentPath !== '/verify-phone') {
+          const { User: UserCheck } = await import('./models/User.js');
+          const { profile: checkProfile } = await UserCheck.getProfile(session.user.id);
+          if (checkProfile && !checkProfile.phone_verified) {
+            this.router.navigate('/verify-phone');
+          }
+        }
         return;
       }
 
@@ -178,8 +254,12 @@ class App {
           }).catch(() => {});
         }
 
-        this.router.navigate('/verify-phone');
-      } else if (!profile.phone_verified) {
+        if (REQUIRE_PHONE_VERIFICATION) {
+          this.router.navigate('/verify-phone');
+        } else {
+          this.router.navigate('/inbox');
+        }
+      } else if (REQUIRE_PHONE_VERIFICATION && !profile.phone_verified) {
         // Phone not verified, redirect to phone verification
         this.router.navigate('/verify-phone');
       } else {
@@ -192,11 +272,51 @@ class App {
 
       // Initialize push notifications (only if user has them enabled)
       initPushNotifications().catch(err => console.error('Push init error:', err));
+    } else if (event === 'INITIAL_SESSION') {
+      // Fires on page load/refresh with an existing session.
+      // Check phone verification so users can't bypass it by refreshing.
+      if (!session) return;
+      this.currentUser = session.user;
+      const initPath = window.location.pathname;
+      const skipPaths = ['/verify-phone', '/login', '/signup', '/verify-email',
+                         '/forgot-password', '/reset-password', '/impersonate',
+                         '/', '/pricing', '/custom-plan', '/privacy', '/terms'];
+      if (skipPaths.some(p => initPath === p || initPath.startsWith(p + '/'))) return;
+      if (REQUIRE_PHONE_VERIFICATION) {
+        const { User: InitUser } = await import('./models/User.js');
+        const { profile: initProfile } = await InitUser.getProfile(session.user.id);
+        if (initProfile && !initProfile.phone_verified) {
+          this.router.navigate('/verify-phone');
+        }
+      }
+    } else if (event === 'PASSWORD_RECOVERY') {
+      // User clicked a valid password reset link — navigate to reset page
+      this.router.navigate('/reset-password');
     } else if (event === 'SIGNED_OUT') {
       this.currentUser = null;
       this.removePortalWidget();
+      // Hide the persistent nav so it doesn't show behind the login page
+      const persistentNav = document.getElementById('persistent-nav');
+      if (persistentNav) persistentNav.innerHTML = '';
       this.router.navigate('/login');
     }
+  }
+
+  _reportError(errorType, message, code, extra = {}) {
+    const url = import.meta.env.VITE_SUPABASE_URL;
+    const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    fetch(`${url}/functions/v1/log-error`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': key },
+      body: JSON.stringify({
+        error_type: errorType,
+        error_message: String(message).substring(0, 500),
+        error_code: code,
+        source: 'vercel',
+        severity: 'error',
+        metadata: { url: window.location.pathname, ...extra },
+      }),
+    }).catch(() => {}); // fire-and-forget, never throw
   }
 
   setupGlobalDialpad() {
@@ -362,6 +482,54 @@ class App {
     if (window.MagpipeChat) {
       delete window.MagpipeChat;
     }
+  }
+
+  setupGlobalErrorHandler() {
+    // Loading screen watchdog — if the spinner is still visible 12s after app init,
+    // log it as an error so it shows up in the admin error dashboard.
+    const watchdog = setTimeout(() => {
+      const app = document.getElementById('app');
+      const stillLoading = app?.querySelector('.loading-screen, #loading-screen');
+      const text = app?.textContent || '';
+      if (stillLoading || text.includes('Loading MAGPIPE')) {
+        this._reportError(
+          'frontend_loading_timeout',
+          `Loading screen stuck after 12s on ${window.location.pathname}`,
+          'loading_watchdog',
+          { pathname: window.location.pathname }
+        );
+      }
+    }, 3000);
+    // Cancel watchdog if user navigates away (page rendered successfully)
+    window.addEventListener('popstate', () => clearTimeout(watchdog), { once: true });
+
+    const report = (errorType, message, code, extra = {}) => {
+      // Only report when user is logged in (avoid noise from public pages)
+      if (!this.currentUser) return;
+      this._reportError(errorType, message, code, extra);
+    };
+
+    window.addEventListener('error', (e) => {
+      // Filter out cross-origin script errors and browser extension noise
+      if (!e.message || e.message === 'Script error.') return;
+      report(
+        'frontend_js_error',
+        e.message,
+        e.filename ? `${e.filename.split('/').pop()}:${e.lineno}` : undefined,
+        { stack: e.error?.stack?.substring(0, 500) }
+      );
+    });
+
+    window.addEventListener('unhandledrejection', (e) => {
+      const msg = e.reason?.message || String(e.reason) || 'Unhandled promise rejection';
+      if (msg === 'Unhandled promise rejection' || msg.length < 3) return;
+      report(
+        'frontend_js_error',
+        msg,
+        'unhandledrejection',
+        { stack: e.reason?.stack?.substring(0, 500) }
+      );
+    });
   }
 
   async registerServiceWorker() {

@@ -16,7 +16,7 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
 const CALLBACK_URL = `${SUPABASE_URL}/functions/v1/twitter-oauth-callback`
-const SCOPES = 'tweet.read tweet.write users.read offline.access'
+const SCOPES = 'tweet.read tweet.write users.read media.write offline.access'
 
 function generateRandomString(length: number): string {
   const array = new Uint8Array(length)

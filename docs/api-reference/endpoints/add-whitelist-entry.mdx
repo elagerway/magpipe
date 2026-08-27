@@ -1,0 +1,148 @@
+---
+title: "Add Whitelist Entry"
+api: "POST /manage-call-whitelist"
+description: "Add a call forwarding rule to an agent's whitelist"
+---
+
+Creates a new whitelist entry. When an inbound call matches the `caller_number`, it is blind-forwarded to `forward_to` without invoking the AI agent. The call is still recorded and logged.
+
+## Request Body
+
+<ParamField body="agent_id" type="string" required>
+  UUID of the agent to add the whitelist entry to.
+
+  **Example:** `3f2504e0-4f89-11d3-9a0c-0305e82c3301`
+</ParamField>
+
+<ParamField body="caller_number" type="string" required>
+  The inbound caller number to match, in E.164 format.
+
+  **Example:** `+16045551234`
+</ParamField>
+
+<ParamField body="forward_to" type="string" required>
+  The destination phone number to forward the call to, in E.164 format.
+
+  **Example:** `+16045559876`
+</ParamField>
+
+<ParamField body="label" type="string">
+  Optional human-readable label for this entry.
+
+  **Example:** `Kyler's son`
+</ParamField>
+
+## Response
+
+Returns the created whitelist entry on success (`201 Created`).
+
+<ResponseField name="entry" type="object">
+  The created whitelist entry.
+
+  <Expandable title="Entry fields">
+    <ResponseField name="id" type="string">
+      Unique entry identifier (UUID).
+    </ResponseField>
+
+    <ResponseField name="caller_number" type="string">
+      The matched caller number (E.164).
+    </ResponseField>
+
+    <ResponseField name="forward_to" type="string">
+      The forwarding destination (E.164).
+    </ResponseField>
+
+    <ResponseField name="label" type="string">
+      The entry label, or `null` if not set.
+    </ResponseField>
+
+    <ResponseField name="created_at" type="string">
+      ISO 8601 creation timestamp.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl -X POST https://api.magpipe.ai/functions/v1/manage-call-whitelist \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_id": "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
+    "caller_number": "+16045551234",
+    "forward_to": "+16045559876",
+    "label": "Kyler'\''s son"
+  }'
+```
+
+```javascript Node.js
+const response = await fetch(
+  'https://api.magpipe.ai/functions/v1/manage-call-whitelist',
+  {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer YOUR_API_KEY',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      agent_id: '3f2504e0-4f89-11d3-9a0c-0305e82c3301',
+      caller_number: '+16045551234',
+      forward_to: '+16045559876',
+      label: "Kyler's son",
+    }),
+  }
+);
+const { entry } = await response.json();
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'https://api.magpipe.ai/functions/v1/manage-call-whitelist',
+    headers={
+        'Authorization': 'Bearer YOUR_API_KEY',
+        'Content-Type': 'application/json',
+    },
+    json={
+        'agent_id': '3f2504e0-4f89-11d3-9a0c-0305e82c3301',
+        'caller_number': '+16045551234',
+        'forward_to': '+16045559876',
+        'label': "Kyler's son",
+    }
+)
+entry = response.json()['entry']
+```
+</RequestExample>
+
+<ResponseExample>
+```json Success Response
+{
+  "entry": {
+    "id": "a1b2c3d4-0000-0000-0000-000000000001",
+    "caller_number": "+16045551234",
+    "forward_to": "+16045559876",
+    "label": "Kyler's son",
+    "created_at": "2026-03-15T08:00:00Z"
+  }
+}
+```
+
+```json Duplicate Error
+{
+  "error": {
+    "code": "duplicate",
+    "message": "A whitelist entry for this caller number already exists on this agent"
+  }
+}
+```
+
+```json Validation Error
+{
+  "error": {
+    "code": "invalid_param",
+    "message": "caller_number and forward_to must be in E.164 format (e.g. +16045551234)"
+  }
+}
+```
+</ResponseExample>

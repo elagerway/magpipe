@@ -1,99 +1,141 @@
 /**
- * Lookup Phone Number — carrier/linetype check via SignalWire Lookup API
+ * lookup-phone-number — look up a phone number via SignalWire's Number
+ * Lookup API and cross-reference it against the caller's own Magpipe data.
  *
- * Returns carrier info (linetype, name) for a given E.164 phone number.
- * Primary use: determine if a number is wireless (SMS-capable) before sending SMS.
+ * POST { number }  (alias: { phone_number })   or  GET ?number=...
+ * `number` accepts any common format; normalized to E.164 via _shared/phone-e164.ts.
+ *
+ * Returns: {
+ *   e164, national_format, country,
+ *   carrier: { name, type } | null,        // type: mobile|landline|voip
+ *   line_type, cnam,
+ *   magpipe: { in_contacts, contact_name, blocked, blocked_label,
+ *              whitelisted, whitelist_label, whitelist_forward_to,
+ *              call_count, sms_count, last_interaction },
+ *   signalwire_error?: string,
+ *   // backward-compat (legacy SMS-capability shape):
+ *   phone_number, valid
+ * }
+ *
+ * SignalWire is billed per lookup, so this only runs on an explicit request
+ * (the UI gates it behind a button). If SignalWire errors/times out we still
+ * return the Magpipe cross-reference with carrier: null + signalwire_error.
+ *
+ * Auth: deployed with verify_jwt=false (see _shared/jwt-policy.json).
+ * resolveUser gates internally and supports Supabase JWT + mgp_ API keys.
+ *
+ * Deploy: ./scripts/deploy-functions.sh lookup-phone-number
  */
+import { createClient } from 'npm:@supabase/supabase-js@2'
+import { resolveUser } from '../_shared/api-auth.ts'
+import { corsHeaders, handleCors } from '../_shared/cors.ts'
+import { normalizeE164 } from '../_shared/phone-e164.ts'
+import { parseLookup, signalwireLookup } from '../_shared/phone-lookup.ts'
 
-import { createClient } from "npm:@supabase/supabase-js@2";
-import { resolveUser } from "../_shared/api-auth.ts";
-import { corsHeaders, handleCors } from "../_shared/cors.ts";
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  })
+}
 
-const SIGNALWIRE_SPACE_URL = Deno.env.get("SIGNALWIRE_SPACE_URL") || "erik.signalwire.com";
-const SIGNALWIRE_PROJECT_ID = Deno.env.get("SIGNALWIRE_PROJECT_ID")!;
-const SIGNALWIRE_API_TOKEN = Deno.env.get("SIGNALWIRE_API_TOKEN")!;
+function err(code: string, message: string, status = 400): Response {
+  return json({ error: { code, message } }, status)
+}
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return handleCors();
-  }
+  if (req.method === 'OPTIONS') return handleCors()
 
   try {
-    const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-      {
-        global: {
-          headers: { Authorization: req.headers.get("Authorization")! },
-        },
-      }
-    );
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+    const anonClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
+      global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } },
+    })
 
-    const user = await resolveUser(req, supabaseClient);
-    if (!user) {
-      return new Response(
-        JSON.stringify({ error: { code: "unauthorized", message: "Unauthorized" } }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    const user = await resolveUser(req, anonClient)
+    if (!user) return err('unauthorized', 'Unauthorized', 401)
+
+    // Accept number from JSON body (POST, key `number` or legacy `phone_number`) or query string.
+    let rawNumber: string | null = null
+    if (req.method === 'POST') {
+      const body = await req.json().catch(() => ({}))
+      rawNumber = body?.number ?? body?.phone_number ?? null
+    } else {
+      rawNumber = new URL(req.url).searchParams.get('number')
     }
 
-    const { phone_number } = await req.json();
+    const e164 = normalizeE164(rawNumber)
+    if (!e164) return err('invalid_number', `Invalid phone number: "${rawNumber ?? ''}"`, 400)
 
-    if (!phone_number) {
-      return new Response(
-        JSON.stringify({ error: { code: "missing_param", message: "phone_number is required" } }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    const supabase = createClient(supabaseUrl, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+    const uid = user.id
 
-    // Normalize: ensure E.164 format
-    const normalized = phone_number.startsWith("+") ? phone_number : `+${phone_number}`;
+    // SignalWire lookup + Magpipe cross-reference, all in parallel.
+    const [
+      sw,
+      contactRes,
+      blockedRes,
+      whitelistRes,
+      callRecentRes,
+      callCountRes,
+      smsCountRes,
+      smsRecentRes,
+    ] = await Promise.all([
+      signalwireLookup(e164),
+      supabase.from('contacts').select('name, first_name, last_name').eq('user_id', uid).eq('phone_number', e164).maybeSingle(),
+      supabase.from('blocked_callers').select('label').eq('user_id', uid).eq('caller_number', e164).maybeSingle(),
+      supabase.from('call_whitelist').select('label, forward_to').eq('user_id', uid).eq('caller_number', e164).limit(1).maybeSingle(),
+      supabase.from('call_records').select('created_at').eq('user_id', uid).or(`caller_number.eq.${e164},contact_phone.eq.${e164}`).order('created_at', { ascending: false }).limit(1).maybeSingle(),
+      supabase.from('call_records').select('*', { count: 'exact', head: true }).eq('user_id', uid).or(`caller_number.eq.${e164},contact_phone.eq.${e164}`),
+      supabase.from('sms_messages').select('*', { count: 'exact', head: true }).eq('user_id', uid).or(`sender_number.eq.${e164},recipient_number.eq.${e164}`),
+      supabase.from('sms_messages').select('created_at').eq('user_id', uid).or(`sender_number.eq.${e164},recipient_number.eq.${e164}`).order('created_at', { ascending: false }).limit(1).maybeSingle(),
+    ])
 
-    // Call SignalWire Lookup API
-    const lookupUrl = `https://${SIGNALWIRE_SPACE_URL}/api/relay/rest/lookup/phone_number/${encodeURIComponent(normalized)}?include=carrier`;
-    const auth = btoa(`${SIGNALWIRE_PROJECT_ID}:${SIGNALWIRE_API_TOKEN}`);
+    // Parse SignalWire defensively. The account's lookup returns:
+    //   { e164, country_code, location, national_number_formatted,
+    //     number_type: "Fixed Line or Mobile", cnam: { caller_id } }
+    // A `carrier` object (name/type) is not returned on this account, so it
+    // stays null; line type comes from `number_type`.
+    const swData = sw.data || {}
+    const parsed = parseLookup(e164, swData)
 
-    const swResponse = await fetch(lookupUrl, {
-      headers: {
-        Accept: "application/json",
-        Authorization: `Basic ${auth}`,
+    const dates = [callRecentRes.data?.created_at, smsRecentRes.data?.created_at].filter(Boolean) as string[]
+    const lastInteraction = dates.length
+      ? dates.reduce((a, b) => (new Date(a) > new Date(b) ? a : b))
+      : null
+
+    const contact = contactRes.data
+    const contactName = contact
+      ? ([contact.first_name, contact.last_name].filter(Boolean).join(' ') || contact.name || null)
+      : null
+
+    return json({
+      e164,
+      national_format: parsed.national_format,
+      country: parsed.country,
+      location: parsed.location,
+      carrier: parsed.carrier,
+      line_type: parsed.line_type,
+      cnam: parsed.cnam,
+      magpipe: {
+        in_contacts: !!contact,
+        contact_name: contactName,
+        blocked: !!blockedRes.data,
+        blocked_label: blockedRes.data?.label ?? null,
+        whitelisted: !!whitelistRes.data,
+        whitelist_label: whitelistRes.data?.label ?? null,
+        whitelist_forward_to: whitelistRes.data?.forward_to ?? null,
+        call_count: callCountRes.count ?? 0,
+        sms_count: smsCountRes.count ?? 0,
+        last_interaction: lastInteraction,
       },
-    });
-
-    if (!swResponse.ok) {
-      const errText = await swResponse.text();
-      console.error(`SignalWire lookup failed (${swResponse.status}):`, errText);
-      return new Response(
-        JSON.stringify({
-          error: { code: "lookup_failed", message: `Lookup failed: ${swResponse.status}` },
-        }),
-        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const swData = await swResponse.json();
-
-    // Build response in the shape the caller expects
-    const carrier = swData.carrier || {};
-    const response = {
-      phone_number: swData.e164 || normalized,
-      carrier: {
-        linetype: carrier.linetype || null,   // "wireless" | "landline" | "voip" | null
-        name: carrier.lec || carrier.name || null,
-      },
-      valid: swData.e164 ? true : false,
-      location: swData.location || null,
-    };
-
-    return new Response(JSON.stringify(response), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  } catch (error) {
-    console.error("Error in lookup-phone-number:", error);
-    return new Response(
-      JSON.stringify({ error: { code: "server_error", message: error.message } }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+      // Backward-compat with the legacy SMS-capability shape.
+      phone_number: e164,
+      valid: !!sw.data,
+      ...(sw.error ? { signalwire_error: sw.error } : {}),
+    })
+  } catch (e) {
+    console.error('lookup-phone-number error:', e)
+    return err('internal_error', String((e as Error).message || e), 500)
   }
-});
+})

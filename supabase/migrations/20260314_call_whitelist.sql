@@ -5,7 +5,7 @@ CREATE TABLE call_whitelist (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   agent_id UUID NOT NULL REFERENCES agent_configs(id) ON DELETE CASCADE,
-  caller_number TEXT NOT NULL,       -- E.164 number to match (e.g. +15555550001)
+  caller_number TEXT NOT NULL,       -- E.164 number to match (e.g. +16047538839)
   forward_to TEXT NOT NULL,          -- E.164 number to forward the call to
   label TEXT,                        -- Optional friendly name (e.g. "Kyler's son")
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

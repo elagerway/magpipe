@@ -5,6 +5,12 @@ Handles real-time voice conversations with STT, LLM, and TTS pipeline
 """
 print("🔴 AGENT CODE VERSION: CUSTOM-FN-V2 🔴")
 
+import os
+# Pin HuggingFace cache to the project directory so model files downloaded at
+# build time are found by inference subprocesses at runtime (Render build and
+# runtime are different containers; only /opt/render/project/src/ persists).
+os.environ.setdefault('HF_HOME', '/opt/render/project/src/.venv/hf_home')
+
 import aiohttp
 import asyncio
 import datetime
@@ -18,6 +24,10 @@ import re
 import sys
 import threading
 import time as time_module
+import urllib.request
+import httpx
+import sentry_sdk
+from sentry_sdk.integrations.logging import LoggingIntegration
 from typing import Annotated
 
 # Load environment variables from .env files
@@ -31,6 +41,31 @@ load_dotenv(os.path.join(_root_dir, '.env'), override=True)
 load_dotenv(os.path.join(_agent_dir, '.env'), override=True)
 # Debug: print if DEEPGRAM key loaded
 print(f"DEEPGRAM_API_KEY loaded: {bool(os.getenv('DEEPGRAM_API_KEY'))}", flush=True)
+
+# ── Sentry error monitoring (additive to report_error_to_supabase paging) ──
+# Runs at module import, so it initializes in the main process AND in every
+# LiveKit job subprocess (each re-imports this module). No-op without SENTRY_DSN.
+def _init_sentry():
+    dsn = os.getenv("SENTRY_DSN")
+    if not dsn:
+        return
+    try:
+        sentry_sdk.init(
+            dsn=dsn,
+            environment=os.getenv("SENTRY_ENVIRONMENT", "production"),
+            # Capture unhandled exceptions (excepthook) but do NOT auto-convert every
+            # logger.error() into an event — the agent logs errors liberally and that
+            # would flood the quota. Explicit captures come via report_error_to_supabase.
+            integrations=[LoggingIntegration(level=None, event_level=None)],
+            send_default_pii=False,
+            traces_sample_rate=0.0,
+        )
+        print("Sentry initialized", flush=True)
+    except Exception as e:
+        print(f"Sentry init failed: {e}", flush=True)
+
+
+_init_sentry()
 
 # Force unbuffered output for immediate log visibility in Render
 try:
@@ -47,22 +82,324 @@ from livekit.agents import (
     JobContext,
     JobProcess,
     WorkerOptions,
+    APIConnectOptions,
     cli,
     llm,
+    tts,
     AgentSession,
     Agent,
     function_tool,
 )
+from livekit.agents.voice.agent_session import SessionConnectOptions
 from livekit.plugins import deepgram, openai as lkopenai, elevenlabs, silero
 from openai import NOT_GIVEN
+try:
+    from livekit.plugins import anthropic as lkanthropic
+    _ANTHROPIC_AVAILABLE = True
+except ImportError:
+    _ANTHROPIC_AVAILABLE = False
+    print("⚠️ livekit-plugins-anthropic not installed — Claude models unavailable", flush=True)
+from livekit.plugins.elevenlabs import VoiceSettings
+# Turn detector model loading. Importing a turn-detector model registers its inference
+# runner, and the inference process EAGERLY loads every registered runner's ONNX model at
+# startup (livekit ipc/inference_proc_lazy_main → runner.initialize()) — shared across ALL
+# of that worker's calls. So model loading is PER-WORKER, not per-agent. The Multilingual
+# model is ~888MB resident vs ~66MB for English.
+#
+# Default: English only (most agents are English; STT is English-locked) → ~0.7GB worker.
+# For the customer(s) that need multilingual turn detection, run a SEPARATE worker
+# deployment with ENABLE_MULTILINGUAL_TURN_DETECTOR=1 (loads the ~888MB model) and route
+# their agent to it via a LiveKit dispatch rule (agent name) — same pattern as the
+# prod/local split. (See GH #95.)
+MultilingualModel = None
+if os.getenv("ENABLE_MULTILINGUAL_TURN_DETECTOR", "").strip().lower() in ("1", "true", "yes"):
+    try:
+        from livekit.plugins.turn_detector.multilingual import MultilingualModel
+        print("✅ Turn detector: Multilingual ENABLED (~888MB) via ENABLE_MULTILINGUAL_TURN_DETECTOR", flush=True)
+    except ImportError:
+        MultilingualModel = None
+        print("⚠️ Multilingual turn detector requested but plugin import failed", flush=True)
 
-from dotenv import load_dotenv
+try:
+    from livekit.plugins.turn_detector.english import EnglishModel
+    _TURN_DETECTOR_AVAILABLE = True
+    print("✅ Turn detector (English EOU) available", flush=True)
+except ImportError:
+    EnglishModel = None
+    _TURN_DETECTOR_AVAILABLE = MultilingualModel is not None
+    print("⚠️ English turn detector unavailable", flush=True)
+
+# Pure, unit-tested predicate (single source of truth) for English vs multilingual.
+from turn_detector_selection import should_use_english_detector
+
+
+def _build_turn_detector(language: str | None = None):
+    """Pick the EOU model by agent language. Multilingual only when this worker loaded it
+    (ENABLE_MULTILINGUAL_TURN_DETECTOR) AND the agent language needs it; otherwise English.
+    Falls back English→silence so a worker without the multilingual model still works for
+    every agent. (GH #95)"""
+    if MultilingualModel is not None and not should_use_english_detector(language):
+        try:
+            td = MultilingualModel()
+            print(f"✅ Turn detector in use: MultilingualModel (lang={language})", flush=True)
+            return td
+        except Exception as e:
+            print(f"⚠️ MultilingualModel init failed ({e}) — falling back to English", flush=True)
+    if EnglishModel is not None:
+        try:
+            td = EnglishModel()
+            print(f"✅ Turn detector in use: EnglishModel (lang={language})", flush=True)
+            return td
+        except Exception as e:
+            print(f"⚠️ EnglishModel init failed ({e}) — silence-based endpointing", flush=True)
+    return None
+
+
+async def _warm_turn_detector(td) -> None:
+    """Warm the EOU inference executor with one dummy prediction so the caller's FIRST
+    real end-of-turn prediction doesn't pay cold model-load + JIT inside the 3s predict
+    timeout. On the ~heavier Multilingual model that cold start blew the timeout →
+    'Error predicting end of turn' TimeoutError and a degraded opening turn (GH #96).
+    Fired as a background task at entrypoint so it loads during the greeting. Best-effort:
+    any failure just leaves the model to load lazily on first real use (prior behavior)."""
+    try:
+        warm_ctx = llm.ChatContext.empty()
+        warm_ctx.add_message(role="user", content="bonjour")
+        t0 = time_module.monotonic()
+        await td.predict_end_of_turn(warm_ctx, timeout=30)
+        logger.info(f"🔥 Turn detector warmed ({type(td).__name__}) in {time_module.monotonic() - t0:.2f}s")
+    except Exception as e:
+        logger.warning(f"⚠️ Turn detector warmup skipped (non-fatal): {e}")
+
+# Map short Claude model IDs (stored in DB) to Anthropic's full API model IDs
+_CLAUDE_MODEL_MAP = {
+    "claude-opus-4.6": "claude-opus-4-6",
+    "claude-sonnet-4.6": "claude-sonnet-4-6",
+    "claude-sonnet-4.5": "claude-sonnet-4-5-20250929",
+    "claude-haiku-4.5": "claude-haiku-4-5-20251001",
+    # Legacy model IDs (backwards compat for existing agents)
+    "claude-3.5-sonnet": "claude-sonnet-4-5-20250929",
+    "claude-3-haiku": "claude-haiku-4-5-20251001",
+}
+
+def _build_elevenlabs_tts(voice_id: str, tts_model: str, voice_settings):
+    return elevenlabs.TTS(
+        model=tts_model,
+        voice_id=voice_id,
+        voice_settings=voice_settings,
+        api_key=os.getenv("ELEVENLABS_API_KEY") or os.getenv("ELEVEN_API_KEY"),
+        auto_mode=True,
+        streaming_latency=3,
+    )
+
+
+def _build_tts(voice_id: str, tts_model: str, voice_settings, is_cloned: bool):
+    """Build the conversation TTS, wrapped in a FallbackAdapter so a stuck/dropped
+    primary stream (e.g. an ElevenLabs websocket 1006) fails over to the other
+    provider instead of hanging until the framework's 5s interruption force-cancel
+    ("speech not done in time after interruption")."""
+    if voice_id.startswith("openai-"):
+        # OpenAI TTS voices: strip the "openai-" prefix to get the voice name
+        oai_voice = voice_id.removeprefix("openai-")
+        print(f"🔊 Using OpenAI TTS: voice={oai_voice} (fallback: ElevenLabs Sarah)", flush=True)
+        primary = lkopenai.TTS(model="gpt-4o-mini-tts", voice=oai_voice)
+        # Fall back to a stock ElevenLabs voice (Sarah, flash model for low latency)
+        fallback = _build_elevenlabs_tts("EXAVITQu4vr4xnSDxMaL", "eleven_flash_v2_5", voice_settings)
+    else:
+        # ElevenLabs TTS (default)
+        print(f"🔊 Using ElevenLabs TTS: voice={voice_id}, model={tts_model} (fallback: OpenAI)", flush=True)
+        primary = _build_elevenlabs_tts(voice_id, tts_model, voice_settings)
+        # Fall back to OpenAI TTS (different network path / provider)
+        fallback = lkopenai.TTS(model="gpt-4o-mini-tts", voice="shimmer")
+
+    # max_retry_per_tts=0: fail straight over to the fallback on the first primary
+    # error instead of retrying the dead instance. Combined with the session's 4s
+    # tts_conn_options timeout, this keeps worst-case failover under the framework's
+    # hardcoded 5s interruption force-cancel window. The background recovery task
+    # re-enables the primary for subsequent turns once it's healthy again.
+    return tts.FallbackAdapter([primary, fallback], max_retry_per_tts=0)
+
+def _construct_anthropic_llm(resolved_model: str):
+    """Raw Anthropic LLM construction.
+
+    Kept separate from _build_llm so the provider self-test can exercise the real
+    thing without _build_llm's OpenAI fallback swallowing the failure — a health
+    check that silently passes because the fallback caught the error is worse
+    than no health check.
+
+    caching="ephemeral": apply cache_control to the system prompt, tools, and
+    chat history. Unlike OpenAI (which auto-caches >1024-token prefixes), Anthropic
+    only caches with explicit breakpoints, so without this the large per-call system
+    prompt is reprocessed every turn — measured ~150ms higher warm-turn TTFT on
+    Claude vs the OpenAI models. No effect on output, only on llm_node_ttft.
+    """
+    return lkanthropic.LLM(
+        model=resolved_model, temperature=0.7, _strict_tool_schema=False, caching="ephemeral"
+    )
+
+
+def _build_llm(llm_model: str, is_claude: bool, priority_sequencing: bool):
+    """Route to the correct LLM plugin based on model ID."""
+    if is_claude:
+        if not _ANTHROPIC_AVAILABLE:
+            print(f"⚠️ Claude model {llm_model} requested but livekit-plugins-anthropic not installed — falling back to gpt-4.1-mini", flush=True)
+            return lkopenai.LLM(model="gpt-4.1-mini", temperature=0.7)
+        resolved_model = _CLAUDE_MODEL_MAP.get(llm_model, llm_model)
+        print(f"🤖 Using Anthropic LLM: {llm_model} → {resolved_model}", flush=True)
+        try:
+            return _construct_anthropic_llm(resolved_model)
+        except Exception as e:
+            # A breaking change *inside* the anthropic SDK used to crash the job
+            # right here — after room join, so the caller heard endless ringing
+            # instead of a fast failure (2026-08-20: the httpx2 major landed via
+            # an unpinned dep and went six days undetected). Degrade to OpenAI so
+            # the call still happens; /health/providers is what tells you we are
+            # running degraded, since the caller never will.
+            print(
+                f"🚨 Anthropic LLM construction failed for {resolved_model} "
+                f"({type(e).__name__}: {e}) — falling back to gpt-4.1-mini",
+                flush=True,
+            )
+            return lkopenai.LLM(model="gpt-4.1-mini", temperature=0.7)
+    return lkopenai.LLM(
+        model=llm_model,
+        temperature=0.7,
+        service_tier="priority" if priority_sequencing else NOT_GIVEN,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Provider self-test — the surface the /health/providers watchdog polls.
+#
+# Why capability and not traffic: on 2026-08-20 an unpinned `anthropic` picked up
+# its httpx2 major, which livekit-plugins-anthropic could not accept, and every
+# Claude job died inside _build_llm. Nothing in the aggregate call metrics moved:
+# only 5 of ~248 agents run Claude, and none of them took a call for six days, so
+# call counts and durations looked perfectly normal the entire time. A provider
+# serving a small slice of agents can be 100% dead and statistically invisible.
+#
+# So this asserts the capability directly — it constructs each provider exactly
+# the way the call path does — instead of inferring health from volume. Same
+# reasoning as composio-health-check: "no traffic in N hours" is ambiguous (quiet
+# vs. broken) and would false-page overnight.
+#
+# These constructors build clients; they do not reach the network, so the check is
+# cheap and safe on a 30-minute cron. VAD and the turn detector are deliberately
+# NOT instantiated: both already degrade gracefully via try/except at their call
+# sites, and loading them costs real memory in the worker process (the
+# multilingual detector is ~300MB). For those we assert the import resolved.
+# ---------------------------------------------------------------------------
+
+_WATCHED_PACKAGES = (
+    "anthropic",
+    "openai",
+    "httpx",
+    "livekit-agents",
+    "livekit-plugins-anthropic",
+    "livekit-plugins-openai",
+    "livekit-plugins-deepgram",
+    "livekit-plugins-elevenlabs",
+    "livekit-plugins-silero",
+    "livekit-plugins-turn-detector",
+)
+
+
+def _package_versions() -> dict:
+    """Installed versions of the packages whose drift can break the call path.
+
+    Reported even when every check passes, so the version that shipped a
+    regression is visible in the alert instead of needing a rebuild to find.
+    """
+    try:
+        from importlib.metadata import version
+    except Exception:
+        return {}
+    out = {}
+    for name in _WATCHED_PACKAGES:
+        try:
+            out[name] = version(name)
+        except Exception:
+            out[name] = None
+    return out
+
+
+def _installed_freeze() -> dict:
+    """Every installed distribution and its version — the worker's actual resolved
+    dependency set, which is the only authoritative source for regenerating pins.
+    Direct pins in requirements.txt do not constrain transitive deps, so this is
+    what you diff after a surprise rebuild.
+    """
+    try:
+        from importlib.metadata import distributions
+    except Exception:
+        return {}
+    out = {}
+    for d in distributions():
+        try:
+            name = d.metadata["Name"]
+            if name:
+                out[name] = d.version
+        except Exception:
+            continue
+    return dict(sorted(out.items(), key=lambda kv: kv[0].lower()))
+
+
+def _provider_selftest() -> dict:
+    """Construct every per-call provider and report which ones fail. Never raises."""
+    checks: dict = {}
+
+    def _check(name, fn):
+        try:
+            fn()
+            checks[name] = {"ok": True}
+        except Exception as e:
+            checks[name] = {"ok": False, "error": f"{type(e).__name__}: {e}"[:300]}
+
+    # The exact construction that died on 2026-08-20. Uses the raw constructor so
+    # _build_llm's OpenAI fallback cannot mask a broken Anthropic SDK.
+    if not _ANTHROPIC_AVAILABLE:
+        checks["anthropic_llm"] = {"ok": False, "error": "livekit-plugins-anthropic not importable"}
+    else:
+        _check(
+            "anthropic_llm",
+            lambda: _construct_anthropic_llm(_CLAUDE_MODEL_MAP["claude-haiku-4.5"]),
+        )
+
+    _check("openai_llm", lambda: lkopenai.LLM(model="gpt-4.1-mini", temperature=0.7))
+    _check("deepgram_stt", lambda: deepgram.STT(model="nova-2-phonecall", language="en-US"))
+    _check(
+        "elevenlabs_tts",
+        lambda: elevenlabs.TTS(
+            model="eleven_flash_v2_5",
+            voice_id="EXAVITQu4vr4xnSDxMaL",
+            api_key=os.getenv("ELEVENLABS_API_KEY") or os.getenv("ELEVEN_API_KEY"),
+            auto_mode=True,
+            streaming_latency=3,
+        ),
+    )
+    _check("openai_tts", lambda: lkopenai.TTS(model="gpt-4o-mini-tts", voice="shimmer"))
+
+    # Import-only, by design (see note above).
+    checks["silero_vad"] = {"ok": hasattr(silero, "VAD")}
+    checks["turn_detector"] = {
+        "ok": bool(_TURN_DETECTOR_AVAILABLE),
+        "english": EnglishModel is not None,
+        "multilingual": MultilingualModel is not None,
+    }
+
+    failed = sorted(k for k, v in checks.items() if not v.get("ok"))
+    return {
+        "healthy": not failed,
+        "failed": failed,
+        "checks": checks,
+        "versions": _package_versions(),
+        "worker": os.getenv("LIVEKIT_AGENT_NAME", "SW Telephony Agent"),
+        "multilingual_enabled": os.getenv("ENABLE_MULTILINGUAL_TURN_DETECTOR") == "1",
+    }
+
 from supabase import create_client, Client
 import bcrypt
 import openai
-
-# Load environment variables
-load_dotenv()
 
 # Configure logging
 logging.basicConfig(
@@ -101,10 +438,135 @@ print(f"Working directory: {os.getcwd()}", flush=True)
 print("=" * 80, flush=True)
 logger.info("🚀 Agent module imported successfully")
 
+# Connection-level httpx errors that mean a pooled keep-alive connection was
+# closed by the server (Supabase/PgBouncer) after an idle gap. The first DB call
+# of a new call then fails on reuse ("Server disconnected without sending a
+# response"). httpx discards the dead connection, so a single retry reconnects.
+_RETRYABLE_DB_ERRORS = (
+    httpx.RemoteProtocolError,
+    httpx.ConnectError,
+    httpx.ConnectTimeout,
+    httpx.ReadError,
+    httpx.WriteError,
+    httpx.PoolTimeout,
+)
+
+
+def _install_db_connection_retry(client: Client) -> None:
+    """Make every PostgREST query resilient to stale-connection drops.
+
+    The agent keeps one long-lived sync Supabase client for the worker's whole
+    lifetime; its pooled connection goes stale across idle periods between calls,
+    so the first DB call of a new call can raise RemoteProtocolError. Wrapping the
+    shared httpx session's send() retries once with a fresh connection — this
+    covers all ~60 supabase.table(...).execute() sites centrally, since every
+    query routes ReqConfig.send() -> session.request() -> session.send(). The
+    mirror of report_error_to_supabase's fresh-connection resilience, but for reads.
+    """
+    try:
+        session = client.postgrest.session
+    except AttributeError:
+        logger.warning("[db] could not access postgrest.session — stale-connection retry not installed")
+        return
+    if getattr(session, "_magpipe_retry_installed", False):
+        return
+    _orig_send = session.send
+
+    def _send_with_retry(request, **kwargs):
+        try:
+            return _orig_send(request, **kwargs)
+        except _RETRYABLE_DB_ERRORS as e:
+            logger.warning(
+                f"[db] stale connection on {request.method} {request.url.path} "
+                f"({type(e).__name__}); retrying once with a fresh connection"
+            )
+            return _orig_send(request, **kwargs)
+
+    session.send = _send_with_retry
+    session._magpipe_retry_installed = True
+    logger.info("✅ Supabase stale-connection retry installed")
+
+
 # Initialize Supabase client
 supabase_url = os.getenv("SUPABASE_URL")
 supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 supabase: Client = create_client(supabase_url, supabase_key)
+_install_db_connection_retry(supabase)
+
+# Module-level OpenAI client (reused across all async functions)
+openai_client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+
+def report_error_to_supabase(
+    error_type: str,
+    error_message,
+    *,
+    error_code: str | None = None,
+    source: str = "agent.py",
+    severity: str = "error",
+    metadata: dict | None = None,
+    user_id: str | None = None,
+) -> None:
+    """Persist a critical-service error to system_error_logs AND fire the
+    admin alert fan-out (SMS / email / Slack) by routing through the
+    log-error edge function — direct DB inserts skip the alert path.
+
+    Throttling lives server-side (one alert per error_type per 15 min), so
+    callers can fire as often as they want during an outage. Best-effort
+    and non-throwing — logging-of-an-error must never cascade.
+    """
+    sb_url = os.getenv("SUPABASE_URL")
+    sb_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    if not sb_url or not sb_key:
+        logger.error("[report_error_to_supabase] missing SUPABASE_URL or SERVICE_ROLE_KEY env")
+        return
+
+    payload = json.dumps({
+        "error_type": error_type,
+        "error_message": str(error_message)[:2000],
+        "error_code": str(error_code)[:100] if error_code is not None else None,
+        "source": source,
+        "severity": severity,
+        "metadata": metadata or {},
+        "user_id": user_id,
+    }).encode("utf-8")
+
+    def _send():
+        try:
+            req = urllib.request.Request(
+                f"{sb_url}/functions/v1/log-error",
+                data=payload,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {sb_key}",
+                },
+                method="POST",
+            )
+            urllib.request.urlopen(req, timeout=3.0).read()
+        except Exception as e:
+            logger.error(f"[report_error_to_supabase] log-error call failed: {e}")
+
+    # Daemon thread keeps the LiveKit / asyncio event loop responsive even if
+    # log-error is slow. Fire-and-forget — the call won't block on this.
+    threading.Thread(target=_send, daemon=True).start()
+
+    # Mirror into Sentry (no-op without SENTRY_DSN) for dev-facing aggregation.
+    # capture_message is a safe no-op when Sentry isn't initialized.
+    try:
+        lvl = "warning" if severity == "warning" else "error"
+        with sentry_sdk.push_scope() as scope:
+            scope.set_tag("error_type", error_type)
+            scope.set_tag("source", source)
+            if error_code is not None:
+                scope.set_tag("error_code", str(error_code)[:100])
+            if user_id:
+                scope.set_user({"id": user_id})
+            if metadata:
+                scope.set_context("metadata", metadata)
+            sentry_sdk.capture_message(f"[{error_type}] {str(error_message)[:500]}", level=lvl)
+    except Exception:
+        pass
+
 
 # Helper function to log call state to database
 def log_call_state(room_name: str, state: str, component: str = 'agent', details: dict = None, error_message: str = None):
@@ -133,17 +595,32 @@ def is_within_schedule(schedule: dict, timezone: str = "America/Los_Angeles") ->
         weekday = now.strftime("%A").lower()  # e.g. "monday"
         current_time = now.strftime("%H:%M")  # e.g. "14:30"
 
+        # An overnight window (start > end, e.g. 23:00-05:00) spills past midnight
+        # into the NEXT day, so the early-morning portion is owned by yesterday's row
+        prev_weekday = (now - datetime.timedelta(days=1)).strftime("%A").lower()
+        prev_schedule = schedule.get(prev_weekday) or {}
+        in_prev_overnight = bool(
+            prev_schedule.get("enabled")
+            and prev_schedule.get("start", "00:00") > prev_schedule.get("end", "23:59")
+            and current_time <= prev_schedule.get("end", "23:59")
+        )
+
         day_schedule = schedule.get(weekday)
         if not day_schedule:
             return True  # No schedule for this day = available
 
         if not day_schedule.get("enabled"):
-            return False  # Day is disabled
+            return in_prev_overnight  # Day is disabled unless yesterday's window spills over
 
         start = day_schedule.get("start", "00:00")
         end = day_schedule.get("end", "23:59")
-        is_within = start <= current_time <= end
-        logger.info(f"Schedule check: {weekday} {current_time} in {start}-{end}: {is_within}")
+        if start <= end:
+            is_within = start <= current_time <= end
+        else:
+            # Overnight: tonight's portion; morning spill handled via prev day
+            is_within = current_time >= start
+        is_within = is_within or in_prev_overnight
+        logger.info(f"Schedule check: {weekday} {current_time} in {start}-{end}: {is_within} (prev_overnight: {in_prev_overnight})")
         return is_within
     except Exception as e:
         logger.error(f"Error checking schedule: {e}")
@@ -217,7 +694,7 @@ async def speak_error_and_disconnect(ctx: JobContext, message: str):
             llm=lkopenai.LLM(model="gpt-4o-mini"),
             tts=elevenlabs.TTS(
                 model="eleven_flash_v2_5",
-                voice_id="21m00Tcm4TlvDq8ikWAM",  # Rachel
+                voice_id="EXAVITQu4vr4xnSDxMaL",  # Sarah
                 api_key=os.getenv("ELEVENLABS_API_KEY") or os.getenv("ELEVEN_API_KEY"),
             ),
         )
@@ -244,9 +721,8 @@ async def speak_error_and_disconnect(ctx: JobContext, message: str):
         livekit_url = os.getenv("LIVEKIT_URL")
         livekit_api_key = os.getenv("LIVEKIT_API_KEY")
         livekit_api_secret = os.getenv("LIVEKIT_API_SECRET")
-        livekit_api = api.LiveKitAPI(livekit_url, livekit_api_key, livekit_api_secret)
-
-        await livekit_api.room.delete_room(api.DeleteRoomRequest(room=ctx.room.name))
+        async with api.LiveKitAPI(livekit_url, livekit_api_key, livekit_api_secret) as livekit_api:
+            await livekit_api.room.delete_room(api.DeleteRoomRequest(room=ctx.room.name))
         logger.info("✅ Room deleted - call ended")
 
     except Exception as e:
@@ -256,8 +732,8 @@ async def speak_error_and_disconnect(ctx: JobContext, message: str):
             livekit_url = os.getenv("LIVEKIT_URL")
             livekit_api_key = os.getenv("LIVEKIT_API_KEY")
             livekit_api_secret = os.getenv("LIVEKIT_API_SECRET")
-            livekit_api = api.LiveKitAPI(livekit_url, livekit_api_key, livekit_api_secret)
-            await livekit_api.room.delete_room(api.DeleteRoomRequest(room=ctx.room.name))
+            async with api.LiveKitAPI(livekit_url, livekit_api_key, livekit_api_secret) as livekit_api:
+                await livekit_api.room.delete_room(api.DeleteRoomRequest(room=ctx.room.name))
         except Exception:
             pass
 
@@ -268,18 +744,23 @@ async def get_voice_config(voice_id: str, user_id: str) -> dict:
         # Remove '11labs-' prefix if present
         clean_voice_id = voice_id.replace("11labs-", "")
 
-        # Try to get custom voice config
-        response = supabase.table("voices") \
-            .select("*") \
-            .eq("voice_id", clean_voice_id) \
-            .eq("user_id", user_id) \
-            .limit(1) \
-            .execute()
+        # Try to get custom voice config. The supabase client is synchronous, so run
+        # the blocking call in a thread — otherwise this "async" function would block
+        # the event loop and callers couldn't fetch it concurrently with other lookups.
+        def _query_voice():
+            return supabase.table("voices") \
+                .select("*") \
+                .eq("voice_id", clean_voice_id) \
+                .eq("user_id", user_id) \
+                .limit(1) \
+                .execute()
+        response = await asyncio.to_thread(_query_voice)
 
         if response.data and len(response.data) > 0:
             voice_data = response.data[0]
             return {
                 "voice_id": clean_voice_id,
+                "is_cloned": bool(voice_data.get("is_cloned", False)),
                 "stability": float(voice_data.get("stability", 0.5)),
                 "similarity_boost": float(voice_data.get("similarity_boost", 0.75)),
                 "style": float(voice_data.get("style", 0.0)),
@@ -289,11 +770,30 @@ async def get_voice_config(voice_id: str, user_id: str) -> dict:
         logger.warning(f"Could not fetch voice config: {e}")
 
     # Return defaults for preset voices
+    # Validate: ElevenLabs voice IDs are 20-char alphanumeric. Fall back to Sarah if invalid.
+    DEFAULT_VOICE_ID = "EXAVITQu4vr4xnSDxMaL"  # Sarah
+    # Voice IDs that no longer exist in ElevenLabs — verified absent from GET /v1/voices
+    # (2026-06-24). Selecting any of these would 404 at TTS time, so fall back to Sarah.
+    # The picker no longer offers them (#109); this is the runtime safety net for agents
+    # still pinned to one. Long-term fix = DB-driven voice registry (#85).
+    DEPRECATED_VOICE_IDS = {
+        "21m00Tcm4TlvDq8ikWAM",  # Rachel (ElevenLabs v1)
+        "MF3mGyEYCl7XYWbV9V6O",  # Elli (retired)
+        "TxGEqnHWrfWFTfGW9XjX",  # Josh (retired)
+    }
+    resolved = voice_id.replace("11labs-", "")
+    if not re.match(r'^[A-Za-z0-9]{15,25}$', resolved) or resolved in DEPRECATED_VOICE_IDS:
+        logger.warning(f"⚠️ Deprecated/invalid ElevenLabs voice_id '{resolved}' — falling back to Sarah")
+        resolved = DEFAULT_VOICE_ID
     return {
-        "voice_id": voice_id.replace("11labs-", ""),
-        "stability": 0.5,
+        "voice_id": resolved,
+        # Livelier defaults for every phone agent: lower stability = more
+        # emotional range, higher style = more expressive. (style is honored on
+        # Turbo/Multilingual; on Flash — which premade voices use — it's a no-op
+        # and only the lower stability takes effect.)
+        "stability": 0.3,
         "similarity_boost": 0.75,
-        "style": 0.0,
+        "style": 0.55,
         "use_speaker_boost": True,
     }
 
@@ -301,10 +801,14 @@ async def get_voice_config(voice_id: str, user_id: str) -> dict:
 async def get_dynamic_variables(agent_id: str, user_id: str) -> list:
     """Fetch dynamic variable definitions for extraction"""
     try:
-        response = supabase.table("dynamic_variables") \
-            .select("*") \
-            .eq("user_id", user_id) \
-            .execute()
+        # Synchronous supabase client → run in a thread so this doesn't block the
+        # event loop and can run concurrently with the other per-call lookups.
+        def _query_dynvars():
+            return supabase.table("dynamic_variables") \
+                .select("*") \
+                .eq("user_id", user_id) \
+                .execute()
+        response = await asyncio.to_thread(_query_dynvars)
 
         variables = response.data or []
         # Filter by agent_id if set, or include variables with no agent_id (global)
@@ -392,7 +896,7 @@ Transcript:
 Respond with ONLY a valid JSON object. Only include fields where the value was clearly stated or discussed.
 Use null for fields that were asked about but not answered. Omit fields entirely if not relevant to the call."""
 
-        client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        client = openai_client
 
         response = await client.chat.completions.create(
             model="gpt-4o-mini",
@@ -407,16 +911,72 @@ Use null for fields that were asked about but not answered. Omit fields entirely
 
     except Exception as e:
         logger.error(f"Failed to extract data from transcript: {e}")
+        report_error_to_supabase(
+            "openai_chat_failure",
+            e,
+            error_code=str(getattr(e, "status_code", "")) or None,
+            source="agent.py:extract_data_from_transcript",
+            metadata={"channel": "voice", "model": "gpt-4o-mini", "purpose": "extract_data"},
+        )
         return {}
 
 
-async def generate_call_summary(transcript_text: str) -> str:
+# A caller who hangs up on the greeting is gone within seconds; past this the
+# call was silent but not an instant hang-up, so the wording changes.
+INSTANT_HANGUP_MAX_S = 30
+
+
+async def generate_call_summary(
+    transcript_text: str,
+    call_duration: int = 0,
+    idle_reminders_sent: int = 0,
+    agent_ended_call: bool = False,
+) -> str:
     """Generate a brief 3-sentence summary of the call"""
     if not transcript_text:
         return ""
 
+    # Determine how much the caller actually said
+    caller_lines = [
+        line.split(":", 1)[1].strip()
+        for line in transcript_text.splitlines()
+        if line.lower().startswith("caller:")
+    ]
+    caller_word_count = len(" ".join(caller_lines).split())
+
+    if caller_word_count == 0:
+        # Agent spoke but caller said nothing — hang-up, wrong number, etc.
+        # Say what happened rather than returning "": an empty summary left call
+        # notifications with nothing but a caller number and a session id, so
+        # the owner couldn't tell a silent hang-up from a broken pipeline.
+        # Stated, not generated — no GPT call, nothing invented.
+        logger.info("📝 Caller did not speak — using no-conversation summary")
+
+        # A quick drop and a caller who holds an open line in silence are two
+        # different problems (the second burns minutes and may be a caller who
+        # can't hear the agent), so they must not read the same.
+        if 0 < call_duration <= INSTANT_HANGUP_MAX_S and not idle_reminders_sent:
+            return "Agent greeted caller, caller hung up immediately."
+
+        parts = [
+            "Agent greeted caller, caller stayed on the line"
+            f"{f' for {call_duration}s' if call_duration else ''} without ever speaking."
+        ]
+        if idle_reminders_sent:
+            parts.append(
+                f"Agent checked in {idle_reminders_sent} "
+                f"time{'s' if idle_reminders_sent != 1 else ''} with no response."
+            )
+        parts.append("Agent ended the call." if agent_ended_call else "Caller hung up.")
+        return " ".join(parts)
+
+    if caller_word_count < 10:
+        # Caller said a little — return the raw transcript instead of GPT filler
+        logger.info(f"📝 Caller spoke {caller_word_count} words — using transcript as summary")
+        return transcript_text
+
     try:
-        client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        client = openai_client
 
         response = await client.chat.completions.create(
             model="gpt-4o-mini",
@@ -439,7 +999,124 @@ Provide only the 3-sentence summary, no additional text."""
 
     except Exception as e:
         logger.error(f"Failed to generate call summary: {e}")
+        report_error_to_supabase(
+            "openai_chat_failure",
+            e,
+            error_code=str(getattr(e, "status_code", "")) or None,
+            source="agent.py:generate_call_summary",
+            metadata={"channel": "voice", "model": "gpt-4o-mini", "purpose": "summary"},
+        )
         return ""
+
+
+# Fraud categories mirrored from supabase/functions/_shared/fraud.ts. Keep in
+# sync — report-fraud-number coerces anything unrecognised to "other".
+FRAUD_CATEGORIES = [
+    "gift_card", "wire_transfer", "bank_impersonation", "government_impersonation",
+    "tech_support", "crypto", "credential_phishing", "extortion", "invoice_fraud", "other",
+]
+
+# A detection blocks the number for EVERY workspace, so the bar is deliberately
+# high: obvious, in-transcript fraud only.
+FRAUD_MIN_CONFIDENCE = 0.85
+
+
+async def detect_fraud(transcript_text: str) -> dict | None:
+    """Classify a transcript for obvious fraud. Returns None unless confident.
+
+    Runs concurrently with the summary in the same post-call gather, so it adds
+    no wall-clock to hang-up handling. Only called when the caller actually
+    spoke — an agent-only transcript has nothing to classify.
+    """
+    if not transcript_text:
+        return None
+
+    try:
+        response = await openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{
+                "role": "system",
+                "content": (
+                    "You review phone call transcripts for OBVIOUS fraud by the CALLER. "
+                    "A positive result blocks the caller's number for every customer on the "
+                    "platform, so only report fraud you can point at in the transcript. "
+                    "Rude, angry, confused, sales-y, or wrong-number callers are NOT fraud. "
+                    "A caller who is themselves describing being scammed is NOT fraud. "
+                    "Report fraud only when the CALLER is running the scam: demanding gift "
+                    "cards or wire transfers, impersonating a bank, government agency or the "
+                    "business itself, phishing for credentials, card numbers or one-time "
+                    "codes, extortion or threats, fake invoices, or crypto payment demands.\n"
+                    "Respond with JSON only: {\"is_fraud\": bool, \"category\": one of "
+                    f"{FRAUD_CATEGORIES}, \"confidence\": 0.0-1.0, \"evidence\": "
+                    "\"<= 200 chars quoted from the transcript\"}. "
+                    "If not fraud: {\"is_fraud\": false, \"confidence\": 0.0}."
+                ),
+            }, {
+                "role": "user",
+                "content": f"Transcript:\n{transcript_text}",
+            }],
+            temperature=0,
+            max_tokens=200,
+            response_format={"type": "json_object"},
+        )
+
+        result = json.loads(response.choices[0].message.content or "{}")
+        if not result.get("is_fraud"):
+            return None
+
+        confidence = float(result.get("confidence") or 0)
+        category = result.get("category") if result.get("category") in FRAUD_CATEGORIES else "other"
+        evidence = (result.get("evidence") or "")[:200]
+
+        if confidence < FRAUD_MIN_CONFIDENCE:
+            logger.info(f"🚩 Fraud signal below threshold ({confidence:.2f} < {FRAUD_MIN_CONFIDENCE}) — not reporting")
+            return None
+
+        logger.warning(f"🚩 FRAUD DETECTED: category={category} confidence={confidence:.2f}")
+        return {"category": category, "confidence": confidence, "evidence": evidence}
+
+    except Exception as e:
+        logger.error(f"Fraud detection failed: {e}")
+        report_error_to_supabase(
+            "openai_chat_failure",
+            e,
+            error_code=str(getattr(e, "status_code", "")) or None,
+            source="agent.py:detect_fraud",
+            metadata={"channel": "voice", "model": "gpt-4o-mini", "purpose": "fraud_check"},
+        )
+        return None
+
+
+async def report_fraud_number(caller_phone: str, user_id: str, call_record_id: str, finding: dict) -> None:
+    """Hand a detection to report-fraud-number, which owns the guards and the
+    decision to block. Fire-and-forget — never breaks call teardown."""
+    supabase_url = os.environ.get("SUPABASE_URL")
+    service_role_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    if not supabase_url or not service_role_key or not caller_phone:
+        return
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{supabase_url}/functions/v1/report-fraud-number",
+                headers={"Authorization": f"Bearer {service_role_key}", "Content-Type": "application/json"},
+                json={
+                    "e164": caller_phone,
+                    "user_id": user_id,
+                    "call_record_id": call_record_id,
+                    "source": "transcript_llm",
+                    "category": finding["category"],
+                    "confidence": finding["confidence"],
+                    "evidence": finding["evidence"],
+                },
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as resp:
+                payload = await resp.json(content_type=None)
+                logger.warning(
+                    f"🚩 Fraud report for {caller_phone}: status={payload.get('status')} "
+                    f"blocked={payload.get('blocked')} guards={payload.get('guards')}"
+                )
+    except Exception as e:
+        logger.error(f"Fraud report failed for {caller_phone}: {e}")
 
 
 async def redact_pii(text: str) -> str:
@@ -448,7 +1125,7 @@ async def redact_pii(text: str) -> str:
         return text
 
     try:
-        client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        client = openai_client
 
         response = await client.chat.completions.create(
             model="gpt-4o-mini",
@@ -489,6 +1166,13 @@ Rules:
 
     except Exception as e:
         logger.error(f"PII redaction failed (returning original): {e}")
+        report_error_to_supabase(
+            "openai_chat_failure",
+            e,
+            error_code=str(getattr(e, "status_code", "")) or None,
+            source="agent.py:redact_pii",
+            metadata={"channel": "voice", "model": "gpt-4o-mini", "purpose": "redact_pii"},
+        )
         return text
 
 
@@ -582,17 +1266,17 @@ async def get_caller_memory(caller_phone: str, user_id: str, agent_id: str, memo
         return ""
 
 
-async def generate_embedding(text: str) -> list:
+async def generate_embedding(text: str, model: str = "text-embedding-ada-002") -> list:
     """Generate embedding vector for text using OpenAI"""
     if not text:
         return None
 
     try:
-        client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        client = openai_client
 
         response = await client.embeddings.create(
-            model="text-embedding-ada-002",
-            input=text[:8000],  # Limit to ~8000 chars for ada-002
+            model=model,
+            input=text[:8000],
         )
 
         embedding = response.data[0].embedding
@@ -601,6 +1285,13 @@ async def generate_embedding(text: str) -> list:
 
     except Exception as e:
         logger.error(f"Failed to generate embedding: {e}")
+        report_error_to_supabase(
+            "openai_embedding_failure",
+            e,
+            error_code=str(getattr(e, "status_code", "")) or None,
+            source="agent.py:generate_embedding",
+            metadata={"channel": "voice", "model": model, "purpose": "embedding"},
+        )
         return None
 
 
@@ -637,6 +1328,38 @@ async def search_similar_memories(query_text: str, agent_id: str, user_id: str, 
     except Exception as e:
         logger.error(f"Failed to search similar memories: {e}")
         return []
+
+
+async def search_knowledge_base(knowledge_source_ids: list, query_text: str, limit: int = 3) -> str:
+    """Search knowledge base for relevant content using vector similarity.
+    Returns concatenated chunk content or None."""
+    if not knowledge_source_ids or not query_text:
+        return None
+
+    try:
+        # Use text-embedding-3-small to match the model used during KB indexing
+        query_embedding = await generate_embedding(query_text, "text-embedding-3-small")
+        if not query_embedding:
+            return None
+
+        response = supabase.rpc("match_knowledge_chunks", {
+            "query_embedding": query_embedding,
+            "source_ids": knowledge_source_ids,
+            "match_count": limit,
+            "similarity_threshold": 0.25,
+        }).execute()
+
+        if response.data and len(response.data) > 0:
+            context = "\n\n---\n\n".join(chunk["content"] for chunk in response.data)
+            logger.info(f"📚 Found {len(response.data)} relevant KB chunks")
+            return context
+
+        logger.info("📚 No relevant KB chunks found")
+        return None
+
+    except Exception as e:
+        logger.error(f"Failed to search knowledge base: {e}")
+        return None
 
 
 async def get_semantic_context(transcript_text: str, agent_id: str, user_id: str, current_contact_id: str = None, config: dict = None) -> tuple:
@@ -858,23 +1581,22 @@ async def update_caller_memory(caller_phone: str, user_id: str, agent_id: str, c
         key_topics = []
         if transcript_text:
             try:
-                client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+                client = openai_client
                 topics_response = await client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=[{
                         "role": "user",
-                        "content": f"""Extract 3-5 key topics from this phone call transcript. Return ONLY a JSON array of short topic strings (2-4 words each).
+                        "content": f"""Extract 3-5 key topics from this phone call transcript. Return a JSON object like {{"topics": ["pricing inquiry", "product demo request", "technical support"]}} with short topic strings (2-4 words each).
 
 Transcript:
-{transcript_text[:3000]}
-
-Example output: ["pricing inquiry", "product demo request", "technical support"]"""
+{transcript_text[:3000]}"""
                     }],
                     temperature=0.1,
                     max_tokens=100,
+                    response_format={"type": "json_object"},
                 )
                 topics_text = topics_response.choices[0].message.content.strip()
-                key_topics = json.loads(topics_text)
+                key_topics = json.loads(topics_text).get("topics", []) if topics_text else []
                 logger.info(f"🧠 Extracted topics: {key_topics}")
             except Exception as e:
                 logger.warning(f"🧠 Failed to extract topics: {e}")
@@ -904,7 +1626,7 @@ Example output: ["pricing inquiry", "product demo request", "technical support"]
             if existing_summary:
                 # Generate merged summary
                 try:
-                    client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+                    client = openai_client
                     merge_response = await client.chat.completions.create(
                         model="gpt-4o-mini",
                         messages=[{
@@ -989,8 +1711,29 @@ Keep the most important information. Focus on the overall relationship and key n
         return False
 
 
+_WEBHOOK_RETRYABLE_STATUS = {408, 429, 500, 502, 503, 504}
+# Backoff after attempt N → schedule re-fire by the TS webhook-retry-worker.
+# Indexed by next attempt number; slots 0/1 unused.
+_WEBHOOK_BACKOFF_MS = [0, 0, 5_000, 30_000, 120_000, 600_000, 1_800_000]
+
+
+def _next_webhook_retry_at(next_attempt: int) -> str | None:
+    """ISO timestamp when retry-worker should re-fire, or None if no retry."""
+    if next_attempt < 2 or next_attempt > 5:
+        return None
+    base_ms = _WEBHOOK_BACKOFF_MS[next_attempt]
+    jitter = base_ms * 0.25 * (random.random() * 2 - 1)
+    delay_s = (base_ms + jitter) / 1000.0
+    return (datetime.datetime.utcnow() + datetime.timedelta(seconds=delay_s)).isoformat() + "Z"
+
+
 async def send_webhooks(user_id: str, event_type: str, payload: dict):
-    """Send webhook notifications to all active API keys with webhook URLs configured."""
+    """Send webhook notifications to all active API keys with webhook URLs configured.
+
+    Logs every attempt to webhook_deliveries. On retryable failure, sets
+    next_retry_at so the TS webhook-retry-worker cron picks it up and re-fires
+    with backoff. Customer-side idempotency keys off data.{call_record_id,...}.
+    """
     try:
         # Find all active API keys for this user that have a webhook_url
         response = supabase.table("api_keys") \
@@ -1003,14 +1746,42 @@ async def send_webhooks(user_id: str, event_type: str, payload: dict):
         if not response.data:
             return
 
-        webhook_body = json.dumps({
+        # Per-number scoping (mirror of _shared/webhook-dispatcher.ts): a key with
+        # explicit number associations only hears about its own numbers. An
+        # unassociated key receives everything ONLY on a single-key account; on a
+        # multi-key account (multiple businesses under one user) it receives
+        # nothing — else a new webhook key would leak every other business's
+        # call.completed (incl. transcript). Fails open on error.
+        keys = response.data
+        scope_number = payload.get("service_number") if isinstance(payload, dict) else None
+        if isinstance(scope_number, str) and scope_number:
+            try:
+                assoc = supabase.table("api_key_numbers") \
+                    .select("api_key_id, service_number") \
+                    .in_("api_key_id", [k["id"] for k in keys]) \
+                    .execute()
+                by_key = {}
+                for a in (assoc.data or []):
+                    by_key.setdefault(a["api_key_id"], set()).add(a["service_number"])
+                multi_key = len(keys) > 1
+                keys = [
+                    k for k in keys
+                    if (scope_number in by_key[k["id"]] if k["id"] in by_key else not multi_key)
+                ]
+            except Exception as e:
+                logger.warning(f"🔔 send_webhooks: number scoping failed (fail-open): {e}")
+            if not keys:
+                return
+
+        envelope = {
             "event": event_type,
             "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
             "data": payload,
-        })
+        }
+        webhook_body = json.dumps(envelope)
 
         async with aiohttp.ClientSession() as session:
-            for key_row in response.data:
+            for key_row in keys:
                 api_key_id = key_row["id"]
                 url = key_row["webhook_url"]
                 secret = key_row.get("webhook_secret")
@@ -1045,22 +1816,163 @@ async def send_webhooks(user_id: str, event_type: str, payload: dict):
 
                 duration_ms = int(time_module.time() * 1000) - start_ms
 
+                # Decide whether the TS retry-worker should re-fire this attempt.
+                is_success = status_code is not None and 200 <= status_code < 400
+                is_stop = status_code == 410
+                is_retryable = (not is_success) and (not is_stop) and (
+                    error_message is not None
+                    or (status_code is not None and status_code in _WEBHOOK_RETRYABLE_STATUS)
+                )
+                next_retry_at = _next_webhook_retry_at(2) if is_retryable else None
+
                 # Log delivery attempt
                 try:
                     supabase.table("webhook_deliveries").insert({
                         "api_key_id": api_key_id,
                         "event_type": event_type,
-                        "payload": json.loads(webhook_body),
+                        "payload": envelope,
                         "status_code": status_code,
                         "response_body": response_body,
                         "error_message": error_message,
                         "duration_ms": duration_ms,
+                        "attempt_number": 1,
+                        "next_retry_at": next_retry_at,
                     }).execute()
                 except Exception as log_err:
                     logger.warning(f"🔔 Failed to log webhook delivery: {log_err}")
 
+                # Non-retryable failure that's not a "stop sending" → dead-letter
+                # immediately. Retryable failures wait for the worker to escalate.
+                if (not is_success) and (not is_stop) and (not is_retryable):
+                    try:
+                        supabase.table("webhook_dead_letter").insert({
+                            "api_key_id": api_key_id,
+                            "event_type": event_type,
+                            "payload": envelope,
+                            "total_attempts": 1,
+                            "last_status_code": status_code,
+                            "last_error": error_message,
+                        }).execute()
+                    except Exception as dl_err:
+                        logger.warning(f"🔔 Failed to dead-letter webhook: {dl_err}")
+
     except Exception as e:
         logger.error(f"🔔 send_webhooks error: {e}", exc_info=True)
+
+
+async def trigger_event_skills(call_context: dict):
+    """Trigger event-based skills for this agent after a call ends.
+    Fire-and-forget — never crashes the call flow."""
+    try:
+        supabase_url = os.environ.get("SUPABASE_URL")
+        service_role_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+        if not supabase_url or not service_role_key:
+            logger.warning("⚡ Skills: Missing SUPABASE_URL or SERVICE_ROLE_KEY")
+            return
+
+        agent_id = call_context.get("agent_id")
+        if not agent_id:
+            return
+
+        # execute-skill dedups call_ends by the call record id; webhook-call-status fires
+        # the same event WITH the id, so if we don't have it here we'd emit an
+        # un-dedupable duplicate. Defer to the webhook path in that case. (#102 review)
+        call_record_id = call_context.get("call_record_id")
+        if not call_record_id:
+            logger.info("⚡ Skills: no call_record_id — deferring call_ends to webhook-call-status (avoids un-dedupable duplicate)")
+            return
+
+        payload = {
+            "event_type": "call_ends",
+            "agent_id": agent_id,
+            "trigger_context": {
+                "call_record_id": call_record_id,
+                "caller_phone": call_context.get("caller_phone"),
+                "caller_name": call_context.get("caller_name"),
+                "call_duration_seconds": call_context.get("call_duration_seconds", 0),
+                "call_summary": call_context.get("call_summary"),
+                "extracted_data": call_context.get("extracted_data", {}),
+                "caller_spoke": call_context.get("caller_spoke", True),
+            }
+        }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{supabase_url}/functions/v1/execute-skill",
+                headers={
+                    "Authorization": f"Bearer {service_role_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=30),
+            ) as response:
+                logger.info(f"⚡ Skills trigger response: {response.status}")
+                if response.status != 200:
+                    text = await response.text()
+                    logger.warning(f"⚡ Skills trigger error: {text}")
+
+    except Exception as e:
+        logger.error(f"⚡ Skills trigger failed (non-fatal): {e}")
+
+
+async def send_extracted_data_slack(
+    user_id: str,
+    agent_id: str | None,
+    extracted_data: dict,
+    dynamic_variables: list,
+    caller_number: str,
+):
+    """Send per-variable Slack notifications for extracted data, routed to per-variable channels."""
+    try:
+        # Build a lookup: variable name → send_to config
+        var_config = {}
+        for v in dynamic_variables:
+            send_to = v.get("send_to") or {}
+            if send_to.get("slack_channel") and send_to.get("slack", True):
+                var_config[v["name"]] = send_to["slack_channel"]
+
+        if not var_config:
+            return
+
+        # Build variables payload with per-variable channels
+        variables = []
+        for var_name, value in extracted_data.items():
+            if var_name in var_config and value is not None:
+                variables.append({
+                    "name": var_name,
+                    "value": value,
+                    "slack_channel": var_config[var_name],
+                })
+
+        if not variables:
+            return
+
+        payload = {
+            "userId": user_id,
+            "agentId": agent_id,
+            "type": "extracted_data",
+            "data": {
+                "variables": variables,
+                "callerNumber": caller_number,
+            },
+        }
+
+        url = f"{supabase_url}/functions/v1/send-notification-slack"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {supabase_key}",
+        }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                if resp.status == 200:
+                    logger.info(f"📊 Extracted data Slack notifications sent ({len(variables)} variables)")
+                else:
+                    body = await resp.text()
+                    logger.warning(f"📊 Extracted data Slack notification failed: {resp.status} {body}")
+
+    except Exception as e:
+        logger.error(f"📊 send_extracted_data_slack error: {e}", exc_info=True)
 
 
 def normalize_voice_to_digits(text: str) -> str:
@@ -1254,8 +2166,9 @@ def create_transfer_tool(user_id: str, transfer_numbers: list, room_name: str):
 def create_warm_transfer_tools(user_id: str, transfer_numbers: list, room_name: str, service_number: str, caller_identity: str, agent_name: str, ctx: JobContext):
     """Create warm transfer tools for attended call transfers.
 
-    Uses SignalWire API for outbound dialing (LiveKit SIP outbound doesn't work with SignalWire).
-    The agent speaks all announcements in its natural voice - no TwiML robot voices.
+    The warm-transfer edge function now tries LiveKit createSipParticipant first
+    (dialing the transferee directly into the LiveKit room), falling back to
+    SignalWire conference if SIP outbound fails.
     """
 
     # Supabase URL for edge function calls
@@ -1479,7 +2392,7 @@ def create_warm_transfer_tools(user_id: str, transfer_numbers: list, room_name: 
             logger.error(f"Cancel transfer error: {e}")
             return "I'm having trouble with the transfer."
 
-    return [start_warm_transfer, complete_warm_transfer, cancel_warm_transfer]
+    return [start_warm_transfer, complete_warm_transfer, cancel_warm_transfer], transfer_state
 
 
 def create_collect_data_tool(user_id: str, pii_mode: str = "enabled"):
@@ -1523,6 +2436,53 @@ def create_collect_data_tool(user_id: str, pii_mode: str = "enabled"):
     return collect_caller_data
 
 
+async def terminate_call_legs(room_name: str) -> None:
+    """Tear down both legs of a call: terminate the bridged PSTN leg and delete
+    the LiveKit room.
+
+    Used by BOTH end paths so they behave identically:
+    - agent-initiated end (the end_call tool), and
+    - caller hangup (participant_disconnected cleanup).
+
+    For outbound conference-bridge calls the agent CXML uses
+    endConferenceOnExit=false, so without terminating the PSTN leg the callee
+    would sit in a silent empty conference. Deleting the LiveKit room ejects the
+    agent so its process exits and frees the warm slot. Idempotent / best-effort —
+    a double call (e.g. tool + hangup racing) just no-ops the second time.
+    """
+    # For outbound conference bridge calls, hang up the PSTN leg via SignalWire
+    # BEFORE deleting the LiveKit room.
+    if room_name.startswith("outbound-"):
+        outbound_call_record_id = room_name[len("outbound-"):]
+        try:
+            resp = supabase.table("call_records").select("call_sid").eq("id", outbound_call_record_id).single().execute()
+            pstn_call_sid = resp.data.get("call_sid") if resp.data else None
+            if pstn_call_sid:
+                sw_space = os.getenv("SIGNALWIRE_SPACE_URL") or os.getenv("SIGNALWIRE_SPACE")
+                sw_project = os.getenv("SIGNALWIRE_PROJECT_ID")
+                sw_token = os.getenv("SIGNALWIRE_API_TOKEN")
+                async with aiohttp.ClientSession() as session:
+                    url = f"https://{sw_space}/api/laml/2010-04-01/Accounts/{sw_project}/Calls/{pstn_call_sid}.json"
+                    async with session.post(url, data={"Status": "completed"},
+                                            auth=aiohttp.BasicAuth(sw_project, sw_token)) as r:
+                        body = await r.text()
+                        logger.info(f"📞 PSTN leg terminate: call_sid={pstn_call_sid} status={r.status} body={body[:200]}")
+            else:
+                logger.warning(f"📞 No call_sid found for outbound call record {outbound_call_record_id}")
+        except Exception as sw_err:
+            logger.error(f"Failed to terminate PSTN leg: {sw_err}")
+
+    try:
+        livekit_url = os.getenv("LIVEKIT_URL")
+        livekit_api_key = os.getenv("LIVEKIT_API_KEY")
+        livekit_api_secret = os.getenv("LIVEKIT_API_SECRET")
+        async with api.LiveKitAPI(livekit_url, livekit_api_key, livekit_api_secret) as livekit_api:
+            await livekit_api.room.delete_room(api.DeleteRoomRequest(room=room_name))
+        logger.info(f"✅ Call ended - room {room_name} deleted")
+    except Exception as e:
+        logger.error(f"Failed to delete room {room_name}: {e}")
+
+
 def create_end_call_tool(room_name: str, description: str = None, pre_disconnect_callback=None):
     """Create end call tool that allows the agent to hang up when appropriate"""
 
@@ -1534,20 +2494,15 @@ def create_end_call_tool(room_name: str, description: str = None, pre_disconnect
         logger.info(f"📞 Agent ending call for room: {room_name}")
 
         try:
-            # Save transcript and memory BEFORE deleting the room
+            # Save transcript and memory BEFORE tearing down the call
             if pre_disconnect_callback:
                 try:
                     await pre_disconnect_callback()
                 except Exception as cb_err:
                     logger.error(f"Error in pre-disconnect callback: {cb_err}")
 
-            livekit_url = os.getenv("LIVEKIT_URL")
-            livekit_api_key = os.getenv("LIVEKIT_API_KEY")
-            livekit_api_secret = os.getenv("LIVEKIT_API_SECRET")
-            livekit_api = api.LiveKitAPI(livekit_url, livekit_api_key, livekit_api_secret)
+            await terminate_call_legs(room_name)
 
-            await livekit_api.room.delete_room(api.DeleteRoomRequest(room=room_name))
-            logger.info(f"✅ Call ended - room {room_name} deleted")
             return "Call ended successfully."
         except Exception as e:
             logger.error(f"Failed to end call: {e}")
@@ -1917,7 +2872,29 @@ def extract_json_path(data: dict, path: str):
         return None
 
 
-def create_custom_function_tool(func_config: dict, webhook_secret: str = None, say_filler_ref: list = None):
+def create_kb_search_tool(kb_source_ids: list, say_filler_ref: list):
+    """Create tool for mid-conversation knowledge base searches.
+    Lets the LLM look up answers the pre-loaded KB context doesn't cover."""
+
+    @function_tool(description="Search the knowledge base for information to answer the caller's question. Use this whenever the caller asks something you don't already know the answer to.")
+    async def search_kb(
+        query: Annotated[str, "The caller's question or topic to search for"],
+    ):
+        """Search knowledge base and return relevant information"""
+        if say_filler_ref and say_filler_ref[0]:
+            phrase = random.choice(THINKING_FILLERS)
+            logger.info(f"🔍 KB search: '{query}', saying filler: '{phrase}'")
+            say_filler_ref[0](phrase)
+
+        context = await search_knowledge_base(kb_source_ids, query, limit=3)
+        if context:
+            return f"Here is what I found:\n{context}"
+        return "I couldn't find specific information about that in our knowledge base."
+
+    return search_kb
+
+
+def create_custom_function_tool(func_config: dict, webhook_secret: str = None, say_filler_ref: list = None, call_record_id_ref: list = None):
     """Create a LiveKit function_tool from custom function configuration.
 
     Uses raw_schema for proper typed parameters (like Retell AI's approach).
@@ -1925,6 +2902,7 @@ def create_custom_function_tool(func_config: dict, webhook_secret: str = None, s
 
     say_filler_ref: mutable list containing a coroutine function `async (phrase) -> None`
     that speaks a filler phrase. Set after session creation; None until then.
+    call_record_id_ref: mutable list containing the call_record_id string. Set when resolved; None until then.
     """
     func_name = func_config['name']
     func_description = func_config['description']
@@ -1938,13 +2916,15 @@ def create_custom_function_tool(func_config: dict, webhook_secret: str = None, s
 
     async def _execute_custom_function(params: dict) -> str:
         """Shared execution logic for custom function HTTP calls."""
+        resolved_call_record_id = call_record_id_ref[0] if call_record_id_ref else None
+        params = {**params, 'channel': 'phone', 'session_id': resolved_call_record_id}
         logger.info(f"🔧 Custom function '{func_name}' executing with params: {params}")
 
         # Speak a thinking filler so the caller isn't met with silence
         if say_filler_ref and say_filler_ref[0]:
             phrase = random.choice(THINKING_FILLERS)
             logger.info(f"🤔 [FILLER] '{func_name}' called, saying: '{phrase}'")
-            asyncio.create_task(say_filler_ref[0](phrase))
+            say_filler_ref[0](phrase)
 
         try:
             # Validate required parameters
@@ -1970,12 +2950,17 @@ def create_custom_function_tool(func_config: dict, webhook_secret: str = None, s
                 headers['X-Magpipe-Timestamp'] = timestamp
                 headers['X-Magpipe-Signature'] = signature
 
-            # Add custom headers from config (support both 'name'/'key' field names)
-            for h in headers_config:
-                header_name = h.get('name') or h.get('key')
-                header_value = h.get('value')
-                if header_name and header_value:
-                    headers[header_name] = header_value
+            # Add custom headers from config (support dict or list of {name/key, value} objects)
+            if isinstance(headers_config, dict):
+                for header_name, header_value in headers_config.items():
+                    if header_name and header_value:
+                        headers[header_name] = header_value
+            else:
+                for h in (headers_config or []):
+                    header_name = h.get('name') or h.get('key')
+                    header_value = h.get('value')
+                    if header_name and header_value:
+                        headers[header_name] = header_value
 
             timeout = aiohttp.ClientTimeout(total=timeout_ms / 1000)
             logger.info(f"🔧 Custom function '{func_name}' -> {http_method} {endpoint_url} (headers: {list(headers.keys())})")
@@ -2156,15 +3141,19 @@ def create_custom_function_tool(func_config: dict, webhook_secret: str = None, s
     return tool
 
 
-async def prewarm(proc: JobProcess):
+def prewarm(proc: JobProcess):
     """
     Prewarm function - pre-loads the Silero VAD model so it's ready on first call.
     Without this, the ML model is loaded on each call's first use (~200-500ms delay).
+
+    MUST be synchronous: LiveKit calls prewarm_fnc(proc) without awaiting it. As an
+    `async def` it returned a coroutine that was never awaited (the "coroutine
+    'prewarm' was never awaited" RuntimeWarning) — so the VAD never actually
+    pre-loaded and every call paid the model-load cost.
     """
     logger.info("🔥 PREWARM: Loading Silero VAD model...")
     proc.userdata["vad"] = silero.VAD.load()
     logger.info("🔥 PREWARM: Silero VAD model ready")
-    await proc.wait_for_shutdown()
 
 
 async def entrypoint(ctx: JobContext):
@@ -2181,9 +3170,6 @@ async def entrypoint(ctx: JobContext):
         'room_name': ctx.room.name,
         'timestamp': datetime.datetime.now().isoformat(),
     })
-
-    # Initialize LiveKit API client for Egress (requires event loop)
-    livekit_api = api.LiveKitAPI(livekit_url, livekit_api_key, livekit_api_secret)
 
     # Parse room metadata
     room_metadata = {}
@@ -2217,6 +3203,7 @@ async def entrypoint(ctx: JobContext):
     # Template context for outbound calls
     call_purpose = None
     call_goal = None
+    call_variables = {}  # Per-call {{variable}} substitutions for system prompt
 
     # FAST PATH for outbound calls with complete metadata
     if user_id and direction == "outbound":
@@ -2243,8 +3230,8 @@ async def entrypoint(ctx: JobContext):
             await speak_error_and_disconnect(ctx, "This number is not currently assigned. Go to Magpipe.ai to assign your number.")
             return
 
-        # Get voice config, transfer numbers, and dynamic variables in parallel
-        voice_id = user_config.get("voice_id", "11labs-Rachel")
+        # Get voice config, transfer numbers, dynamic variables, and call record in parallel
+        voice_id = user_config.get("voice_id", "EXAVITQu4vr4xnSDxMaL")
         agent_id = user_config.get("id")
         voice_config_task = get_voice_config(voice_id, user_id)
         dynamic_vars_task = get_dynamic_variables(agent_id, user_id)
@@ -2253,11 +3240,47 @@ async def entrypoint(ctx: JobContext):
             resp = supabase.table("transfer_numbers").select("*").eq("user_id", user_id).execute()
             return resp.data or []
 
-        transfer_task = get_transfer_nums()
+        async def get_outbound_call_record():
+            """Fetch call_variables and call_record_id from the recently-created outbound call record."""
+            try:
+                time_window = (datetime.datetime.utcnow() - datetime.timedelta(minutes=2)).isoformat()
+                resp = supabase.table("call_records") \
+                    .select("id, call_variables, metadata") \
+                    .eq("user_id", user_id) \
+                    .eq("direction", "outbound") \
+                    .gte("created_at", time_window) \
+                    .order("created_at", desc=True) \
+                    .limit(1) \
+                    .execute()
+                if resp.data:
+                    return resp.data[0]
+            except Exception as e:
+                logger.warning(f"Could not fetch outbound call record in fast path: {e}")
+            return None
 
-        voice_config, transfer_numbers, dynamic_variables = await asyncio.gather(
-            voice_config_task, transfer_task, dynamic_vars_task
+        transfer_task = get_transfer_nums()
+        call_record_task = get_outbound_call_record()
+
+        voice_config, transfer_numbers, dynamic_variables, outbound_call_record = await asyncio.gather(
+            voice_config_task, transfer_task, dynamic_vars_task, call_record_task
         )
+
+        # Populate call_variables and early call_record_id from call record
+        if outbound_call_record:
+            if not call_record_id:
+                call_record_id = outbound_call_record.get("id")
+                logger.info(f"📝 Fast path: resolved call_record_id={call_record_id}")
+            call_variables = outbound_call_record.get("call_variables") or {}
+            if call_variables:
+                logger.info(f"📋 Fast path: call_variables={list(call_variables.keys())}")
+            # Fallback: read system_prompt_override from call_records.metadata if room metadata
+            # didn't have it (race condition where agent connects before LiveKit persists room metadata)
+            if not room_metadata.get("system_prompt_override"):
+                cr_metadata = outbound_call_record.get("metadata") or {}
+                cr_override = cr_metadata.get("_system_prompt_override")
+                if cr_override:
+                    room_metadata["system_prompt_override"] = cr_override
+                    logger.info("🔄 Fast path: loaded system_prompt_override from call_records metadata (room metadata fallback)")
 
         logger.info(f"✅ Configs loaded - proceeding to session start")
         remote_party_phone = contact_phone
@@ -2331,7 +3354,7 @@ async def entrypoint(ctx: JobContext):
         if service_number:
             # Look up user and agent from service_numbers table (SignalWire numbers)
             response = supabase.table("service_numbers") \
-                .select("user_id, agent_id") \
+                .select("user_id, agent_id, outbound_agent_id") \
                 .eq("phone_number", service_number) \
                 .eq("is_active", True) \
                 .limit(1) \
@@ -2340,10 +3363,13 @@ async def entrypoint(ctx: JobContext):
             if response.data and len(response.data) > 0:
                 user_id = response.data[0]["user_id"]
                 agent_id = response.data[0].get("agent_id")
+                outbound_agent_id_for_number = response.data[0].get("outbound_agent_id")
                 room_metadata["user_id"] = user_id
+                if outbound_agent_id_for_number:
+                    room_metadata["outbound_agent_id"] = outbound_agent_id_for_number
                 if agent_id:
                     room_metadata["agent_id"] = agent_id
-                    logger.info(f"Looked up user_id: {user_id}, agent_id: {agent_id} from service_numbers")
+                    logger.info(f"Looked up user_id: {user_id}, agent_id: {agent_id}, outbound_agent_id: {outbound_agent_id_for_number} from service_numbers")
                 else:
                     # No agent assigned to number — fall back to user's default agent
                     logger.info(f"No agent assigned to number, looking up default agent for user: {user_id}")
@@ -2508,7 +3534,7 @@ async def entrypoint(ctx: JobContext):
             if service_number:
                 logger.info(f"📊 Trying lookup with service_number={service_number}")
                 call_lookup = supabase.table("call_records") \
-                    .select("direction, contact_phone, call_purpose, call_goal") \
+                    .select("direction, contact_phone, call_purpose, call_goal, call_variables") \
                     .eq("service_number", service_number) \
                     .eq("user_id", user_id) \
                     .gte("created_at", one_minute_ago) \
@@ -2529,7 +3555,7 @@ async def entrypoint(ctx: JobContext):
             if not call_lookup or not call_lookup.data or len(call_lookup.data) == 0:
                 logger.info(f"📊 No match with service_number, trying without (for bridged outbound)")
                 call_lookup = supabase.table("call_records") \
-                    .select("direction, contact_phone, service_number, call_purpose, call_goal") \
+                    .select("direction, contact_phone, service_number, call_purpose, call_goal, call_variables") \
                     .eq("user_id", user_id) \
                     .gte("created_at", one_minute_ago) \
                     .order("created_at", desc=True) \
@@ -2549,12 +3575,15 @@ async def entrypoint(ctx: JobContext):
                 if not contact_phone:
                     contact_phone = call_lookup.data[0].get("contact_phone")
                 found_service_number = call_lookup.data[0].get("service_number")
-                # Get call purpose and goal for outbound calls
+                # Get call purpose, goal, and per-call variable substitutions
                 call_purpose = call_lookup.data[0].get("call_purpose")
                 call_goal = call_lookup.data[0].get("call_goal")
+                call_variables = call_lookup.data[0].get("call_variables") or {}
                 logger.info(f"📊 Found call direction from database: {direction}, contact_phone: {contact_phone}, service_number: {found_service_number}")
                 if call_purpose or call_goal:
                     logger.info(f"📋 Call template context: purpose='{call_purpose}', goal='{call_goal}'")
+                if call_variables:
+                    logger.info(f"📋 Call variables: {list(call_variables.keys())}")
 
                 # CRITICAL: Look up correct agent_id from found_service_number
                 # This fixes dispatch rule overwriting metadata with wrong agent_id
@@ -2596,6 +3625,13 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"📞 Call direction: {direction}")
     logger.info(f"📞 Contact phone: {contact_phone}")
 
+    # If outbound and a dedicated outbound agent is assigned to this number, use it
+    if direction == "outbound":
+        outbound_agent_override = room_metadata.get("outbound_agent_id")
+        if outbound_agent_override:
+            logger.info(f"🔄 Outbound call — overriding agent with outbound_agent_id: {outbound_agent_override}")
+            room_metadata["agent_id"] = outbound_agent_override
+
     # Store admin check info for later (after session is created)
     admin_check_info = None
     if direction != "outbound" and caller_number:
@@ -2625,8 +3661,8 @@ async def entrypoint(ctx: JobContext):
         agent_name = user_config.get("name", "")
         logger.info(f"🔍 Agent loaded: name='{agent_name}', id='{agent_id_str}'")
         logger.info(f"🔍 Comparing to system agent: '{SYSTEM_AGENT_ID}'")
-        # Check by ID or by name (System - Not Assigned)
-        is_system_agent = agent_id_str == SYSTEM_AGENT_ID or agent_name == "System - Not Assigned"
+        # Check by ID only — name-based check is fragile and could false-positive on user-named agents
+        is_system_agent = agent_id_str == SYSTEM_AGENT_ID
         if is_system_agent:
             logger.info("🔔 System agent detected - speaking greeting and disconnecting")
             greeting = user_config.get("greeting", "This number is not currently assigned.")
@@ -2644,23 +3680,29 @@ async def entrypoint(ctx: JobContext):
 
         log_call_state(ctx.room.name, "debug_1_fetching_voice", "agent", {})
 
-        # Get voice configuration
-        voice_id = user_config.get("voice_id", "11labs-Rachel")
-        voice_config = await get_voice_config(voice_id, user_id)
+        # Fetch voice config, transfer numbers, and dynamic variables CONCURRENTLY.
+        # All three depend only on user_id/agent_id (already resolved above) and are
+        # independent of each other, so there's no reason to await them in series.
+        # Sequentially this chain was ~0.6s of round-trips; in parallel it's ~one.
+        voice_id = user_config.get("voice_id", "EXAVITQu4vr4xnSDxMaL")
+        agent_id = user_config.get("id")
+
+        _loop = asyncio.get_event_loop()
+        def _fetch_transfer_numbers():
+            return supabase.table("transfer_numbers") \
+                .select("*") \
+                .eq("user_id", user_id) \
+                .execute()
+
+        voice_config, transfer_numbers_response, dynamic_variables = await asyncio.gather(
+            get_voice_config(voice_id, user_id),
+            _loop.run_in_executor(None, _fetch_transfer_numbers),
+            get_dynamic_variables(agent_id, user_id),
+        )
+
         log_call_state(ctx.room.name, "debug_2_voice_fetched", "agent", {"voice_id": voice_id})
-
-        # Get transfer numbers
-        transfer_numbers_response = supabase.table("transfer_numbers") \
-            .select("*") \
-            .eq("user_id", user_id) \
-            .execute()
-
         transfer_numbers = transfer_numbers_response.data or []
         log_call_state(ctx.room.name, "debug_3_transfer_nums", "agent", {"count": len(transfer_numbers)})
-
-        # Get dynamic variables for extraction
-        agent_id = user_config.get("id")
-        dynamic_variables = await get_dynamic_variables(agent_id, user_id)
         log_call_state(ctx.room.name, "debug_4_dynamic_vars", "agent", {"count": len(dynamic_variables)})
     else:
         logger.info("⚡ Using pre-fetched configs from fast path")
@@ -2668,7 +3710,8 @@ async def entrypoint(ctx: JobContext):
     log_call_state(ctx.room.name, "debug_5_prompt_start", "agent", {})
 
     # Get greeting message and base prompt
-    base_prompt = user_config.get("system_prompt", "You are Maggie, a helpful AI assistant answering calls for a business. The caller is a customer - treat them professionally and helpfully.")
+    _fallback_agent_name = user_config.get("name") or user_config.get("agent_name") or "Assistant"
+    base_prompt = user_config.get("system_prompt", f"You are {_fallback_agent_name}, a helpful AI assistant answering calls for a business. The caller is a customer - treat them professionally and helpfully.")
 
     # Language configuration
     agent_language = user_config.get("language", "en-US") if user_config else "en-US"
@@ -2688,15 +3731,21 @@ async def entrypoint(ctx: JobContext):
         # Use configured greeting so agent speaks first (instant TTS, no LLM wait)
         greeting = user_config.get("greeting") or ""
 
+        # Per-call system prompt override (from initiate-bridged-call request body) takes highest priority
+        system_prompt_override = room_metadata.get("system_prompt_override")
+
         # Use system_prompt (new single-prompt architecture) with fallback to outbound_system_prompt (legacy)
         outbound_prompt = user_config.get("system_prompt") or user_config.get("outbound_system_prompt")
 
-        if outbound_prompt:
+        if system_prompt_override:
+            system_prompt = system_prompt_override
+            logger.info("🔄 Outbound call - Using per-call system_prompt_override from request")
+        elif outbound_prompt:
             system_prompt = outbound_prompt
             logger.info("🔄 Outbound call - Using configured system prompt")
         else:
             # Default outbound prompt when user hasn't configured one
-            agent_name = user_config.get("agent_name", "Maggie")
+            agent_name = user_config.get("name") or user_config.get("agent_name") or "Assistant"
             system_prompt = f"""You are {agent_name}, an AI assistant making an outbound phone call on behalf of your owner.
 
 THIS IS AN OUTBOUND CALL:
@@ -2821,21 +3870,8 @@ THIS IS AN OUTBOUND CALL:
         if reconnect_reason == "transfer_declined":
             reconnect_context = f"\n- IMPORTANT: This caller just tried to transfer to {transfer_target} but they were unavailable. Apologize briefly and offer to help with something else."
 
-        # Resolve agent's spoken name: voice name as fallback
-        VOICE_NAMES = {
-            "21m00Tcm4TlvDq8ikWAM": "Rachel",
-            "pNInz6obpgDQGcFmaJgB": "Adam",
-            "EXAVITQu4vr4xnSDxMaL": "Sarah",
-            "TxGEqnHWrfWFTfGW9XjX": "Josh",
-            "cjVigY5qzO86Huf0OWal": "Eric",
-            "onwK4e9ZLuTAKqWW03F9": "Daniel",
-            "cgSgspJ2msm6clMCkdW9": "Jessica",
-            "iP95p4xoKVk53GoZ742B": "Chris",
-        }
-        voice_id = user_config.get("voice_id", "")
-        voice_name = VOICE_NAMES.get(voice_id, "Maggie")
-        # Use voice name if system prompt doesn't already specify a name
-        agent_spoken_name = voice_name
+        # Use the agent's configured name
+        agent_spoken_name = user_config.get("name") or user_config.get("agent_name") or "Assistant"
         name_line = f"\n- Your name is {agent_spoken_name}. Introduce yourself by this name."
 
         # Put role clarification FIRST, then user's prompt, then call context
@@ -2938,6 +3974,33 @@ AFTER-HOURS CONTEXT:
         else:
             logger.info(f"🧠 Memory enabled but no caller phone available (phone={memory_caller_phone}, agent_id={agent_id})")
 
+    # Inject knowledge base context if agent has KB sources
+    kb_source_ids = user_config.get("knowledge_source_ids") or []
+    if kb_source_ids and agent_id:
+        # Use agent_role or first 500 chars of system_prompt as the search query
+        kb_query = user_config.get("agent_role") or base_prompt[:500]
+        kb_context = await search_knowledge_base(kb_source_ids, kb_query)
+        if kb_context:
+            kb_section = (
+                "\n\nKNOWLEDGE BASE CONTEXT (pre-loaded summary):\n"
+                f"{kb_context}\n\n"
+                "You also have a search_kb tool to look up specific questions the caller asks. "
+                "Use it when the caller asks something not covered above. "
+                "IMPORTANT: When using search_kb or any tool, always say a brief filler phrase first "
+                "like 'Great question, let me look that up' or 'One moment' so the caller knows you're working on it."
+            )
+            system_prompt = f"{system_prompt}{kb_section}"
+            logger.info(f"📚 Knowledge base context injected into system prompt")
+        else:
+            # No pre-loaded content, but tool is still available
+            kb_fallback = (
+                "\n\nYou have a search_kb tool to look up information from the knowledge base. "
+                "Use it whenever the caller asks a question you don't know the answer to. "
+                "Always say a brief filler phrase first like 'Let me look that up' so the caller knows you're working on it."
+            )
+            system_prompt = f"{system_prompt}{kb_fallback}"
+            logger.info(f"📚 No pre-loaded KB content, but search_kb tool hint added to prompt")
+
     # Inject semantic memory context (similar past conversations) if enabled
     if user_config.get("semantic_memory_enabled") and agent_id:
         semantic_config = user_config.get("semantic_memory_config") or {
@@ -2975,7 +4038,7 @@ AFTER-HOURS CONTEXT:
                         matched_topics=caller_topics + semantic_matched_topics,
                         match_count=semantic_match_count,
                         triggering_summary=caller_summary,
-                        agent_name=user_config.get("name", "Maggie"),
+                        agent_name=user_config.get("name") or user_config.get("agent_name") or "Assistant",
                         matched_memory_ids=semantic_memory_ids
                     ))
         else:
@@ -3022,9 +4085,10 @@ AFTER-HOURS CONTEXT:
     _sdk_ver = getattr(llm, '__version__', None) or getattr(AgentSession, '__module__', 'unknown')
     log_call_state(ctx.room.name, "debug_6_custom_funcs", "agent", {"code_version": "CUSTOM-FN-V2", "sdk_version": str(_sdk_ver)})
 
-    # Shared mutable ref — set to session.say after AgentSession is created so that
-    # custom function tools can speak a filler phrase before the webhook call.
+    # Shared mutable refs — set after session/call_record resolution so custom function
+    # tools can access them even though they're created before those values are known.
     say_filler_ref: list = [None]
+    call_record_id_ref: list = [call_record_id]  # Pre-populated if already resolved by early lookup
 
     # Load custom functions for this agent
     custom_tools = []
@@ -3037,7 +4101,7 @@ AFTER-HOURS CONTEXT:
             loaded_names = []
             for func_config in custom_function_configs:
                 try:
-                    tool = create_custom_function_tool(func_config, webhook_secret, say_filler_ref=say_filler_ref)
+                    tool = create_custom_function_tool(func_config, webhook_secret, say_filler_ref=say_filler_ref, call_record_id_ref=call_record_id_ref)
                     custom_tools.append(tool)
                     loaded_names.append(f"{func_config['name']}(type={type(tool).__name__},id={tool.info.name})")
                     logger.info(f"🔧 Registered custom function: {func_config['name']} as {type(tool).__name__} with id={tool.info.name}")
@@ -3053,6 +4117,7 @@ AFTER-HOURS CONTEXT:
     # Mutable holder for on_call_end callback and cleanup flag (set later, used by end_call tool)
     call_end_callback = [None]
     cleanup_state = [False]  # shared flag to prevent duplicate cleanup
+    transfer_state = {}  # populated by create_warm_transfer_tools if transfers are enabled
 
     async def _pre_disconnect():
         if cleanup_state[0]:
@@ -3089,7 +4154,7 @@ AFTER-HOURS CONTEXT:
                     break
 
             # Add warm transfer tools (for attended transfers - all in LiveKit)
-            warm_transfer_tools = create_warm_transfer_tools(
+            warm_transfer_tools, warm_transfer_state = create_warm_transfer_tools(
                 user_id=user_id,
                 transfer_numbers=transfer_nums,
                 room_name=ctx.room.name,
@@ -3099,6 +4164,8 @@ AFTER-HOURS CONTEXT:
                 ctx=ctx,
             )
             custom_tools.extend(warm_transfer_tools)
+            # Expose transfer state to disconnect handler so it won't clean up during transfer
+            transfer_state = warm_transfer_state
             logger.info(f"📞 Registered warm transfer tools with {len(transfer_nums)} numbers")
 
     # SMS function
@@ -3132,10 +4199,11 @@ AFTER-HOURS CONTEXT:
 
         if sms_from_number:
             sms_description = sms_config.get("description")
-            # Load SMS templates for this user
+            # Load SMS templates for THIS agent (scoped by agent_id, not just
+            # user_id — otherwise an agent offers every sibling agent's templates). #101
             sms_templates = []
             try:
-                templates_result = supabase.table("sms_templates").select("name, content").eq("user_id", user_id).execute()
+                templates_result = supabase.table("sms_templates").select("name, content").eq("user_id", user_id).eq("agent_id", agent_id).execute()
                 if templates_result.data:
                     sms_templates = templates_result.data
                     logger.info(f"📱 Loaded {len(sms_templates)} SMS templates")
@@ -3177,6 +4245,19 @@ AFTER-HOURS CONTEXT:
         custom_tools.append(collect_data_tool)
         logger.info(f"📝 Registered extract_data/collect tool")
 
+    # KB Search tool — auto-enabled when agent has knowledge bases
+    if kb_source_ids:
+        kb_tool = create_kb_search_tool(kb_source_ids, say_filler_ref)
+        custom_tools.append(kb_tool)
+        logger.info(f"📚 Registered KB search tool with {len(kb_source_ids)} source(s)")
+
+    # Substitute {{variable}} placeholders from call_variables (passed at call initiation time)
+    if call_variables:
+        def _replace_var(m):
+            return str(call_variables.get(m.group(1), m.group(0)))
+        system_prompt = re.sub(r'\{\{(\w+)\}\}', _replace_var, system_prompt)
+        logger.info(f"🔀 Substituted call_variables into system prompt: {list(call_variables.keys())}")
+
     # Create Agent instance with custom function tools
     log_call_state(ctx.room.name, "debug_7_creating_agent", "agent", {})
     if custom_tools:
@@ -3186,11 +4267,27 @@ AFTER-HOURS CONTEXT:
         assistant = Agent(instructions=system_prompt)
     log_call_state(ctx.room.name, "debug_8_agent_created", "agent", {})
 
-    # Get LLM model from config (default to gpt-4o-mini for lowest latency)
-    llm_model = user_config.get("llm_model", "gpt-4o-mini") if user_config else "gpt-4o-mini"
+    # Get LLM model from config (default to gpt-4.1-mini — best quality/latency/cost for voice)
+    llm_model = user_config.get("llm_model", "gpt-4.1-mini") if user_config else "gpt-4.1-mini"
+
+    is_claude_model = llm_model in _CLAUDE_MODEL_MAP or llm_model.startswith("claude-")
 
     # Get voice settings from voice_config (or use defaults)
-    tts_voice_id = voice_config.get("voice_id", "21m00Tcm4TlvDq8ikWAM") if voice_config else "21m00Tcm4TlvDq8ikWAM"
+    tts_voice_id = voice_config.get("voice_id", "EXAVITQu4vr4xnSDxMaL") if voice_config else "EXAVITQu4vr4xnSDxMaL"
+    is_cloned_voice = voice_config.get("is_cloned", False) if voice_config else False
+    # Cloned voices use Turbo v2.5: it's far more expressive than Flash (and
+    # honors the `style` setting) while staying low-latency (~250-300ms TTFB),
+    # so a clone of someone's own voice sounds lively rather than monotone.
+    # Premade voices stay on Flash v2.5 for the lowest possible TTFB — TTS TTFB
+    # sits directly on the response path. (Both models support Instant Voice
+    # Clones; Multilingual v2 is more expressive still but too slow for phone.)
+    tts_model = "eleven_turbo_v2_5" if is_cloned_voice else "eleven_flash_v2_5"
+    tts_voice_settings = VoiceSettings(
+        stability=float(voice_config.get("stability", 0.3)) if voice_config else 0.3,
+        similarity_boost=float(voice_config.get("similarity_boost", 0.75)) if voice_config else 0.75,
+        style=float(voice_config.get("style", 0.55)) if voice_config else 0.55,
+        use_speaker_boost=bool(voice_config.get("use_speaker_boost", True)) if voice_config else True,
+    )
 
     # Pick STT model based on language (nova-2-phonecall is English-optimized)
     if agent_language == "multi":
@@ -3201,7 +4298,7 @@ AFTER-HOURS CONTEXT:
         stt_model, stt_language = "nova-2-phonecall", "en-US"
 
     priority_sequencing = bool(user_config and user_config.get("priority_sequencing"))
-    logger.info(f"🎙️ Using LLM: {llm_model}, Voice: {tts_voice_id}, STT: {stt_model}/{stt_language}, Priority: {priority_sequencing}")
+    logger.info(f"🎙️ Using LLM: {llm_model}, Voice: {tts_voice_id}, TTS: {tts_model}, STT: {stt_model}/{stt_language}, Priority: {priority_sequencing}")
 
     log_call_state(ctx.room.name, "debug_9_creating_session", "agent", {"llm": llm_model, "voice": tts_voice_id})
 
@@ -3214,10 +4311,41 @@ AFTER-HOURS CONTEXT:
         vad_threshold = float(user_config.get("vad_activation_threshold", 0.6) or 0.6)
         logger.info(f"🎚️ VAD settings: silence={vad_silence}, speech={vad_speech}, threshold={vad_threshold}")
 
+        # Responsiveness → endpointing delays (0=patient, 1=quick)
+        # min_endpointing fires when the ML turn detector is CONFIDENT the caller
+        # finished — this is the normal-turn response latency, kept fast.
+        # max_endpointing is the ceiling the framework waits when the detector
+        # predicts the caller is mid-thought (still going). Because it only kicks
+        # in on uncertain/incomplete utterances, widening it gives natural pauses
+        # room to breathe WITHOUT adding latency to clean turn-ends. A narrow
+        # min↔max gap (the old 0.4–1.0s) left the detector no room and caused it
+        # to cut callers off mid-sentence on a >~0.7s pause.
+        responsiveness = float(user_config.get("responsiveness", 1.0) or 1.0)
+        min_endpointing = round(1.0 - (responsiveness * 0.9), 3)   # 0→1.0s, 1→0.1s (confident end-of-turn; normal latency)
+        max_endpointing = round(2.0 - (responsiveness * 1.0), 3)   # 0→2.0s, 1→1.0s (grace for mid-thought pauses; detector-gated)
+        stt_endpointing_ms = int(500 - (responsiveness * 400))     # 0→500ms, 1→100ms
+        logger.info(f"🎚️ Responsiveness={responsiveness}: min_endpointing={min_endpointing}s, max_endpointing={max_endpointing}s, stt={stt_endpointing_ms}ms")
+
+        # Interrupt sensitivity → min interruption duration (0=hard to interrupt, 1=easy)
+        interrupt_sensitivity = float(user_config.get("interrupt_sensitivity", 0.6) or 0.6)
+        min_interruption = round(0.7 - (interrupt_sensitivity * 0.6), 3)  # 0→0.7s, 1→0.1s
+        logger.info(f"🎚️ Interrupt sensitivity={interrupt_sensitivity}: min_interruption={min_interruption}s")
+
         # Use pre-warmed VAD model if available (avoids ML model load on first call)
         prewarmed_vad = ctx.proc.userdata.get("vad") if hasattr(ctx, "proc") and ctx.proc else None
         if prewarmed_vad:
             logger.info("🔥 Using pre-warmed Silero VAD model")
+
+        # Try to build turn detector; falls back to None if model files are missing
+        turn_detector_instance = _build_turn_detector(agent_language) if _TURN_DETECTOR_AVAILABLE else None
+        if turn_detector_instance:
+            logger.info(f"🌍 ML turn detection enabled ({type(turn_detector_instance).__name__}, lang={agent_language})")
+            # Warm the EOU inference executor in the background (during the greeting) so the
+            # caller's first turn isn't cold — fixes the multilingual cold-start TimeoutError
+            # (GH #96). Hold a reference so the task isn't GC'd before it runs.
+            _eou_warm_task = asyncio.create_task(_warm_turn_detector(turn_detector_instance))
+        else:
+            logger.info("🔇 Using silence-based endpointing (turn detector unavailable)")
 
         session = AgentSession(
             vad=silero.VAD.load(
@@ -3229,25 +4357,25 @@ AFTER-HOURS CONTEXT:
                 model=stt_model,
                 language=stt_language,
                 api_key=os.getenv("DEEPGRAM_API_KEY"),
-                no_delay=True,       # Send audio immediately, don't buffer
-                endpointing_ms=100,  # Wait 100ms of silence before finalizing transcript
+                no_delay=True,                      # Send audio immediately, don't buffer
+                endpointing_ms=stt_endpointing_ms,  # Driven by responsiveness setting
             ),
-            llm=lkopenai.LLM(
-                model=llm_model,
-                temperature=0.7,
-                service_tier="priority" if (user_config and user_config.get("priority_sequencing")) else NOT_GIVEN,
+            llm=_build_llm(llm_model, is_claude_model, priority_sequencing),
+            tts=_build_tts(tts_voice_id, tts_model, tts_voice_settings, is_cloned_voice),
+            # Bound TTS connection acquisition to 4s (default 10s) so a stuck/stalled
+            # primary fails over to the fallback before the framework's 5s interruption
+            # force-cancel ("speech not done in time"). Connect-only timeout — does NOT
+            # cap synthesis length, so long replies stream fine. STT/LLM keep defaults.
+            conn_options=SessionConnectOptions(
+                tts_conn_options=APIConnectOptions(timeout=4.0),
             ),
-            tts=elevenlabs.TTS(
-                model="eleven_flash_v2_5",  # Fastest ElevenLabs model
-                voice_id=tts_voice_id,
-                api_key=os.getenv("ELEVENLABS_API_KEY") or os.getenv("ELEVEN_API_KEY"),
-                auto_mode=True,  # Auto-manages chunk buffering for lowest latency
-            ),
-            # --- Latency tuning ---
-            min_endpointing_delay=0.1,    # Start responding 100ms after user stops (default was 500ms — saves ~400ms)
-            max_endpointing_delay=1.5,    # Don't wait more than 1.5s for slow speakers (default 3.0s)
-            preemptive_generation=True,   # Begin LLM generation while user is still speaking (saves LLM TTFT)
-            min_interruption_duration=0.3, # Allow barge-in after 300ms of speech (default 500ms)
+            # ML turn detector — fires end-of-turn semantically rather than waiting for silence
+            **({"turn_detection": turn_detector_instance} if turn_detector_instance is not None else {}),
+            # --- Latency tuning (driven by per-agent config) ---
+            min_endpointing_delay=min_endpointing,      # Driven by responsiveness setting
+            max_endpointing_delay=max_endpointing,      # Fallback if turn detector is uncertain
+            preemptive_generation=True,                 # Begin LLM generation while user is still speaking
+            min_interruption_duration=min_interruption, # Driven by interrupt_sensitivity setting
         )
     except Exception as e:
         log_call_state(ctx.room.name, "debug_session_error", "agent", {"error": str(e)})
@@ -3260,38 +4388,156 @@ AFTER-HOURS CONTEXT:
     # Custom function tools call say_filler_ref[0](phrase) before their webhook.
     say_filler_ref[0] = session.say
 
-    # Latency tracking
-    latency_start_time = None
+    # ── Idle-watchdog activity tracking ──────────────────────────────────
+    # The silence countdown starts whenever the agent stops speaking/thinking
+    # and pauses while it's busy; any caller speech resets the reminder count.
+    idle_state = {"last_activity": time_module.monotonic(), "reminders": 0, "agent_busy": False, "user_speaking": False}
 
-    # Track user speech start for latency measurement
-    @session.on("user_started_speaking")
-    def on_user_started_speaking():
-        nonlocal latency_start_time
-        latency_start_time = asyncio.get_event_loop().time()
-        logger.info(f"⏱️ [LATENCY] User started speaking at {latency_start_time:.3f}")
+    @session.on("agent_state_changed")
+    def on_agent_state_changed(ev):
+        idle_state["agent_busy"] = getattr(ev, "new_state", None) in ("speaking", "thinking")
+        idle_state["last_activity"] = time_module.monotonic()
 
-    @session.on("user_stopped_speaking")
-    def on_user_stopped_speaking():
-        if latency_start_time:
-            elapsed = asyncio.get_event_loop().time() - latency_start_time
-            logger.info(f"⏱️ [LATENCY] User stopped speaking, speech duration: {elapsed*1000:.0f}ms")
+    @session.on("user_state_changed")
+    def on_user_state_changed(ev):
+        speaking = getattr(ev, "new_state", None) == "speaking"
+        idle_state["user_speaking"] = speaking
+        if speaking:
+            idle_state["reminders"] = 0
+        # Refresh on BOTH transitions: a caller mid-utterance emits no further
+        # events, so without the leave-speaking refresh a long turn would trip
+        # the idle threshold while they're still talking.
+        idle_state["last_activity"] = time_module.monotonic()
 
-    @session.on("agent_started_speaking")
-    def on_agent_started_speaking():
-        if latency_start_time:
-            elapsed = asyncio.get_event_loop().time() - latency_start_time
-            logger.info(f"⏱️ [LATENCY] Agent started speaking, total latency: {elapsed*1000:.0f}ms (user speech start → agent audio)")
+    # Capture in-conversation provider errors (LLM / STT / TTS / RealtimeModel)
+    # so platform-wide outages — OpenAI quota, Anthropic 5xx, Deepgram /
+    # ElevenLabs / LiveKit Realtime — surface in admin/support/errors instead
+    # of just leaving the agent silent on the call.
+    @session.on("error")
+    def on_session_error(ev):
+        try:
+            err = getattr(ev, "error", None)
+            src = getattr(ev, "source", None)
+            err_kind = type(err).__name__ if err is not None else "UnknownError"
+            src_kind = type(src).__name__ if src is not None else "UnknownSource"
+            logger.error(f"🚨 Session error: kind={err_kind} source={src_kind} detail={err}")
+            # Map source class to error_type so the dashboard can group these
+            src_lower = src_kind.lower()
+            if "llm" in src_lower:
+                error_type = "voice_llm_failure"
+            elif "stt" in src_lower:
+                error_type = "voice_stt_failure"
+            elif "tts" in src_lower:
+                error_type = "voice_tts_failure"
+            elif "realtime" in src_lower:
+                error_type = "voice_realtime_failure"
+            else:
+                error_type = "voice_session_error"
+            report_error_to_supabase(
+                error_type,
+                err if err is not None else "unknown",
+                error_code=str(getattr(err, "status_code", "")) or err_kind,
+                source=f"agent.py:session.on_error:{src_kind}",
+                metadata={
+                    "channel": "voice",
+                    "room_name": getattr(ctx.room, "name", None),
+                    "error_class": err_kind,
+                    "source_class": src_kind,
+                },
+            )
+        except Exception as inner:
+            logger.error(f"Failed to record session error: {inner}")
 
-    @session.on("agent_stopped_speaking")
-    def on_agent_stopped_speaking():
-        logger.info(f"⏱️ [LATENCY] Agent stopped speaking")
+    # ── Per-turn latency capture (real, SDK-sourced) ──────────────────────
+    # livekit-agents 1.5 attaches a MetricsReport to each ChatMessage.metrics:
+    #   user msg      -> end_of_turn_delay, transcription_delay   (caller-side)
+    #   assistant msg -> e2e_latency, llm_node_ttft, tts_node_ttfb (agent-side)
+    # We buffer the caller-side numbers and flush one combined row per turn to
+    # call_latency_metrics (surfaced in admin → Support → Latency) so the
+    # PSTN→Agent response gap is measured per stage instead of guessed.
+    #
+    # NB: the previous `user_started_speaking`/`agent_started_speaking` handlers
+    # were 0.x event names that never fire on AgentSession 1.5 — dead since the
+    # SDK upgrade. This replaces them with the supported metrics path.
+    latency_turn_index = 0
+    pending_user_metrics = {}
+
+    def _metric_ms(metrics, key):
+        """MetricsReport stores seconds (float); persist as integer ms."""
+        v = metrics.get(key) if metrics else None
+        return round(v * 1000) if isinstance(v, (int, float)) else None
+
+    def _persist_turn_latency(asst_metrics):
+        nonlocal latency_turn_index, pending_user_metrics
+        latency_turn_index += 1
+        e2e = _metric_ms(asst_metrics, "e2e_latency")
+        row = {
+            "room_name": ctx.room.name,
+            "call_record_id": call_record_id,
+            "user_id": user_id,
+            "agent_id": agent_id,
+            "direction": direction,
+            "turn_index": latency_turn_index,
+            "e2e_latency_ms": e2e,
+            "end_of_turn_delay_ms": _metric_ms(pending_user_metrics, "end_of_turn_delay"),
+            "transcription_delay_ms": _metric_ms(pending_user_metrics, "transcription_delay"),
+            "llm_ttft_ms": _metric_ms(asst_metrics, "llm_node_ttft"),
+            "tts_ttfb_ms": _metric_ms(asst_metrics, "tts_node_ttfb"),
+            # Store the RESOLVED model id (what was actually called), not the raw
+            # config alias — otherwise dashboards mislabel e.g. legacy "claude-3-haiku"
+            # config as the old model when it actually runs on claude-haiku-4-5. The map
+            # passes OpenAI ids through unchanged (they aren't keys).
+            "llm_model": _CLAUDE_MODEL_MAP.get(llm_model, llm_model),
+            "tts_model": tts_model,
+        }
+        pending_user_metrics = {}
+        # Nothing useful captured (e.g. greeting before any caller turn) → skip.
+        if e2e is None and row["llm_ttft_ms"] is None and row["tts_ttfb_ms"] is None:
+            return
+        logger.info(
+            f"⏱️ [LATENCY] turn {latency_turn_index}: e2e={e2e}ms "
+            f"eou={row['end_of_turn_delay_ms']}ms ttft={row['llm_ttft_ms']}ms ttfb={row['tts_ttfb_ms']}ms"
+        )
+
+        # supabase-py is synchronous; run the insert in a thread so the HTTP
+        # round-trip never blocks the audio event loop (blocking here would add
+        # the very jitter this feature measures).
+        async def _write():
+            try:
+                loop = asyncio.get_running_loop()
+                await loop.run_in_executor(
+                    None, lambda: supabase.table("call_latency_metrics").insert(row).execute()
+                )
+            except Exception as e:
+                logger.warning(f"⚠️ latency metric write failed: {e}")
+
+        asyncio.create_task(_write())
 
     # Track transcript in real-time using conversation_item_added event
     @session.on("conversation_item_added")
     def on_conversation_item(event):
-        nonlocal last_transcript_write, call_record_id
+        nonlocal last_transcript_write, call_record_id, pending_user_metrics
         try:
             logger.info(f"🎤 conversation_item_added event fired! Event type: {type(event)}")
+
+            # Per-turn latency: buffer caller-side metrics, flush a combined row
+            # when the matching assistant turn lands. Runs regardless of text so
+            # we never miss a turn's numbers.
+            try:
+                role_for_metrics = getattr(event.item, "role", None)
+                turn_metrics = getattr(event.item, "metrics", None) or {}
+                if role_for_metrics == "user":
+                    pending_user_metrics = dict(turn_metrics)
+                elif role_for_metrics == "assistant":
+                    # Only LLM-generated replies are real response turns. Pure-TTS
+                    # items (greeting, filler phrases spoken via session.say before
+                    # a tool webhook) carry no llm_node_ttft/e2e_latency — skip them
+                    # so they don't consume the caller-side metrics of the turn
+                    # that's still in flight or emit near-empty rows.
+                    if turn_metrics.get("llm_node_ttft") is not None or turn_metrics.get("e2e_latency") is not None:
+                        _persist_turn_latency(turn_metrics)
+            except Exception as me:
+                logger.warning(f"⚠️ latency metric capture skipped: {me}")
 
             # Extract text content from the conversation item
             text_content = event.item.text_content if hasattr(event.item, 'text_content') else ""
@@ -3302,6 +4548,9 @@ AFTER-HOURS CONTEXT:
                 role = event.item.role
                 speaker = "agent" if role == "assistant" else "user"
                 transcript_messages.append({"speaker": speaker, "text": text_content})
+                if speaker == "user":
+                    idle_state["reminders"] = 0
+                    idle_state["last_activity"] = time_module.monotonic()
                 logger.info(f"✅ {speaker.capitalize()} said: {text_content}")
                 logger.info(f"📝 Total messages in transcript: {len(transcript_messages)}")
 
@@ -3355,6 +4604,7 @@ AFTER-HOURS CONTEXT:
 
                 if response.data and len(response.data) > 0:
                     call_record_id = response.data[0]["id"]
+                    call_record_id_ref[0] = call_record_id
                     logger.info(f"✅ Found call_record by livekit_call_id: {call_record_id}")
                 else:
                     logger.warning(f"⚠️ No call_record found with livekit_call_id: {call_sid}")
@@ -3379,6 +4629,7 @@ AFTER-HOURS CONTEXT:
 
                     if response.data and len(response.data) > 0:
                         call_record_id = response.data[0]["id"]
+                        call_record_id_ref[0] = call_record_id
                         logger.info(f"Found call_record by service_number: {call_record_id}")
 
                 # If no match, try without service_number (for bridged outbound where LiveKit trunk != caller_id)
@@ -3394,17 +4645,28 @@ AFTER-HOURS CONTEXT:
 
                     if response.data and len(response.data) > 0:
                         call_record_id = response.data[0]["id"]
+                        call_record_id_ref[0] = call_record_id
                         logger.info(f"Found call_record by user_id only: {call_record_id}")
 
             if call_record_id:
+                # Compute call duration early so it can be saved to the call record
+                call_duration = int(asyncio.get_event_loop().time() - call_start_time)
+                logger.info(f"⏱️ Call duration: {call_duration}s")
+
                 # Check PII storage mode
                 pii_mode = user_config.get("pii_storage", "enabled") if user_config else "enabled"
                 logger.info(f"🔒 PII storage mode: {pii_mode}")
+
+                # Bound here, not inside the transcript branch: the fraud report
+                # below sits outside it and runs on every path, including
+                # pii_mode == "disabled" (where no transcript is stored at all).
+                fraud_finding = None
 
                 if pii_mode == "disabled":
                     # Disabled mode: only update status, no transcript/summary/extracted data
                     update_data = {
                         "status": "completed",
+                        "duration_seconds": call_duration,
                         "ended_at": "now()"
                     }
                     supabase.table("call_records") \
@@ -3425,22 +4687,48 @@ AFTER-HOURS CONTEXT:
                     update_data = {
                         "transcript": store_transcript,
                         "status": "completed",
+                        "duration_seconds": call_duration,
                         "ended_at": "now()"
                     }
+
+                    # Did the caller actually say anything? Gates extraction and
+                    # memory below — both fabricate/store noise on an agent-only
+                    # transcript. Computed outside the `if store_transcript`
+                    # block so it's always bound.
+                    caller_spoke = any(m["speaker"] != "agent" and m["text"].strip() for m in transcript_messages)
 
                     # Generate call summary and extract dynamic variables in parallel
                     # In redacted mode, use the redacted transcript so PII can't leak through
                     if store_transcript:
                         logger.info(f"📝 Generating call summary and extracting data...")
 
-                        summary_task = generate_call_summary(store_transcript)
-                        extraction_task = extract_data_from_transcript(store_transcript, dynamic_variables) if extract_calls_enabled else None
+                        # Extraction on an agent-only transcript (caller hung up
+                        # before speaking) fabricates values from the greeting and
+                        # spams the customer's Slack channel with empty reports.
+                        if extract_calls_enabled and not caller_spoke:
+                            logger.info("📊 Skipping extraction: caller never spoke (instant hang-up)")
 
+                        summary_task = generate_call_summary(
+                            store_transcript,
+                            call_duration,
+                            idle_reminders_sent=idle_state.get("reminders", 0),
+                            agent_ended_call=idle_state.get("agent_hungup", False),
+                        )
+                        extraction_task = extract_data_from_transcript(store_transcript, dynamic_variables) if (extract_calls_enabled and caller_spoke) else None
+                        # Fraud check rides the same gather — concurrent, so it
+                        # costs no wall-clock on hang-up. Pointless without
+                        # caller speech, and the classifier is told to ignore
+                        # agent-only transcripts anyway.
+                        fraud_task = detect_fraud(store_transcript) if caller_spoke else None
+
+                        tasks = [summary_task] + [t for t in (extraction_task, fraud_task) if t]
+                        results = await asyncio.gather(*tasks)
+                        call_summary = results[0]
+                        idx = 1
+                        extracted_data = results[idx] if extraction_task else {}
                         if extraction_task:
-                            call_summary, extracted_data = await asyncio.gather(summary_task, extraction_task)
-                        else:
-                            call_summary = await summary_task
-                            extracted_data = {}
+                            idx += 1
+                        fraud_finding = results[idx] if fraud_task else None
 
                         if call_summary:
                             update_data["call_summary"] = call_summary
@@ -3457,8 +4745,18 @@ AFTER-HOURS CONTEXT:
 
                     logger.info(f"✅ Call transcript saved to database{' with summary' if update_data.get('call_summary') else ''}{' with extracted_data' if update_data.get('extracted_data') else ''}{' (redacted)' if pii_mode == 'redacted' else ''}")
 
+                    # Send per-variable Slack notifications for extracted data (fire-and-forget)
+                    if update_data.get("extracted_data") and dynamic_variables:
+                        asyncio.create_task(send_extracted_data_slack(
+                            user_id=user_id,
+                            agent_id=user_config.get("id") if user_config else None,
+                            extracted_data=update_data["extracted_data"],
+                            dynamic_variables=dynamic_variables,
+                            caller_number=remote_party_phone,
+                        ))
+
                 # Deduct credits for the call (always, regardless of PII mode)
-                call_duration = int(asyncio.get_event_loop().time() - call_start_time)
+                # call_duration was already computed above and saved to DB
                 billing_agent_id = user_config.get("id") if user_config else None
                 # Count TTS characters (agent speech only) for accurate vendor cost tracking
                 tts_characters = sum(len(msg['text']) for msg in transcript_messages if msg['speaker'] == 'agent')
@@ -3492,7 +4790,10 @@ AFTER-HOURS CONTEXT:
                 ))
 
                 # Update caller memory if enabled (skip entirely in disabled mode)
-                if pii_mode != "disabled" and user_config and user_config.get("memory_enabled") and update_data.get("call_summary"):
+                # caller_spoke gate: a silent hang-up now produces a summary
+                # (so notifications say what happened), but it carries nothing
+                # worth remembering about the caller.
+                if pii_mode != "disabled" and user_config and user_config.get("memory_enabled") and update_data.get("call_summary") and caller_spoke:
                     agent_id = user_config.get("id")
                     memory_phone = remote_party_phone
 
@@ -3514,8 +4815,28 @@ AFTER-HOURS CONTEXT:
                     else:
                         logger.info(f"🧠 Memory enabled but missing phone or agent_id (phone={memory_phone}, agent_id={agent_id})")
 
-                # Send webhooks (fire-and-forget)
+                # Send webhooks — AWAITED, not fire-and-forget. The agent process
+                # is torn down within ~seconds of the call ending (room deleted →
+                # process exits), which cancels a create_task'd send before it can
+                # POST + log. Awaiting runs it inline so delivery + webhook_deliveries
+                # logging complete before on_call_end returns.
                 if user_id:
+                    # Echo caller-supplied metadata (minus internal _-prefixed keys,
+                    # mirroring get-call) so integrators can attribute the report,
+                    # e.g. by super_id on outbound calls.
+                    record_metadata = None
+                    try:
+                        meta_row = supabase.table("call_records") \
+                            .select("metadata") \
+                            .eq("id", call_record_id) \
+                            .single() \
+                            .execute()
+                        raw_meta = meta_row.data.get("metadata") if meta_row.data else None
+                        if isinstance(raw_meta, dict):
+                            record_metadata = {k: v for k, v in raw_meta.items() if not k.startswith("_")}
+                    except Exception as meta_err:
+                        logger.warning(f"🔔 Could not load metadata for webhook payload: {meta_err}")
+
                     webhook_payload = {
                         "call_record_id": call_record_id,
                         "direction": direction,
@@ -3527,9 +4848,54 @@ AFTER-HOURS CONTEXT:
                         "transcript": update_data.get("transcript") if pii_mode != "disabled" else None,
                         "summary": update_data.get("call_summary"),
                         "extracted_data": update_data.get("extracted_data"),
+                        "metadata": record_metadata,
                         "status": "completed",
                     }
-                    asyncio.create_task(send_webhooks(user_id, "call.completed", webhook_payload))
+                    await send_webhooks(user_id, "call.completed", webhook_payload)
+
+                # Report fraud AFTER the record is written, so the entry can
+                # reference a call that exists. Awaited rather than fire-and-
+                # forget: the process is torn down seconds after a call ends.
+                if fraud_finding and remote_party_phone and direction != "outbound":
+                    await report_fraud_number(
+                        caller_phone=remote_party_phone,
+                        user_id=user_id,
+                        call_record_id=str(call_record_id),
+                        finding=fraud_finding,
+                    )
+
+                # Trigger event-based skills (post-call follow-up, auto-CRM, etc.)
+                asyncio.create_task(trigger_event_skills({
+                    "agent_id": user_config.get("id") if user_config else None,
+                    "call_record_id": str(call_record_id) if call_record_id else None,
+                    "caller_phone": remote_party_phone,
+                    "caller_name": None,
+                    "call_duration_seconds": call_duration,
+                    "call_summary": update_data.get("call_summary"),
+                    "extracted_data": update_data.get("extracted_data") or {},
+                    # Suppresses the Slack delivery only — customers read those
+                    # channels as a work queue, and a caller who never spoke is
+                    # not work. SMS/email still go out.
+                    "caller_spoke": caller_spoke,
+                }))
+
+                # If this call belongs to a test run, trigger evaluation now that record is fully saved
+                try:
+                    cr_check = supabase.table("call_records").select("test_run_id").eq("id", call_record_id).single().execute()
+                    test_run_id = cr_check.data.get("test_run_id") if cr_check.data else None
+                    if test_run_id:
+                        supabase_url = os.environ.get("SUPABASE_URL", "")
+                        supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+                        async with aiohttp.ClientSession() as http_session:
+                            await http_session.post(
+                                f"{supabase_url}/functions/v1/test-log-collector",
+                                json={"test_run_id": test_run_id},
+                                headers={"Authorization": f"Bearer {supabase_key}", "Content-Type": "application/json"},
+                                timeout=aiohttp.ClientTimeout(total=15),
+                            )
+                        logger.info(f"🧪 Triggered test-log-collector for test run {test_run_id}")
+                except Exception as te:
+                    logger.warning(f"Could not trigger test-log-collector: {te}")
             else:
                 logger.warning("No call_record found - cannot save transcript")
 
@@ -3548,6 +4914,13 @@ AFTER-HOURS CONTEXT:
         if cleanup_state[0]:
             logger.info("⚠️ Cleanup already triggered, skipping")
             return
+
+        # During an active warm transfer the caller's SIP leg disconnects
+        # (redirected to hold music). Don't treat that as the call ending.
+        if transfer_state.get("active"):
+            logger.info("🔄 Transfer active — skipping cleanup for disconnected participant")
+            return
+
         cleanup_state[0] = True
 
         # Wait a moment for any pending transcriptions to complete
@@ -3556,6 +4929,11 @@ AFTER-HOURS CONTEXT:
             await asyncio.sleep(2)
             logger.info(f"📝 Final transcript message count: {len(transcript_messages)}")
             await on_call_end()
+            # Caller hung up — tear down the same way the end_call tool does, so the
+            # bridged PSTN leg doesn't linger in a silent conference and the LiveKit
+            # room/agent process exits instead of holding the warm slot. (Symmetric
+            # with the agent-initiated end path; idempotent if both fire.)
+            await terminate_call_legs(ctx.room.name)
 
         # Run async cleanup - use create_task for proper tracking
         asyncio.create_task(delayed_cleanup())
@@ -3580,6 +4958,22 @@ AFTER-HOURS CONTEXT:
     await session.start(room=ctx.room, agent=assistant)
     logger.info("✅ Session started - agent is now listening")
 
+    # PREWARM SIGNAL: the agent is now fully warm (STT/LLM/TTS connected). Stamp the
+    # call record so initiate-bridged-call's prewarm can hold the PSTN dial until now —
+    # the callee then gets an instant greeting instead of waiting out the ~6s warmup.
+    # Keyed on call_record_id (not room name), so it works on any worker / dispatch.
+    # Outbound only, non-blocking, best-effort.
+    if direction == "outbound" and call_record_id:
+        def _mark_agent_warmed():
+            try:
+                supabase.table("call_records").update(
+                    {"agent_warmed_at": datetime.datetime.utcnow().isoformat()}
+                ).eq("id", call_record_id).execute()
+            except Exception as warm_err:
+                logger.warning(f"Could not set agent_warmed_at (non-critical): {warm_err}")
+        asyncio.get_event_loop().run_in_executor(None, _mark_agent_warmed)
+        logger.info("🔥 Stamped agent_warmed_at — safe for orchestrator to dial PSTN")
+
     log_call_state(ctx.room.name, "session_started", "agent", {
         "direction": direction,
         "has_greeting": bool(greeting),
@@ -3591,6 +4985,10 @@ AFTER-HOURS CONTEXT:
 
     # Handle phone admin authentication if applicable (after session started)
     is_admin_authenticated = False
+
+    # Armed after the greeting for regular inbound calls and on PSTN pickup for
+    # outbound; stays off for admin-mode calls and failed outbound dials.
+    idle_watchdog_ok = False
 
     if admin_check_info and admin_check_info.get("has_access"):
         admin_user_id = admin_check_info["user_id"]
@@ -3711,15 +5109,174 @@ ADMIN MODE ACTIVATED:
                 await session.generate_reply()
                 logger.info("📞 Inbound call - Agent greeted caller (LLM-generated)")
             log_call_state(ctx.room.name, "greeting_spoken", "agent", {"direction": "inbound"})
+            idle_watchdog_ok = True
         else:
-            # Outbound call - speak greeting immediately if configured, otherwise wait
-            if greeting:
-                await session.say(greeting, allow_interruptions=True)
-                logger.info("📞 Outbound call - Agent greeted immediately (configured greeting)")
-                log_call_state(ctx.room.name, "greeting_spoken", "agent", {"direction": "outbound"})
+            # Outbound call — pre-warm the ElevenLabs TTS WebSocket before the callee answers.
+            # With auto_mode=True, the plugin opens a persistent streaming WebSocket. If it sits
+            # idle during the ringing period (10-30s), Render/ElevenLabs closes the stale connection
+            # and the first real response fails with "connection closed".
+            # Firing a warmup say() here keeps the WebSocket alive — the conference discards audio
+            # before the PSTN participant joins so the callee never hears it.
+            # Pre-warm the ElevenLabs TTS WebSocket in the background — do NOT await it.
+            # With auto_mode=True, the plugin opens a persistent streaming WebSocket. If it sits
+            # idle during the ringing period (10-30s), Render/ElevenLabs closes the stale connection
+            # and the first real response fails with "connection closed".
+            # Running as a background task means the poll loop starts immediately — if the callee
+            # answers during warmup, session.say(greeting) below will interrupt it (allow_interruptions=True).
+            logger.info("📞 Outbound call - Warming TTS WebSocket in background (conference discards audio before PSTN joins)")
+            try:
+                asyncio.ensure_future(session.say(".", allow_interruptions=True))
+            except Exception as e:
+                logger.warning(f"TTS pre-warm failed (non-critical): {e}")
+
+            # When the callee picks up, play the greeting. pstn_joined_at is stamped by
+            # outbound-call-status the moment the PSTN leg reports `answered`.
+            pstn_joined = False
+            call_failed = False
+            # DB values from outbound-call-status' statusMap (underscore, not hyphen)
+            TERMINAL_STATUSES = {'completed', 'failed', 'busy', 'no_answer'}
+            if call_record_id:
+                logger.info(f"📞 Outbound: polling for PSTN answer (call_record_id={call_record_id})")
+                loop = asyncio.get_event_loop()
+                for _ in range(300):  # 300 × 0.2s = 60s timeout
+                    await asyncio.sleep(0.2)
+                    try:
+                        def _fetch_call_status():
+                            return supabase.table("call_records") \
+                                .select("pstn_joined_at, status") \
+                                .eq("id", call_record_id) \
+                                .single() \
+                                .execute()
+                        result = await loop.run_in_executor(None, _fetch_call_status)
+                        if result.data:
+                            if result.data.get("pstn_joined_at"):
+                                pstn_joined = True
+                                logger.info("✅ PSTN picked up — playing greeting")
+                                break
+                            call_status = result.data.get("status", "")
+                            if call_status in TERMINAL_STATUSES:
+                                call_failed = True
+                                logger.info(f"📞 Outbound call ended before PSTN joined (status={call_status}) — stopping poll")
+                                break
+                    except Exception as poll_err:
+                        logger.warning(f"pstn_joined_at poll error: {poll_err}")
             else:
-                logger.info("📞 Outbound call - No greeting configured, waiting for user to speak")
-                log_call_state(ctx.room.name, "waiting_for_user", "agent", {"direction": "outbound"})
+                logger.warning("⚠️ No call_record_id — cannot detect PSTN answer")
+
+            if pstn_joined:
+                # Small beat so the greeting doesn't start before the callee has the
+                # phone to their ear (greeting on pickup is otherwise near-instant).
+                await asyncio.sleep(1.0)
+                # Always speak a STATIC opening line. Never generate_reply() on outbound —
+                # with no conversation yet it 400s ("text content blocks must contain
+                # non-whitespace text"). When no greeting is configured, fall back to a
+                # default built from the agent name so the call still opens cleanly.
+                opening_line = greeting or f"Hi, this is {_fallback_agent_name}."
+                # Non-interruptible: the callee's reflexive "hello?" on pickup must not cut
+                # off the agent's opening line — let it finish.
+                await session.say(opening_line, allow_interruptions=False)
+                # Discard whatever the callee said during the greeting (almost always a
+                # reflexive "hello?") so the agent doesn't answer it with a second greeting —
+                # wait fresh for their real reply.
+                session.clear_user_turn()
+                idle_watchdog_ok = True
+                logger.info(f"📞 Outbound greeting played on PSTN pickup ({'configured' if greeting else 'default'})")
+            elif call_failed:
+                logger.info("📞 Outbound call failed/busy/no-answer — session will close when room empties")
+            else:
+                logger.warning("⚠️ PSTN answer not detected within 60s — agent will respond when caller speaks")
+
+            log_call_state(ctx.room.name, "waiting_for_user", "agent", {"direction": "outbound", "pstn_joined": pstn_joined})
+
+    # ── Idle watchdog: prompt a silent caller, then hang up ──────────────
+    # Implements agent_configs.idle_trigger / idle_reminders, which were
+    # UI-only until now. Without this, a caller who goes silent but keeps the
+    # line open holds the call (and billing) indefinitely: the LLM only runs
+    # on caller turns, so the end_call tool is unreachable during silence.
+    try:
+        idle_trigger_s = float((user_config or {}).get("idle_trigger") or 0)
+    except (TypeError, ValueError):
+        idle_trigger_s = 0.0
+    # Per the Configure tab, idle_reminders = 0 means DISABLED — and 246 of 247
+    # agents sit at 0, so the watchdog is opt-in per agent via the existing UI.
+    try:
+        idle_reminders_max = int((user_config or {}).get("idle_reminders") or 0)
+    except (TypeError, ValueError):
+        idle_reminders_max = 0
+
+    if idle_watchdog_ok and idle_trigger_s > 0 and idle_reminders_max > 0:
+        # Floor the trigger so a twitchy slider value can't nag on the natural
+        # pauses that endpointing already tolerates. Nearly every agent carries
+        # the autosaved UI default (2.0s), so the floor is what most callers get.
+        idle_trigger_s = max(idle_trigger_s, 5.0)
+        # The hangup is the destructive step: require a longer unbroken silence
+        # after the final reminder so a caller who stepped away ("let me find my
+        # card") isn't cut off at reminder cadence.
+        HANGUP_GRACE_S = 30.0
+
+        async def idle_watchdog():
+            while True:
+                await asyncio.sleep(1.0)
+                if cleanup_state[0]:
+                    return
+                if idle_state["agent_busy"] or idle_state["user_speaking"]:
+                    continue
+                elapsed = time_module.monotonic() - idle_state["last_activity"]
+                threshold = HANGUP_GRACE_S if idle_state["reminders"] >= idle_reminders_max else idle_trigger_s
+                if elapsed < threshold:
+                    continue
+                if idle_state["reminders"] < idle_reminders_max:
+                    idle_state["reminders"] += 1
+                    idle_state["last_activity"] = time_module.monotonic()
+                    logger.info(f"⏰ Caller idle {elapsed:.0f}s — prompt {idle_state['reminders']}/{idle_reminders_max}")
+                    try:
+                        # LLM-generated so the prompt matches the conversation's language
+                        await session.generate_reply(
+                            instructions="The caller has gone quiet. Briefly and politely ask if they are still there, in the language the conversation has been in. One short sentence."
+                        )
+                    except Exception as prompt_err:
+                        logger.warning(f"⏰ Idle prompt via LLM failed, using static line: {prompt_err}")
+                        if cleanup_state[0]:
+                            return  # caller hung up mid-prompt — benign race, not a crash
+                        try:
+                            await session.say("Hello — are you still there?", allow_interruptions=True)
+                        except Exception as say_err:
+                            logger.warning(f"⏰ Idle static prompt also failed (continuing): {say_err}")
+                else:
+                    logger.info(f"⏰ Caller idle {elapsed:.0f}s after {idle_reminders_max} prompts — hanging up")
+                    # Read by the call summary: the owner needs to know the agent
+                    # gave up on a silent line, not that the caller dropped.
+                    idle_state["agent_hungup"] = True
+                    try:
+                        await session.say(
+                            "It seems we've been disconnected. Please call back any time. Goodbye!",
+                            allow_interruptions=False,
+                        )
+                    except Exception as bye_err:
+                        logger.warning(f"⏰ Idle goodbye failed (hanging up anyway): {bye_err}")
+                    # Mirror the end_call tool exactly: _pre_disconnect sets
+                    # cleanup_state BEFORE running on_call_end, so the disconnect
+                    # handlers that fire after the room is deleted skip their own
+                    # on_call_end — without the flag it runs twice (double
+                    # webhook/billing/summary).
+                    try:
+                        await _pre_disconnect()
+                    except Exception as cb_err:
+                        logger.error(f"Idle hangup pre-disconnect error: {cb_err}")
+                    await terminate_call_legs(ctx.room.name)
+                    return
+
+        def _idle_watchdog_done(t):
+            if not t.cancelled() and t.exception():
+                logger.error(f"Idle watchdog crashed: {t.exception()}")
+
+        _idle_task = asyncio.create_task(idle_watchdog())
+        _idle_task.add_done_callback(_idle_watchdog_done)
+        # Strong ref on the session so the task survives entrypoint returning.
+        setattr(session, "_magpipe_idle_task", _idle_task)
+        logger.info(f"⏰ Idle watchdog armed: trigger={idle_trigger_s}s, reminders={idle_reminders_max}")
+    else:
+        logger.info(f"⏰ Idle watchdog off (enabled={idle_watchdog_ok}, idle_trigger={idle_trigger_s}, idle_reminders={idle_reminders_max})")
 
     logger.info("✅ Agent session started successfully - ready for calls")
 
@@ -3733,10 +5290,63 @@ if __name__ == "__main__":
     # Simple HTTP server for Render health checks
     class HealthCheckHandler(BaseHTTPRequestHandler):
         def do_GET(self):
+            path = self.path.split('?', 1)[0].rstrip('/') or '/'
+            if path == '/health/providers':
+                return self._providers()
+            if path == '/health/freeze':
+                return self._freeze()
+            # Render's own probe hits '/'. Keep it a cheap static 200 and NEVER
+            # couple it to provider health: a failing provider would otherwise
+            # make Render mark the service unhealthy and cycle it, turning a
+            # degraded-but-serving worker into a hard outage mid-call.
             self.send_response(200)
             self.send_header('Content-type', 'text/plain')
             self.end_headers()
             self.wfile.write(b'LiveKit Agent Running')
+
+        def _providers(self):
+            # Shared secret, ENABLED in production since 2026-08-27:
+            # AGENT_HEALTH_TOKEN is set on both Render services and mirrored as a
+            # Supabase edge-function secret so agent-health-check can send it.
+            # Unset => open (local dev). 404 rather than 401 so an unauthenticated
+            # prober can't confirm the route exists.
+            token = os.getenv('AGENT_HEALTH_TOKEN')
+            if token and self.headers.get('x-health-token') != token:
+                self.send_response(404)
+                self.send_header('Content-type', 'text/plain')
+                self.end_headers()
+                self.wfile.write(b'not found')
+                return
+            try:
+                result = _provider_selftest()
+            except Exception as e:
+                result = {
+                    'healthy': False,
+                    'failed': ['selftest'],
+                    'checks': {'selftest': {'ok': False, 'error': f'{type(e).__name__}: {e}'[:300]}},
+                }
+            body = json.dumps(result).encode()
+            # 503 on failure so the watchdog trips on the status code alone even
+            # if the body shape ever changes.
+            self.send_response(200 if result.get('healthy') else 503)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def _freeze(self):
+            token = os.getenv('AGENT_HEALTH_TOKEN')
+            if token and self.headers.get('x-health-token') != token:
+                self.send_response(404)
+                self.end_headers()
+                self.wfile.write(b'not found')
+                return
+            body = json.dumps({'python': sys.version.split()[0], 'packages': _installed_freeze()}).encode()
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
 
         def log_message(self, format, *args):
             pass  # Suppress logs
@@ -3762,12 +5372,22 @@ if __name__ == "__main__":
         logger.info("🎬 Starting LiveKit agent worker...")
         logger.info(f"   → Agent Name: {agent_worker_name}")
         logger.info("   → Agent will join rooms automatically via LiveKit Cloud dispatch rules")
-        cli.run_app(WorkerOptions(
+        _worker_opts = dict(
             entrypoint_fnc=entrypoint,  # Called when agent joins a room
             prewarm_fnc=prewarm,  # Called for explicit agent dispatch
             agent_name=agent_worker_name,
-            num_idle_processes=0  # Disable worker pool to avoid DuplexClosed errors
-        ))
+            # Keep one warm, pre-imported, VAD-loaded process ready so an inbound
+            # call doesn't pay a cold process spawn (heavy ML imports + model load)
+            # — the ~5-9s answer delay. Was 0 (2025-10-27) to dodge a DuplexClosed
+            # worker-pool init bug; that's resolved in livekit-agents>=1.4.0.
+            num_idle_processes=1,
+        )
+        # Local testing on a laptop can push CPU over the default load threshold,
+        # making the worker flap to "unavailable" and miss dispatches. Opt-in override
+        # via LK_LOAD_THRESHOLD (unset in prod → default behavior unchanged).
+        if os.getenv("LK_LOAD_THRESHOLD"):
+            _worker_opts["load_threshold"] = float(os.getenv("LK_LOAD_THRESHOLD"))
+        cli.run_app(WorkerOptions(**_worker_opts))
     except KeyboardInterrupt:
         logger.info("⚠️ Agent worker stopped by user (KeyboardInterrupt)")
     except Exception as e:

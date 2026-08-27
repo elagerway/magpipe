@@ -1,67 +1,14 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { resolveUser } from '../_shared/api-auth.ts'
 import { corsHeaders, handleCors } from '../_shared/cors.ts'
+import { CalTokenError, fetchCalEventTypes, getCalAccessToken } from '../_shared/cal-com.ts'
 
 interface GetSlotsRequest {
+  action?: 'get_event_types'; // when set, list event types instead of slots (Booking Settings modal)
   start: string; // ISO date or date string
   end: string;   // ISO date or date string
   duration?: number; // minutes, default 30
   event_type_id?: number;
-}
-
-// Refresh access token if expired
-async function refreshTokenIfNeeded(
-  supabase: any,
-  userId: string,
-  accessToken: string,
-  refreshToken: string,
-  expiresAt: string
-): Promise<string> {
-  const expiry = new Date(expiresAt);
-  const now = new Date();
-
-  // Refresh if token expires within 5 minutes
-  if (expiry.getTime() - now.getTime() > 5 * 60 * 1000) {
-    return accessToken;
-  }
-
-  console.log('Refreshing Cal.com access token...');
-
-  const clientId = Deno.env.get('CAL_COM_CLIENT_ID')!;
-  const clientSecret = Deno.env.get('CAL_COM_CLIENT_SECRET')!;
-
-  const tokenResponse = await fetch('https://app.cal.com/api/auth/oauth/token', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: new URLSearchParams({
-      grant_type: 'refresh_token',
-      client_id: clientId,
-      client_secret: clientSecret,
-      refresh_token: refreshToken,
-    }),
-  });
-
-  if (!tokenResponse.ok) {
-    throw new Error('Failed to refresh Cal.com token');
-  }
-
-  const tokens = await tokenResponse.json();
-  const newExpiresAt = new Date(Date.now() + (tokens.expires_in || 3600) * 1000);
-
-  // Update tokens in database
-  await supabase
-    .from('users')
-    .update({
-      cal_com_access_token: tokens.access_token,
-      cal_com_refresh_token: tokens.refresh_token || refreshToken,
-      cal_com_token_expires_at: newExpiresAt.toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', userId);
-
-  return tokens.access_token;
 }
 
 Deno.serve(async (req) => {
@@ -123,17 +70,49 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Refresh token if needed
-    const accessToken = await refreshTokenIfNeeded(
-      supabase,
-      userId,
-      userData.cal_com_access_token,
-      userData.cal_com_refresh_token,
-      userData.cal_com_token_expires_at
-    );
+    // Refresh if needed. getCalAccessToken also clears dead credentials, so a
+    // rejected refresh token stops the UI claiming a live connection.
+    const accessToken = await getCalAccessToken(supabase, userId);
+    if (!accessToken) {
+      return new Response(
+        JSON.stringify({ error: 'Cal.com not connected', code: 'NOT_CONNECTED' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // Parse request
     const body: GetSlotsRequest = await req.json();
+
+    // List event types (used by the agent Booking Settings modal). Runs BEFORE
+    // the start/end slot params are required — that call sends neither, which is
+    // why it previously 400'd and the UI showed "No event types found". The
+    // cal-api-version header is required: without it /v2/event-types returns a
+    // grouped { data: { eventTypeGroups: [...] } } shape instead of a flat
+    // { data: [...] } array. (#100)
+    if (body.action === 'get_event_types') {
+      try {
+        const eventTypes = await fetchCalEventTypes(accessToken);
+        return new Response(
+          JSON.stringify({ eventTypes }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      } catch (e) {
+        console.error('Cal.com event-types error:', e);
+        // `reconnect_required` lets the UI tell "your Cal.com connection is
+        // broken" apart from "this account has no event types" — the two
+        // looked identical before, and the modal told people to go create
+        // event types they already had.
+        const reconnect = e instanceof CalTokenError && e.invalidGrant;
+        return new Response(
+          JSON.stringify({
+            error: String((e as Error).message || e),
+            reconnect_required: reconnect,
+            eventTypes: [],
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
 
     if (!body.start || !body.end) {
       return new Response(
@@ -148,18 +127,11 @@ Deno.serve(async (req) => {
     // If no event type, get user's first event type
     let eventTypeIdToUse = eventTypeId;
     if (!eventTypeIdToUse) {
-      const eventTypesResponse = await fetch('https://api.cal.com/v2/event-types', {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (eventTypesResponse.ok) {
-        const eventTypes = await eventTypesResponse.json();
-        if (eventTypes.data && eventTypes.data.length > 0) {
-          eventTypeIdToUse = eventTypes.data[0].id;
-        }
+      try {
+        const ets = await fetchCalEventTypes(accessToken);
+        if (ets.length > 0) eventTypeIdToUse = ets[0].id;
+      } catch (e) {
+        console.error('Cal.com event-types (slots auto-pick) error:', e);
       }
     }
 

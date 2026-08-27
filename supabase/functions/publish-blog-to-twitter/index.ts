@@ -43,7 +43,7 @@ Deno.serve(async (req) => {
       // Single post mode — tweet one specific post
       const { data: post, error } = await supabase
         .from('blog_posts')
-        .select('id, slug, title, excerpt, content, status, tweeted_at')
+        .select('id, slug, title, excerpt, content, status, tweeted_at, featured_image_url')
         .eq('id', post_id)
         .single()
 
@@ -62,9 +62,10 @@ Deno.serve(async (req) => {
       // Batch mode — tweet all untweeted published posts
       const { data: posts, error } = await supabase
         .from('blog_posts')
-        .select('id, slug, title, excerpt, content, status')
+        .select('id, slug, title, excerpt, content, status, featured_image_url')
         .eq('status', 'published')
         .is('tweeted_at', null)
+        .lte('published_at', new Date().toISOString())
         .order('published_at', { ascending: true })
         .limit(5)
 
@@ -198,6 +199,65 @@ async function getAccessToken(supabase: any): Promise<string> {
 }
 
 /**
+ * Upload an image to Twitter and return the media_id
+ */
+async function uploadMediaToTwitter(accessToken: string, imageUrl: string): Promise<string | null> {
+  try {
+    // Download the image
+    const imgRes = await fetch(imageUrl)
+    if (!imgRes.ok) {
+      console.error(`Failed to download image: ${imgRes.status}`)
+      return null
+    }
+
+    const imgBuffer = await imgRes.arrayBuffer()
+    const imgBytes = new Uint8Array(imgBuffer)
+    const contentType = imgRes.headers.get('content-type') || 'image/jpeg'
+
+    // Upload via Twitter v2 media upload (simple upload for images < 5MB)
+    const formData = new FormData()
+    formData.append('media', new Blob([imgBytes], { type: contentType }), 'image.jpg')
+    formData.append('media_category', 'tweet_image')
+
+    const uploadRes = await fetch('https://api.twitter.com/2/media/upload', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+      },
+      body: formData,
+    })
+
+    const uploadData = await uploadRes.json()
+
+    if (!uploadRes.ok) {
+      console.error('Media upload failed:', uploadData)
+      // Fall back to v1.1 if v2 isn't available
+      const v1Res = await fetch('https://upload.twitter.com/1.1/media/upload.json', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+        },
+        body: formData,
+      })
+      const v1Data = await v1Res.json()
+      if (v1Res.ok && v1Data.media_id_string) {
+        console.log(`Media uploaded via v1.1: ${v1Data.media_id_string}`)
+        return v1Data.media_id_string
+      }
+      console.error('v1.1 media upload also failed:', v1Data)
+      return null
+    }
+
+    const mediaId = uploadData.id || uploadData.media_id_string || uploadData.data?.id
+    console.log(`Media uploaded: ${mediaId}`)
+    return mediaId
+  } catch (err) {
+    console.error('Error uploading media:', err)
+    return null
+  }
+}
+
+/**
  * Post a tweet and update the blog_posts record
  */
 async function tweetPost(supabase: any, post: any): Promise<{ success?: boolean; tweet_id?: string; error?: string }> {
@@ -205,13 +265,24 @@ async function tweetPost(supabase: any, post: any): Promise<{ success?: boolean;
     const accessToken = await getAccessToken(supabase)
     const tweetText = buildTweetText(post)
 
+    // Upload featured image if available
+    let mediaId: string | null = null
+    if (post.featured_image_url) {
+      mediaId = await uploadMediaToTwitter(accessToken, post.featured_image_url)
+    }
+
+    const tweetBody: any = { text: tweetText }
+    if (mediaId) {
+      tweetBody.media = { media_ids: [mediaId] }
+    }
+
     const res = await fetch('https://api.twitter.com/2/tweets', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ text: tweetText }),
+      body: JSON.stringify(tweetBody),
     })
 
     const data = await res.json()
@@ -222,7 +293,7 @@ async function tweetPost(supabase: any, post: any): Promise<{ success?: boolean;
     }
 
     const tweetId = data.data?.id
-    console.log(`Tweeted post ${post.id} -> tweet ${tweetId}`)
+    console.log(`Tweeted post ${post.id} -> tweet ${tweetId}${mediaId ? ' (with image)' : ''}`)
 
     // Update blog post with tweet info
     await supabase

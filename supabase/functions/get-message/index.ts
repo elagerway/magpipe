@@ -1,6 +1,9 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { resolveUser } from "../_shared/api-auth.ts";
 import { corsHeaders, handleCors } from '../_shared/cors.ts'
+import { SMS_MESSAGE_COLUMNS, rowToMessageDto } from '../_shared/message-dto.ts'
+import { signRowMedia } from '../_shared/message-media.ts'
+import { computeThreadId } from '../_shared/thread-id.ts'
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -26,7 +29,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { message_id } = await req.json();
+    const { message_id } = await req.json().catch(() => ({}));
 
     const queryClient = user.authMethod === "api_key"
       ? createClient(
@@ -44,7 +47,7 @@ Deno.serve(async (req) => {
 
     const { data: message, error } = await queryClient
       .from("sms_messages")
-      .select("*")
+      .select(SMS_MESSAGE_COLUMNS)
       .eq("id", message_id)
       .eq("user_id", user.id)
       .single();
@@ -56,22 +59,17 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Format response
-    const response = {
-      id: message.id,
-      thread_id: message.thread_id,
-      from_number: message.from_number,
-      to_number: message.to_number,
-      body: message.body,
-      direction: message.direction,
-      status: message.status || "delivered",
-      is_ai_generated: message.is_ai_generated || false,
-      media_urls: message.media_urls || [],
-      segments: message.segments || 1,
-      error_code: message.error_code,
-      error_message: message.error_message,
-      created_at: message.created_at,
-    };
+    // Re-sign attachments from their durable storage path (service role) and
+    // compute the stable thread id. Rows are already scoped to user.id above.
+    const serviceClient = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+    );
+    const [media, thread_id] = await Promise.all([
+      signRowMedia(serviceClient, message.metadata),
+      computeThreadId(user.id, message.sender_number, message.recipient_number),
+    ]);
+    const response = rowToMessageDto(message, { media, thread_id });
 
     return new Response(JSON.stringify(response), {
       status: 200,

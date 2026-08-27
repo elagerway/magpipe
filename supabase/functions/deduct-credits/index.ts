@@ -4,9 +4,10 @@ import { corsHeaders, handleCors } from '../_shared/cors.ts'
 
 // Pricing rates (per minute for voice, per message for SMS)
 const VOICE_RATES = {
-  elevenlabs: 0.07,  // 11labs-* voices
-  openai: 0.08,      // openai-* voices
-  default: 0.07      // legacy voices default to ElevenLabs rate
+  elevenlabs: 0.10,               // 11labs Flash/Turbo, en-US (vendor ~$0.05/min → 50% margin)
+  elevenlabs_multilingual: 0.20,  // 11labs multilingual agents (premium; ML worker infra)
+  openai: 0.03,                   // openai-* voices (vendor $0.015/min → 50% gross margin)
+  default: 0.07                   // legacy voices default rate
 }
 
 const LLM_RATES: Record<string, number> = {
@@ -17,8 +18,12 @@ const LLM_RATES: Record<string, number> = {
   'gpt-5': 0.04,
   'gpt-5-mini': 0.012,
   'gpt-5-nano': 0.003,
-  'claude-3.5-sonnet': 0.05,
-  'claude-3-haiku': 0.006,
+  'claude-opus-4.6': 0.21,
+  'claude-sonnet-4.6': 0.056,
+  'claude-sonnet-4.5': 0.07,
+  'claude-haiku-4.5': 0.008,
+  'claude-3.5-sonnet': 0.07,
+  'claude-3-haiku': 0.008,
   'default': 0.006
 }
 
@@ -48,6 +53,7 @@ interface DeductRequest {
   durationSeconds?: number
   voiceId?: string
   aiModel?: string
+  agentLanguage?: string     // agent language; ∈ ML set → premium 11labs rate
   addons?: string[]          // e.g. ['knowledge_base', 'memory', 'semantic_memory']
   brandedCall?: boolean      // Outbound call with branded caller ID (CNAM)
   batchCall?: boolean        // Batch/campaign dial
@@ -68,7 +74,8 @@ function calculateVoiceCost(
   aiModel?: string,
   addons?: string[],
   brandedCall?: boolean,
-  batchCall?: boolean
+  batchCall?: boolean,
+  multilingual?: boolean
 ): {
   totalCost: number
   breakdown: {
@@ -88,10 +95,11 @@ function calculateVoiceCost(
   if (voiceId?.startsWith('openai-')) {
     voiceRate = VOICE_RATES.openai
   } else if (voiceId?.startsWith('11labs-') || voiceId) {
-    voiceRate = VOICE_RATES.elevenlabs
+    // Multilingual agents ride the higher-cost ML worker → premium 11labs rate.
+    voiceRate = multilingual ? VOICE_RATES.elevenlabs_multilingual : VOICE_RATES.elevenlabs
   }
 
-  // Determine LLM rate based on ai_model
+  // Determine LLM rate based on llm_model (passed as aiModel)
   let llmRate = LLM_RATES.default
   if (aiModel && LLM_RATES[aiModel]) {
     llmRate = LLM_RATES[aiModel]
@@ -340,7 +348,7 @@ async function sendLowBalanceNotification(
           'X-Postmark-Server-Token': postmarkApiKey
         },
         body: JSON.stringify({
-          From: Deno.env.get('NOTIFICATION_EMAIL') || 'notifications@snapsonic.com',
+          From: Deno.env.get('NOTIFICATION_EMAIL') || 'info@magpipe.ai',
           To: user.email,
           Subject: "You've hit a milestone at Magpipe!",
           HtmlBody: htmlBody,
@@ -498,7 +506,12 @@ Deno.serve(async (req) => {
 
     // Parse request body
     const body: DeductRequest = await req.json()
-    const { userId, type, durationSeconds, voiceId, aiModel, addons, brandedCall, batchCall, messageCount, aiGenerated, referenceType, referenceId } = body
+    const { userId, type, durationSeconds, voiceId, aiModel, agentLanguage, addons, brandedCall, batchCall, messageCount, aiGenerated, referenceType, referenceId } = body
+    // Multilingual agents (language ∈ ML set) ride the higher-cost ML worker →
+    // premium 11labs rate. Single source of truth; keep in sync with
+    // sync-multilingual-dispatch ML_LANGUAGES.
+    const ML_LANGUAGES = ['multi', 'fr', 'es', 'de']
+    const multilingual = !!agentLanguage && ML_LANGUAGES.includes(agentLanguage)
 
     if (!userId) {
       return new Response(JSON.stringify({ error: 'userId is required' }), {
@@ -519,7 +532,7 @@ Deno.serve(async (req) => {
         })
       }
 
-      const { totalCost, breakdown } = calculateVoiceCost(durationSeconds, voiceId, aiModel, addons, brandedCall, batchCall)
+      const { totalCost, breakdown } = calculateVoiceCost(durationSeconds, voiceId, aiModel, addons, brandedCall, batchCall, multilingual)
       cost = totalCost
       description = `Voice call - ${breakdown.minutes.toFixed(2)} minutes`
       metadata = {
@@ -527,6 +540,8 @@ Deno.serve(async (req) => {
         durationSeconds,
         voiceId,
         aiModel,
+        agentLanguage,
+        multilingual,
         ...breakdown
       }
     } else if (type === 'sms') {

@@ -174,33 +174,34 @@ Deno.serve(async (req) => {
         // Area code search (AreaCode param works for both Local and TollFree endpoints)
         console.log(`Searching ${isTollFree ? 'toll-free' : 'local'} numbers for area code: ${areaCode}`)
 
-        allNumbers = await searchSignalWire({ AreaCode: areaCode, PageSize: '20' }, isTollFree)
+        allNumbers = await searchSignalWire({ AreaCode: areaCode, PageSize: '100' }, isTollFree)
 
         // Try fallback area codes if no results (local only — toll-free prefixes don't have regional fallbacks)
         if (!isTollFree && allNumbers.length === 0 && areaCodeRegions[areaCode]) {
           console.log('No numbers found, trying regional fallbacks:', areaCodeRegions[areaCode])
           for (const fallbackCode of areaCodeRegions[areaCode]) {
-            const fallbackNumbers = await searchSignalWire({ AreaCode: fallbackCode, PageSize: '20' })
+            const fallbackNumbers = await searchSignalWire({ AreaCode: fallbackCode, PageSize: '100' })
             allNumbers.push(...fallbackNumbers)
-            if (allNumbers.length >= 20) break
+            if (allNumbers.length >= 75) break
           }
           if (allNumbers.length > 0) usedFallback = true
         }
       } else if (state) {
-        // State/province search (from API key users who pass state directly)
-        console.log(`Searching ${isTollFree ? 'toll-free' : 'local'} numbers in state/province: ${state}, country: ${searchCountry}`)
+        // State/province search — auto-detect Canadian provinces
+        const isCanadianProvince = !!provinceAreaCodes[state.toUpperCase()]
+        console.log(`Searching ${isTollFree ? 'toll-free' : 'local'} numbers in ${state} (${isCanadianProvince ? 'CA' : 'US'})`)
 
-        if (searchCountry === 'CA') {
-          const areaCodes = provinceAreaCodes[state] || []
+        if (isCanadianProvince) {
+          const areaCodes = provinceAreaCodes[state.toUpperCase()] || []
           for (const code of areaCodes) {
-            const numbers = await searchSignalWire({ AreaCode: code, PageSize: '20' })
+            const numbers = await searchSignalWire({ AreaCode: code, PageSize: '100' })
             allNumbers.push(...numbers)
-            if (allNumbers.length >= 20) break
+            if (allNumbers.length >= 75) break
           }
         } else {
           allNumbers = isTollFree
-            ? await searchSignalWire({ InRegion: state, PageSize: '20' }, true)
-            : await searchSignalWire({ InRegion: state, PageSize: '20' })
+            ? await searchSignalWire({ InRegion: state.toUpperCase(), PageSize: '100' }, true)
+            : await searchSignalWire({ InRegion: state.toUpperCase(), PageSize: '100' })
         }
       } else if (city) {
         // City search — resolve city to region/area codes
@@ -212,42 +213,30 @@ Deno.serve(async (req) => {
           if (cityInfo.areaCodes) {
             // Search by the city's known area codes for more targeted results
             for (const code of cityInfo.areaCodes) {
-              const numbers = await searchSignalWire({ AreaCode: code, PageSize: '20' }, isTollFree)
+              const numbers = await searchSignalWire({ AreaCode: code, PageSize: '100' }, isTollFree)
               allNumbers.push(...numbers)
-              if (allNumbers.length >= 20) break
+              if (allNumbers.length >= 75) break
             }
           } else {
             // Fallback to InRegion for US cities without specific area codes
             allNumbers = isTollFree
-              ? await searchSignalWire({ InRegion: cityInfo.region, PageSize: '20' }, true)
-              : await searchSignalWire({ InRegion: cityInfo.region, PageSize: '20' })
+              ? await searchSignalWire({ InRegion: cityInfo.region, PageSize: '100' }, true)
+              : await searchSignalWire({ InRegion: cityInfo.region, PageSize: '100' })
           }
         } else {
           // Unknown city — try as a US state abbreviation (e.g. user typed "TX")
           const stateMatch = normalizedCity.match(/^([a-z]{2})$/i)
           if (stateMatch) {
             allNumbers = isTollFree
-              ? await searchSignalWire({ InRegion: stateMatch[1].toUpperCase(), PageSize: '20' }, true)
-              : await searchSignalWire({ InRegion: stateMatch[1].toUpperCase(), PageSize: '20' })
+              ? await searchSignalWire({ InRegion: stateMatch[1].toUpperCase(), PageSize: '100' }, true)
+              : await searchSignalWire({ InRegion: stateMatch[1].toUpperCase(), PageSize: '100' })
           }
           // If still no results, return empty — we can't guess the region
         }
-      } else if (searchCountry) {
-        // Country-only search (just selected a country, no other filters)
-        console.log(`Searching numbers in country: ${searchCountry}`)
-        if (searchCountry === 'CA') {
-          // Search a few major Canadian area codes
-          const majorCodes = ['604', '416', '514', '403', '613']
-          for (const code of majorCodes) {
-            const numbers = await searchSignalWire({ AreaCode: code, PageSize: '10' })
-            allNumbers.push(...numbers)
-            if (allNumbers.length >= 20) break
-          }
-        } else {
-          allNumbers = isTollFree
-            ? await searchSignalWire({ PageSize: '20' }, true)
-            : await searchSignalWire({ PageSize: '20' })
-        }
+      } else {
+        // Default search — US numbers
+        console.log('Default search: US numbers')
+        allNumbers = await searchSignalWire({ PageSize: '100' }, isTollFree)
       }
 
     // ── Legacy search (backward compatibility) ──────────────────
@@ -265,21 +254,19 @@ Deno.serve(async (req) => {
           '873', '902', '905'
         ]
         for (const code of canadianAreaCodes) {
-          const numbers = await searchSignalWire({ AreaCode: code, PageSize: '20' })
-          const smsNumbers = numbers.filter((num: any) => num.capabilities?.SMS === true)
-          allNumbers.push(...smsNumbers)
-          if (allNumbers.length >= 50) break
+          const numbers = await searchSignalWire({ AreaCode: code, PageSize: '100' })
+          allNumbers.push(...numbers)
+          if (allNumbers.length >= 75) break
         }
       } else if (normalizedQuery === 'usa' || normalizedQuery === 'us' || normalizedQuery === 'united states') {
-        const numbers = await searchSignalWire({ PageSize: '50' })
-        allNumbers = numbers.filter((num: any) => num.capabilities?.SMS === true)
+        allNumbers = await searchSignalWire({ PageSize: '100' })
       } else if (isNumeric) {
-        allNumbers = await searchSignalWire({ AreaCode: searchQuery, PageSize: '20' })
+        allNumbers = await searchSignalWire({ AreaCode: searchQuery, PageSize: '100' })
         if (allNumbers.length === 0 && areaCodeRegions[searchQuery]) {
           for (const fallbackCode of areaCodeRegions[searchQuery]) {
-            const fallbackNumbers = await searchSignalWire({ AreaCode: fallbackCode, PageSize: '20' })
+            const fallbackNumbers = await searchSignalWire({ AreaCode: fallbackCode, PageSize: '100' })
             allNumbers.push(...fallbackNumbers)
-            if (allNumbers.length >= 20) break
+            if (allNumbers.length >= 75) break
           }
           if (allNumbers.length > 0) usedFallback = true
         }
@@ -306,13 +293,13 @@ Deno.serve(async (req) => {
         if (areaCodesToSearch.length === 0) {
           const stateMatch = searchQuery.match(/\b([A-Z]{2})\b/i)
           if (stateMatch) {
-            allNumbers = await searchSignalWire({ InRegion: stateMatch[1].toUpperCase(), PageSize: '20' })
+            allNumbers = await searchSignalWire({ InRegion: stateMatch[1].toUpperCase(), PageSize: '100' })
           }
         } else {
           for (const code of areaCodesToSearch) {
-            const numbers = await searchSignalWire({ AreaCode: code, PageSize: '20' })
+            const numbers = await searchSignalWire({ AreaCode: code, PageSize: '100' })
             allNumbers.push(...numbers)
-            if (allNumbers.length >= 20) break
+            if (allNumbers.length >= 75) break
           }
         }
       }
@@ -323,17 +310,14 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Transform SignalWire response to our format
-    const numbers = allNumbers.slice(0, 25).map((num: any) => ({
+    // SignalWire API capabilities field is unreliable (reports SMS:false for
+    // numbers that actually have SMS in dashboard). All SignalWire local numbers
+    // support voice+sms+mms, so we hardcode capabilities.
+    const numbers = allNumbers.slice(0, 75).map((num: any) => ({
       phone_number: num.phone_number,
-      locality: num.locality || 'Unknown',
+      locality: num.locality || num.rate_center || 'Unknown',
       region: num.region || 'Unknown',
-      capabilities: {
-        voice: num.capabilities?.voice === true || num.capabilities?.Voice === true,
-        sms: num.capabilities?.sms === true || num.capabilities?.SMS === true,
-        mms: num.capabilities?.mms === true || num.capabilities?.MMS === true,
-        fax: num.capabilities?.fax === true || num.capabilities?.Fax === true,
-      },
+      capabilities: { voice: true, sms: true, mms: true, fax: false },
     }))
 
     return new Response(

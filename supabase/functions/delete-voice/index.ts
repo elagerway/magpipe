@@ -2,7 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { resolveUser } from "../_shared/api-auth.ts";
 import { corsHeaders, handleCors } from '../_shared/cors.ts'
 
-const BUILTIN_VOICES = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"];
+const BUILTIN_VOICES = ["openai-alloy", "openai-echo", "openai-fable", "openai-onyx", "openai-nova", "openai-shimmer"];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
     // Update any agents using this voice to use default
     await queryClient
       .from("agent_configs")
-      .update({ voice_id: "alloy", voice_provider: "openai" })
+      .update({ voice_id: "openai-alloy", voice_provider: "openai" })
       .eq("user_id", user.id)
       .eq("voice_id", voice_id);
 

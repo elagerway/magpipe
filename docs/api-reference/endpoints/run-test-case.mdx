@@ -1,0 +1,60 @@
+---
+title: "Run Test Case"
+api: "POST /run-test"
+description: "Fire a test run for a test case"
+---
+
+Starts a test run for a test case. The system places a real call using the test case configuration, evaluates all assertions after the call completes, and generates an AI analysis for any failures.
+
+The run executes asynchronously — this endpoint returns a `run_id` immediately. Poll [List Test Runs](/api-reference/endpoints/list-test-runs) to check the result.
+
+## Body Parameters
+
+<ParamField body="test_case_id" type="string" required>
+  UUID of the test case to run.
+</ParamField>
+
+## Response
+
+<ResponseField name="run_id" type="string">
+  UUID of the newly created test run. Use this to poll for results.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Initial status — always `"running"`.
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Human-readable confirmation message.
+</ResponseField>
+
+## Run Status Values
+
+| Status | Description |
+|--------|-------------|
+| `pending` | Queued, not yet started |
+| `running` | Call is in progress |
+| `passed` | All assertions passed |
+| `failed` | One or more assertions failed |
+| `error` | System error prevented the run from completing |
+
+<RequestExample>
+```bash cURL
+curl -X POST "https://api.magpipe.ai/functions/v1/run-test" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "test_case_id": "b2c3d4e5-2345-6789-abcd-ef0123456789"
+  }'
+```
+</RequestExample>
+
+<ResponseExample>
+```json
+{
+  "run_id": "c3d4e5f6-3456-789a-bcde-f01234567890",
+  "status": "running",
+  "message": "Test run started"
+}
+```
+</ResponseExample>

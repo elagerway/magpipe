@@ -4,6 +4,7 @@
 
 import { User } from '../models/User.js';
 import { showToast } from '../lib/toast.js';
+import { REQUIRE_PHONE_VERIFICATION } from '../lib/feature-flags.js';
 
 export default class VerifyEmailPage {
   async render() {
@@ -306,9 +307,8 @@ export default class VerifyEmailPage {
         // Success
         showToast('Email verified successfully! Redirecting...', 'success');
 
-        // Redirect to phone verification
         setTimeout(() => {
-          navigateTo('/verify-phone');
+          navigateTo(REQUIRE_PHONE_VERIFICATION ? '/verify-phone' : '/inbox');
         }, 1500);
       } catch (error) {
         console.error('Verification error:', error);

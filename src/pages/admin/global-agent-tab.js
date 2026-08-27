@@ -37,6 +37,7 @@ export const globalAgentTabMethods = {
             'Authorization': `Bearer ${this.session.access_token}`,
             'Content-Type': 'application/json',
           },
+          signal: AbortSignal.timeout(5000),
         }
       );
 

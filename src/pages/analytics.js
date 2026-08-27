@@ -256,6 +256,18 @@ export default class AnalyticsPage {
           border-bottom: none;
         }
 
+        .call-records-table .truncate-cell {
+          max-width: 120px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .call-records-table th,
+        .call-records-table td {
+          padding: 0.75rem 0.5rem;
+        }
+
         .direction-badge {
           display: inline-block;
           padding: 0.25rem 0.5rem;
@@ -838,10 +850,10 @@ export default class AnalyticsPage {
         <tr>
           <td><span class="type-badge ${typeClass}">${typeLabel}</span></td>
           <td>${new Date(record.time).toLocaleString()}</td>
-          <td>${record.from || '-'}</td>
-          <td>${record.to || '-'}</td>
+          <td class="truncate-cell">${record.from || '-'}</td>
+          <td class="truncate-cell">${record.to || '-'}</td>
           <td><span class="direction-badge ${record.direction?.toLowerCase()}">${record.direction || '-'}</span></td>
-          <td>${record.assistant || '-'}</td>
+          <td class="truncate-cell" title="${record.assistant || ''}">${record.assistant || '-'}</td>
           <td>${durationDisplay}</td>
           <td>${this.formatDisposition(record.end)}</td>
           <td><span class="sentiment-badge ${record.sentiment?.toLowerCase()}">${record.sentiment || '-'}</span></td>

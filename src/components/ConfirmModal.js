@@ -3,6 +3,7 @@
  * Reusable confirmation modal that matches the app design
  * Use instead of native confirm() dialogs
  */
+import { escapeHtml } from '../lib/formatters.js';
 
 /**
  * Show a confirmation modal
@@ -189,12 +190,6 @@ export function showAlertModal(title, message, buttonText = 'OK') {
   });
 }
 
-// Helper function
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
 
 // Add component styles
 const style = document.createElement('style');

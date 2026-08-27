@@ -4,16 +4,29 @@ import { corsHeaders, handleCors } from '../_shared/cors.ts'
 
 // Built-in ElevenLabs voices
 const ELEVENLABS_VOICES = [
-  { id: "21m00Tcm4TlvDq8ikWAM", name: "Rachel", description: "Calm, American female", provider: "elevenlabs", is_custom: false },
-  { id: "pNInz6obpgDQGcFmaJgB", name: "Adam", description: "Deep, American male", provider: "elevenlabs", is_custom: false },
-  { id: "EXAVITQu4vr4xnSDxMaL", name: "Sarah", description: "Soft, American female", provider: "elevenlabs", is_custom: false },
+  { id: "EXAVITQu4vr4xnSDxMaL", name: "Sarah", description: "Professional, American female", provider: "elevenlabs", is_custom: false },
   { id: "MF3mGyEYCl7XYWbV9V6O", name: "Elli", description: "Youthful, American female", provider: "elevenlabs", is_custom: false },
   { id: "TxGEqnHWrfWFTfGW9XjX", name: "Josh", description: "Strong, American male", provider: "elevenlabs", is_custom: false },
-  { id: "VR6AewLTigWG4xSOukaG", name: "Arnold", description: "Crisp, American male", provider: "elevenlabs", is_custom: false },
-  { id: "pqHfZKP75CvOlQylNhV4", name: "Bill", description: "Trustworthy, American male", provider: "elevenlabs", is_custom: false },
+  { id: "pFZP5JQG7iQjIQuC4Bku", name: "Lily", description: "Confident, British female", provider: "elevenlabs", is_custom: false },
+  { id: "nPczCjzI2devNBz1zQrb", name: "Brian", description: "Classy, American male", provider: "elevenlabs", is_custom: false },
+  { id: "onwK4e9ZLuTAKqWW03F9", name: "Daniel", description: "Formal, British male", provider: "elevenlabs", is_custom: false },
   { id: "cjVigY5qzO86Huf0OWal", name: "Eric", description: "Friendly, American male", provider: "elevenlabs", is_custom: false },
   { id: "cgSgspJ2msm6clMCkdW9", name: "Jessica", description: "Expressive, American female", provider: "elevenlabs", is_custom: false },
-  { id: "XrExE9yKIg1WjnnlVkGX", name: "Matilda", description: "Warm, American female", provider: "elevenlabs", is_custom: false },
+  { id: "XrExE9yKIg1WjnnlVkGX", name: "Matilda", description: "Upbeat, American female", provider: "elevenlabs", is_custom: false },
+  { id: "CwhRBWXzGAHq8TQ4Fs17", name: "Roger", description: "Classy, American male", provider: "elevenlabs", is_custom: false },
+  { id: "FGY2WhTYpPnrIDTdsKH5", name: "Laura", description: "Sassy, American female", provider: "elevenlabs", is_custom: false },
+  { id: "IKne3meq5aSn9XLyUdCD", name: "Charlie", description: "Hyped, Australian male", provider: "elevenlabs", is_custom: false },
+  { id: "JBFqnCBsd6RMkjVDRZzb", name: "George", description: "Mature, British male", provider: "elevenlabs", is_custom: false },
+  { id: "N2lVS1w4EtoT3dr4eOWO", name: "Callum", description: "Husky, American male", provider: "elevenlabs", is_custom: false },
+  { id: "SAz9YHcvj6GT2YYXdXww", name: "River", description: "Calm, neutral American", provider: "elevenlabs", is_custom: false },
+  { id: "SOYHLrjzK2X1ezoPC6cr", name: "Harry", description: "Rough, American male", provider: "elevenlabs", is_custom: false },
+  { id: "TX3LPaxmHKxFdv7VOQHJ", name: "Liam", description: "Confident, American male", provider: "elevenlabs", is_custom: false },
+  { id: "Xb7hH8MSUJpSbSDYk0k2", name: "Alice", description: "Professional, British female", provider: "elevenlabs", is_custom: false },
+  { id: "bIHbv24MWmeRgasZH58o", name: "Will", description: "Chill, American male", provider: "elevenlabs", is_custom: false },
+  { id: "hpp4J3VqNfWAUOO0d1Us", name: "Bella", description: "Professional, American female", provider: "elevenlabs", is_custom: false },
+  { id: "iP95p4xoKVk53GoZ742B", name: "Chris", description: "Casual, American male", provider: "elevenlabs", is_custom: false },
+  { id: "pNInz6obpgDQGcFmaJgB", name: "Adam", description: "Deep, American male", provider: "elevenlabs", is_custom: false },
+  { id: "pqHfZKP75CvOlQylNhV4", name: "Bill", description: "Trustworthy, American male", provider: "elevenlabs", is_custom: false },
 ];
 
 // Built-in OpenAI voices

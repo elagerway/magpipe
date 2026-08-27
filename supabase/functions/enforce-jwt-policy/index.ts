@@ -27,7 +27,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import policyData from '../_shared/jwt-policy.json' with { type: 'json' }
 
-const PROJECT_REF = Deno.env.get('SUPABASE_PROJECT_REF') || 'your-project-ref'
+const PROJECT_REF = Deno.env.get('SUPABASE_PROJECT_REF') || 'mtxbiyilvgwhbdptysex'
 const MGMT_TOKEN = Deno.env.get('MAGPIPE_MGMT_TOKEN')
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!

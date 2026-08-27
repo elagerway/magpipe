@@ -55,7 +55,7 @@ Deno.serve(async (req) => {
 
       const { data, error } = await queryClient
         .from("dynamic_variables")
-        .select("id, agent_id, user_id, name, description, var_type, enum_options, created_at, updated_at")
+        .select("id, agent_id, user_id, name, description, var_type, enum_options, send_to, created_at, updated_at")
         .eq("user_id", user.id)
         .eq("agent_id", agentId)
         .order("created_at", { ascending: false });
@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
     if (req.method === "GET" && id) {
       const { data, error } = await queryClient
         .from("dynamic_variables")
-        .select("id, agent_id, user_id, name, description, var_type, enum_options, created_at, updated_at")
+        .select("id, agent_id, user_id, name, description, var_type, enum_options, send_to, created_at, updated_at")
         .eq("id", id)
         .eq("user_id", user.id)
         .single();
@@ -112,7 +112,7 @@ Deno.serve(async (req) => {
       const { data, error } = await queryClient
         .from("dynamic_variables")
         .insert(insert)
-        .select("id, agent_id, user_id, name, description, var_type, enum_options, created_at, updated_at")
+        .select("id, agent_id, user_id, name, description, var_type, enum_options, send_to, created_at, updated_at")
         .single();
 
       if (error) {
@@ -128,7 +128,7 @@ Deno.serve(async (req) => {
     if (req.method === "PATCH" && id) {
       const body = await req.json();
 
-      const allowed = ["name", "description", "var_type", "enum_options"];
+      const allowed = ["name", "description", "var_type", "enum_options", "send_to"];
       const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
       for (const field of allowed) {
         if (body[field] !== undefined) updates[field] = body[field];
@@ -156,7 +156,7 @@ Deno.serve(async (req) => {
         .update(updates)
         .eq("id", id)
         .eq("user_id", user.id)
-        .select("id, agent_id, user_id, name, description, var_type, enum_options, created_at, updated_at")
+        .select("id, agent_id, user_id, name, description, var_type, enum_options, send_to, created_at, updated_at")
         .single();
 
       if (error || !data) return jsonResponse({ error: "Dynamic variable not found" }, 404);

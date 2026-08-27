@@ -2,6 +2,7 @@
  * Omni Chat Interface Component
  * Voice/text chat interface for admin/support to talk to any agent
  */
+import { escapeHtml } from '../lib/formatters.js';
 
 import { supabase } from '../lib/supabase.js';
 import { RealtimeOmniService } from '../services/realtimeOmniService.js';
@@ -867,17 +868,6 @@ export function createOmniChatInterface(container, _session) {
     messageHistory.scrollTop = messageHistory.scrollHeight;
   }
 
-  /**
-   * Escape HTML for safe display
-   */
-  function escapeHtml(text) {
-    return text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
-  }
 
   /**
    * Close voice overlay

@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { getSenderNumber, CANADA_SENDER_NUMBER } from '../_shared/sms-compliance.ts'
+import { resolveSlackChannelId } from '../_shared/slack-channels.ts'
 
 const APP_URL = 'https://magpipe.ai'
 
@@ -466,18 +467,11 @@ async function fireSlack(config: any, data: any, userId: string, supabase: any):
 
   let channelId = channelName
   if (channelName.startsWith('#') || !channelName.startsWith('C')) {
-    const name = channelName.replace(/^#/, '').toLowerCase()
-    const listResp = await fetch('https://slack.com/api/conversations.list?types=public_channel,private_channel&limit=200', {
-      headers: { 'Authorization': `Bearer ${integration.access_token}` }
-    })
-    const listResult = await listResp.json()
-    if (listResult.ok && listResult.channels) {
-      const found = listResult.channels.find((c: any) => c.name.toLowerCase() === name)
-      if (found) channelId = found.id
-      else {
-        console.error(`Slack channel "${channelName}" not found`)
-        return false
-      }
+    const resolved = await resolveSlackChannelId(integration.access_token, channelName)
+    if (resolved) channelId = resolved
+    else {
+      console.error(`Slack channel "${channelName}" not found`)
+      return false
     }
   }
 

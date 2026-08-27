@@ -1,0 +1,305 @@
+---
+title: "Send WhatsApp Template"
+api: "POST /send-whatsapp-template"
+description: "Send a pre-approved WhatsApp template message to initiate a conversation"
+---
+
+## Overview
+
+Sends a pre-approved WhatsApp message template to a recipient using your agent's connected WhatsApp Business number. Use this to initiate conversations outside the 24-hour messaging window.
+
+<Info>
+Templates must be approved by Meta before use. Your template must comply with [Meta's template guidelines](https://developers.facebook.com/docs/whatsapp/message-templates/guidelines) — templates that don't conform will be rejected or recategorized. Manage your templates in **Meta Business Manager → WhatsApp Manager → Message Templates**.
+</Info>
+
+## Request
+
+### Headers
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token for authentication.
+</ParamField>
+
+<ParamField header="Content-Type" type="string" required>
+  Must be `application/json`
+</ParamField>
+
+### Body Parameters
+
+<ParamField body="agent_id" type="string" required>
+  The UUID of the agent whose connected WhatsApp number will send the message.
+
+  **Example:** `"d920763c-59d8-490e-ad69-b6a3295e23a8"`
+</ParamField>
+
+<ParamField body="to" type="string" required>
+  The recipient's phone number in E.164 format.
+
+  **Example:** `"+16045628647"`
+</ParamField>
+
+<ParamField body="template_name" type="string" required>
+  The exact name of your approved Meta template. Must match a template approved in your WhatsApp Business account.
+
+  See [Meta's template guidelines](https://developers.facebook.com/docs/whatsapp/message-templates/guidelines) for categorization rules.
+
+  **Example:** `"upcoming_site_report"`
+</ParamField>
+
+<ParamField body="language" type="string">
+  The language code for the template. Defaults to `en_US`.
+
+  **Example:** `"en_US"`
+</ParamField>
+
+<ParamField body="components" type="array">
+  Optional array of template component objects for passing variable values. Required if your template has dynamic variables.
+
+  Each component maps to a section of your template (`body`, `header`, or `button`). Parameters are **positional** — the first parameter fills `{{1}}`, the second fills `{{2}}`, and so on, in the order they appear in your approved template.
+
+  **Body variables example** — for a template with `Hello {{1}}, your report for {{2}} on {{3}} is ready`:
+  ```json
+  [
+    {
+      "type": "body",
+      "parameters": [
+        { "type": "text", "text": "John" },
+        { "type": "text", "text": "Site Super" },
+        { "type": "text", "text": "March 20" }
+      ]
+    }
+  ]
+  ```
+
+  **With header and body variables:**
+  ```json
+  [
+    {
+      "type": "header",
+      "parameters": [
+        { "type": "text", "text": "Site Report" }
+      ]
+    },
+    {
+      "type": "body",
+      "parameters": [
+        { "type": "text", "text": "John" },
+        { "type": "text", "text": "March 20" }
+      ]
+    }
+  ]
+  ```
+
+  **With a URL button variable** — buttons require `sub_type` and `index` (zero-based position of the button in the template):
+  ```json
+  [
+    {
+      "type": "body",
+      "parameters": [
+        { "type": "text", "text": "John" },
+        { "type": "text", "text": "Site Super" },
+        { "type": "text", "text": "March 20" },
+        { "type": "text", "text": "2:00 PM" }
+      ]
+    },
+    {
+      "type": "button",
+      "sub_type": "url",
+      "index": "0",
+      "parameters": [
+        { "type": "text", "text": "report/a8f3k2m9" }
+      ]
+    }
+  ]
+  ```
+
+  See [Meta's template component docs](https://developers.facebook.com/docs/whatsapp/cloud-api/guides/send-message-templates) for the full component structure including quick reply buttons, images, and documents.
+</ParamField>
+
+<ParamField body="metadata" type="object">
+  Optional arbitrary JSON object (must be a plain object — arrays are ignored) stored against this message. When the recipient replies to the conversation this template opens, Magpipe echoes this `metadata` back on the inbound event so you can attribute the reply to your own record (e.g. a schedule, project, or ticket). Because the template is the conversation opener, attaching `metadata` here is the recommended way to tag the whole thread.
+
+  **Example:** `{ "schedule_id": "sch_123", "project_id": "proj_456" }`
+</ParamField>
+
+## Response
+
+<ResponseField name="success" type="boolean">
+  `true` when Meta **accepted** the send request. See the note below — acceptance is not the same as delivery.
+</ResponseField>
+
+<ResponseField name="message_id" type="string">
+  The WhatsApp message ID (`wamid`) returned by Meta.
+</ResponseField>
+
+## Delivery is asynchronous
+
+<Warning>
+  A `success: true` response with a `message_id` means Meta **accepted** the request — **not** that the message reached the recipient's device. WhatsApp delivery is confirmed asynchronously, and a send can be accepted and then dropped (e.g. the WhatsApp Business Account isn't verified, or per-recipient marketing limits are hit).
+</Warning>
+
+To confirm a template actually delivered, check the message's eventual status rather than relying on the synchronous response:
+
+- **[List Messages](/api-reference/endpoints/list-messages)** (filter by the recipient `phone_number`) or **[Get Message](/api-reference/endpoints/get-message)** — inspect `status` (`sent` → `delivered` → `read`, or `failed`/`undelivered`).
+- When a send fails, the message carries a **`delivery_error`** object with Meta's `code` and `reason`, so you can self-diagnose without contacting support.
+- For push-based tracking, subscribe to message status events via [Set Webhook](/api-reference/endpoints/set-webhook).
+
+### Common delivery failures
+
+| Meta code | Meaning | What to do |
+| --- | --- | --- |
+| `131042` | Business eligibility / payment issue — the WhatsApp Business Account is not verified or has a billing problem. Unverified businesses are capped, then blocked. | Complete **Business Verification** in Meta Business Settings → Security Center. |
+| `131049` | Meta declined to deliver "to maintain healthy ecosystem engagement" — per-recipient marketing-template frequency cap. | Reduce repeated identical sends to the same recipient; space them out. |
+| `131026` | Message undeliverable (recipient can't receive, e.g. not on WhatsApp, or incompatible). | Verify the recipient number is a valid WhatsApp user. |
+| `132xxx` | Template parameter mismatch — wrong number/format of `components` parameters vs. the approved template. | Match `components` parameters to the template's `{{n}}` variables exactly. |
+
+<Info>
+  Magpipe stores the template's **rendered** body against the message; the `delivery_error` reason comes straight from Meta. A `failed` status with `131042`/`131049` is a Meta account/policy condition, not a Magpipe error — no Magpipe retry will deliver it until the underlying Meta issue is resolved.
+</Info>
+
+## Example Request
+
+<RequestExample>
+
+```bash cURL
+curl -X POST "https://api.magpipe.ai/functions/v1/send-whatsapp-template" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_id": "d920763c-59d8-490e-ad69-b6a3295e23a8",
+    "to": "+16045628647",
+    "template_name": "upcoming_site_report",
+    "components": [
+      {
+        "type": "body",
+        "parameters": [
+          { "type": "text", "text": "John" },
+          { "type": "text", "text": "Site Super" },
+          { "type": "text", "text": "March 20" },
+          { "type": "text", "text": "2:00 PM" }
+        ]
+      }
+    ]
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch(
+  'https://api.magpipe.ai/functions/v1/send-whatsapp-template',
+  {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      agent_id: 'd920763c-59d8-490e-ad69-b6a3295e23a8',
+      to: '+16045628647',
+      template_name: 'upcoming_site_report',
+      components: [
+        {
+          type: 'body',
+          parameters: [
+            { type: 'text', text: 'John' },
+            { type: 'text', text: 'Site Super' },
+            { type: 'text', text: 'March 20' },
+            { type: 'text', text: '2:00 PM' },
+          ],
+        },
+      ],
+    }),
+  }
+);
+
+const data = await response.json();
+console.log(data.message_id);
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'https://api.magpipe.ai/functions/v1/send-whatsapp-template',
+    headers={
+        'Authorization': f'Bearer {api_key}',
+        'Content-Type': 'application/json',
+    },
+    json={
+        'agent_id': 'd920763c-59d8-490e-ad69-b6a3295e23a8',
+        'to': '+16045628647',
+        'template_name': 'upcoming_site_report',
+        'components': [
+            {
+                'type': 'body',
+                'parameters': [
+                    {'type': 'text', 'text': 'John'},
+                    {'type': 'text', 'text': 'Site Super'},
+                    {'type': 'text', 'text': 'March 20'},
+                    {'type': 'text', 'text': '2:00 PM'},
+                ],
+            },
+        ],
+    }
+)
+
+data = response.json()
+print(data['message_id'])
+```
+
+</RequestExample>
+
+## Example Response
+
+<ResponseExample>
+```json 200 Success
+{
+  "success": true,
+  "message_id": "wamid.HBgLMTYwNDU2Mjg2NDcVAgARGBJFNDc0NDJDNTA2QUY4OTRDNzYA"
+}
+```
+</ResponseExample>
+
+## Error Responses
+
+<ResponseExample>
+```json 400 Bad Request
+{
+  "error": "agent_id, to, and template_name are required",
+  "docs": "https://developers.facebook.com/docs/whatsapp/message-templates/guidelines"
+}
+```
+</ResponseExample>
+
+<ResponseExample>
+```json 400 Bad Request
+{
+  "error": "to must be a valid E.164 phone number"
+}
+```
+</ResponseExample>
+
+<ResponseExample>
+```json 401 Unauthorized
+{
+  "error": "Unauthorized"
+}
+```
+</ResponseExample>
+
+<ResponseExample>
+```json 404 Not Found
+{
+  "error": "No active WhatsApp account found for this agent"
+}
+```
+</ResponseExample>
+
+<ResponseExample>
+```json 502 Bad Gateway
+{
+  "error": "Failed to send template",
+  "detail": "Meta API error details",
+  "docs": "https://developers.facebook.com/docs/whatsapp/message-templates/guidelines"
+}
+```
+</ResponseExample>

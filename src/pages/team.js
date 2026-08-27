@@ -38,16 +38,48 @@ export default class TeamPage {
     this.organization = organization;
     this.currentUser = user;
 
-    // Get user's role from membership
+    // Get user's role from org membership
     const { members: allMembers } = await OrganizationMember.getByOrganization(organization.id);
     const currentMembership = allMembers?.find(m => m.user_id === user.id);
     this.userRole = currentMembership?.role || 'member';
 
-    // Only owners can access team management
-    if (this.userRole !== 'owner') {
-      navigateTo('/inbox');
-      return;
+    // Members with a queued ownership transfer (they become owner once they've
+    // completed their sign-in). The owner initiated these, so RLS lets them read.
+    this.queuedOwnerEmails = new Set();
+    try {
+      const { data: transfers } = await supabase
+        .from('organization_ownership_transfers')
+        .select('to_email')
+        .eq('organization_id', organization.id)
+        .eq('status', 'pending')
+        .gt('expires_at', new Date().toISOString());
+      (transfers || []).forEach(t => { if (t.to_email) this.queuedOwnerEmails.add(t.to_email.toLowerCase()); });
+    } catch { /* non-fatal */ }
+
+    // Get the global platform role (users.role). This is separate from org
+    // membership — a platform admin/god should be able to manage any team,
+    // even if they aren't the org owner (e.g. when impersonating a user).
+    // Guard with a timeout: under an impersonated session this query can hang,
+    // and render() must never block on it (mirrors router.js). On failure or
+    // timeout we fall back to org-role-based access.
+    let platformRole = null;
+    try {
+      const result = await Promise.race([
+        supabase.from('users').select('role').eq('id', user.id).single(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('role check timeout')), 5000)),
+      ]);
+      platformRole = result?.data?.role || null;
+    } catch {
+      platformRole = null;
     }
+
+    // Org owners and admins (and platform admin/god) can manage the team;
+    // everyone else who belongs to the org sees a read-only view (no redirect).
+    this.canManage =
+      this.userRole === 'owner' ||
+      this.userRole === 'admin' ||
+      platformRole === 'admin' ||
+      platformRole === 'god';
 
     // Calculate counts
     // Distinguish cancelled invites (never approved) from removed members (were approved)
@@ -87,15 +119,16 @@ export default class TeamPage {
             </button>
             <div>
               <h1 style="margin: 0;">Team Members</h1>
-              <p class="text-muted" style="margin: 0.25rem 0 0 0;">Manage your team and their roles</p>
+              <p class="text-muted" style="margin: 0.25rem 0 0 0;">${this.canManage ? 'Manage your team and their roles' : 'View your team members'}</p>
             </div>
           </div>
+          ${this.canManage ? `
           <button class="btn btn-primary" id="open-invite-modal-btn" style="white-space: nowrap;">
             <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right: 0.5rem;">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
             </svg>
             Invite team member
-          </button>
+          </button>` : ''}
         </div>
 
         <!-- Tabs -->
@@ -162,10 +195,12 @@ export default class TeamPage {
             <div class="form-group">
               <label class="form-label" for="invite-role">Role</label>
               <select id="invite-role" class="form-input">
-                <option value="editor">Editor</option>
+                <option value="admin">Admin</option>
+                <option value="editor" selected>Editor</option>
                 <option value="support">Support</option>
               </select>
               <p class="text-muted" style="margin-top: 0.5rem; font-size: 0.75rem;">
+                <strong>Admin:</strong> Manage the team and everything except billing and ownership<br>
                 <strong>Editor:</strong> Full access except billing and team management<br>
                 <strong>Support:</strong> View and edit access, cannot delete items
               </p>
@@ -273,6 +308,10 @@ export default class TeamPage {
         .member-role.owner {
           background: #e0e7ff;
           color: #4338ca;
+        }
+        .member-role.admin {
+          background: #e0f2fe;
+          color: #0369a1;
         }
         .member-role.editor {
           background: #dbeafe;
@@ -468,6 +507,10 @@ export default class TeamPage {
     return this.members.map(member => this.renderMemberCard(member)).join('');
   }
 
+  hasQueuedOwner(member) {
+    return !!member?.email && this.queuedOwnerEmails?.has(member.email.toLowerCase());
+  }
+
   renderMemberCard(member) {
     const invitedDate = member.invited_at ? new Date(member.invited_at).toLocaleDateString() : '';
     const approvedDate = member.approved_at ? new Date(member.approved_at).toLocaleDateString() : '';
@@ -503,6 +546,7 @@ export default class TeamPage {
 
     const roleColors = {
       owner: { bg: 'linear-gradient(135deg, #6366f1, #8b5cf6)', badge: 'var(--primary-color)' },
+      admin: { bg: 'linear-gradient(135deg, #0ea5e9, #6366f1)', badge: '#0ea5e9' },
       editor: { bg: 'linear-gradient(135deg, #3b82f6, #60a5fa)', badge: '#3b82f6' },
       support: { bg: 'linear-gradient(135deg, #8b5cf6, #a78bfa)', badge: '#8b5cf6' },
     };
@@ -519,13 +563,14 @@ export default class TeamPage {
             : '<span class="member-status active">Active</span>';
 
     return `
-      <div class="member-card ${isRemoved ? 'member-removed' : ''}" onclick="window.teamPage.openEditModal('${member.id}')" style="cursor: pointer;">
+      <div class="member-card ${isRemoved ? 'member-removed' : ''}" ${this.canManage ? `onclick="window.teamPage.openEditModal('${member.id}')" style="cursor: pointer;"` : ''}>
         <div class="member-card-header">
           <div class="member-avatar" style="background: ${colors.bg};">
             <span>${initials}</span>
           </div>
           <div style="display: flex; align-items: center; gap: 0.5rem;">
             ${statusBadge}
+            ${this.hasQueuedOwner(member) ? '<span class="member-role" style="background:#fef3c7;color:#92400e;">Owner (queued)</span>' : ''}
             <span class="member-role ${member.role}">${member.role}</span>
           </div>
         </div>
@@ -579,6 +624,7 @@ export default class TeamPage {
   }
 
   openEditModal(memberId) {
+    if (!this.canManage) return;
     const member = this.allMembers.find(m => m.id === memberId);
     if (!member) return;
 
@@ -591,6 +637,7 @@ export default class TeamPage {
 
     const roleColors = {
       owner: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+      admin: 'linear-gradient(135deg, #0ea5e9, #6366f1)',
       editor: 'linear-gradient(135deg, #3b82f6, #60a5fa)',
       support: 'linear-gradient(135deg, #8b5cf6, #a78bfa)',
     };
@@ -611,14 +658,25 @@ export default class TeamPage {
           <div class="edit-modal-view-only">Owner — cannot be changed</div>
         </div>`;
     } else {
+      // The current owner can hand ownership to any teammate by picking "Owner"
+      // — an immediate transfer of everything incl. billing (#131). Selecting it
+      // routes to makeOwner(), not changeRole(). The backend just needs them to
+      // have an account (it messages clearly if they don't).
+      const canOfferOwner = this.userRole === 'owner';
+      const queuedOwner = this.hasQueuedOwner(member);
       roleSection = `
         <div class="edit-modal-section">
           <label>Role</label>
+          ${queuedOwner ? `<div style="margin-bottom:0.5rem;padding:0.4rem 0.6rem;background:#fef3c7;color:#92400e;border-radius:var(--radius-sm);font-size:0.75rem;">⏳ Ownership queued — becomes owner once they've completed their sign-in.</div>` : ''}
           <select class="form-input" id="edit-role-select">
+            ${canOfferOwner && !queuedOwner ? '<option value="owner">Owner — transfer ownership</option>' : ''}
+            <option value="admin" ${member.role === 'admin' ? 'selected' : ''}>Admin</option>
             <option value="editor" ${member.role === 'editor' ? 'selected' : ''}>Editor</option>
             <option value="support" ${member.role === 'support' ? 'selected' : ''}>Support</option>
           </select>
           <p class="text-muted" style="margin-top: 0.5rem; font-size: 0.75rem;">
+            ${canOfferOwner ? '<strong>Owner:</strong> Transfer full ownership — team, resources, and billing — to this member; you become an editor<br>' : ''}
+            <strong>Admin:</strong> Manage the team and everything except billing and ownership<br>
             <strong>Editor:</strong> Full access except billing and team management<br>
             <strong>Support:</strong> View and edit access, cannot delete items
           </p>
@@ -693,7 +751,14 @@ export default class TeamPage {
     const roleSelect = document.getElementById('edit-role-select');
     if (roleSelect) {
       roleSelect.addEventListener('change', () => {
-        this.changeRole(member.id, roleSelect.value);
+        if (roleSelect.value === 'owner') {
+          // Ownership handoff, not a plain role change. makeOwner() confirms and
+          // (on success) reloads; revert the select either way.
+          this.makeOwner(member.id);
+          roleSelect.value = member.role;
+        } else {
+          this.changeRole(member.id, roleSelect.value);
+        }
       });
     }
   }
@@ -701,6 +766,37 @@ export default class TeamPage {
   closeEditModal() {
     document.getElementById('edit-member-modal').classList.add('hidden');
     this.editingMember = null;
+  }
+
+  async makeOwner(memberId) {
+    const member = this.allMembers.find(m => m.id === memberId);
+    if (!member) return;
+    const name = member.full_name || member.email || 'this member';
+    const orgName = this.organization?.name || 'this organization';
+    if (!confirm(`Make ${name} the owner of ${orgName}? This transfers everything — the team, resources, and your billing/subscription — to them. If they haven't completed their sign-in yet, it transfers as soon as they do. You'll become an editor.`)) return;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+      const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/org-transfer-to-member`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberId }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(data.error || 'Failed to transfer ownership');
+      if (data.queued) {
+        // Recipient has no account yet — queued; nothing changed for us.
+        showToast(`Ownership queued — ${name} becomes owner once they've completed their sign-in`, 'success');
+        this.closeEditModal();
+        return;
+      }
+      showToast(`${name} is now the owner`, 'success');
+      this.closeEditModal();
+      // The current user just went owner -> editor; reload so the page reflects it.
+      setTimeout(() => window.location.reload(), 900);
+    } catch (e) {
+      showToast(e.message || 'Failed to transfer ownership', 'error');
+    }
   }
 
   async suspendMemberFromModal(memberId) {

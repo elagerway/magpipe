@@ -13,6 +13,8 @@
  * itself become a new error in the call path.
  */
 
+import { captureEdgeError } from './sentry.ts'
+
 export interface ErrorReport {
   error_type: string
   error_message: string
@@ -24,6 +26,9 @@ export interface ErrorReport {
 }
 
 export async function reportError(_supabase: any, report: ErrorReport): Promise<void> {
+  // Mirror into Sentry (no-op without SENTRY_DSN) so the dev-facing dashboard
+  // sees the same errors that drive the DB log + SMS/Slack paging.
+  await captureEdgeError(report)
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')

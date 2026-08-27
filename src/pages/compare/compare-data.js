@@ -15,7 +15,7 @@ export const comparePages = {
       title: 'Magpipe vs Bland AI: Best AI Phone Agent Comparison 2026 | Magpipe',
       description: 'Compare Magpipe and Bland AI side by side. See how Magpipe offers multi-channel AI communication with no monthly fees, no-code setup, unlimited integrations via MCP, and transparent pay-per-use pricing.',
     },
-    verdict: 'Magpipe delivers multi-channel AI communication (voice, SMS, email, chat) with all-inclusive pay-per-use pricing at $0.07/min, real-time translation, and unlimited integrations via MCP servers and custom functions. Bland AI charges $0.11\u2013$0.14/min plus $299\u2013$499/month platform fees, supports English only in standard plans, and requires developer expertise to configure.',
+    verdict: 'Magpipe delivers multi-channel AI communication (voice, SMS, email, chat) with pay-per-use pricing from $0.05/min, real-time translation, and unlimited integrations via MCP servers and custom functions. Bland AI charges $0.11\u2013$0.14/min plus $299\u2013$499/month platform fees, supports English only in standard plans, and requires developer expertise to configure.',
     heroSubtitle: 'No monthly fees, multi-channel support, real-time translation, and unlimited integrations \u2014 without the developer-only complexity.',
     features: [
       { name: 'AI Voice Calls (Inbound)', magpipe: true, competitor: true },
@@ -39,10 +39,10 @@ export const comparePages = {
       magpipe: {
         name: 'Magpipe',
         model: 'Pay-Per-Use',
-        highlight: '$0.07/min',
+        highlight: 'from $0.05/min',
         details: [
           'No monthly fees or minimums',
-          '$0.07/min voice calls (all-inclusive)',
+          'from $0.05/min voice calls',
           '$0.01/msg SMS',
           '$20 free credits on signup',
           'All features + integrations included',
@@ -82,7 +82,7 @@ export const comparePages = {
     faq: [
       {
         question: 'How does Magpipe pricing compare to Bland AI?',
-        answer: 'Magpipe uses simple pay-per-use pricing at $0.07/min for voice and $0.01/msg for SMS with no monthly fees. Bland AI charges $299\u2013$499/month plus $0.11\u2013$0.14/min for voice, with additional fees for SMS, transfers, and failed calls.',
+        answer: 'Magpipe uses simple pay-per-use pricing from $0.05/min for voice and $0.01/msg for SMS with no monthly fees. Bland AI charges $299\u2013$499/month plus $0.11\u2013$0.14/min for voice, with additional fees for SMS, transfers, and failed calls.',
       },
       {
         question: 'Does Magpipe support the same features as Bland AI?',
@@ -114,7 +114,7 @@ export const comparePages = {
       title: 'Magpipe vs Synthflow: AI Voice Agent Comparison 2026 | Magpipe',
       description: 'Compare Magpipe and Synthflow AI side by side. Magpipe offers true pay-per-use pricing, built-in SMS, email, real-time translation, and unlimited integrations via MCP without hidden per-component fees.',
     },
-    verdict: 'Both platforms offer no-code voice AI, but Magpipe provides true all-inclusive pricing at $0.07/min with built-in SMS, email AI, real-time translation, and unlimited integrations through MCP servers. Synthflow charges $0.15\u2013$0.24/min when you add up voice, LLM, and telephony components, limits SMS to Twilio only, and has no email or translation capabilities.',
+    verdict: 'Both platforms offer no-code voice AI, but Magpipe provides pay-per-use pricing from $0.05/min with built-in SMS, email AI, real-time translation, and unlimited integrations through MCP servers. Synthflow charges $0.15\u2013$0.24/min when you add up voice, LLM, and telephony components, limits SMS to Twilio only, and has no email or translation capabilities.',
     heroSubtitle: 'All-inclusive pricing with built-in email AI, real-time translation, and unlimited integrations \u2014 no hidden per-component charges.',
     features: [
       { name: 'AI Voice Calls (Inbound)', magpipe: true, competitor: true },
@@ -138,10 +138,10 @@ export const comparePages = {
       magpipe: {
         name: 'Magpipe',
         model: 'Pay-Per-Use (All-Inclusive)',
-        highlight: '$0.07/min',
+        highlight: 'from $0.05/min',
         details: [
           'No monthly fees or minimums',
-          '$0.07/min voice (all-inclusive)',
+          'from $0.05/min voice',
           '$0.01/msg SMS',
           '$20 free credits on signup',
           'LLM, TTS, STT, translation all included',
@@ -163,7 +163,7 @@ export const comparePages = {
     differentiators: [
       {
         title: 'All-Inclusive Pricing',
-        description: 'Magpipe\'s $0.07/min includes everything \u2014 voice, LLM, STT, TTS, translation, and telephony. Synthflow bills each component separately, adding up to $0.15\u2013$0.24/min in real costs.',
+        description: 'Magpipe starts at $0.05/min including voice, LLM, STT, TTS, translation, and telephony. Synthflow bills each component separately, adding up to $0.15\u2013$0.24/min in real costs.',
       },
       {
         title: 'Unlimited Integrations via MCP',
@@ -181,7 +181,7 @@ export const comparePages = {
     faq: [
       {
         question: 'How much does Synthflow really cost per minute?',
-        answer: 'Synthflow advertises $0.09/min for their voice engine, but you also pay separately for the LLM ($0.02\u2013$0.05/min), telephony ($0.02/min), and other components. Total cost is typically $0.15\u2013$0.24/min. Magpipe is $0.07/min all-inclusive with translation, email AI, and unlimited integrations.',
+        answer: 'Synthflow advertises $0.09/min for their voice engine, but you also pay separately for the LLM ($0.02\u2013$0.05/min), telephony ($0.02/min), and other components. Total cost is typically $0.15\u2013$0.24/min. Magpipe is from $0.05/min with translation, email AI, and unlimited integrations.',
       },
       {
         question: 'How do Magpipe integrations compare to Synthflow?',
@@ -213,7 +213,7 @@ export const comparePages = {
       title: 'Magpipe vs Vapi: AI Voice Platform Comparison 2026 | Magpipe',
       description: 'Compare Magpipe and Vapi side by side. Magpipe offers no-code setup, all-inclusive pricing, real-time translation, and unlimited integrations via MCP. Vapi requires coding and costs $0.30+/min.',
     },
-    verdict: 'Magpipe is built for businesses that want powerful AI communication without coding \u2014 with unlimited integrations via MCP servers, real-time translation, and multi-channel support at $0.07/min all-inclusive. Vapi is a developer platform that advertises $0.05/min but costs $0.30+/min with stacked provider fees, has no translation, and requires coding to configure.',
+    verdict: 'Magpipe is built for businesses that want powerful AI communication without coding \u2014 with unlimited integrations via MCP servers, real-time translation, and multi-channel support from $0.05/min. Vapi is a developer platform that advertises $0.05/min but costs $0.30+/min with stacked provider fees, has no translation, and requires coding to configure.',
     heroSubtitle: 'No-code setup, all-inclusive pricing, real-time translation, and unlimited MCP integrations \u2014 without $0.30+/min stacked fees.',
     features: [
       { name: 'AI Voice Calls (Inbound)', magpipe: true, competitor: true },
@@ -237,10 +237,10 @@ export const comparePages = {
       magpipe: {
         name: 'Magpipe',
         model: 'Pay-Per-Use (All-Inclusive)',
-        highlight: '$0.07/min',
+        highlight: 'from $0.05/min',
         details: [
           'No monthly fees or minimums',
-          '$0.07/min voice (all-inclusive)',
+          'from $0.05/min voice',
           '$0.01/msg SMS',
           '$20 free credits on signup',
           'LLM, TTS, STT, translation all included',
@@ -266,7 +266,7 @@ export const comparePages = {
       },
       {
         title: 'Transparent All-In Pricing',
-        description: 'Magpipe\'s $0.07/min includes everything \u2014 voice, LLM, translation, and all integrations. Vapi advertises $0.05/min but stacks LLM, TTS, STT, and telephony fees on top for $0.30+/min actual cost.',
+        description: 'Magpipe starts at $0.05/min including voice, LLM, translation, and all integrations. Vapi advertises $0.05/min but stacks LLM, TTS, STT, and telephony fees on top for $0.30+/min actual cost.',
       },
       {
         title: 'Real-Time Translation',
@@ -280,7 +280,7 @@ export const comparePages = {
     faq: [
       {
         question: 'How much does Vapi actually cost per minute?',
-        answer: 'Vapi advertises a $0.05/min platform fee, but you also pay separately for LLM ($0.10\u2013$0.30/min), TTS ($0.05\u2013$0.15/min), STT ($0.008\u2013$0.02/min), and telephony ($0.01\u2013$0.05/min). The real cost is $0.30+/min. Magpipe is $0.07/min all-inclusive with translation and unlimited integrations.',
+        answer: 'Vapi advertises a $0.05/min platform fee, but you also pay separately for LLM ($0.10\u2013$0.30/min), TTS ($0.05\u2013$0.15/min), STT ($0.008\u2013$0.02/min), and telephony ($0.01\u2013$0.05/min). The real cost is $0.30+/min. Magpipe is from $0.05/min with translation and unlimited integrations.',
       },
       {
         question: 'How do integrations work in Magpipe vs Vapi?',
@@ -312,7 +312,7 @@ export const comparePages = {
       title: 'Magpipe vs Retell AI: Voice AI Platform Comparison 2026 | Magpipe',
       description: 'Compare Magpipe and Retell AI side by side. Magpipe offers all-inclusive pricing, unlimited MCP integrations, real-time translation, and multi-channel support. Retell AI has hidden per-component costs.',
     },
-    verdict: 'Magpipe includes everything in one price \u2014 voice, SMS, email, real-time translation, unlimited integrations via MCP, and analytics at $0.07/min. Retell AI\'s $0.07/min base price grows to $0.15+/min once you add LLM, TTS, knowledge base, and telephony components, with no translation or email capabilities.',
+    verdict: 'Magpipe includes everything in one price \u2014 voice, SMS, email, real-time translation, unlimited integrations via MCP, and analytics from $0.05/min. Retell AI\'s $0.07/min base price grows to $0.15+/min once you add LLM, TTS, knowledge base, and telephony components, with no translation or email capabilities.',
     heroSubtitle: 'All-in-one pricing with real-time translation, unlimited MCP integrations, and email AI \u2014 no hidden per-component costs.',
     features: [
       { name: 'AI Voice Calls (Inbound)', magpipe: true, competitor: true },
@@ -336,10 +336,10 @@ export const comparePages = {
       magpipe: {
         name: 'Magpipe',
         model: 'Pay-Per-Use (All-Inclusive)',
-        highlight: '$0.07/min',
+        highlight: 'from $0.05/min',
         details: [
           'No monthly fees or minimums',
-          '$0.07/min voice (all-inclusive)',
+          'from $0.05/min voice',
           '$0.01/msg SMS',
           '$20 free credits on signup',
           'LLM, TTS, STT, translation all included',
@@ -369,7 +369,7 @@ export const comparePages = {
       },
       {
         title: 'All-Inclusive, No Surprises',
-        description: 'Magpipe\'s $0.07/min includes voice, LLM, TTS, STT, knowledge base, translation, and telephony. Retell AI charges separately for each component, making the real cost $0.15+/min.',
+        description: 'Magpipe starts at $0.05/min including voice, LLM, TTS, STT, knowledge base, translation, and telephony. Retell AI charges separately for each component, making the real cost $0.15+/min.',
       },
       {
         title: 'Built-In Email AI',
@@ -379,7 +379,7 @@ export const comparePages = {
     faq: [
       {
         question: 'How does Retell AI pricing work compared to Magpipe?',
-        answer: 'Retell AI advertises from $0.07/min, but the base infrastructure is $0.055/min. You then add LLM costs ($0.04\u2013$0.06/min), TTS ($0.015/min), telephony ($0.015/min), and knowledge base ($0.005/min). Actual cost is $0.15+/min. Magpipe is $0.07/min all-inclusive with translation and unlimited MCP integrations.',
+        answer: 'Retell AI advertises from $0.07/min, but the base infrastructure is $0.055/min. You then add LLM costs ($0.04\u2013$0.06/min), TTS ($0.015/min), telephony ($0.015/min), and knowledge base ($0.005/min). Actual cost is $0.15+/min. Magpipe is from $0.05/min with translation and unlimited MCP integrations.',
       },
       {
         question: 'How do Magpipe integrations compare to Retell AI?',
@@ -435,10 +435,10 @@ export const comparePages = {
       magpipe: {
         name: 'Magpipe',
         model: 'Pay-Per-Use',
-        highlight: '$0.07/min',
+        highlight: 'from $0.05/min',
         details: [
           'No monthly fees or minimums',
-          '$0.07/min voice calls (all-inclusive)',
+          'from $0.05/min voice calls',
           '$0.01/msg SMS',
           'Unlimited callers + integrations',
           '$20 free credits on signup',
@@ -478,7 +478,7 @@ export const comparePages = {
     faq: [
       {
         question: 'How does Magpipe pricing compare to Goodcall?',
-        answer: 'Magpipe charges $0.07/min with no monthly fees, no caller limits, and unlimited integrations via MCP. Goodcall charges $59\u2013$199/month with caps on unique callers (100\u2013500). For businesses with many unique callers, Magpipe is significantly more cost-effective.',
+        answer: 'Magpipe charges from $0.05/min with no monthly fees, no caller limits, and unlimited integrations via MCP. Goodcall charges $59\u2013$199/month with caps on unique callers (100\u2013500). For businesses with many unique callers, Magpipe is significantly more cost-effective.',
       },
       {
         question: 'What integrations does Magpipe support vs Goodcall?',

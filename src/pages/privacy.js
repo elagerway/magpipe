@@ -118,7 +118,17 @@ export default class PrivacyPage {
             </section>
 
             <section class="legal-section">
-              <h2>10. Contact Us</h2>
+              <h2>10. Data Deletion</h2>
+              <p>You have the right to request deletion of your personal data held by Magpipe. This includes account information, call logs, message history, recordings, and any other data associated with your account.</p>
+              <h3>How to Request Data Deletion</h3>
+              <p>To request deletion of your data, please email us at <a href="mailto:privacy@magpipe.ai">privacy@magpipe.ai</a> with the subject line "Data Deletion Request" and include the email address associated with your account. We will process your request within 30 days and confirm once your data has been deleted.</p>
+              <h3>Facebook / Meta Data</h3>
+              <p>If you connected a WhatsApp Business account to Magpipe using Facebook Login, you may also request deletion of any associated data by contacting us at the address above. Upon request, we will remove your WhatsApp Business account credentials, associated message history, and any other Meta-sourced data from our systems.</p>
+              <p>You can also manage your Facebook app permissions directly at <a href="https://www.facebook.com/settings?tab=applications" target="_blank" rel="noopener">facebook.com/settings</a> and remove Magpipe's access at any time.</p>
+            </section>
+
+            <section class="legal-section">
+              <h2>11. Contact Us</h2>
               <p>If you have questions about this Privacy Policy, please contact us at:</p>
               <p><a href="mailto:privacy@magpipe.ai">privacy@magpipe.ai</a></p>
             </section>

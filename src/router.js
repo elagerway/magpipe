@@ -32,6 +32,9 @@ export class Router {
     this.addRoute('/custom-plan', () => import('./pages/custom-plan.js'), false);
     this.addRoute('/privacy', () => import('./pages/privacy.js'), false);
     this.addRoute('/terms', () => import('./pages/terms.js'), false);
+    // Public by necessity: the person disputing a fraud listing has no account
+    // here, and is often a spoofing victim whose calls stopped going through.
+    this.addRoute('/fraud-dispute', () => import('./pages/fraud-dispute.js'), false);
 
     // Protected routes
     this.addRoute('/agent', () => import('./pages/agent.js'), true);
@@ -50,6 +53,7 @@ export class Router {
     this.addRoute('/settings', () => import('./pages/settings.js'), true);
     this.addRoute('/team', () => import('./pages/team.js'), true);
     this.addRoute('/batch-calls', () => import('./pages/batch-calls.js'), true);
+    this.addRoute('/tests', () => import('./pages/tests.js'), true);
 
     // Admin routes (role-protected)
     this.addRoute('/admin', () => import('./pages/admin.js'), true, ['admin', 'support', 'god']);
@@ -71,6 +75,45 @@ export class Router {
     this.addDynamicRoute('/use-cases/:slug', () => import('./pages/landing/LandingPage.js'), false);
     this.addDynamicRoute('/compare/:slug', () => import('./pages/compare/ComparePage.js'), false);
     this.addDynamicRoute('/best/:slug', () => import('./pages/best/BestPage.js'), false);
+  }
+
+  /**
+   * Match the persistent app chrome to the route being entered.
+   *
+   * `#persistent-nav` is a SIBLING of `#app`: it is rendered once and then left
+   * alone, while every page only ever replaces `#app`. So navigating from a
+   * private page to a public one (e.g. /verify-email, /pricing, /login) used to
+   * leave the sidebar and account banners mounted — a public marketing page
+   * rendered inside the signed-in shell, showing a "Sign In" link to a user who
+   * is already signed in.
+   *
+   * The router is the only place that knows whether a route is public, so this
+   * belongs here rather than being repeated (and forgotten) in each page.
+   */
+  applyChromeForRoute(requiresAuth) {
+    document.body.dataset.layout = requiresAuth ? 'app' : 'public';
+
+    const nav = document.getElementById('persistent-nav');
+    if (nav) {
+      if (requiresAuth) {
+        nav.style.display = '';
+      } else {
+        // Emptied rather than just hidden: renderBottomNav() short-circuits when
+        // it finds existing `.bottom-nav` markup, so a hidden-but-present nav
+        // would never re-render on the way back into the app. This mirrors what
+        // SIGNED_OUT already does in main.js.
+        nav.innerHTML = '';
+        nav.style.display = 'none';
+      }
+    }
+
+    if (!requiresAuth) {
+      // Account chrome with no meaning on a public page.
+      document.getElementById('low-balance-banner')?.remove();
+      // The impersonation banner deliberately stays: it reports tab state that is
+      // still true on a public route, and it carries the only Exit control —
+      // removing it would strand an admin in an impersonation tab.
+    }
   }
 
   addRoute(path, loader, requiresAuth = false, requiredRoles = null) {
@@ -230,19 +273,29 @@ export class Router {
 
       // Check role requirements
       if (route.requiredRoles && route.requiredRoles.length > 0) {
-        const { data: profile } = await supabase
-          .from('users')
-          .select('role')
-          .eq('id', user.id)
-          .single();
+        let profile = null;
+        try {
+          const result = await Promise.race([
+            supabase.from('users').select('role').eq('id', user.id).single(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('role check timeout')), 5000)),
+          ]);
+          profile = result.data;
+        } catch {
+          // Timeout or error — deny access
+          this.navigate('/inbox', true);
+          return;
+        }
 
         if (!profile || !route.requiredRoles.includes(profile.role)) {
-          // User doesn't have required role, redirect to agent
           this.navigate('/inbox', true);
           return;
         }
       }
     }
+
+    // Chrome must match the destination before anything renders, so a public
+    // page never paints inside the app shell. Runs for cached pages too.
+    this.applyChromeForRoute(!!route.requiresAuth);
 
     // Cleanup previous page if it has a cleanup method
     if (this.currentPage && typeof this.currentPage.cleanup === 'function') {
@@ -331,13 +384,15 @@ export class Router {
     try {
       const url = import.meta.env.VITE_SUPABASE_URL;
       const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      const res = await fetch(`${url}/rest/v1/`, {
+      await fetch(`${url}/rest/v1/`, {
         headers: { apikey: key },
         signal: AbortSignal.timeout(3000),
       });
-      this._healthCache = { healthy: res.ok, checkedAt: now };
-      return res.ok;
+      // Any HTTP response means Supabase is reachable (even 401/403)
+      this._healthCache = { healthy: true, checkedAt: now };
+      return true;
     } catch {
+      // Network error or timeout — Supabase is truly unreachable
       this._healthCache = { healthy: false, checkedAt: now };
       return false;
     }
@@ -351,6 +406,10 @@ export class Router {
     if (this.currentPage && typeof this.currentPage.cleanup === 'function') {
       try { this.currentPage.cleanup(); } catch {}
     }
+
+    // Standalone page shown when the backend is unreachable — the app shell's
+    // nav and account chrome depend on that same backend, so tear them down.
+    this.applyChromeForRoute(false);
 
     const { default: MaintenancePage } = await import('./pages/maintenance.js');
     const page = new MaintenancePage();

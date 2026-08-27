@@ -5,6 +5,7 @@
 import { supabase } from '../lib/supabase.js';
 import { renderPublicFooter, getPublicFooterStyles } from '../components/PublicFooter.js';
 import { renderPublicHeader, getPublicHeaderStyles } from '../components/PublicHeader.js';
+import { renderTurnstile, getTurnstileToken, resetTurnstile } from '../lib/turnstile.js';
 
 export default class CustomPlanPage {
   constructor() {
@@ -27,7 +28,7 @@ export default class CustomPlanPage {
               <div class="custom-plan-header">
                 <h1>Contact Sales</h1>
                 <p class="header-subtitle">We can show you how to deploy voice AI and text agents at scale.</p>
-                <p class="header-support">Need support? Email <a href="mailto:support@magpipe.ai">support@magpipe.ai</a></p>
+                <p class="header-support">Need support? Email <a href="mailto:help@magpipe.ai">help@magpipe.ai</a></p>
               </div>
               <div class="testimonial-bg"></div>
               <div class="testimonial-content">
@@ -164,6 +165,8 @@ export default class CustomPlanPage {
                   <option value="other">Other</option>
                 </select>
               </div>
+
+              <div id="custom-plan-turnstile" style="margin-bottom: 1rem;"></div>
 
               <button type="submit" class="btn btn-primary btn-full btn-lg" id="submit-btn">
                 Submit Inquiry
@@ -572,6 +575,15 @@ export default class CustomPlanPage {
     const errorBanner = document.getElementById('form-error');
     const successBanner = document.getElementById('form-success');
 
+    // Render Turnstile widget
+    let turnstileWidgetId = null;
+    renderTurnstile('custom-plan-turnstile')
+      .then(id => { turnstileWidgetId = id; })
+      .catch(() => {
+        document.getElementById('custom-plan-turnstile').innerHTML =
+          '<p style="color: var(--danger); font-size: 0.85rem;">Verification failed to load. Please disable ad blockers and refresh.</p>';
+      });
+
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
 
@@ -609,6 +621,15 @@ export default class CustomPlanPage {
         return;
       }
 
+      // Verify Turnstile
+      const turnstileToken = getTurnstileToken(turnstileWidgetId);
+      if (!turnstileToken) {
+        errorBanner.textContent = 'Please complete the verification.';
+        errorBanner.classList.remove('hidden');
+        return;
+      }
+      formData.turnstileToken = turnstileToken;
+
       // Submit form
       this.isSubmitting = true;
       submitBtn.disabled = true;
@@ -633,6 +654,7 @@ export default class CustomPlanPage {
 
         submitBtn.disabled = false;
         submitBtn.textContent = 'Submit Inquiry';
+        resetTurnstile(turnstileWidgetId);
       } finally {
         this.isSubmitting = false;
       }

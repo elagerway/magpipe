@@ -21,7 +21,7 @@ BEGIN
     'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/process-scheduled-deletions',
     ARRAY[
       http_header('Content-Type', 'application/json'),
-      http_header('Authorization', 'Bearer YOUR_SUPABASE_KEY')
+      http_header('Authorization', 'Bearer YOUR_SUPABASE_ANON_KEY') -- replace with VITE_SUPABASE_ANON_KEY from .env
     ],
     'application/json',
     '{}'

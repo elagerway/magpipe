@@ -1,4 +1,18 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { reportError } from '../_shared/error-reporter.ts'
+import {
+  extractBody,
+  isComposioManaged,
+  fetchRecentMessagesComposio,
+  sendGmailReplyComposio,
+  isBulkOrAutomated,
+  quarantineEmail,
+  hasRecentAiReplyToSender,
+  extractImagePartsWithCid,
+  downloadAndUploadAttachmentsComposio,
+  rewriteCidReferences,
+  fetchMessageByIdComposio
+} from '../_shared/gmail-helpers.ts'
 
 const CONFIG_ID = '00000000-0000-0000-0000-000000000001'
 
@@ -14,6 +28,22 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseKey)
+
+    // Backfill mode: ingest a wider window of past mail as tickets but suppress
+    // ALL outbound side effects (admin notifications, AI drafts/replies). Used
+    // to recover a gap (e.g. the Apr 27→Jun outage) without firing replies or a
+    // notification storm at weeks-old email. Tickets are deduped by
+    // gmail_message_id, so re-running is safe. POST {"backfill":true,"window":"newer_than:60d","limit":200}
+    const reqBody = await req.json().catch(() => ({} as Record<string, unknown>))
+    const backfill = reqBody?.backfill === true
+    const fetchQuery = backfill ? (String(reqBody.window || 'newer_than:60d')) : 'newer_than:1d'
+    const fetchLimit = backfill ? (Number(reqBody.limit) || 200) : 50
+    if (backfill) console.log(`[poll] BACKFILL mode — window=${fetchQuery} limit=${fetchLimit}; replies/drafts/notifications suppressed`)
+    // Repair mode: re-host inline images for already-ingested tickets that have
+    // cid: refs but no attachments (gap-era tickets ingested before Composio
+    // attachment support). POST {"repair":true,"repairLimit":100}
+    const repair = reqBody?.repair === true
+    const repairLimit = Number(reqBody.repairLimit) || 100
 
     // 1. Get support email config
     const { data: config, error: configError } = await supabase
@@ -40,12 +70,13 @@ Deno.serve(async (req) => {
       return jsonResponse({ skipped: true, reason: 'provider_not_found' })
     }
 
-    // Get any user's google_email integration (admin-level, single Gmail account)
+    // Get the google_email integration matching the configured Gmail address
     const { data: integration, error: intError } = await supabase
       .from('user_integrations')
       .select('*')
       .eq('provider_id', provider.id)
       .eq('status', 'connected')
+      .eq('external_user_id', config.gmail_address)
       .limit(1)
       .single()
 
@@ -54,27 +85,83 @@ Deno.serve(async (req) => {
       return jsonResponse({ skipped: true, reason: 'not_connected' })
     }
 
-    // Refresh token if expired
-    let accessToken = integration.access_token
-    if (new Date(integration.token_expires_at) < new Date()) {
-      accessToken = await refreshGoogleToken(supabase, integration)
-      if (!accessToken) {
-        return jsonResponse({ error: 'Failed to refresh Google token' }, 500)
+    const composioRoute = isComposioManaged(integration)
+    let accessToken: string | null = null
+    if (!composioRoute) {
+      accessToken = integration.access_token
+      if (new Date(integration.token_expires_at) < new Date()) {
+        accessToken = await refreshGoogleToken(supabase, integration)
+        if (!accessToken) {
+          await reportError(supabase, {
+            error_type: 'gmail_token_expired',
+            error_message: 'Failed to refresh Google OAuth token — Gmail polling is stopped until reconnected',
+            source: 'supabase',
+            severity: 'error',
+            metadata: { function_name: 'poll-gmail-tickets', integration_id: integration.id },
+          })
+          return jsonResponse({ error: 'Failed to refresh Google token' }, 500)
+        }
       }
+    }
+
+    // REPAIR mode: re-fetch + re-host inline images for already-ingested tickets
+    // whose body_html references cid: images but have no attachments. Runs before
+    // the normal poll and returns early. Idempotent (skips tickets that already
+    // have attachments).
+    if (repair) {
+      if (!composioRoute) return jsonResponse({ repaired: 0, reason: 'repair only supported on composio route' })
+      const { data: candidates } = await supabase
+        .from('support_tickets')
+        .select('id, gmail_message_id, thread_id, body_html, attachments')
+        .eq('direction', 'inbound')
+        .ilike('body_html', '%cid:%')
+        .order('received_at', { ascending: false })
+        .limit(repairLimit)
+
+      let scanned = 0, repaired = 0
+      for (const t of (candidates || [])) {
+        if (Array.isArray(t.attachments) && t.attachments.length > 0) continue
+        scanned++
+        try {
+          const full = await fetchMessageByIdComposio(integration.user_id, t.gmail_message_id)
+          const imgParts = extractImagePartsWithCid(full?.payload)
+          if (imgParts.length === 0) continue
+          const uploaded = await downloadAndUploadAttachmentsComposio(
+            integration.user_id, t.gmail_message_id, t.thread_id || t.gmail_message_id, imgParts, supabase
+          )
+          if (uploaded.length === 0) continue
+          const newHtml = rewriteCidReferences(t.body_html, uploaded)
+          await supabase.from('support_tickets').update({ attachments: uploaded, body_html: newHtml }).eq('id', t.id)
+          await supabase.from('email_messages').update({ attachments: uploaded, body_html: newHtml }).eq('gmail_message_id', t.gmail_message_id)
+          repaired++
+          console.log(`[repair] ${t.gmail_message_id}: re-hosted ${uploaded.length} image(s)`)
+        } catch (e) {
+          console.error(`[repair] failed for ${t.gmail_message_id}:`, e)
+        }
+      }
+      return jsonResponse({ repair: true, scanned, repaired })
     }
 
     // 3. Fetch messages from Gmail
     let messages: any[] = []
 
-    if (config.last_history_id) {
+    console.log(`[poll] Starting fetch — last_history_id: ${config.last_history_id || 'null'}`)
+
+    if (composioRoute) {
+      // Composio doesn't expose Gmail's history-ID watermark; we fetch a
+      // recent window and rely on per-message dedup via gmail_message_id.
+      // Keep the window tight (24h) since polls run on cron — older mail
+      // backfills via support_tickets dedup don't help.
+      messages = await fetchRecentMessagesComposio(integration.user_id, fetchQuery, fetchLimit)
+    } else if (config.last_history_id) {
       // Incremental sync via history API
-      messages = await fetchViaHistory(accessToken, config.last_history_id)
+      messages = await fetchViaHistory(accessToken!, config.last_history_id)
     } else {
       // Initial sync: get last 50 messages
       messages = await fetchRecentMessages(accessToken, 50)
     }
 
-    console.log(`Fetched ${messages.length} messages from Gmail`)
+    console.log(`[poll] Fetched ${messages.length} messages from Gmail`)
 
     // 4. Process and upsert messages
     let newInboundCount = 0
@@ -87,7 +174,12 @@ Deno.serve(async (req) => {
 
     for (const msg of messages) {
       const parsed = parseGmailMessage(msg, config.gmail_address, config.send_as_email)
-      if (!parsed) continue
+      if (!parsed) {
+        console.log(`[poll] Skipped unparseable message id=${msg.id}`)
+        continue
+      }
+
+      console.log(`[poll] Processing: id=${parsed.gmail_message_id} from=${parsed.from_email} subject="${(parsed.subject || '').substring(0, 60)}" dir=${parsed.direction}`)
 
       // Skip system/automated emails
       const fromLower = (parsed.from_email || '').toLowerCase()
@@ -97,8 +189,23 @@ Deno.serve(async (req) => {
           fromLower.includes('postmaster') ||
           fromLower.includes('notifications@') ||
           fromLower.includes('notification@') ||
-          fromLower.includes('systemgenerated')) {
-        console.log(`Skipping system email from: ${parsed.from_email}`)
+          fromLower.includes('systemgenerated') ||
+          fromLower.includes('@magpipe.ai')) {
+        console.log(`[poll] Skipping system email from: ${parsed.from_email}`)
+        continue
+      }
+
+      // Bulk/automated header check — drops newsletters, "verify your
+      // subscription", marketing, etc. Audit row in quarantined_emails.
+      const bulkCheck = isBulkOrAutomated(msg.payload)
+      if (bulkCheck.isBulk) {
+        console.log(`[poll] Quarantining ${parsed.gmail_message_id} (${bulkCheck.reason})`)
+        await quarantineEmail(supabase, {
+          userId: integration.user_id,
+          parsedMsg: parsed,
+          reason: bulkCheck.reason!,
+          reasonDetail: { matchedHeader: bulkCheck.matchedHeader, matchedValue: bulkCheck.matchedValue }
+        })
         continue
       }
 
@@ -109,16 +216,34 @@ Deno.serve(async (req) => {
         .eq('gmail_message_id', parsed.gmail_message_id)
         .single()
 
-      if (existing) continue // Already have this message
+      if (existing) {
+        console.log(`[poll] Skipping dedup — already in support_tickets: ${parsed.gmail_message_id}`)
+        continue
+      }
 
-      // Extract and upload image attachments
-      const attachmentMetas = extractImageAttachments(msg.payload)
-      if (attachmentMetas.length > 0) {
-        const uploaded = await downloadAndUploadAttachments(
-          accessToken, parsed.gmail_message_id, parsed.thread_id || msg.threadId, attachmentMetas, supabase
-        )
-        if (uploaded.length > 0) {
-          parsed.attachments = uploaded
+      // Extract and upload image attachments. Composio-managed mailboxes have no
+      // raw Gmail token, so route attachment fetches through Composio and rewrite
+      // inline cid: refs so screenshots render in admin.
+      if (composioRoute) {
+        const imgParts = extractImagePartsWithCid(msg.payload)
+        if (imgParts.length > 0) {
+          const uploaded = await downloadAndUploadAttachmentsComposio(
+            integration.user_id, parsed.gmail_message_id, parsed.thread_id || msg.threadId, imgParts, supabase
+          )
+          if (uploaded.length > 0) {
+            parsed.attachments = uploaded
+            parsed.body_html = rewriteCidReferences(parsed.body_html, uploaded)
+          }
+        }
+      } else {
+        const attachmentMetas = extractImageAttachments(msg.payload)
+        if (attachmentMetas.length > 0) {
+          const uploaded = await downloadAndUploadAttachments(
+            accessToken!, parsed.gmail_message_id, parsed.thread_id || msg.threadId, attachmentMetas, supabase
+          )
+          if (uploaded.length > 0) {
+            parsed.attachments = uploaded
+          }
         }
       }
 
@@ -154,13 +279,56 @@ Deno.serve(async (req) => {
         }
       }
 
+      // Strip fields that aren't columns in support_tickets before insert
+      const { message_id_header: _mid, ...insertData } = parsed
       const { error: insertError } = await supabase
         .from('support_tickets')
-        .insert(parsed)
+        .insert(insertData)
 
       if (insertError) {
-        console.error('Failed to insert ticket:', insertError)
+        console.error('[poll] Failed to insert ticket:', insertError)
         continue
+      }
+
+      console.log(`[poll] INSERTED ticket: gmail_id=${parsed.gmail_message_id} thread=${parsed.thread_id} dir=${parsed.direction} ref=${parsed.ticket_ref || 'none'}`)
+
+      // Cross-write to email_messages so Inbox view stays in sync
+      const { data: existingEmail } = await supabase
+        .from('email_messages')
+        .select('id')
+        .eq('gmail_message_id', parsed.gmail_message_id)
+        .maybeSingle()
+
+      if (!existingEmail) {
+        const emailInsert: Record<string, any> = {
+          user_id: integration.user_id,
+          agent_id: config.support_agent_id || null,
+          gmail_message_id: parsed.gmail_message_id,
+          thread_id: parsed.thread_id,
+          from_email: parsed.from_email,
+          from_name: parsed.from_name,
+          to_email: parsed.to_email,
+          cc: parsed.cc_email || null,
+          subject: parsed.subject,
+          body_text: parsed.body_text,
+          body_html: parsed.body_html,
+          direction: parsed.direction,
+          status: parsed.direction === 'inbound' ? 'delivered' : 'sent',
+          is_read: parsed.direction === 'outbound',
+          sent_at: parsed.received_at,
+        }
+        if (parsed.attachments?.length > 0) {
+          emailInsert.attachments = parsed.attachments
+        }
+        const { error: emailError } = await supabase
+          .from('email_messages')
+          .insert(emailInsert)
+
+        if (emailError) {
+          console.error('[poll] Failed to cross-write to email_messages:', emailError.message)
+        } else {
+          console.log(`[poll] Cross-wrote to email_messages: ${parsed.gmail_message_id}`)
+        }
       }
 
       if (parsed.direction === 'inbound') {
@@ -173,22 +341,46 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 5. Update history_id and last_polled_at
-    const latestHistoryId = await getLatestHistoryId(accessToken)
-    await supabase
-      .from('support_email_config')
-      .update({
-        last_history_id: latestHistoryId,
-        last_polled_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', CONFIG_ID)
+    // 5. Update history_id and last_polled_at — direct path only.
+    // Composio doesn't surface a Gmail history-ID watermark; we still bump
+    // last_polled_at so operators can see polling is alive.
+    if (composioRoute) {
+      await supabase
+        .from('support_email_config')
+        .update({
+          last_polled_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', CONFIG_ID)
+    } else {
+      const latestHistoryId = await getLatestHistoryId(accessToken!)
+      await supabase
+        .from('support_email_config')
+        .update({
+          last_history_id: latestHistoryId,
+          last_polled_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', CONFIG_ID)
+      await supabase
+        .from('agent_email_configs')
+        .update({ last_history_id: latestHistoryId, updated_at: new Date().toISOString() })
+        .eq('gmail_address', config.gmail_address)
+    }
 
-    // 6. Process new inbound messages
+    // 6. Process new inbound messages — notifications + AI drafts/replies.
+    // Skipped entirely in backfill mode: the tickets are already inserted above;
+    // we don't want to notify or draft/reply against a recovered backlog.
     const sendFrom = config.send_as_email || config.gmail_address
-    for (const msg of newInboundMessages) {
-      // Send ticket acknowledgment auto-reply (only for new threads with ticket_ref)
-      await sendTicketAcknowledgment(accessToken, sendFrom, msg)
+    for (const msg of (backfill ? [] : newInboundMessages)) {
+      // Send ticket acknowledgment — only when AI auto-reply is NOT enabled
+      // (in auto mode, the AI reply is the first response the customer sees).
+      // Composio path: deferred — ack via Composio reply action will land in
+      // a follow-up. Skipping the ack for now is correct behavior (the AI
+      // reply lands instead in auto mode; in draft mode the human handles it).
+      if (config.agent_mode !== 'auto' && !composioRoute) {
+        await sendTicketAcknowledgment(accessToken!, sendFrom, msg)
+      }
 
       // Multi-channel admin notification (replaces old SMS-only alert)
       await sendAdminNotification(supabaseUrl, msg)
@@ -219,7 +411,14 @@ Deno.serve(async (req) => {
           continue
         }
 
-        await generateAiDraft(supabase, accessToken, config, msg)
+        // Rate-limit AI replies per sender (24h window) — backstop against
+        // reply storms when spam slips past the bulk-header filter.
+        if (await hasRecentAiReplyToSender(supabase, msg.from_email, 24)) {
+          console.log(`[poll] rate-limited AI draft for ${msg.from_email} (replied within 24h)`)
+          continue
+        }
+
+        await generateAiDraft(supabase, accessToken, config, msg, integration.user_id, integration)
       }
     }
 
@@ -311,6 +510,7 @@ async function fetchRecentMessages(accessToken: string, maxResults: number): Pro
 
 
 async function fetchViaHistory(accessToken: string, historyId: string): Promise<any[]> {
+  console.log(`[poll] fetchViaHistory: startHistoryId=${historyId}`)
   const response = await fetch(
     `https://gmail.googleapis.com/gmail/v1/users/me/history?startHistoryId=${historyId}&historyTypes=messageAdded`,
     { headers: { 'Authorization': `Bearer ${accessToken}` } }
@@ -320,14 +520,15 @@ async function fetchViaHistory(accessToken: string, historyId: string): Promise<
     const text = await response.text()
     // 404 means historyId is too old, need full sync
     if (response.status === 404) {
-      console.log('History ID expired, falling back to recent messages')
+      console.log('[poll] History ID expired (404), falling back to recent messages')
       return await fetchRecentMessages(accessToken, 50)
     }
-    console.error('Gmail history failed:', text)
+    console.error('[poll] Gmail history failed:', response.status, text)
     return []
   }
 
   const data = await response.json()
+  console.log(`[poll] History API response: ${data.history?.length || 0} history entries, historyId=${data.historyId}`)
   if (!data.history) return []
 
   const messageIds = new Set<string>()
@@ -338,6 +539,8 @@ async function fetchViaHistory(accessToken: string, historyId: string): Promise<
       }
     }
   }
+
+  console.log(`[poll] Found ${messageIds.size} unique new message IDs`)
 
   const messages: any[] = []
   for (const id of messageIds) {
@@ -380,6 +583,7 @@ function parseGmailMessage(msg: any, gmailAddress: string, sendAsEmail?: string)
 
     const from = getHeader('From')
     const to = getHeader('To')
+    const cc = getHeader('Cc')
     const subject = getHeader('Subject')
     const date = getHeader('Date')
     const messageId = msg.id
@@ -409,13 +613,18 @@ function parseGmailMessage(msg: any, gmailAddress: string, sendAsEmail?: string)
     // Labels
     const labels = msg.labelIds || []
 
+    // For outbound messages, normalize from_email to send_as_email so the UI
+    // shows the branded address (e.g. help@magpipe.ai) instead of the raw Gmail address
+    const normalizedFrom = isOutbound && sendAsEmail ? sendAsEmail : fromEmail
+
     return {
       gmail_message_id: messageId,
       thread_id: msg.threadId,
       message_id_header: messageIdHeader,
-      from_email: fromEmail,
+      from_email: normalizedFrom,
       from_name: fromName,
       to_email: to,
+      cc_email: cc || '',
       subject,
       body_text: text,
       body_html: html,
@@ -431,39 +640,6 @@ function parseGmailMessage(msg: any, gmailAddress: string, sendAsEmail?: string)
 }
 
 
-function extractBody(payload: any): { text: string; html: string } {
-  let text = ''
-  let html = ''
-
-  if (!payload) return { text, html }
-
-  // Single-part message
-  if (payload.body?.data) {
-    const decoded = atob(payload.body.data.replace(/-/g, '+').replace(/_/g, '/'))
-    if (payload.mimeType === 'text/plain') text = decoded
-    if (payload.mimeType === 'text/html') html = decoded
-  }
-
-  // Multipart message
-  if (payload.parts) {
-    for (const part of payload.parts) {
-      if (part.mimeType === 'text/plain' && part.body?.data) {
-        text = atob(part.body.data.replace(/-/g, '+').replace(/_/g, '/'))
-      }
-      if (part.mimeType === 'text/html' && part.body?.data) {
-        html = atob(part.body.data.replace(/-/g, '+').replace(/_/g, '/'))
-      }
-      // Nested multipart
-      if (part.parts) {
-        const nested = extractBody(part)
-        if (nested.text) text = nested.text
-        if (nested.html) html = nested.html
-      }
-    }
-  }
-
-  return { text, html }
-}
 
 
 async function sendTicketAcknowledgment(accessToken: string, fromAddress: string, msg: any) {
@@ -548,7 +724,7 @@ async function sendAdminNotification(supabaseUrl: string, msg: any) {
 }
 
 
-async function generateAiDraft(supabase: any, accessToken: string, config: any, msg: any) {
+async function generateAiDraft(supabase: any, accessToken: string | null, config: any, msg: any, userId?: string, integration?: any) {
   const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
   if (!openaiApiKey) {
     console.error('OPENAI_API_KEY not set, skipping AI draft')
@@ -698,23 +874,52 @@ Guidelines:
     const sendFrom = config.send_as_email || config.gmail_address
     if (config.agent_mode === 'auto') {
       // Auto-send: send via Gmail and record
-      await sendGmailReply(accessToken, sendFrom, msg, draftText, draftTicketRef)
+      // Composio-managed: route through GMAIL_REPLY_TO_THREAD; otherwise direct.
+      if (isComposioManaged(integration)) {
+        const replySubject = buildReplySubject(msg.subject, draftTicketRef)
+        await sendGmailReplyComposio(integration.user_id, msg, draftText, replySubject)
+      } else {
+        await sendGmailReply(accessToken!, sendFrom, msg, draftText, draftTicketRef)
+      }
 
-      // Insert outbound record
+      const autoGmailId = `auto-${Date.now()}-${msg.gmail_message_id}`
+      const replySubject = buildReplySubject(msg.subject, draftTicketRef)
+      const now = new Date().toISOString()
+
+      // Insert outbound record into support_tickets
       await supabase.from('support_tickets').insert({
-        gmail_message_id: `auto-${Date.now()}-${msg.gmail_message_id}`,
+        gmail_message_id: autoGmailId,
         thread_id: msg.thread_id,
         from_email: sendFrom,
         from_name: '',
         to_email: msg.from_email,
-        subject: buildReplySubject(msg.subject, draftTicketRef),
+        subject: replySubject,
         body_text: draftText,
         direction: 'outbound',
         status: 'open',
         ai_draft: draftText,
         ai_draft_status: 'sent',
-        received_at: new Date().toISOString(),
+        received_at: now,
       })
+
+      // Cross-write to email_messages for Inbox sync
+      if (userId) {
+        await supabase.from('email_messages').insert({
+          user_id: userId,
+          agent_id: config.support_agent_id || null,
+          gmail_message_id: autoGmailId,
+          thread_id: msg.thread_id,
+          from_email: sendFrom,
+          to_email: msg.from_email,
+          subject: replySubject,
+          body_text: draftText,
+          direction: 'outbound',
+          status: 'sent',
+          is_read: true,
+          is_ai_generated: true,
+          sent_at: now,
+        })
+      }
 
       // Update original message's draft status
       await supabase

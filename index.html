@@ -3,8 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="MAGPIPE - Your AI phone assistant">
+  <meta name="description" content="Omni-channel AI communications platform. Voice, SMS, email, and chat — handled by intelligent AI agents 24/7.">
   <meta name="theme-color" content="#6366f1">
+  <link rel="canonical" href="https://magpipe.ai/" />
 
   <!-- PWA Meta Tags -->
   <link rel="manifest" href="/manifest.json">
@@ -19,7 +20,78 @@
   <link rel="apple-touch-icon" href="/icons/icon-192x192.png">
   <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
 
-  <title>MAGPIPE</title>
+  <title>Omni-channel AI Communications Platform</title>
+
+  <!-- Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": "MAGPIPE",
+    "url": "https://magpipe.ai",
+    "logo": "https://magpipe.ai/icons/icon-512x512.png",
+    "sameAs": [
+      "https://twitter.com/magpipe_ai",
+      "https://linkedin.com/company/magpipe"
+    ]
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "What is an AI phone assistant?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "An AI phone assistant automates call handling using natural-language processing, enabling outbound outreach, inbound routing, and real-time conversation analytics. Businesses using AI phone assistants report handling up to 10x more calls without adding headcount."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How does Magpipe automate inbound and outbound calls?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Magpipe connects a voice AI agent to your phone number. For inbound calls, the agent answers, qualifies callers, and routes or escalates as needed. For outbound calls, Magpipe dials contacts via a conference bridge so the agent's greeting plays the instant the customer picks up — eliminating the silence that causes hang-ups."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What industries use AI phone assistants?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "AI phone assistants are used across sales (lead qualification, follow-up), customer support (tier-1 triage, FAQs), debt collection, appointment booking, and real estate. Any industry that handles high call volumes or repetitive phone interactions benefits from automation."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Can Magpipe integrate with WhatsApp and SMS?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. Magpipe supports WhatsApp Business and SMS on the same phone number as voice. Each channel can be assigned a different AI agent, so your inbound support agent and outbound sales bot can share a number without interfering with each other."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How does Magpipe handle call forwarding for trusted callers?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Magpipe's Call Whitelist feature lets you designate specific phone numbers to bypass the AI agent entirely. When a whitelisted caller rings in, the call is forwarded directly to a destination number — instantly, with no AI interaction."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Does Magpipe support outbound batch calling?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. Magpipe's batch calling API lets you upload a list of contacts and trigger all calls with a single API request. Each call is tracked individually with webhook notifications on completion, and you can cancel mid-batch if needed."
+        }
+      }
+    ]
+  }
+  </script>
 
   <!-- Google Fonts - Inter -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -27,11 +99,12 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
   <!-- Styles -->
-  <link rel="stylesheet" href="/styles/main.css?v=19">
+  <link rel="stylesheet" href="/styles/main.css?v=20">
   <link rel="stylesheet" href="/styles/modal.css">
   <link rel="stylesheet" href="/styles/toggle.css">
 </head>
 <body>
+  <h1 style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;">MAGPIPE – AI Phone Assistant for Seamless Customer Calls</h1>
   <div id="app">
     <!-- Page content will be dynamically injected here -->
     <div class="loading-screen">

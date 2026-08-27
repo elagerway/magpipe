@@ -74,7 +74,7 @@ BEGIN
     'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/process-scheduled-actions',
     ARRAY[
       http_header('Content-Type', 'application/json'),
-      http_header('Authorization', 'Bearer YOUR_SUPABASE_KEY')
+      http_header('Authorization', 'Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY') -- replace with SUPABASE_SERVICE_ROLE_KEY from .env
     ],
     'application/json',
     '{}'

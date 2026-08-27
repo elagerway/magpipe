@@ -7,103 +7,10 @@ import { getCurrentUser, supabase } from '../lib/supabase.js';
 import { isPushSupported, subscribeToPush } from '../services/pushNotifications.js';
 import { showToast } from '../lib/toast.js';
 
-// Country codes for the dropdown — US/CA first, then alphabetical
-export const COUNTRY_CODES = [
-  { code: '+1', flag: '\u{1F1FA}\u{1F1F8}', name: 'United States' },
-  { code: '+1', flag: '\u{1F1E8}\u{1F1E6}', name: 'Canada' },
-  { code: '+93', flag: '\u{1F1E6}\u{1F1EB}', name: 'Afghanistan' },
-  { code: '+355', flag: '\u{1F1E6}\u{1F1F1}', name: 'Albania' },
-  { code: '+213', flag: '\u{1F1E9}\u{1F1FF}', name: 'Algeria' },
-  { code: '+54', flag: '\u{1F1E6}\u{1F1F7}', name: 'Argentina' },
-  { code: '+61', flag: '\u{1F1E6}\u{1F1FA}', name: 'Australia' },
-  { code: '+43', flag: '\u{1F1E6}\u{1F1F9}', name: 'Austria' },
-  { code: '+973', flag: '\u{1F1E7}\u{1F1ED}', name: 'Bahrain' },
-  { code: '+880', flag: '\u{1F1E7}\u{1F1E9}', name: 'Bangladesh' },
-  { code: '+32', flag: '\u{1F1E7}\u{1F1EA}', name: 'Belgium' },
-  { code: '+55', flag: '\u{1F1E7}\u{1F1F7}', name: 'Brazil' },
-  { code: '+359', flag: '\u{1F1E7}\u{1F1EC}', name: 'Bulgaria' },
-  { code: '+855', flag: '\u{1F1F0}\u{1F1ED}', name: 'Cambodia' },
-  { code: '+56', flag: '\u{1F1E8}\u{1F1F1}', name: 'Chile' },
-  { code: '+86', flag: '\u{1F1E8}\u{1F1F3}', name: 'China' },
-  { code: '+57', flag: '\u{1F1E8}\u{1F1F4}', name: 'Colombia' },
-  { code: '+506', flag: '\u{1F1E8}\u{1F1F7}', name: 'Costa Rica' },
-  { code: '+385', flag: '\u{1F1ED}\u{1F1F7}', name: 'Croatia' },
-  { code: '+357', flag: '\u{1F1E8}\u{1F1FE}', name: 'Cyprus' },
-  { code: '+420', flag: '\u{1F1E8}\u{1F1FF}', name: 'Czech Republic' },
-  { code: '+45', flag: '\u{1F1E9}\u{1F1F0}', name: 'Denmark' },
-  { code: '+593', flag: '\u{1F1EA}\u{1F1E8}', name: 'Ecuador' },
-  { code: '+20', flag: '\u{1F1EA}\u{1F1EC}', name: 'Egypt' },
-  { code: '+503', flag: '\u{1F1F8}\u{1F1FB}', name: 'El Salvador' },
-  { code: '+372', flag: '\u{1F1EA}\u{1F1EA}', name: 'Estonia' },
-  { code: '+251', flag: '\u{1F1EA}\u{1F1F9}', name: 'Ethiopia' },
-  { code: '+358', flag: '\u{1F1EB}\u{1F1EE}', name: 'Finland' },
-  { code: '+33', flag: '\u{1F1EB}\u{1F1F7}', name: 'France' },
-  { code: '+49', flag: '\u{1F1E9}\u{1F1EA}', name: 'Germany' },
-  { code: '+233', flag: '\u{1F1EC}\u{1F1ED}', name: 'Ghana' },
-  { code: '+30', flag: '\u{1F1EC}\u{1F1F7}', name: 'Greece' },
-  { code: '+502', flag: '\u{1F1EC}\u{1F1F9}', name: 'Guatemala' },
-  { code: '+504', flag: '\u{1F1ED}\u{1F1F3}', name: 'Honduras' },
-  { code: '+852', flag: '\u{1F1ED}\u{1F1F0}', name: 'Hong Kong' },
-  { code: '+36', flag: '\u{1F1ED}\u{1F1FA}', name: 'Hungary' },
-  { code: '+354', flag: '\u{1F1EE}\u{1F1F8}', name: 'Iceland' },
-  { code: '+91', flag: '\u{1F1EE}\u{1F1F3}', name: 'India' },
-  { code: '+62', flag: '\u{1F1EE}\u{1F1E9}', name: 'Indonesia' },
-  { code: '+98', flag: '\u{1F1EE}\u{1F1F7}', name: 'Iran' },
-  { code: '+964', flag: '\u{1F1EE}\u{1F1F6}', name: 'Iraq' },
-  { code: '+353', flag: '\u{1F1EE}\u{1F1EA}', name: 'Ireland' },
-  { code: '+972', flag: '\u{1F1EE}\u{1F1F1}', name: 'Israel' },
-  { code: '+39', flag: '\u{1F1EE}\u{1F1F9}', name: 'Italy' },
-  { code: '+81', flag: '\u{1F1EF}\u{1F1F5}', name: 'Japan' },
-  { code: '+962', flag: '\u{1F1EF}\u{1F1F4}', name: 'Jordan' },
-  { code: '+7', flag: '\u{1F1F0}\u{1F1FF}', name: 'Kazakhstan' },
-  { code: '+254', flag: '\u{1F1F0}\u{1F1EA}', name: 'Kenya' },
-  { code: '+82', flag: '\u{1F1F0}\u{1F1F7}', name: 'South Korea' },
-  { code: '+965', flag: '\u{1F1F0}\u{1F1FC}', name: 'Kuwait' },
-  { code: '+371', flag: '\u{1F1F1}\u{1F1FB}', name: 'Latvia' },
-  { code: '+961', flag: '\u{1F1F1}\u{1F1E7}', name: 'Lebanon' },
-  { code: '+370', flag: '\u{1F1F1}\u{1F1F9}', name: 'Lithuania' },
-  { code: '+352', flag: '\u{1F1F1}\u{1F1FA}', name: 'Luxembourg' },
-  { code: '+60', flag: '\u{1F1F2}\u{1F1FE}', name: 'Malaysia' },
-  { code: '+356', flag: '\u{1F1F2}\u{1F1F9}', name: 'Malta' },
-  { code: '+52', flag: '\u{1F1F2}\u{1F1FD}', name: 'Mexico' },
-  { code: '+212', flag: '\u{1F1F2}\u{1F1E6}', name: 'Morocco' },
-  { code: '+31', flag: '\u{1F1F3}\u{1F1F1}', name: 'Netherlands' },
-  { code: '+64', flag: '\u{1F1F3}\u{1F1FF}', name: 'New Zealand' },
-  { code: '+234', flag: '\u{1F1F3}\u{1F1EC}', name: 'Nigeria' },
-  { code: '+47', flag: '\u{1F1F3}\u{1F1F4}', name: 'Norway' },
-  { code: '+968', flag: '\u{1F1F4}\u{1F1F2}', name: 'Oman' },
-  { code: '+92', flag: '\u{1F1F5}\u{1F1F0}', name: 'Pakistan' },
-  { code: '+507', flag: '\u{1F1F5}\u{1F1E6}', name: 'Panama' },
-  { code: '+595', flag: '\u{1F1F5}\u{1F1FE}', name: 'Paraguay' },
-  { code: '+51', flag: '\u{1F1F5}\u{1F1EA}', name: 'Peru' },
-  { code: '+63', flag: '\u{1F1F5}\u{1F1ED}', name: 'Philippines' },
-  { code: '+48', flag: '\u{1F1F5}\u{1F1F1}', name: 'Poland' },
-  { code: '+351', flag: '\u{1F1F5}\u{1F1F9}', name: 'Portugal' },
-  { code: '+974', flag: '\u{1F1F6}\u{1F1E6}', name: 'Qatar' },
-  { code: '+40', flag: '\u{1F1F7}\u{1F1F4}', name: 'Romania' },
-  { code: '+7', flag: '\u{1F1F7}\u{1F1FA}', name: 'Russia' },
-  { code: '+966', flag: '\u{1F1F8}\u{1F1E6}', name: 'Saudi Arabia' },
-  { code: '+65', flag: '\u{1F1F8}\u{1F1EC}', name: 'Singapore' },
-  { code: '+421', flag: '\u{1F1F8}\u{1F1F0}', name: 'Slovakia' },
-  { code: '+386', flag: '\u{1F1F8}\u{1F1EE}', name: 'Slovenia' },
-  { code: '+27', flag: '\u{1F1FF}\u{1F1E6}', name: 'South Africa' },
-  { code: '+34', flag: '\u{1F1EA}\u{1F1F8}', name: 'Spain' },
-  { code: '+94', flag: '\u{1F1F1}\u{1F1F0}', name: 'Sri Lanka' },
-  { code: '+46', flag: '\u{1F1F8}\u{1F1EA}', name: 'Sweden' },
-  { code: '+41', flag: '\u{1F1E8}\u{1F1ED}', name: 'Switzerland' },
-  { code: '+886', flag: '\u{1F1F9}\u{1F1FC}', name: 'Taiwan' },
-  { code: '+66', flag: '\u{1F1F9}\u{1F1ED}', name: 'Thailand' },
-  { code: '+90', flag: '\u{1F1F9}\u{1F1F7}', name: 'Turkey' },
-  { code: '+256', flag: '\u{1F1FA}\u{1F1EC}', name: 'Uganda' },
-  { code: '+380', flag: '\u{1F1FA}\u{1F1E6}', name: 'Ukraine' },
-  { code: '+971', flag: '\u{1F1E6}\u{1F1EA}', name: 'United Arab Emirates' },
-  { code: '+44', flag: '\u{1F1EC}\u{1F1E7}', name: 'United Kingdom' },
-  { code: '+598', flag: '\u{1F1FA}\u{1F1FE}', name: 'Uruguay' },
-  { code: '+58', flag: '\u{1F1FB}\u{1F1EA}', name: 'Venezuela' },
-  { code: '+84', flag: '\u{1F1FB}\u{1F1F3}', name: 'Vietnam' },
-  { code: '+260', flag: '\u{1F1FF}\u{1F1F2}', name: 'Zambia' },
-  { code: '+263', flag: '\u{1F1FF}\u{1F1FC}', name: 'Zimbabwe' },
-];
+// COUNTRY_CODES lives in the shared PhoneInput component now; re-exported
+// here for existing importers (admin users-tab).
+import { COUNTRY_CODES } from '../components/PhoneInput.js';
+import { isValidE164 } from '../lib/phone-e164.js';
 
 export default class VerifyPhonePage {
   constructor() {
@@ -177,6 +84,10 @@ export default class VerifyPhonePage {
             <button class="btn btn-primary btn-full" id="send-code-btn">
               Send Verification Code
             </button>
+
+            <p class="text-center text-sm mt-3">
+              <a href="#" id="voice-code-link">Can't receive texts? Get a phone call instead</a>
+            </p>
           </div>
 
           <div id="code-verification-form" class="hidden">
@@ -197,8 +108,10 @@ export default class VerifyPhonePage {
               Verify Phone Number
             </button>
 
-            <p class="text-center text-sm mt-3" style="display: flex; justify-content: center; gap: 1rem;">
+            <p class="text-center text-sm mt-3" style="display: flex; justify-content: center; gap: 1rem; flex-wrap: wrap;">
               <a href="#" id="resend-code-link">Resend code</a>
+              <span style="color: #d1d5db;">|</span>
+              <a href="#" id="call-code-link">Call me instead</a>
               <span style="color: #d1d5db;">|</span>
               <a href="#" id="change-number-link">Change number</a>
             </p>
@@ -271,6 +184,8 @@ export default class VerifyPhonePage {
     const sendCodeBtn = document.getElementById('send-code-btn');
     const verifyCodeBtn = document.getElementById('verify-code-btn');
     const resendCodeLink = document.getElementById('resend-code-link');
+    const voiceCodeLink = document.getElementById('voice-code-link');
+    const callCodeLink = document.getElementById('call-code-link');
     const changeNumberLink = document.getElementById('change-number-link');
     const phoneEntryForm = document.getElementById('phone-entry-form');
     const codeVerificationForm = document.getElementById('code-verification-form');
@@ -341,9 +256,10 @@ export default class VerifyPhonePage {
 
         showToast('Phone verified successfully!', 'success');
 
-        // Request push notification permission (native prompt)
+        // Request push notification permission (mobile only — desktop doesn't benefit)
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
         let pushEnabled = false;
-        if (isPushSupported()) {
+        if (isMobile && isPushSupported()) {
           try {
             const pushResult = await subscribeToPush();
             if (pushResult.success) {
@@ -361,16 +277,16 @@ export default class VerifyPhonePage {
           } catch (e) {
             console.log('Push notification setup skipped:', e.message);
           }
-        }
 
-        // If push was declined, show explanation modal
-        if (isPushSupported() && !pushEnabled) {
-          const destination = (serviceNumbers && serviceNumbers.length > 0)
-            ? '/settings'
-            : '/select-number';
+          // If push was declined on mobile, show explanation modal
+          if (!pushEnabled) {
+            const destination = (serviceNumbers && serviceNumbers.length > 0)
+              ? '/settings'
+              : '/select-number';
 
-          await this.showPushDeclinedModal(user.id, destination, serviceNumbers?.length > 0);
-          return; // Modal handles redirect
+            await this.showPushDeclinedModal(user.id, destination, serviceNumbers?.length > 0);
+            return; // Modal handles redirect
+          }
         }
 
         // Wait a moment to ensure database update propagates
@@ -427,6 +343,59 @@ export default class VerifyPhonePage {
       }
     });
 
+    // Voice fallback from the phone-entry step (landlines / VoIP can't get SMS)
+    voiceCodeLink.addEventListener('click', async (e) => {
+      e.preventDefault();
+
+      const phoneInput = document.getElementById('phone');
+      const phoneNumber = this.sanitizePhoneNumber(phoneInput.value);
+
+      if (!this.isValidPhoneNumber(phoneNumber)) {
+        showToast('Please enter a valid phone number', 'error');
+        return;
+      }
+
+      voiceCodeLink.textContent = 'Calling...';
+
+      try {
+        await this.sendVerificationCode(phoneNumber, 'voice');
+
+        phoneEntryForm.classList.add('hidden');
+        codeVerificationForm.classList.remove('hidden');
+
+        showToast(`Calling ${phoneNumber} with your code now`, 'success');
+
+        this.codeSent = true;
+        this.phoneNumber = phoneNumber;
+      } catch (error) {
+        console.error('Voice code error:', error);
+        showToast(error.message || 'Failed to start verification call. Please try again.', 'error');
+      } finally {
+        voiceCodeLink.textContent = "Can't receive texts? Get a phone call instead";
+      }
+    });
+
+    // Voice fallback from the code-entry step (same code stays valid — resending
+    // upserts a fresh one, so the call reads whatever is current)
+    callCodeLink.addEventListener('click', async (e) => {
+      e.preventDefault();
+
+      if (!this.phoneNumber) return;
+
+      callCodeLink.textContent = 'Calling...';
+
+      try {
+        await this.sendVerificationCode(this.phoneNumber, 'voice');
+
+        showToast(`Calling ${this.phoneNumber} with your code now`, 'success');
+      } catch (error) {
+        console.error('Voice code error:', error);
+        showToast(error.message || 'Failed to start verification call. Please try again.', 'error');
+      } finally {
+        callCodeLink.textContent = 'Call me instead';
+      }
+    });
+
     changeNumberLink.addEventListener('click', (e) => {
       e.preventDefault();
       this.resetToPhoneEntry();
@@ -469,11 +438,14 @@ export default class VerifyPhonePage {
   }
 
   isValidPhoneNumber(phone) {
-    // E.164 format: + followed by 7-15 digits
-    return /^\+[1-9]\d{6,14}$/.test(phone);
+    // NANP (+1) requires exactly 10 national digits; the generic E.164 length rule
+    // alone would accept a too-short number like +15551234. Shares the validator
+    // with lib/phone-e164.js so all surfaces agree.
+    if (phone.startsWith('+1')) return /^\+1\d{10}$/.test(phone);
+    return isValidE164(phone);
   }
 
-  async sendVerificationCode(phoneNumber) {
+  async sendVerificationCode(phoneNumber, channel = 'sms') {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const { data: { session } } = await supabase.auth.getSession();
 
@@ -487,7 +459,7 @@ export default class VerifyPhonePage {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${session.access_token}`,
       },
-      body: JSON.stringify({ phoneNumber }),
+      body: JSON.stringify({ phoneNumber, channel }),
     });
 
     if (!response.ok) {
@@ -574,7 +546,7 @@ Example SMS Reply:
       .insert({
         user_id: session.user.id,
         name: 'AI Assistant',
-        voice_id: '11labs-21m00Tcm4TlvDq8ikWAM',
+        voice_id: '11labs-EXAVITQu4vr4xnSDxMaL',
         system_prompt: defaultPrompt,
         active_voice_stack: 'livekit',
         is_default: true,

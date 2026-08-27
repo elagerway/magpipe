@@ -1,12 +1,42 @@
 # LiveKit Agent Dependencies
-livekit>=0.11.0
-livekit-agents>=1.4.0
-livekit-plugins-deepgram>=0.6.0
-livekit-plugins-openai>=0.6.0
-livekit-plugins-elevenlabs>=0.6.0
-livekit-plugins-silero>=0.6.0
-python-dotenv>=1.0.0
-aiohttp>=3.9.0
-supabase>=2.3.0
-bcrypt>=4.0.0
-openai>=1.0.0
+#
+# Every version here is EXACT and was captured from the running production
+# workers (GET /health/freeze), not from a local resolve — the build runs on
+# Python 3.12.7 and a laptop resolve can differ.
+#
+# Why exact: on 2026-08-20 this file was all `>=`. `anthropic` 1.0.0 published
+# at 19:58Z, the deploy at 20:32Z silently resolved the new major, and every
+# Claude voice job crashed in _build_llm — after room join, so callers heard
+# endless ringing. No code changed; the build just resolved differently. Six
+# days passed before anyone noticed (see CHANGELOG 2026-08-26, #180).
+#
+# Pinning THIS file is necessary but not sufficient: it constrains only direct
+# dependencies. `anthropic` reached us transitively via
+# livekit-plugins-anthropic, which declares `anthropic>=0.41` with no upper
+# bound — so the package that broke us was not even listed here at the time.
+# constraints.txt pins the full resolved set and the build applies it with
+# `-c constraints.txt`. Regenerate BOTH when bumping anything:
+#   TOK=$(render env get AGENT_HEALTH_TOKEN)   # or Render dashboard -> magpipe -> Environment
+#   curl -s -H "x-health-token: $TOK" https://plug-bubs.onrender.com/health/freeze | \
+#     python3 -c "import json,sys;[print(f'{k}=={v}') for k,v in json.load(sys.stdin)['packages'].items()]"
+
+livekit==1.1.14
+livekit-agents==1.7.0
+livekit-plugins-deepgram==1.7.0
+livekit-plugins-openai==1.7.0
+
+# anthropic must stay on 0.x. 1.0.0 (2026-08-20) moved the SDK to httpx2, but
+# livekit-plugins-anthropic still constructs it with an httpx.AsyncClient and
+# raises TypeError. Lift to 1.x ONLY once the plugin declares httpx2 support.
+livekit-plugins-anthropic==1.7.0
+anthropic==0.125.0
+
+livekit-plugins-elevenlabs==1.7.0
+livekit-plugins-silero==1.7.0
+livekit-plugins-turn-detector==1.7.0
+python-dotenv==1.2.3
+aiohttp==3.14.3
+supabase==2.31.0
+bcrypt==5.0.0
+openai==2.54.0
+sentry-sdk==2.68.1

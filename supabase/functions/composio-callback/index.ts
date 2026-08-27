@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { APP_URL } from '../_shared/config.ts'
+import { reportError } from '../_shared/error-reporter.ts'
 
 // Composio redirects the browser here after OAuth completes. We look up the
 // pending user_integrations row by integration_id (passed through from
@@ -143,6 +144,13 @@ Deno.serve(async (req) => {
 
   } catch (error) {
     console.error('Error in composio-callback:', error)
+    const _sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+    await reportError(_sb, {
+      error_type: 'composio_callback_error',
+      error_message: error instanceof Error ? error.message : String(error),
+      error_code: 'composio-callback:catch',
+      source: 'composio',
+    })
     return Response.redirect(buildRedirectUrl(frontendUrl, '/apps', { integration_error: 'callback_failed' }), 303)
   }
 })

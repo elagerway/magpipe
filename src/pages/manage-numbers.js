@@ -6,6 +6,7 @@ import { getCurrentUser, supabase } from '../lib/supabase.js';
 import { renderBottomNav } from '../components/BottomNav.js';
 import { User } from '../models/index.js';
 import { showToast } from '../lib/toast.js';
+import { formatPhoneNumber } from '../lib/formatters.js';
 
 // System agent UUID for unassigned numbers
 const SYSTEM_AGENT_ID = '00000000-0000-0000-0000-000000000002';
@@ -242,7 +243,14 @@ export default class ManageNumbersPage {
       // Attach remove agent button listeners
       const removeAgentBtn = document.getElementById(`remove-agent-${num.id}`);
       removeAgentBtn?.addEventListener('click', () => this.removeAgentFromNumber(num));
+
+      // Attach transfer button listeners (#115)
+      const transferBtn = document.getElementById(`transfer-${num.id}`);
+      transferBtn?.addEventListener('click', () => this.openTransferModal(num));
     });
+
+    // Show an Accept/Decline prompt if a number is being transferred TO this user.
+    this.checkIncomingNumberTransfers();
 
     // Attach edit button listeners
     document.querySelectorAll('.edit-number-btn').forEach(btn => {
@@ -295,7 +303,7 @@ export default class ManageNumbersPage {
     const warningText = document.getElementById('delete-modal-warning');
 
     if (numberDisplay) {
-      numberDisplay.textContent = this.formatPhoneNumber(number.phone_number);
+      numberDisplay.textContent = formatPhoneNumber(number.phone_number);
     }
 
     // Calculate days until deletion (30 days from purchase date)
@@ -437,7 +445,7 @@ export default class ManageNumbersPage {
           <div style="flex: 1; min-width: 0;">
             <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
               <span style="font-size: 1.125rem; font-weight: 600;">
-                ${this.formatPhoneNumber(number.phone_number)}
+                ${formatPhoneNumber(number.phone_number)}
               </span>
               <button class="edit-number-btn" data-number-id="${number.id}" style="
                 background: transparent;
@@ -475,12 +483,12 @@ export default class ManageNumbersPage {
             ` : ''}
             ${isUSRelay && relayForNumber ? `
               <div style="font-size: 0.75rem; color: var(--primary-color); margin-top: 0.25rem;">
-                Relay for: ${this.formatPhoneNumber(relayForNumber.phone_number)}
+                Relay for: ${formatPhoneNumber(relayForNumber.phone_number)}
               </div>
             ` : ''}
             ${isCanadian && usRelayNumber ? `
               <div style="font-size: 0.75rem; color: var(--primary-color); margin-top: 0.25rem;">
-                US Relay: ${this.formatPhoneNumber(usRelayNumber.phone_number)}
+                US Relay: ${formatPhoneNumber(usRelayNumber.phone_number)}
               </div>
             ` : ''}
           </div>
@@ -578,6 +586,13 @@ export default class ManageNumbersPage {
               year: 'numeric'
             })}
           </p>
+          <div style="display: flex; gap: 0.5rem;">
+          <button
+            id="transfer-${number.id}"
+            class="btn"
+            style="padding: 0.375rem 0.75rem; font-size: 0.75rem; background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer;"
+            title="Transfer this number to another account"
+          >Transfer</button>
           <button
             id="delete-${number.id}"
             class="btn"
@@ -599,9 +614,103 @@ export default class ManageNumbersPage {
             </svg>
             Delete
           </button>
+          </div>
         </div>
       </div>
     `;
+  }
+
+  async callTransferFn(fn, body) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error('Not authenticated');
+    const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${fn}`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.error || 'Request failed');
+    return data;
+  }
+
+  // Owner initiates a number transfer to another account (#115).
+  openTransferModal(number) {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:1000;padding:1rem;';
+    overlay.innerHTML = `
+      <div style="background:var(--bg-primary);border-radius:var(--radius-lg);padding:1.5rem;max-width:420px;width:100%;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);">
+        <h2 style="margin:0 0 0.5rem;font-size:1.1rem;">Transfer ${formatPhoneNumber(number.phone_number)}</h2>
+        <p style="margin:0 0 1rem;font-size:0.85rem;color:var(--text-secondary);">The recipient must confirm before the number moves. Its agent assignments are cleared on transfer, and your call/text history stays with you.</p>
+        <label class="form-label">Recipient's email</label>
+        <input type="email" id="num-transfer-email" class="form-input" placeholder="person@example.com" style="margin-bottom:0.5rem;" />
+        <p style="margin:0;font-size:0.75rem;color:var(--text-muted);">They must already have a Magpipe account with a verified phone number.</p>
+        <div style="display:flex;gap:0.75rem;justify-content:flex-end;margin-top:1.25rem;">
+          <button class="btn btn-secondary" id="num-transfer-cancel">Cancel</button>
+          <button class="btn btn-primary" id="num-transfer-send">Send request</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    overlay.querySelector('#num-transfer-cancel').addEventListener('click', close);
+    overlay.querySelector('#num-transfer-send').addEventListener('click', async () => {
+      const btn = overlay.querySelector('#num-transfer-send');
+      const email = overlay.querySelector('#num-transfer-email').value.trim();
+      if (!email) { showToast("Enter the recipient's email", 'error'); return; }
+      btn.disabled = true; btn.textContent = 'Sending…';
+      try {
+        await this.callTransferFn('number-transfer-initiate', { serviceNumberId: number.id, toEmail: email });
+        showToast('Transfer request sent — awaiting their confirmation', 'success');
+        close();
+      } catch (e) {
+        showToast(e.message || 'Failed to send request', 'error');
+        btn.disabled = false; btn.textContent = 'Send request';
+      }
+    });
+  }
+
+  // Recipient sees Accept/Decline for numbers being transferred to them.
+  async checkIncomingNumberTransfers() {
+    try {
+      if (!this.user?.id) return;
+      const { data: incoming } = await supabase
+        .from('number_transfers')
+        .select('id, phone_number')
+        .eq('to_user_id', this.user.id)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: true });
+      const container = document.getElementById('numbers-container');
+      if (!incoming || incoming.length === 0 || !container) return;
+      const banner = document.createElement('div');
+      banner.style.cssText = 'margin:0 0 1.25rem 0;display:flex;flex-direction:column;gap:0.5rem;';
+      // phone_number is E.164 (digits) — safe to interpolate.
+      banner.innerHTML = incoming.map(t => `
+        <div data-row="${t.id}" style="padding:0.75rem;border:1px solid var(--primary-color);border-radius:var(--radius-md);background:var(--bg-secondary);">
+          <div style="font-size:0.85rem;margin-bottom:0.5rem;">You've been offered the number <strong>${formatPhoneNumber(t.phone_number)}</strong>.</div>
+          <div style="display:flex;gap:0.5rem;">
+            <button class="btn btn-sm btn-primary" data-action="accept" data-id="${t.id}">Accept</button>
+            <button class="btn btn-sm btn-secondary" data-action="decline" data-id="${t.id}">Decline</button>
+          </div>
+        </div>`).join('');
+      container.insertAdjacentElement('afterbegin', banner);
+      banner.querySelectorAll('button[data-action]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const id = btn.dataset.id;
+          const action = btn.dataset.action;
+          banner.querySelector(`[data-row="${id}"]`)?.querySelectorAll('button').forEach(b => { b.disabled = true; });
+          try {
+            await this.callTransferFn('number-transfer-respond', { transferId: id, action });
+            showToast(action === 'accept' ? 'Number added to your account' : 'Transfer declined', 'success');
+            setTimeout(() => window.location.reload(), 800);
+          } catch (e) {
+            showToast(e.message || 'Failed', 'error');
+            banner.querySelector(`[data-row="${id}"]`)?.querySelectorAll('button').forEach(b => { b.disabled = false; });
+          }
+        });
+      });
+    } catch (e) {
+      console.error('checkIncomingNumberTransfers failed', e);
+    }
   }
 
   renderDeletionCard(number) {
@@ -620,7 +729,7 @@ export default class ManageNumbersPage {
         <!-- Header with phone number -->
         <div style="margin-bottom: 0.75rem;">
           <div style="font-size: 1.125rem; font-weight: 600; margin-bottom: 0.25rem; color: rgba(239, 68, 68, 0.8);">
-            ${this.formatPhoneNumber(number.phone_number)}
+            ${formatPhoneNumber(number.phone_number)}
           </div>
           ${number.agent?.name ? `
             <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 0.25rem;">
@@ -676,16 +785,6 @@ export default class ManageNumbersPage {
     `;
   }
 
-  formatPhoneNumber(phoneNumber) {
-    const cleaned = phoneNumber.replace(/\D/g, '');
-    const match = cleaned.match(/^1?(\d{3})(\d{3})(\d{4})$/);
-
-    if (match) {
-      return `+1 (${match[1]}) ${match[2]}-${match[3]}`;
-    }
-
-    return phoneNumber;
-  }
 
   async toggleNumber(numberId, newStatus) {
     try {
@@ -749,7 +848,7 @@ export default class ManageNumbersPage {
 
       if (error) throw error;
 
-      showToast(`Agent "${number.agent.name}" removed from ${this.formatPhoneNumber(number.phone_number)}`, 'success');
+      showToast(`Agent "${number.agent.name}" removed from ${formatPhoneNumber(number.phone_number)}`, 'success');
 
       // Reload numbers to reflect changes
       await this.loadNumbers();
@@ -814,7 +913,7 @@ export default class ManageNumbersPage {
         ">
           <div>
             <h3 style="margin: 0; font-size: 1rem;">Agent Assignment</h3>
-            <p style="margin: 0.25rem 0 0; font-size: 0.875rem; color: var(--text-secondary);">${this.formatPhoneNumber(number.phone_number)}</p>
+            <p style="margin: 0.25rem 0 0; font-size: 0.875rem; color: var(--text-secondary);">${formatPhoneNumber(number.phone_number)}</p>
           </div>
           <button id="close-agent-modal" style="
             background: transparent;
@@ -965,7 +1064,7 @@ export default class ManageNumbersPage {
         ">
           <h3 style="margin: 0 0 0.5rem; font-size: 1rem;">Detach Agent?</h3>
           <p style="margin: 0 0 1rem; color: var(--text-secondary); font-size: 0.875rem;">
-            Remove <strong>${agentName}</strong> from ${this.formatPhoneNumber(number.phone_number)}? The agent will no longer handle calls or messages on this number.
+            Remove <strong>${agentName}</strong> from ${formatPhoneNumber(number.phone_number)}? The agent will no longer handle calls or messages on this number.
           </p>
           <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
             <button id="cancel-detach" class="btn btn-secondary btn-sm">Cancel</button>
@@ -1109,7 +1208,7 @@ export default class ManageNumbersPage {
       .insert({
         user_id: session.user.id,
         name: 'AI Assistant',
-        voice_id: '11labs-21m00Tcm4TlvDq8ikWAM',
+        voice_id: '11labs-EXAVITQu4vr4xnSDxMaL',
         system_prompt: 'You are a helpful AI assistant answering calls for the user. Be friendly, professional, and helpful. Take messages and provide information as needed.',
         active_voice_stack: 'livekit',
         is_default: true,

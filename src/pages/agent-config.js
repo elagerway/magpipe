@@ -8,14 +8,13 @@ import { getCurrentUser, supabase } from '../lib/supabase.js';
 import { renderBottomNav } from '../components/BottomNav.js';
 import { User } from '../models/index.js';
 import { showToast } from '../lib/toast.js';
+import { escapeHtml } from '../lib/formatters.js';
 
 // ElevenLabs Voices with metadata
 const ELEVENLABS_VOICES = [
-  { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel', label: 'Rachel (Default)', accent: 'American', gender: 'Female', description: 'Calm' },
+  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Rachel', label: 'Sarah (Default)', accent: 'American', gender: 'Female', description: 'Calm' },
   { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam', label: 'Adam', accent: 'American', gender: 'Male', description: 'Deep' },
   { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah', label: 'Sarah', accent: 'American', gender: 'Female', description: 'Soft' },
-  { id: 'MF3mGyEYCl7XYWbV9V6O', name: 'Elli', label: 'Elli', accent: 'American', gender: 'Female', description: 'Youthful' },
-  { id: 'TxGEqnHWrfWFTfGW9XjX', name: 'Josh', label: 'Josh', accent: 'American', gender: 'Male', description: 'Strong' },
   { id: 'VR6AewLTigWG4xSOukaG', name: 'Arnold', label: 'Arnold', accent: 'American', gender: 'Male', description: 'Raspy' },
   { id: 'pFZP5JQG7iQjIQuC4Bku', name: 'Lily', label: 'Lily', accent: 'British', gender: 'Female', description: 'Warm' },
   { id: 'nPczCjzI2devNBz1zQrb', name: 'Brian', label: 'Brian', accent: 'American', gender: 'Male', description: 'Narration' },
@@ -129,9 +128,6 @@ export default class AgentConfigPage {
       .eq('is_cloned', true)
       .order('created_at', { ascending: false });
 
-    // Always using LiveKit - voice cloning is always available
-    const isLiveKitActive = true;
-
     const appElement = document.getElementById('app');
 
     appElement.innerHTML = `
@@ -229,7 +225,7 @@ export default class AgentConfigPage {
           <form id="config-form" style="margin-bottom: 0;">
             <div class="form-group">
               <label class="form-label" for="voice-id">Voice</label>
-              <input type="hidden" id="voice-id" value="${activeConfig?.voice_id || '21m00Tcm4TlvDq8ikWAM'}" />
+              <input type="hidden" id="voice-id" value="${activeConfig?.voice_id || 'EXAVITQu4vr4xnSDxMaL'}" />
               <div class="voice-selector-display" style="
                 flex: 1;
                 display: flex;
@@ -243,7 +239,7 @@ export default class AgentConfigPage {
                 transition: all 0.2s;
               " id="voice-selector-display">
                 <span id="selected-voice-display" style="font-weight: 500; pointer-events: none;">
-                  ${this.getVoiceDisplayName(activeConfig?.voice_id || '21m00Tcm4TlvDq8ikWAM', clonedVoices)}
+                  ${this.getVoiceDisplayName(activeConfig?.voice_id || 'EXAVITQu4vr4xnSDxMaL', clonedVoices)}
                 </span>
                 <button type="button" id="change-voice-btn" class="btn btn-sm" style="background: var(--primary-color); color: white; padding: 0.35rem 0.75rem; font-size: 0.875rem; pointer-events: none;">
                   Change Voice
@@ -253,7 +249,6 @@ export default class AgentConfigPage {
             </div>
 
             <!-- Voice Cloning Section - LiveKit supports custom voices! -->
-            ${isLiveKitActive ? `
             <div class="voice-clone-container" style="margin-bottom: 1.5rem;">
               <div id="voice-clone-toggle" style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; cursor: pointer;">
                 <div style="
@@ -377,7 +372,6 @@ export default class AgentConfigPage {
                 </div>
               </div>
             </div>
-            ` : ''}
 
             <div class="form-group">
               <label class="form-label" for="response-style">Response Style</label>
@@ -1198,7 +1192,7 @@ export default class AgentConfigPage {
               type="text"
               class="form-input template-name"
               placeholder="Template name"
-              value="${this.escapeHtml(template.name || '')}"
+              value="${escapeHtml(template.name || '')}"
               style="flex: 1; font-weight: 500;"
               data-index="${index}"
             />
@@ -1225,7 +1219,7 @@ export default class AgentConfigPage {
               type="text"
               class="form-input template-purpose"
               placeholder="Purpose (e.g., Follow up on inquiry)"
-              value="${this.escapeHtml(template.purpose || '')}"
+              value="${escapeHtml(template.purpose || '')}"
               style="flex: 1;"
               data-index="${index}"
             />
@@ -1235,7 +1229,7 @@ export default class AgentConfigPage {
               type="text"
               class="form-input template-goal"
               placeholder="Goal (e.g., Schedule appointment)"
-              value="${this.escapeHtml(template.goal || '')}"
+              value="${escapeHtml(template.goal || '')}"
               style="flex: 1;"
               data-index="${index}"
             />
@@ -1298,13 +1292,6 @@ export default class AgentConfigPage {
         this.debounceSaveTemplate(index);
       });
     });
-  }
-
-  escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
   }
 
   debounceSaveTemplate(index) {
@@ -1533,6 +1520,7 @@ export default class AgentConfigPage {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${session.access_token}`,
           },
+          body: JSON.stringify({ agent_id: this.agentId }),
         });
 
         if (avatarResponse.ok) {
@@ -1651,7 +1639,7 @@ Always sound approachable, keep things simple, and update the user with a quick 
               .insert({
                 user_id: session.user.id,
                 name: 'AI Assistant',
-                voice_id: '11labs-21m00Tcm4TlvDq8ikWAM',
+                voice_id: '11labs-EXAVITQu4vr4xnSDxMaL',
                 system_prompt: defaultPrompt,
                 active_voice_stack: 'livekit',
                 is_default: true,
@@ -1676,6 +1664,7 @@ Always sound approachable, keep things simple, and update the user with a quick 
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${session.access_token}`,
               },
+              body: JSON.stringify({ agent_id: existingConfig.id }),
             });
 
             if (!avatarResponse.ok) {

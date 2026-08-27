@@ -14,6 +14,9 @@ import {
   isSystemEmail,
   autoEnrichEmailContact,
   generateAiReply,
+  isBulkOrAutomated,
+  quarantineEmail,
+  hasRecentAiReplyToSender,
 } from '../_shared/gmail-helpers.ts'
 
 Deno.serve(async (req) => {
@@ -62,6 +65,35 @@ Deno.serve(async (req) => {
       .eq('is_active', true)
 
     if (configError || !emailConfigs?.length) {
+      // No per-agent config — check if this is the support inbox
+      const { data: supportConfig } = await supabase
+        .from('support_email_config')
+        .select('gmail_address')
+        .eq('id', '00000000-0000-0000-0000-000000000001')
+        .single()
+
+      if (supportConfig?.gmail_address?.toLowerCase() === emailAddress.toLowerCase()) {
+        // Trigger poll-gmail-tickets immediately for the support inbox
+        console.log('Push notification for support inbox — triggering poll-gmail-tickets')
+        const pollUrl = `${supabaseUrl}/functions/v1/poll-gmail-tickets`
+        try {
+          const pollRes = await fetch(pollUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${supabaseKey}`,
+            },
+            body: '{}',
+          })
+          const pollResult = await pollRes.json()
+          console.log('poll-gmail-tickets result:', JSON.stringify(pollResult))
+          return jsonResponse({ triggered: 'poll-gmail-tickets', result: pollResult })
+        } catch (err) {
+          console.error('Failed to trigger poll-gmail-tickets:', err)
+          return jsonResponse({ triggered: 'poll-gmail-tickets', error: String(err) })
+        }
+      }
+
       console.log(`No active config for ${emailAddress}:`, configError?.message || 'none found')
       return jsonResponse({ skipped: true, reason: 'no_config' })
     }
@@ -157,6 +189,20 @@ Deno.serve(async (req) => {
         // Skip system/automated emails
         if (isSystemEmail(parsed.from_email)) {
           console.log(`Skipping system email from: ${parsed.from_email}`)
+          continue
+        }
+
+        // Bulk/automated header filter — drops marketing, newsletters,
+        // welcome/verify mail. Audit row in quarantined_emails.
+        const bulkCheck = isBulkOrAutomated(msg.payload)
+        if (bulkCheck.isBulk) {
+          console.log(`[push] Quarantining ${parsed.gmail_message_id} (${bulkCheck.reason})`)
+          await quarantineEmail(supabase, {
+            userId: integration.user_id,
+            parsedMsg: parsed,
+            reason: bulkCheck.reason!,
+            reasonDetail: { matchedHeader: bulkCheck.matchedHeader, matchedValue: bulkCheck.matchedValue }
+          })
           continue
         }
 
@@ -292,6 +338,12 @@ Deno.serve(async (req) => {
             continue
           }
 
+          // Per-sender rate limit (24h) — backstop against reply storms.
+          if (await hasRecentAiReplyToSender(supabase, msg.from_email, 24)) {
+            console.log(`[push] rate-limited AI reply to ${msg.from_email}`)
+            continue
+          }
+
           await generateAiReply(supabase, accessToken, config, agent, sendFrom, msg)
         }
       }
@@ -373,6 +425,7 @@ async function mirrorToSupportTickets(supabase: any, supabaseUrl: string, access
       from_email: parsed.from_email,
       from_name: parsed.from_name,
       to_email: parsed.to_email,
+      cc_email: parsed.cc_email || null,
       subject: parsed.subject,
       body_text: parsed.body_text,
       body_html: parsed.body_html,

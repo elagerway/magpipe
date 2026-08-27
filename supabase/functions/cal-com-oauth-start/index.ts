@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { encodeBase64Url as base64UrlEncode } from 'jsr:@std/encoding@1/base64url';
 import { corsHeaders, handleCors } from '../_shared/cors.ts'
+import { API_URL } from '../_shared/config.ts'
 
 // Generate PKCE code verifier (43-128 chars, URL-safe)
 function generateCodeVerifier(): string {
@@ -85,14 +86,14 @@ Deno.serve(async (req) => {
     });
 
     // Build OAuth URL with PKCE
-    const redirectUri = `${supabaseUrl}/functions/v1/cal-com-oauth-callback`;
-    const scopes = ['READ_BOOKING', 'WRITE_BOOKING', 'READ_AVAILABILITY'].join(' ');
-
+    const redirectUri = `${API_URL}/functions/v1/cal-com-oauth-callback`;
     const oauthUrl = new URL('https://app.cal.com/auth/oauth2/authorize');
     oauthUrl.searchParams.set('client_id', clientId);
     oauthUrl.searchParams.set('redirect_uri', redirectUri);
     oauthUrl.searchParams.set('response_type', 'code');
-    oauthUrl.searchParams.set('scope', scopes);
+    oauthUrl.searchParams.append('scope', 'READ_BOOKING');
+    oauthUrl.searchParams.append('scope', 'WRITE_BOOKING');
+    oauthUrl.searchParams.append('scope', 'READ_AVAILABILITY');
     oauthUrl.searchParams.set('state', state);
     oauthUrl.searchParams.set('code_challenge', codeChallenge);
     oauthUrl.searchParams.set('code_challenge_method', 'S256');

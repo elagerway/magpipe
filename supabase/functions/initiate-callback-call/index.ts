@@ -2,6 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { resolveUser } from "../_shared/api-auth.ts";
 import { checkBalance } from "../_shared/balance-check.ts";
 import { corsHeaders, handleCors } from '../_shared/cors.ts'
+import { normalizeE164 } from '../_shared/phone-e164.ts'
 
 /**
  * Initiate Callback Call
@@ -121,7 +122,8 @@ Deno.serve(async (req) => {
         user_id: user.id,
         caller_number: destination_number,
         contact_phone: destination_number,
-        service_number: caller_id,
+        // Clean E.164 so call.completed webhook scoping matches api_key_numbers
+        service_number: normalizeE164(caller_id) || caller_id,
         direction: "outbound",
         disposition: "outbound_completed", // Optimistic default - updated by status callback if call fails
         status: "initiated",

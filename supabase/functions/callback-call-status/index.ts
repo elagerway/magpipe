@@ -105,7 +105,7 @@ Deno.serve(async (req) => {
     // Get the call record to know user_id for credit deduction
     const { data: callRecord } = await supabase
       .from("call_records")
-      .select("user_id")
+      .select("user_id, agent_id")
       .eq("id", callRecordId)
       .single();
 
@@ -174,11 +174,16 @@ async function deductCallCredits(
     // Get user's agent config to determine voice, LLM, and add-on rates
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { data: agentConfig } = await supabase
+    // Resolve THIS call's agent (users can own multiple agents in different
+    // languages, so a user-scoped .single() would error or pick the wrong one →
+    // mispriced voice/LLM + missed multilingual premium). Prefer the call's
+    // agent_id; fall back to the user's first agent.
+    const agentSel = supabase
       .from("agent_configs")
-      .select("voice_id, ai_model, memory_enabled, semantic_memory_enabled, knowledge_source_ids, pii_storage")
-      .eq("user_id", userId)
-      .single();
+      .select("voice_id, llm_model, language, memory_enabled, semantic_memory_enabled, knowledge_source_ids, pii_storage");
+    const { data: agentConfig } = callRecord?.agent_id
+      ? await agentSel.eq("id", callRecord.agent_id).maybeSingle()
+      : await agentSel.eq("user_id", userId).limit(1).maybeSingle();
 
     // Determine active add-ons
     const addons: string[] = [];
@@ -200,7 +205,8 @@ async function deductCallCredits(
         type: "voice",
         durationSeconds,
         voiceId: agentConfig?.voice_id,
-        aiModel: agentConfig?.ai_model,
+        aiModel: agentConfig?.llm_model,
+        agentLanguage: agentConfig?.language,
         addons: addons.length > 0 ? addons : undefined,
         referenceType: "call",
         referenceId: callRecordId,

@@ -20,7 +20,15 @@ export function getBlogStyles() {
       padding: 10rem 1.5rem 4rem;
       text-align: center;
       background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+      background-size: cover;
+      background-position: center;
       overflow: hidden;
+    }
+
+    .blog-hero-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.6);
     }
 
     .blog-hero::before {
@@ -33,6 +41,7 @@ export function getBlogStyles() {
 
     .blog-hero-content {
       position: relative;
+      z-index: 1;
       max-width: 700px;
       margin: 0 auto;
     }
@@ -287,9 +296,7 @@ export function getBlogStyles() {
 
     /* ── Single Post Article ── */
     .blog-back-bar {
-      max-width: 780px;
-      margin: 0 auto;
-      padding: 5rem 1.5rem 0;
+      padding: 0 0 1rem;
     }
 
     .blog-back-btn {
@@ -310,12 +317,39 @@ export function getBlogStyles() {
       color: #4f46e5;
     }
 
+    .blog-back-btn-hero {
+      background: none;
+      border: none;
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      padding: 0;
+      margin-bottom: 1.5rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      transition: color 0.15s;
+    }
+
+    .blog-back-btn-hero:hover {
+      color: white;
+    }
+
     .blog-article-header {
       position: relative;
       padding: 10rem 1.5rem 3rem;
       text-align: center;
       background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+      background-size: cover;
+      background-position: center;
       overflow: hidden;
+    }
+
+    .blog-article-header-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.6);
     }
 
     .blog-article-header::before {
@@ -327,6 +361,7 @@ export function getBlogStyles() {
 
     .blog-article-header-content {
       position: relative;
+      z-index: 1;
       max-width: 780px;
       margin: 0 auto;
     }
@@ -476,6 +511,27 @@ export function getBlogStyles() {
 
     .blog-article-content strong {
       font-weight: 700;
+      color: #0f172a;
+    }
+
+    .blog-share-bar {
+      padding: 1.5rem 0 0;
+      border-top: 1px solid #e2e8f0;
+      margin-top: 2rem;
+    }
+
+    .blog-share-x-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: #64748b;
+      font-size: 0.9rem;
+      font-weight: 500;
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+
+    .blog-share-x-link:hover {
       color: #0f172a;
     }
 

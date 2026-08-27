@@ -2,6 +2,7 @@ import { supabase } from '../../lib/supabase.js';
 import { showToast } from '../../lib/toast.js';
 import { showOutboundTemplateModal } from '../../components/OutboundTemplateModal.js';
 import { User } from '../../models/index.js';
+import { formatPhoneNumber } from '../../lib/formatters.js';
 
 // Lazy load SIP client
 export let sipClient = null;
@@ -279,7 +280,7 @@ export const callHandlerMethods = {
             <div style="display: flex; justify-content: space-between; align-items: center;">
               <div>
                 <div style="font-weight: 600; color: var(--text-primary);">
-                  ${this.formatPhoneNumber(item.phone)}
+                  ${formatPhoneNumber(item.phone)}
                 </div>
                 <div style="font-size: 0.75rem; color: var(--text-secondary);">
                   ${item.direction === 'outbound' ? '↗ Outbound' : '↙ Inbound'} • ${this.formatRelativeTime(item.date)}
@@ -303,20 +304,6 @@ export const callHandlerMethods = {
     } catch (error) {
       console.error('Failed to show recent numbers:', error);
     }
-  },
-
-  formatPhoneNumber(phone) {
-    // Format US phone numbers as (XXX) XXX-XXXX
-    if (!phone) return '';
-    const cleaned = phone.replace(/\D/g, '');
-    if (cleaned.length === 11 && cleaned[0] === '1') {
-      const number = cleaned.substring(1);
-      return `(${number.substring(0, 3)}) ${number.substring(3, 6)}-${number.substring(6)}`;
-    }
-    if (cleaned.length === 10) {
-      return `(${cleaned.substring(0, 3)}) ${cleaned.substring(3, 6)}-${cleaned.substring(6)}`;
-    }
-    return phone;
   },
 
   normalizePhoneForComparison(phone) {
@@ -1512,7 +1499,7 @@ export const callHandlerMethods = {
                   transition: all 0.15s ease;
                 ">
                   <span style="font-weight: 500; color: var(--text-primary);">${tn.label}</span>
-                  <span style="font-size: 0.875rem; color: var(--text-secondary);">${this.formatPhoneNumber(tn.phone_number)}</span>
+                  <span style="font-size: 0.875rem; color: var(--text-secondary);">${formatPhoneNumber(tn.phone_number)}</span>
                 </button>
               `).join('')}
             </div>

@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabase.js';
 import { renderPublicFooter, getPublicFooterStyles } from '../components/PublicFooter.js';
 import { renderPublicHeader, getPublicHeaderStyles } from '../components/PublicHeader.js';
 import { showToast } from '../lib/toast.js';
+import { REQUIRE_PHONE_VERIFICATION } from '../lib/feature-flags.js';
 
 export default class LoginPage {
   async render() {
@@ -491,11 +492,15 @@ export default class LoginPage {
 
         if (!profile) {
           await User.createProfile(user.id, email, user.user_metadata?.name || 'User');
-          navigateTo('/verify-phone');
+          if (REQUIRE_PHONE_VERIFICATION) {
+            navigateTo('/verify-phone');
+          } else {
+            navigateTo('/inbox');
+          }
         } else if (profile.must_change_password) {
           // Redirect to password change flow for invited users
           this.showPasswordChangeModal(user.id);
-        } else if (!profile.phone_verified) {
+        } else if (REQUIRE_PHONE_VERIFICATION && !profile.phone_verified) {
           navigateTo('/verify-phone');
         } else {
           navigateTo('/inbox');
@@ -622,7 +627,7 @@ export default class LoginPage {
 
         // Redirect to agent or verify phone
         const { profile } = await User.getProfile(userId);
-        if (!profile?.phone_verified) {
+        if (REQUIRE_PHONE_VERIFICATION && !profile?.phone_verified) {
           navigateTo('/verify-phone');
         } else {
           navigateTo('/inbox');

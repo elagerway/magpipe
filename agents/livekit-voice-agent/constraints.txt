@@ -1,0 +1,130 @@
+# Full resolved dependency set of the LiveKit voice agent, captured from the
+# running production workers (GET /health/freeze) on Python 3.12.7.
+# Both workers (magpipe + magpipe-multilingual) resolved identically.
+#
+# Applied by the build as:  pip install -r requirements.txt -c constraints.txt
+#
+# A constraints file pins a version *if* something pulls the package in; it never
+# installs anything by itself. That is exactly what's wanted here: requirements.txt
+# declares intent, this file removes the freedom transitive resolution had to
+# swap a major underneath us.
+#
+# This exists because pinning direct deps alone would NOT have prevented the
+# 2026-08-20 outage: `anthropic` arrived transitively through
+# livekit-plugins-anthropic (`anthropic>=0.41`, no upper bound) and wasn't listed
+# in requirements.txt at all. See CHANGELOG 2026-08-26 (#180).
+#
+# Regenerate after any intentional dependency bump — do not hand-edit:
+#   TOK=$(render env get AGENT_HEALTH_TOKEN)   # or Render dashboard -> Environment
+#   curl -s -H "x-health-token: $TOK" https://plug-bubs.onrender.com/health/freeze | python3 -c \
+#     "import json,sys;[print(f'{k}=={v}') for k,v in json.load(sys.stdin)['packages'].items()]"
+#
+# 107 packages.
+
+aiofiles==25.1.0
+aiohappyeyeballs==2.7.1
+aiohttp==3.14.3
+aiosignal==1.4.0
+annotated-doc==0.0.5
+annotated-types==0.8.0
+anthropic==0.125.0
+anyio==4.14.2
+attrs==26.1.0
+av==18.1.0
+bcrypt==5.0.0
+certifi==2026.7.22
+cffi==2.1.1
+charset-normalizer==3.5.1
+click==8.5.0
+colorama==0.4.6
+cryptography==50.0.1
+deprecation==2.1.0
+distro==1.9.0
+docstring_parser==0.18.0
+eval_type_backport==0.4.0
+filelock==3.32.4
+flatbuffers==25.12.19
+frozenlist==1.8.0
+fsspec==2026.7.0
+googleapis-common-protos==1.75.2
+grpcio==1.83.0
+h11==0.16.0
+h2==4.4.1
+hf-xet==1.6.0
+hpack==4.2.0
+httpcore==1.0.9
+httpx==0.28.1
+huggingface_hub==1.28.0
+hyperframe==6.1.0
+idna==3.19
+Jinja2==3.1.6
+jiter==0.16.0
+json_repair==0.60.1
+livekit==1.1.14
+livekit-agents==1.7.0
+livekit-api==1.2.0
+livekit-blingfire==1.1.0
+livekit-local-inference==0.2.7
+livekit-plugins-anthropic==1.7.0
+livekit-plugins-deepgram==1.7.0
+livekit-plugins-elevenlabs==1.7.0
+livekit-plugins-openai==1.7.0
+livekit-plugins-silero==1.7.0
+livekit-plugins-turn-detector==1.7.0
+livekit-protocol==1.1.25
+markdown-it-py==4.2.0
+MarkupSafe==3.0.3
+mdurl==0.1.2
+multidict==6.7.1
+nest-asyncio==1.6.0
+numpy==2.5.2
+onnxruntime==1.29.0
+openai==2.54.0
+opentelemetry-api==1.44.0
+opentelemetry-exporter-otlp==1.44.0
+opentelemetry-exporter-otlp-proto-common==1.44.0
+opentelemetry-exporter-otlp-proto-grpc==1.44.0
+opentelemetry-exporter-otlp-proto-http==1.44.0
+opentelemetry-proto==1.44.0
+opentelemetry-sdk==1.44.0
+opentelemetry-semantic-conventions==0.65b0
+packaging==26.3
+pillow==12.3.0
+pip==24.2
+postgrest==2.31.0
+prometheus_client==0.26.0
+propcache==0.5.2
+protobuf==7.36.0
+psutil==7.2.2
+pycparser==3.0
+pydantic==2.13.4
+pydantic_core==2.46.4
+Pygments==2.21.0
+PyJWT==2.13.0
+python-dotenv==1.2.3
+PyYAML==6.0.3
+realtime==2.31.0
+regex==2026.7.19
+requests==2.34.2
+rich==15.0.0
+safetensors==0.8.0
+sentry-sdk==2.68.1
+shellingham==1.5.4
+sniffio==1.3.1
+sounddevice==0.5.6
+storage3==2.31.0
+StrEnum==0.4.15
+supabase==2.31.0
+supabase-auth==2.31.0
+supabase-functions==2.31.0
+tokenizers==0.23.1
+tqdm==4.70.0
+transformers==5.16.1
+typer==0.27.1
+types-protobuf==7.35.1.20260826
+typing-inspection==0.4.4
+typing_extensions==4.16.0
+urllib3==2.7.0
+watchfiles==1.2.0
+websockets==15.0.1
+yarl==1.24.5

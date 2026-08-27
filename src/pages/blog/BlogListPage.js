@@ -48,7 +48,7 @@ export default class BlogListPage {
     // SEO
     const canonicalUrl = 'https://magpipe.ai/blog';
     injectSEO({
-      title: 'Magpipe Blog - AI Communication Insights',
+      title: 'Blog | Magpipe — Omni-channel AI Communications Platform',
       description: 'Explore insights on AI-powered voice, SMS, and email communication. Tips, guides, and industry analysis from the Magpipe team.',
       url: canonicalUrl,
       jsonLd: [
@@ -67,7 +67,7 @@ export default class BlogListPage {
       rssLink.rel = 'alternate';
       rssLink.type = 'application/rss+xml';
       rssLink.title = 'Magpipe Blog RSS Feed';
-      rssLink.href = 'https://magpipe.ai/functions/v1/blog-rss';
+      rssLink.href = 'https://api.magpipe.ai/functions/v1/blog-rss';
       document.head.appendChild(rssLink);
     }
 
@@ -98,12 +98,13 @@ export default class BlogListPage {
       <div class="blog-page">
         ${renderPublicHeader({ activePage: 'blog' })}
 
-        <section class="blog-hero">
+        <section class="blog-hero" id="blog-hero">
+          <div class="blog-hero-overlay"></div>
           <div class="blog-hero-content">
             <span class="blog-hero-badge">BLOG</span>
             <h1>Magpipe Blog</h1>
-            <p class="blog-hero-subtitle">Insights on AI-powered communication, automation strategies, and business growth.</p>
-            <a href="https://magpipe.ai/functions/v1/blog-rss" class="blog-rss-link" target="_blank" rel="noopener">
+            <p class="blog-hero-subtitle">Insights on AI-powered communication,<br>automation strategies, and business growth.</p>
+            <a href="https://api.magpipe.ai/functions/v1/blog-rss" class="blog-rss-link" target="_blank" rel="noopener">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6.18 15.64a2.18 2.18 0 0 1 2.18 2.18C8.36 19 7.38 20 6.18 20C5 20 4 19 4 17.82a2.18 2.18 0 0 1 2.18-2.18M4 4.44A15.56 15.56 0 0 1 19.56 20h-2.83A12.73 12.73 0 0 0 4 7.27V4.44m0 5.66a9.9 9.9 0 0 1 9.9 9.9h-2.83A7.07 7.07 0 0 0 4 12.93V10.1z"/></svg>
               RSS Feed
             </a>
@@ -130,6 +131,18 @@ export default class BlogListPage {
       </div>
       <style>${getBlogStyles()}</style>
     `;
+
+    // Set random featured image as hero background
+    const heroImages = this.posts
+      .map(p => p.featured_image_url)
+      .filter(Boolean);
+    if (heroImages.length > 0) {
+      const randomImg = heroImages[Math.floor(Math.random() * heroImages.length)];
+      const heroEl = document.getElementById('blog-hero');
+      if (heroEl) {
+        heroEl.style.backgroundImage = `url('${randomImg}')`;
+      }
+    }
   }
 
   renderFeaturedCard(post) {

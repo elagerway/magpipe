@@ -1,6 +1,6 @@
 import { SupabaseClient } from 'npm:@supabase/supabase-js@2'
 
-export async function generateEmbedding(text: string): Promise<number[] | null> {
+export async function generateEmbedding(text: string, model = 'text-embedding-ada-002'): Promise<number[] | null> {
   const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
   if (!openaiApiKey) {
     console.error('OPENAI_API_KEY not set')
@@ -15,7 +15,7 @@ export async function generateEmbedding(text: string): Promise<number[] | null> 
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'text-embedding-ada-002',
+        model,
         input: text.slice(0, 8000),
       }),
     })
@@ -47,7 +47,7 @@ export async function searchKnowledgeBase(
   }
 
   // Generate embedding for the query
-  const embedding = await generateEmbedding(query)
+  const embedding = await generateEmbedding(query, 'text-embedding-3-small')
   if (!embedding) {
     console.log('Could not generate embedding for KB search')
     return null
@@ -60,7 +60,7 @@ export async function searchKnowledgeBase(
       query_embedding: embedding,
       source_ids: knowledgeSourceIds,
       match_count: limit,
-      similarity_threshold: 0.5
+      similarity_threshold: 0.25
     })
 
     if (error) {

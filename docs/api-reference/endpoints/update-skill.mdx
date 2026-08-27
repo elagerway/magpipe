@@ -1,0 +1,78 @@
+---
+title: "Update Skill"
+api: "PATCH /manage-skills/{id}"
+description: "Update a skill's configuration, delivery channels, or enabled status"
+---
+
+Update an agent skill's configuration. You can change the config, enable/disable the skill, update delivery channels, or modify the schedule.
+
+## Path Parameters
+
+<ParamField path="id" type="string" required>
+  The agent skill ID (not the skill definition ID).
+</ParamField>
+
+## Request Body
+
+All fields are optional — only include the fields you want to update.
+
+<ParamField body="is_enabled" type="boolean">
+  Enable or disable the skill.
+</ParamField>
+
+<ParamField body="config" type="object">
+  Updated skill-specific configuration. Replaces the entire config object.
+</ParamField>
+
+<ParamField body="trigger_type" type="string">
+  Updated trigger type: `event` or `schedule`.
+</ParamField>
+
+<ParamField body="schedule_config" type="object">
+  Updated schedule settings.
+</ParamField>
+
+<ParamField body="delivery_channels" type="array">
+  Updated delivery channels.
+</ParamField>
+
+## Response
+
+<ResponseField name="agent_skill" type="object">
+  The updated agent skill object.
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl -X PATCH https://api.magpipe.ai/functions/v1/manage-skills/SKILL_ID \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "config": {
+      "keywords": ["AI voice agent", "conversational AI"],
+      "platforms": ["reddit", "hackernews", "x", "linkedin"]
+    },
+    "delivery_channels": [
+      { "channel": "slack", "channel_name": "#monitoring" }
+    ]
+  }'
+```
+</RequestExample>
+
+<ResponseExample>
+```json
+{
+  "agent_skill": {
+    "id": "7a99a0af-...",
+    "is_enabled": true,
+    "config": {
+      "keywords": ["AI voice agent", "conversational AI"],
+      "platforms": ["reddit", "hackernews", "x", "linkedin"]
+    },
+    "delivery_channels": [
+      { "channel": "slack", "channel_name": "#monitoring" }
+    ]
+  }
+}
+```
+</ResponseExample>

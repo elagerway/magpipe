@@ -80,13 +80,13 @@ Deno.serve(async (req) => {
         });
       }
 
-      // Normalize raw user input ("(555) 555-1234", "555-555-1234", etc.)
+      // Normalize raw user input ("(604) 562-8647", "604-562-8647", etc.)
       // into E.164. UI and API callers no longer need to hand-format.
       const normCaller = normalizeE164(caller_number);
       const normForward = normalizeE164(forward_to);
       if (!normCaller || !normForward) {
         const bad = !normCaller ? 'caller_number' : 'forward_to';
-        return new Response(JSON.stringify({ error: { code: 'invalid_param', message: `Invalid ${bad} — provide a number like (555) 555-1234 or +15555551234` } }), {
+        return new Response(JSON.stringify({ error: { code: 'invalid_param', message: `Invalid ${bad} — provide a number like (604) 562-8647 or +16045628647` } }), {
           status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
@@ -176,14 +176,14 @@ Deno.serve(async (req) => {
       let normForward: string | undefined
       if (caller_number !== undefined) {
         const n = normalizeE164(caller_number)
-        if (!n) return new Response(JSON.stringify({ error: { code: 'invalid_param', message: 'Invalid caller_number — provide a number like (555) 555-1234 or +15555551234' } }), {
+        if (!n) return new Response(JSON.stringify({ error: { code: 'invalid_param', message: 'Invalid caller_number — provide a number like (604) 562-8647 or +16045628647' } }), {
           status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })
         normCaller = n
       }
       if (forward_to !== undefined) {
         const n = normalizeE164(forward_to)
-        if (!n) return new Response(JSON.stringify({ error: { code: 'invalid_param', message: 'Invalid forward_to — provide a number like (555) 555-1234 or +15555551234' } }), {
+        if (!n) return new Response(JSON.stringify({ error: { code: 'invalid_param', message: 'Invalid forward_to — provide a number like (604) 562-8647 or +16045628647' } }), {
           status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })
         normForward = n

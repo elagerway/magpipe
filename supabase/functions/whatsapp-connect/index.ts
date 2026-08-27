@@ -25,26 +25,75 @@ function generatePin(): string {
   return String(n).padStart(6, '0')
 }
 
+/** Current Cloud API status of a number ('CONNECTED' once registered). */
+async function getNumberStatus(phoneNumberId: string, token: string): Promise<string | null> {
+  try {
+    const res = await fetch(`https://graph.facebook.com/v21.0/${phoneNumberId}?fields=status`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    })
+    const data = await res.json().catch(() => ({}))
+    return data.status || null
+  } catch {
+    return null
+  }
+}
+
+/** Deregister a number from the Cloud API — clears a stuck 2-step PIN so it can
+ *  be re-registered with one we control. */
+async function deregisterNumber(phoneNumberId: string, token: string): Promise<boolean> {
+  try {
+    const res = await fetch(`https://graph.facebook.com/v21.0/${phoneNumberId}/deregister`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+    })
+    const data = await res.json().catch(() => ({}))
+    return res.ok && data.success === true
+  } catch {
+    return false
+  }
+}
+
 /**
- * Register the number on the WhatsApp Cloud API. A number obtained via Embedded
- * Signup is NOT usable until registered (otherwise sends fail with 133010
- * "Account not registered"). We set a 2-step PIN we control so the number can
- * be re-registered later. Returns the PIN used and whether registration stuck.
+ * Register the number on the WhatsApp Cloud API, idempotently.
+ *
+ * A number from Embedded Signup is NOT usable until registered (sends otherwise
+ * fail with 133010 "Account not registered"). But re-registering a number that
+ * is ALREADY registered under a different 2-step PIN fails with 133005 ("PIN
+ * mismatch") — which is exactly what happens on reconnect: disconnect only drops
+ * our local row + stored PIN and never deregisters at Meta, so the number stays
+ * registered with a PIN we no longer hold. To make reconnect safe:
+ *   1. If Meta already reports the number CONNECTED, it's registered — skip
+ *      (avoids a spurious 133005 + failure alert).
+ *   2. Otherwise register with our PIN.
+ *   3. On 133005 (stuck with an old PIN), deregister then re-register with our
+ *      PIN so Meta's PIN matches what we store (keeps health-check auto-heal able
+ *      to re-register later).
  */
 async function registerNumber(phoneNumberId: string, token: string, pin: string): Promise<{ registered: boolean; error?: string; code?: number }> {
-  const res = await fetch(`https://graph.facebook.com/v21.0/${phoneNumberId}/register`, {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messaging_product: 'whatsapp', pin }),
-  })
-  const data = await res.json().catch(() => ({}))
-  if (res.ok && data.success) return { registered: true }
-  // Registering an already-registered number returns success on most paths; some
-  // return an "already registered" error — treat that as registered too.
-  const code = data.error?.code
-  const msg = String(data.error?.message || 'registration failed')
-  if (/already.*registered/i.test(msg)) return { registered: true }
-  return { registered: false, error: msg, code }
+  // 1. Already connected → already registered; nothing to do.
+  if ((await getNumberStatus(phoneNumberId, token)) === 'CONNECTED') return { registered: true }
+
+  const attempt = async () => {
+    const res = await fetch(`https://graph.facebook.com/v21.0/${phoneNumberId}/register`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messaging_product: 'whatsapp', pin }),
+    })
+    const data = await res.json().catch(() => ({}))
+    return { ok: res.ok && data.success === true, code: data.error?.code as number | undefined, msg: String(data.error?.message || 'registration failed') }
+  }
+
+  let r = await attempt()
+  if (r.ok || /already.*registered/i.test(r.msg)) return { registered: true }
+
+  // 3. Stuck under an old PIN we don't have → clear it and re-register with ours.
+  if (r.code === 133005) {
+    await deregisterNumber(phoneNumberId, token)
+    r = await attempt()
+    if (r.ok || /already.*registered/i.test(r.msg)) return { registered: true }
+  }
+
+  return { registered: false, error: r.msg, code: r.code }
 }
 
 Deno.serve(async (req) => {
@@ -204,9 +253,26 @@ Deno.serve(async (req) => {
   }
 
   // ── DELETE /whatsapp-connect — disconnect account ─────────────────────────
+  // Disconnect fully tears the number down: deregister it from Meta's Cloud API
+  // first (best-effort), then remove our local record. Without the deregister the
+  // number stays registered at Meta with a 2-step PIN we discard, which makes a
+  // later reconnect collide (133005 PIN mismatch).
   if (req.method === 'DELETE') {
     const accountId = url.searchParams.get('account_id')
     if (!accountId) return new Response(JSON.stringify({ error: 'account_id required' }), { status: 400, headers: corsHeaders })
+
+    const { data: acct } = await supabase
+      .from('whatsapp_accounts')
+      .select('phone_number_id, access_token')
+      .eq('id', accountId)
+      .eq('user_id', user.id)
+      .maybeSingle()
+
+    let deregistered: boolean | undefined
+    if (acct?.phone_number_id) {
+      deregistered = await deregisterNumber(acct.phone_number_id, acct.access_token || META_ACCESS_TOKEN)
+      if (!deregistered) console.warn('Disconnect: Meta deregister failed for', acct.phone_number_id, '(removing local record anyway)')
+    }
 
     const { error } = await supabase
       .from('whatsapp_accounts')
@@ -215,7 +281,7 @@ Deno.serve(async (req) => {
       .eq('user_id', user.id)
 
     if (error) return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: corsHeaders })
-    return new Response(JSON.stringify({ success: true }), { headers: corsHeaders })
+    return new Response(JSON.stringify({ success: true, deregistered }), { headers: corsHeaders })
   }
 
   return new Response('Method Not Allowed', { status: 405 })

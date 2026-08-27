@@ -3,7 +3,9 @@ import { markAsRead } from '../../components/BottomNav.js';
 import { markAllAsRead as markAllReadService } from '../../services/unreadService.js';
 import { showDeleteConfirmModal, showAlertModal } from '../../components/ConfirmModal.js';
 import { showToast } from '../../lib/toast.js';
-import { User, ChatSession } from '../../models/index.js';
+import { User, ChatSession, Contact } from '../../models/index.js';
+import { escapeHtml, formatPhoneNumber } from '../../lib/formatters.js';
+import { normalizeE164 } from '../../lib/phone-e164.js';
 
 export const listenersMethods = {
   async sendNewConversation() {
@@ -553,6 +555,21 @@ export const listenersMethods = {
     const threadElement = document.getElementById('message-thread');
     if (threadElement) {
       threadElement.addEventListener('click', (e) => {
+        // Pin/unpin from the thread header
+        const pinBtn = e.target.closest('.pin-toggle-btn');
+        if (pinBtn) {
+          e.preventDefault();
+          this.togglePinConversation(pinBtn.dataset.convKey);
+          return;
+        }
+        // Create a new contact pre-filled with this number
+        const addContactBtn = e.target.closest('.add-contact-btn');
+        if (addContactBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          this.showCreateContactModal(addContactBtn.dataset.phone);
+          return;
+        }
         if (e.target.classList.contains('message-phone-link')) {
           e.preventDefault();
           const phoneNumber = e.target.dataset.phone;
@@ -574,6 +591,13 @@ export const listenersMethods = {
         if (e.target.closest('.translate-all-link')) {
           e.preventDefault();
           this.translateAllMessages(e.target.closest('.translate-all-link'));
+        }
+        // Copy the full thread id to the clipboard
+        const threadIdEl = e.target.closest('.copy-thread-id');
+        if (threadIdEl) {
+          e.preventDefault();
+          const id = threadIdEl.dataset.threadId;
+          if (id) navigator.clipboard?.writeText(id).then(() => showToast('Thread ID copied')).catch(() => {});
         }
       });
     }
@@ -637,23 +661,37 @@ export const listenersMethods = {
     // Attach swipe handlers for mobile
     this.attachSwipeHandlers(conversationsEl);
 
-    // Infinite scroll: observe sentinel to load more conversations
-    if (this.scrollObserver) this.scrollObserver.disconnect();
-    const sentinel = conversationsEl.querySelector('.inbox-load-more-sentinel');
-    if (sentinel) {
-      this.scrollObserver = new IntersectionObserver((entries) => {
-        if (entries[0].isIntersecting) {
-          this.displayLimit += this.DISPLAY_PAGE_SIZE;
-          // Remove delegated flag so listeners get re-attached after re-render
-          delete conversationsEl.dataset.delegated;
-          conversationsEl.innerHTML = this.renderConversationList();
-          this.attachConversationListeners();
-        }
-      });
-      this.scrollObserver.observe(sentinel);
+    // Infinite scroll: load more when near bottom of conversation list
+    const loadMoreIfNeeded = () => {
+      const sentinel = conversationsEl.querySelector('.inbox-load-more-sentinel');
+      if (!sentinel) return;
+      const { scrollTop, scrollHeight, clientHeight } = conversationsEl;
+      if (scrollTop + clientHeight >= scrollHeight - 100) {
+        this.displayLimit += this.DISPLAY_PAGE_SIZE;
+        delete conversationsEl.dataset.delegated;
+        const scrollPos = conversationsEl.scrollTop;
+        conversationsEl.innerHTML = this.renderConversationList();
+        conversationsEl.scrollTop = scrollPos;
+        this.attachConversationListeners();
+      }
+    };
+    if (!conversationsEl.dataset.scrollBound) {
+      conversationsEl.dataset.scrollBound = 'true';
+      conversationsEl.addEventListener('scroll', loadMoreIfNeeded);
     }
+    // Auto-load if content doesn't fill the container (no scroll possible)
+    requestAnimationFrame(loadMoreIfNeeded);
 
     conversationsEl.addEventListener('click', async (e) => {
+      // Handle pin/unpin button click
+      const pinBtn = e.target.closest('.pin-toggle-btn');
+      if (pinBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        this.togglePinConversation(pinBtn.dataset.convKey);
+        return;
+      }
+
       // Handle delete button click
       const deleteBtn = e.target.closest('.swipe-delete-btn');
       if (deleteBtn) {
@@ -1012,6 +1050,36 @@ export const listenersMethods = {
     this.hiddenConversations = new Set(hidden);
   },
 
+  loadPinnedConversations() {
+    // Load pinned conversations from localStorage
+    const pinned = JSON.parse(localStorage.getItem('pinnedConversations') || '[]');
+    this.pinnedConversations = new Set(pinned);
+  },
+
+  togglePinConversation(convKey) {
+    // Toggle pin state and persist to localStorage
+    const nowPinned = !this.pinnedConversations.has(convKey);
+    if (nowPinned) {
+      this.pinnedConversations.add(convKey);
+    } else {
+      this.pinnedConversations.delete(convKey);
+    }
+    localStorage.setItem('pinnedConversations', JSON.stringify(Array.from(this.pinnedConversations)));
+
+    // Re-render conversation list so pinned items move to the top
+    const conversationsEl = document.getElementById('conversations');
+    if (conversationsEl) {
+      conversationsEl.innerHTML = this.renderConversationList();
+    }
+
+    // Refresh any pin buttons in the open message-thread header (right pane)
+    document.querySelectorAll('#message-thread .pin-toggle-btn').forEach(btn => {
+      if (btn.dataset.convKey === convKey) {
+        btn.outerHTML = this.renderPinButton(convKey, nowPinned, 18);
+      }
+    });
+  },
+
   unhideConversation(convKey) {
     // Remove from hidden set
     this.hiddenConversations.delete(convKey);
@@ -1189,6 +1257,92 @@ export const listenersMethods = {
         }
       });
     });
+
+    // Mark friendly — create a call_whitelist entry so future calls
+    // from this caller auto-forward to one of the user's saved
+    // forwarding numbers. Surfaced only on inbound call detail views.
+    const markFriendlyLinks = document.querySelectorAll('#message-thread .mark-friendly-link');
+    markFriendlyLinks.forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const phone = link.dataset.phone;
+        const agentId = link.dataset.agent;
+        const suggestedName = link.dataset.suggestedName || null;
+        if (phone && agentId) {
+          this.showMarkFriendlyModal({ phone, agentId, suggestedName });
+        }
+      });
+    });
+
+    // Mark as Spam — add the caller to the workspace-wide blocklist
+    // (blocked_callers). Future calls from the number get rejected with
+    // <Reject reason="busy"/>; SMS/WhatsApp are silently dropped. Optional
+    // opt-ins surface DNCL registration (calls only) and 7726 spam-forward
+    // (SMS only).
+    const markSpamLinks = document.querySelectorAll('#message-thread .mark-spam-link');
+    markSpamLinks.forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const phone = link.dataset.phone;
+        const serviceNumber = link.dataset.serviceNumber || null;
+        const channel = link.dataset.channel || 'sms';
+        if (phone) {
+          this.showMarkSpamModal({ phone, serviceNumber, channel });
+        }
+      });
+    });
+
+    // Undo spam — the caller is already on the blocklist (label shows
+    // "🚫 Spam · Undo"); remove them and flip the label back to "Mark spam".
+    const unmarkSpamLinks = document.querySelectorAll('#message-thread .unmark-spam-link');
+    unmarkSpamLinks.forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const phone = link.dataset.phone;
+        const blockedId = link.dataset.blockedId;
+        if (blockedId) this.unmarkSpam({ phone, blockedId });
+      });
+    });
+  },
+
+  // Remove a caller from the spam blocklist, update the in-memory map, and
+  // re-render the thread so the "🚫 Spam · Undo" label flips back to
+  // "🚫 Mark spam" immediately. Paired with showMarkSpamModal (#spam-label).
+  async unmarkSpam({ phone, blockedId }) {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { showToast('Session expired — please refresh', 'error'); return; }
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-blocked-callers?id=${encodeURIComponent(blockedId)}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      });
+      if (!res.ok && res.status !== 404) {
+        const j = await res.json().catch(() => ({}));
+        showToast(j.error?.message || 'Failed to unblock number', 'error');
+        return;
+      }
+      // 404 = already gone; treat as success (idempotent from user's POV).
+      const key = normalizeE164(phone) || phone;
+      if (this.blockedCallers) this.blockedCallers.delete(key);
+      this._rerenderThreadAfterSpamChange();
+      showToast('Removed from spam', 'success');
+    } catch (err) {
+      console.error('unmarkSpam error:', err);
+      showToast('Failed to unblock number', 'error');
+    }
+  },
+
+  // Re-render the open thread + re-wire its listeners so the spam pill reflects
+  // the updated this.blockedCallers without a full conversation reload.
+  _rerenderThreadAfterSpamChange() {
+    const threadElement = document.getElementById('message-thread');
+    if (threadElement) {
+      threadElement.innerHTML = this.renderMessageThread();
+      this.attachConversationListeners();
+    }
   },
 
   showAddContactModal(name, phone) {
@@ -1222,7 +1376,7 @@ export const listenersMethods = {
       ">
         <h3 style="margin: 0 0 0.75rem; font-size: 1rem; font-weight: 600;">Add to Contacts</h3>
         <p style="margin: 0 0 1.25rem; color: var(--text-secondary); font-size: 0.9rem;">
-          Add <strong>${name}</strong> as a contact for ${this.formatPhoneNumber(phone)}?
+          Add <strong>${name}</strong> as a contact for ${formatPhoneNumber(phone)}?
         </p>
         <div style="display: flex; gap: 0.75rem; justify-content: flex-end;">
           <button id="add-contact-no" style="
@@ -1267,6 +1421,146 @@ export const listenersMethods = {
     });
   },
 
+  // Full "create contact" form modal, pre-filled with a phone number.
+  // Opened from the "+" button beside an un-named number in a thread header.
+  showCreateContactModal(phone) {
+    const existing = document.getElementById('create-contact-modal-overlay');
+    if (existing) existing.remove();
+
+    const prefill = phone ? (normalizeE164(phone) || phone) : '';
+
+    const overlay = document.createElement('div');
+    overlay.id = 'create-contact-modal-overlay';
+    overlay.className = 'contact-modal-overlay';
+    overlay.style.display = 'flex';
+    overlay.innerHTML = `
+      <div class="contact-modal" onclick="event.stopPropagation()" style="max-width: 440px;">
+        <div class="contact-modal-header">
+          <h3>New Contact</h3>
+          <button class="close-modal-btn" id="create-contact-close">&times;</button>
+        </div>
+        <div class="contact-modal-body">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="new-contact-first-name">First Name</label>
+              <input type="text" id="new-contact-first-name" placeholder="John" autocomplete="off" />
+            </div>
+            <div class="form-group">
+              <label for="new-contact-last-name">Last Name</label>
+              <input type="text" id="new-contact-last-name" placeholder="Doe" autocomplete="off" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="new-contact-phone">Phone Number</label>
+            <input type="tel" id="new-contact-phone" placeholder="+14155551234" value="${prefill}" />
+          </div>
+          <div class="form-group">
+            <label for="new-contact-email">Email</label>
+            <input type="email" id="new-contact-email" placeholder="john.doe@example.com" autocomplete="off" />
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="new-contact-company">Company</label>
+              <input type="text" id="new-contact-company" placeholder="Acme Inc." autocomplete="off" />
+            </div>
+            <div class="form-group">
+              <label for="new-contact-job-title">Job Title</label>
+              <input type="text" id="new-contact-job-title" placeholder="Software Engineer" autocomplete="off" />
+            </div>
+          </div>
+        </div>
+        <div class="contact-modal-footer">
+          <button class="btn btn-secondary" id="create-contact-cancel">Cancel</button>
+          <button class="btn btn-primary" id="create-contact-save">Save Contact</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const close = () => overlay.remove();
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    document.getElementById('create-contact-close').addEventListener('click', close);
+    document.getElementById('create-contact-cancel').addEventListener('click', close);
+
+    // Focus the first field for quick entry
+    const firstNameInput = document.getElementById('new-contact-first-name');
+    firstNameInput?.focus();
+
+    const saveBtn = document.getElementById('create-contact-save');
+    const doSave = async () => {
+      const firstName = document.getElementById('new-contact-first-name').value.trim();
+      const lastName = document.getElementById('new-contact-last-name').value.trim();
+      const phoneVal = document.getElementById('new-contact-phone').value.trim();
+      const email = document.getElementById('new-contact-email').value.trim();
+      const company = document.getElementById('new-contact-company').value.trim();
+      const jobTitle = document.getElementById('new-contact-job-title').value.trim();
+
+      if (!firstName && !lastName) {
+        showToast('Enter a first or last name', 'error');
+        return;
+      }
+      if (!phoneVal) {
+        showToast('Enter a phone number', 'error');
+        return;
+      }
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving…';
+      try {
+        await this.createContactFromNumber({
+          first_name: firstName || null,
+          last_name: lastName || null,
+          phone_number: normalizeE164(phoneVal) || phoneVal,
+          email: email || null,
+          company: company || null,
+          job_title: jobTitle || null,
+        });
+        close();
+        showToast('Contact saved!', 'success');
+      } catch (err) {
+        console.error('Error creating contact:', err);
+        showToast(err.message || 'Failed to save contact', 'error');
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save Contact';
+      }
+    };
+
+    saveBtn.addEventListener('click', doSave);
+    // Enter key submits from any input
+    overlay.querySelectorAll('input').forEach(input => {
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); doSave(); }
+      });
+    });
+  },
+
+  async createContactFromNumber(contactData) {
+    const { contact, error } = await Contact.create(this.userId, contactData);
+    if (error) throw error;
+
+    // Update local caches so the thread + list reflect the new contact name
+    if (contact?.phone_number) {
+      this.contactsMap = this.contactsMap || {};
+      this.contactsMap[contact.phone_number] = contact;
+    }
+    if (contact?.email) {
+      this.contactsEmailMap = this.contactsEmailMap || {};
+      this.contactsEmailMap[contact.email.toLowerCase()] = contact;
+    }
+
+    // Re-render the open thread and the conversation list so the new name shows
+    const threadElement = document.getElementById('message-thread');
+    if (threadElement) {
+      threadElement.innerHTML = this.renderMessageThread();
+      this.attachRedialButtonListener();
+    }
+    const conversationsEl = document.getElementById('conversations');
+    if (conversationsEl) {
+      conversationsEl.innerHTML = this.renderConversationList();
+    }
+  },
+
   async saveContactName(name, phone) {
     try {
       // Check if contact exists
@@ -1309,6 +1603,422 @@ export const listenersMethods = {
     } catch (err) {
       console.error('Error saving contact:', err);
     }
+  },
+
+  /**
+   * Mark a caller as friendly — creates a call_whitelist entry that
+   * auto-forwards future calls from `phone` to one of the user's
+   * saved forwarding numbers, bypassing the AI agent. The modal flow:
+   *   1. Show the default forwarding number preselected.
+   *   2. Let the user pick another saved number from the dropdown.
+   *   3. Or pick "Enter a different number…" to type a new one
+   *      (server-side upserts it into the pick list automatically).
+   * @param {Object} opts
+   * @param {string} opts.phone     - caller's phone (E.164 or any format)
+   * @param {string} opts.agentId   - agent the inbound call came in on
+   * @param {string} [opts.suggestedName] - pre-fills the label field
+   */
+  async showMarkFriendlyModal({ phone, agentId, suggestedName }) {
+    const existing = document.getElementById('mark-friendly-modal-overlay');
+    if (existing) existing.remove();
+
+    // Fetch the user's saved forwarding numbers up front. If the call
+    // fails we still open the modal with an empty list — user can
+    // type a brand new number in the "Enter different" inline input.
+    let forwardingNumbers = [];
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-forwarding-numbers`, {
+          headers: { 'Authorization': `Bearer ${session.access_token}` },
+        });
+        const json = await res.json();
+        forwardingNumbers = json.numbers || [];
+      }
+    } catch (err) {
+      console.warn('Could not load forwarding numbers; user can still enter one inline:', err);
+    }
+
+    const defaultNumber = forwardingNumbers.find(n => n.is_default);
+    const callerDisplay = formatPhoneNumber(phone) || phone;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'mark-friendly-modal-overlay';
+    overlay.className = 'contact-modal-overlay';
+    overlay.style.display = 'flex';
+    // Backdrop click closes the modal — but NOT while a save is in
+    // flight. Otherwise the user can lose the form mid-POST and have
+    // no way to retry on error.
+    let isSaving = false;
+    overlay.addEventListener('click', (e) => {
+      if (isSaving) return;
+      if (e.target === overlay) overlay.remove();
+    });
+
+    overlay.innerHTML = `
+      <div class="contact-modal" onclick="event.stopPropagation()" style="max-width: 480px;">
+        <div class="contact-modal-header">
+          <h3>Mark ${escapeHtml(callerDisplay)} friendly</h3>
+          <button class="close-modal-btn" id="mf-close-btn">&times;</button>
+        </div>
+        <div class="contact-modal-body">
+          <p style="font-size: 0.85rem; color: var(--text-secondary); margin: 0 0 1rem 0; line-height: 1.4;">
+            Future calls from <strong>${escapeHtml(callerDisplay)}</strong> will be auto-forwarded — bypassing the AI agent entirely. The call is still recorded and logged.
+          </p>
+          <div class="form-group">
+            <label class="form-label">Label <span style="color: var(--text-secondary); font-weight: normal;">(optional)</span></label>
+            <input type="text" id="mf-label" class="form-input" placeholder="e.g. Kyler's son" value="${suggestedName ? escapeHtml(suggestedName) : ''}" maxlength="100">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Forward to <span style="color: var(--danger);">*</span></label>
+            <select id="mf-forward-select" class="form-select">
+              ${forwardingNumbers.length
+                ? forwardingNumbers.map(n => `
+                    <option value="${n.id}" ${n.id === defaultNumber?.id ? 'selected' : ''}>
+                      ${escapeHtml(formatPhoneNumber(n.number) || n.number)}${n.label ? ' — ' + escapeHtml(n.label) : ''}${n.is_default ? ' (default)' : ''}
+                    </option>
+                  `).join('') + `<option value="__new__">Enter a different number…</option>`
+                : `<option value="__new__" selected>Enter a different number…</option>`
+              }
+            </select>
+            <input type="tel" id="mf-forward-new" class="form-input" placeholder="(604) 555-1234" style="display: ${forwardingNumbers.length ? 'none' : ''}; margin-top: 0.5rem;">
+            <span class="form-hint" id="mf-forward-hint">${forwardingNumbers.length ? 'New numbers are saved to your pick list automatically.' : 'No saved forwarding numbers yet — this one will be saved as your default.'}</span>
+          </div>
+        </div>
+        <div class="contact-modal-footer">
+          <button type="button" class="btn btn-secondary" id="mf-cancel-btn">Cancel</button>
+          <button type="button" class="btn btn-primary" id="mf-save-btn">Mark friendly</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const close = () => overlay.remove();
+    overlay.querySelector('#mf-close-btn').addEventListener('click', close);
+    overlay.querySelector('#mf-cancel-btn').addEventListener('click', close);
+
+    const select = overlay.querySelector('#mf-forward-select');
+    const newInput = overlay.querySelector('#mf-forward-new');
+    select.addEventListener('change', () => {
+      const isNew = select.value === '__new__';
+      newInput.style.display = isNew ? '' : 'none';
+      if (isNew) setTimeout(() => newInput.focus(), 50);
+    });
+
+    newInput.addEventListener('blur', () => {
+      if (!newInput.value.trim()) return;
+      const normalized = normalizeE164(newInput.value);
+      const hint = overlay.querySelector('#mf-forward-hint');
+      if (normalized) {
+        newInput.value = formatPhoneNumber(normalized) || normalized;
+        newInput._normalized = normalized;
+        if (hint) { hint.textContent = `Saved as ${normalized} — added to your pick list.`; hint.style.color = 'var(--text-secondary)'; }
+      } else {
+        newInput._normalized = null;
+        if (hint) { hint.textContent = `Doesn't look like a valid phone number — try (604) 555-1234.`; hint.style.color = 'var(--danger)'; }
+      }
+    });
+
+    overlay.querySelector('#mf-save-btn').addEventListener('click', async () => {
+      let forwardTo;
+      if (select.value === '__new__') {
+        forwardTo = newInput._normalized || normalizeE164(newInput.value);
+        if (!forwardTo) {
+          showToast('Enter a valid forward-to phone number, e.g. (604) 555-1234', 'error');
+          newInput.focus();
+          return;
+        }
+      } else {
+        const picked = forwardingNumbers.find(n => n.id === select.value);
+        if (!picked) {
+          showToast('Pick a forward-to number', 'error');
+          return;
+        }
+        forwardTo = picked.number;
+      }
+
+      const label = overlay.querySelector('#mf-label').value.trim() || null;
+      const saveBtn = overlay.querySelector('#mf-save-btn');
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving…';
+      isSaving = true;
+
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) { showToast('Session expired — please refresh', 'error'); return; }
+        const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-call-whitelist`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agent_id: agentId, caller_number: phone, forward_to: forwardTo, label }),
+        });
+        const json = await res.json();
+        if (!res.ok) {
+          // Already-whitelisted case → friendlier toast than the raw "duplicate" error.
+          if (json.error?.code === 'duplicate') {
+            showToast(`${callerDisplay} is already on the whitelist for this agent`, 'info');
+            close();
+            return;
+          }
+          showToast(json.error?.message || 'Failed to mark friendly', 'error');
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'Mark friendly';
+          isSaving = false;
+          return;
+        }
+        showToast(`${callerDisplay} marked friendly — future calls will auto-forward`, 'success');
+        close();
+      } catch (err) {
+        console.error('showMarkFriendlyModal error:', err);
+        showToast('Failed to mark friendly', 'error');
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Mark friendly';
+        isSaving = false;
+      }
+    });
+  },
+
+  /**
+   * Mark a caller as spam — add the number to the workspace-wide
+   * blocked_callers list so future calls return <Reject reason="busy"/>
+   * and future SMS / WhatsApp drop silently before reaching any agent.
+   *
+   * Two optional escalations are offered inline:
+   *   - DNCL (call threads only, only if the service number isn't already
+   *     registered): fire register-dncl which places an automated IVR call
+   *     to 1-866-580-3625 from the service number to add it to Canada's
+   *     National Do Not Call List. Default-checked: it's a one-time
+   *     toggle per service number and there's no downside.
+   *   - 7726 (SMS threads only): forward a short spam report from the
+   *     user's service number to the universal "SPAM" short code, which
+   *     feeds carrier-level spam blocking. Default-checked.
+   *
+   * @param {Object} opts
+   * @param {string} opts.phone          - caller/sender phone (any format)
+   * @param {string} [opts.serviceNumber] - the user's number that received this thread
+   * @param {string} opts.channel        - 'call' | 'sms' | 'whatsapp'
+   */
+  async showMarkSpamModal({ phone, serviceNumber, channel }) {
+    const existing = document.getElementById('mark-spam-modal-overlay');
+    if (existing) existing.remove();
+
+    const callerDisplay = formatPhoneNumber(phone) || phone;
+    const isCall = channel === 'call';
+    const isSms = channel === 'sms';
+
+    // For call threads, decide whether to surface the DNCL opt-in. Hide
+    // it if registration is already 'completed' OR currently 'pending'
+    // (an IVR call is in flight) — offering it during either state would
+    // result in a no-op idempotent return from register-dncl and a
+    // misleading "DNCL registration started" toast (review finding
+    // merged_bug_003). Failure to fetch falls back to "show it" so a
+    // transient DB hiccup doesn't gate the user out of the action.
+    let showDnclOptIn = false;
+    if (isCall && serviceNumber) {
+      try {
+        const { data } = await supabase
+          .from('service_numbers')
+          .select('dncl_registration_status, dncl_registered_at')
+          .eq('phone_number', serviceNumber)
+          .maybeSingle();
+        if (
+          !data ||
+          (!data.dncl_registered_at
+            && data.dncl_registration_status !== 'completed'
+            && data.dncl_registration_status !== 'pending')
+        ) {
+          showDnclOptIn = true;
+        }
+      } catch (err) {
+        console.warn('mark-spam DNCL lookup non-fatal; offering the opt-in by default:', err);
+        showDnclOptIn = true;
+      }
+    }
+
+    const overlay = document.createElement('div');
+    overlay.id = 'mark-spam-modal-overlay';
+    overlay.className = 'contact-modal-overlay';
+    overlay.style.display = 'flex';
+
+    let isSaving = false;
+    overlay.addEventListener('click', (e) => {
+      if (isSaving) return;
+      if (e.target === overlay) overlay.remove();
+    });
+
+    overlay.innerHTML = `
+      <div class="contact-modal" onclick="event.stopPropagation()" style="max-width: 480px;">
+        <div class="contact-modal-header">
+          <h3>Mark ${escapeHtml(callerDisplay)} as spam</h3>
+          <button class="close-modal-btn" id="ms-close-btn">&times;</button>
+        </div>
+        <div class="contact-modal-body">
+          <p style="font-size: 0.85rem; color: var(--text-secondary); margin: 0 0 1rem 0; line-height: 1.4;">
+            Future calls from <strong>${escapeHtml(callerDisplay)}</strong> return a busy signal. SMS &amp; WhatsApp from this number are silently dropped. Existing thread history is left alone.
+          </p>
+          <div class="form-group">
+            <label class="form-label">Label <span style="color: var(--text-secondary); font-weight: normal;">(optional)</span></label>
+            <input type="text" id="ms-label" class="form-input" placeholder="e.g. solar panel scam" maxlength="200">
+          </div>
+          ${showDnclOptIn ? `
+            <div class="form-group" style="background: var(--bg-secondary, #f9fafb); padding: 0.75rem; border-radius: 6px; margin-top: 0.75rem;">
+              <label style="display: flex; gap: 0.5rem; align-items: flex-start; cursor: pointer; font-size: 0.85rem;">
+                <input type="checkbox" id="ms-dncl-optin" checked style="margin-top: 0.15rem;">
+                <span>
+                  <strong>Also register ${escapeHtml(formatPhoneNumber(serviceNumber) || serviceNumber)} on Canada's Do Not Call List.</strong><br>
+                  <span style="color: var(--text-secondary); font-size: 0.8rem;">
+                    Places an automated call to the CRTC DNCL line from your service number. One-time, ~2 minutes.
+                  </span>
+                </span>
+              </label>
+            </div>
+          ` : ''}
+          ${isSms ? `
+            <div class="form-group" style="background: var(--bg-secondary, #f9fafb); padding: 0.75rem; border-radius: 6px; margin-top: 0.75rem;">
+              <label style="display: flex; gap: 0.5rem; align-items: flex-start; cursor: pointer; font-size: 0.85rem;">
+                <input type="checkbox" id="ms-7726-optin" checked style="margin-top: 0.15rem;">
+                <span>
+                  <strong>Also report this number to your carrier (SMS to 7726 "SPAM").</strong><br>
+                  <span style="color: var(--text-secondary); font-size: 0.8rem;">
+                    Forwards a short spam report from your number to the universal carrier short code. Feeds network-level blocking.
+                  </span>
+                </span>
+              </label>
+            </div>
+          ` : ''}
+        </div>
+        <div class="contact-modal-footer">
+          <button type="button" class="btn btn-secondary" id="ms-cancel-btn">Cancel</button>
+          <button type="button" class="btn btn-primary" id="ms-save-btn" style="background: #dc2626; border-color: #dc2626;">Mark as spam</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const close = () => overlay.remove();
+    overlay.querySelector('#ms-close-btn').addEventListener('click', () => { if (!isSaving) close(); });
+    overlay.querySelector('#ms-cancel-btn').addEventListener('click', () => { if (!isSaving) close(); });
+
+    overlay.querySelector('#ms-save-btn').addEventListener('click', async () => {
+      const label = overlay.querySelector('#ms-label').value.trim() || null;
+      const dnclChecked = showDnclOptIn && overlay.querySelector('#ms-dncl-optin')?.checked;
+      const carrierChecked = isSms && overlay.querySelector('#ms-7726-optin')?.checked;
+      const saveBtn = overlay.querySelector('#ms-save-btn');
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Blocking…';
+      isSaving = true;
+
+      // Restore the form to interactive state so the user can retry or
+      // edit the inputs. Used by every early-return error path below.
+      const resetSaveState = () => {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Mark as spam';
+        isSaving = false;
+      };
+
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          showToast('Session expired — please refresh', 'error');
+          resetSaveState();
+          return;
+        }
+
+        // 1) Block the caller (mandatory). normalizeE164 client-side is
+        //    cheap; the server re-normalizes too.
+        const normalized = normalizeE164(phone) || phone;
+        const blockRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-blocked-callers`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ caller_number: normalized, label, source: 'inbox_mark_spam' }),
+        });
+        const blockJson = await blockRes.json().catch(() => ({}));
+        if (!blockRes.ok) {
+          showToast(blockJson.error?.message || 'Failed to block number', 'error');
+          resetSaveState();
+          return;
+        }
+
+        // Track which escalations actually fired so the success toast
+        // doesn't oversell. Each is best-effort: failure here never undoes
+        // the block.
+        let dnclFired = false;
+        let carrierFired = false;
+
+        // 2) Optional: kick off the DNCL registration. We need the
+        //    service_number_id, which we look up by phone_number (RLS
+        //    scopes the row to the current user, so a stray serviceNumber
+        //    from a different account quietly no-ops here).
+        if (dnclChecked && serviceNumber) {
+          try {
+            const { data: sn } = await supabase
+              .from('service_numbers')
+              .select('id')
+              .eq('phone_number', serviceNumber)
+              .maybeSingle();
+            if (sn?.id) {
+              const dnclRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/register-dncl`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ service_number_id: sn.id }),
+              });
+              // register-dncl returns 202 ONLY when a fresh SignalWire
+              // call was actually placed. Status 200 is used for the
+              // idempotent fast-paths (already completed, already
+              // pending, atomic-claim loser) where no new IVR call
+              // fires — claiming "registration started" in that case
+              // would lie to the user (review finding merged_bug_003).
+              if (dnclRes.status === 202) dnclFired = true;
+            }
+          } catch (err) {
+            console.warn('DNCL kickoff failed (block already succeeded):', err);
+          }
+        }
+
+        // 3) Optional: forward a spam report to 7726. Body keeps the
+        //    originating number on a separate line so carrier-side
+        //    parsers can extract it.
+        if (carrierChecked && serviceNumber) {
+          try {
+            const smsRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-user-sms`, {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                serviceNumber,
+                contactPhone: '7726',
+                message: `Reporting spam from: ${normalized}`,
+              }),
+            });
+            if (smsRes.ok) carrierFired = true;
+          } catch (err) {
+            console.warn('7726 forward failed (block already succeeded):', err);
+          }
+        }
+
+        // Compose a friendly outcome message based on what actually
+        // succeeded (not just what the user opted into).
+        const extras = [];
+        if (dnclFired) extras.push('DNCL registration started');
+        if (carrierFired) extras.push('reported to 7726');
+        const suffix = extras.length ? ` — ${extras.join(', ')}` : '';
+
+        // Reflect the new block in the in-memory map and flip the thread's spam
+        // pill to "🚫 Spam · Undo" immediately (no full reload). (#spam-label)
+        const newId = blockJson.entry?.id;
+        if (newId) {
+          const key = normalizeE164(normalized) || normalized;
+          this.blockedCallers?.set(key, { id: newId, label });
+          this._rerenderThreadAfterSpamChange();
+        }
+
+        const verb = blockJson.already_blocked ? 'already blocked' : 'blocked';
+        showToast(`${callerDisplay} ${verb}${suffix}`, 'success');
+        close();
+      } catch (err) {
+        console.error('showMarkSpamModal error:', err);
+        showToast('Failed to mark as spam', 'error');
+        resetSaveState();
+      }
+    });
   },
 
   attachMessageInputListeners() {
@@ -1515,7 +2225,7 @@ export const listenersMethods = {
 
         return `
           <div class="message-bubble ${isVisitor ? 'inbound' : 'outbound'} ${isAI ? 'ai-message' : ''} ${isHuman ? 'human-message' : ''}" data-message-id="${msg.id}">
-            <div class="message-content">${this.escapeHtml(msg.content)}</div>
+            <div class="message-content">${escapeHtml(msg.content)}</div>
             <div class="message-time">
               ${this.formatTime(timestamp)}
             </div>
@@ -1529,12 +2239,6 @@ export const listenersMethods = {
       console.error('Error loading chat messages:', err);
       container.innerHTML = `<div style="text-align: center; padding: 2rem; color: var(--text-secondary);">Error loading messages</div>`;
     }
-  },
-
-  escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
   },
 
   async sendChatMessage() {
@@ -1659,18 +2363,25 @@ export const listenersMethods = {
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
+      console.log('Session:', session ? 'valid' : 'NULL');
+      if (!session) throw new Error('No active session');
 
       // Get the service number from the current conversation
       // Use the most recent message's service number (the one they last texted)
       const conv = this.conversations.find(c => (c.type === 'sms' || c.type === 'whatsapp') && c.phone === this.selectedContact && c.serviceNumber === this.selectedServiceNumber);
+      console.log('Conv found:', !!conv, 'type:', conv?.type, 'selectedContact:', this.selectedContact, 'selectedServiceNumber:', this.selectedServiceNumber);
       if (!conv || !conv.messages || conv.messages.length === 0) {
         await showAlertModal('Error', 'No conversation found.');
         return;
       }
 
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      console.log('Conv type:', conv.type, 'supabaseUrl:', supabaseUrl);
+
       // WhatsApp conversations use a different send endpoint
       if (conv.type === 'whatsapp') {
-        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-whatsapp-message`, {
+        console.log('Sending WhatsApp message to', conv.phone, 'via phone_number_id', conv.serviceNumber);
+        const response = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp-message`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1711,8 +2422,6 @@ export const listenersMethods = {
       }
 
       // Send via API
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-
       const response = await fetch(`${supabaseUrl}/functions/v1/send-user-sms`, {
         method: 'POST',
         headers: {

@@ -53,7 +53,7 @@ Deno.serve(async (req) => {
     // Get user profile
     const { data: profile, error: profileError } = await supabase
       .from('users')
-      .select('id, email, name, plan, stripe_customer_id')
+      .select('id, email, name, plan, stripe_customer_id, current_organization_id')
       .eq('id', user.id)
       .single()
 
@@ -64,21 +64,25 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Check if user is an organization member - only owners can manage billing
-    const { data: memberships } = await supabase
-      .from('organization_members')
-      .select('role')
-      .eq('user_id', user.id)
-      .eq('status', 'approved')
+    // Only the owner of the user's CURRENT organization can manage billing.
+    // Scope to current_organization_id: every user now owns a solo org, so the
+    // old "has an owner membership anywhere" check would let a team's non-owner
+    // pass simply because they also own their throwaway solo org.
+    if (profile.current_organization_id) {
+      const { data: membership } = await supabase
+        .from('organization_members')
+        .select('role')
+        .eq('user_id', user.id)
+        .eq('organization_id', profile.current_organization_id)
+        .eq('status', 'approved')
+        .maybeSingle()
 
-    const hasNonOwnerMembership = memberships?.some(m => m.role !== 'owner')
-    const hasOwnerMembership = memberships?.some(m => m.role === 'owner')
-
-    if (hasNonOwnerMembership && !hasOwnerMembership) {
-      return new Response(JSON.stringify({ error: 'Only organization owners can manage billing' }), {
-        status: 403,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
+      if (membership && membership.role !== 'owner') {
+        return new Response(JSON.stringify({ error: 'Only organization owners can manage billing' }), {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        })
+      }
     }
 
     // Check if already on pro

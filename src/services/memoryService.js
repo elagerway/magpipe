@@ -32,6 +32,7 @@ export async function getAgentMemories(agentId) {
         direction,
         service_number,
         contact_phone,
+        created_at,
         contacts (
           id,
           name,
@@ -68,6 +69,7 @@ export async function getAgentMemories(agentId) {
       direction: entry.direction,
       serviceNumber: entry.service_number,
       contactPhone: entry.contact_phone,
+      createdAt: entry.created_at,
       hasEmbedding: embeddingIds.has(entry.id),
     }));
 

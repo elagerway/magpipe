@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { setupGmailWatch } from '../_shared/gmail-helpers.ts';
+import { API_URL } from '../_shared/config.ts';
 
 // Environment variable mapping for provider credentials
 const PROVIDER_CREDENTIALS: Record<string, { clientIdEnv: string; clientSecretEnv: string }> = {
@@ -109,7 +110,7 @@ Deno.serve(async (req) => {
     }
 
     // Build token request
-    const redirectUri = `${Deno.env.get('SUPABASE_URL')}/functions/v1/integration-oauth-callback`;
+    const redirectUri = `${API_URL}/functions/v1/integration-oauth-callback`;
 
     const tokenParams: Record<string, string> = {
       grant_type: 'authorization_code',
@@ -142,12 +143,20 @@ Deno.serve(async (req) => {
 
     const tokens = await tokenResponse.json();
 
-    // Calculate token expiration
-    const expiresAt = new Date(Date.now() + (tokens.expires_in || 3600) * 1000);
+    // Calculate token expiration — only when the provider actually returns one.
+    // Slack with token rotation OFF returns a non-expiring access token and NO
+    // refresh_token; the old `|| 3600` default stamped a bogus 1-hour expiry, so
+    // after an hour send-notification-slack saw "expired", tried to refresh with
+    // no refresh_token, failed, and silently stopped delivering. A null expiry
+    // means "don't expire / don't try to refresh — use the token as-is".
+    const expiresAt = tokens.expires_in
+      ? new Date(Date.now() + tokens.expires_in * 1000)
+      : null;
 
     // Extract external user/workspace ID based on provider
     let externalUserId = null;
     let externalWorkspaceId = null;
+    let hubspotMeta: { hub_domain?: string; user_email?: string } | null = null;
 
     if (provider === 'slack') {
       // Slack returns team info and authed_user in token response
@@ -157,7 +166,7 @@ Deno.serve(async (req) => {
       // HubSpot returns hub_id in the token response
       externalWorkspaceId = tokens.hub_id?.toString() || null;
 
-      // Fetch user info to get user ID
+      // Fetch user info to get user ID, portal name, and email
       if (tokens.access_token) {
         try {
           const userInfoResponse = await fetch('https://api.hubapi.com/oauth/v1/access-tokens/' + tokens.access_token);
@@ -165,6 +174,7 @@ Deno.serve(async (req) => {
             const userInfo = await userInfoResponse.json();
             externalUserId = userInfo.user_id?.toString() || null;
             externalWorkspaceId = userInfo.hub_id?.toString() || externalWorkspaceId;
+            hubspotMeta = { hub_domain: userInfo.hub_domain, user_email: userInfo.user };
           }
         } catch (e) {
           console.error('Failed to fetch HubSpot user info:', e);
@@ -220,10 +230,14 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Build config object (store gmail_address for easy access from frontend)
+    // Build config object (store provider-specific info for frontend display)
     const integrationConfig: Record<string, unknown> = {};
     if (provider === 'google_email' && externalUserId) {
       integrationConfig.gmail_address = externalUserId; // externalUserId is the email address for Google
+    }
+    if (provider === 'hubspot' && hubspotMeta) {
+      if (hubspotMeta.hub_domain) integrationConfig.hub_domain = hubspotMeta.hub_domain;
+      if (hubspotMeta.user_email) integrationConfig.user_email = hubspotMeta.user_email;
     }
 
     // Store tokens in user_integrations table
@@ -235,7 +249,7 @@ Deno.serve(async (req) => {
         status: 'connected',
         access_token: tokens.access_token,
         refresh_token: tokens.refresh_token || null,
-        token_expires_at: expiresAt.toISOString(),
+        token_expires_at: expiresAt ? expiresAt.toISOString() : null,
         external_user_id: externalUserId,
         external_workspace_id: externalWorkspaceId,
         config: integrationConfig,
@@ -250,15 +264,12 @@ Deno.serve(async (req) => {
       return Response.redirect(`${frontendUrl}/settings?integration_error=storage_failed`);
     }
 
-    // Success - redirect based on provider / custom redirect path
+    // Success - redirect back to where the user started
     if (redirect_path) {
       const separator = redirect_path.includes('?') ? '&' : '?';
       return Response.redirect(`${frontendUrl}${redirect_path}${separator}integration_connected=${provider}`);
     }
-    if (provider === 'google_email') {
-      return Response.redirect(`${frontendUrl}/admin?tab=support&integration_connected=google_email`);
-    }
-    return Response.redirect(`${frontendUrl}/settings?integration_connected=${provider}`);
+    return Response.redirect(`${frontendUrl}/apps?integration_connected=${provider}`);
 
   } catch (error) {
     console.error('Error in integration-oauth-callback:', error);

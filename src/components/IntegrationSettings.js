@@ -7,6 +7,7 @@
 import { supabase } from '../lib/supabase.js';
 import { createIntegrationCard, addIntegrationCardStyles } from './IntegrationCard.js';
 import { showToast } from '../lib/toast.js';
+import { USE_COMPOSIO_FOR_GMAIL } from '../lib/feature-flags.js';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -52,7 +53,7 @@ export async function createIntegrationSettings(containerId) {
         .order('name'),
       supabase
         .from('user_integrations')
-        .select('provider_id, status')
+        .select('provider_id, status, config')
         .eq('user_id', session.user.id)
         .eq('status', 'connected'),
       // Also check legacy Cal.com connection in users table
@@ -76,14 +77,26 @@ export async function createIntegrationSettings(containerId) {
     const connected = [];
     const available = [];
 
+    // Map provider_id → its existing connection (so we can read config.composio_managed)
+    const connectionByProviderId = new Map(connections.map(c => [c.provider_id, c]));
+
     for (const provider of providers) {
       const isConnected = connectedProviderIds.has(provider.id) ||
         (provider.slug === 'cal_com' && hasLegacyCalCom);
 
+      // Tag the integration if it's routed through (or stored by) Composio,
+      // so the card can render "Managed via Composio" disclaimer.
+      const existingConnection = connectionByProviderId.get(provider.id);
+      const isComposioConnection = existingConnection?.config?.composio_managed === true;
+      const willRouteThroughComposio = !isConnected && provider.slug === 'google_email' && USE_COMPOSIO_FOR_GMAIL;
+      const partner = isComposioConnection || willRouteThroughComposio ? 'Composio' : null;
+
+      const enriched = partner ? { ...provider, partner } : provider;
+
       if (isConnected) {
-        connected.push(provider);
+        connected.push(enriched);
       } else {
-        available.push(provider);
+        available.push(enriched);
       }
     }
 
@@ -143,15 +156,21 @@ function renderIntegrations(container, connected, available, accessToken) {
   // Create callbacks
   const handleConnect = async (slug) => {
     try {
-      // Start OAuth flow
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/integration-oauth-start`, {
+      // Gmail is routed through Composio when the flag is on (see feature-flags.js).
+      // Composio-managed connections live in the same user_integrations table but
+      // skip our own Google OAuth client entirely.
+      const isComposioRoute = slug === 'google_email' && USE_COMPOSIO_FOR_GMAIL;
+      const endpoint = isComposioRoute ? 'composio-connect' : 'integration-oauth-start';
+      const requestBody = isComposioRoute ? { toolkit: 'gmail' } : { provider: slug };
+
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/${endpoint}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${accessToken}`,
           'apikey': SUPABASE_ANON_KEY,
         },
-        body: JSON.stringify({ provider: slug }),
+        body: JSON.stringify(requestBody),
       });
 
       const result = await response.json();
@@ -193,7 +212,10 @@ function renderIntegrations(container, connected, available, accessToken) {
           throw new Error('Disconnect failed');
         }
       } else {
-        // Generic disconnect - delete from user_integrations
+        // Generic disconnect — find the user's integration row first so we
+        // can route Composio-managed rows through composio-disconnect (which
+        // also revokes the OAuth grant on Composio's side, preventing an
+        // orphan token in their vault).
         const { data: { session } } = await supabase.auth.getSession();
         const { data: provider } = await supabase
           .from('integration_providers')
@@ -202,11 +224,34 @@ function renderIntegrations(container, connected, available, accessToken) {
           .single();
 
         if (provider) {
-          await supabase
+          const { data: row } = await supabase
             .from('user_integrations')
-            .delete()
+            .select('id, config')
             .eq('user_id', session.user.id)
-            .eq('provider_id', provider.id);
+            .eq('provider_id', provider.id)
+            .maybeSingle();
+
+          if (row?.config?.composio_managed && row.id) {
+            const res = await fetch(`${SUPABASE_URL}/functions/v1/composio-disconnect`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session.access_token}`,
+                'apikey': SUPABASE_ANON_KEY,
+              },
+              body: JSON.stringify({ integration_id: row.id }),
+            });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}));
+              throw new Error(err.error || 'Composio disconnect failed');
+            }
+          } else {
+            await supabase
+              .from('user_integrations')
+              .delete()
+              .eq('user_id', session.user.id)
+              .eq('provider_id', provider.id);
+          }
         }
       }
 

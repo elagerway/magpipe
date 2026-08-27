@@ -1,0 +1,48 @@
+---
+title: "List Test Suites"
+api: "GET /test-cases"
+description: "List all test suites in your account"
+---
+
+Returns all test suites, each with a count of its test cases.
+
+## Query Parameters
+
+<ParamField query="action" type="string" required>
+  Must be `list_suites`
+</ParamField>
+
+## Response
+
+<ResponseField name="suites" type="array">
+  <Expandable title="Suite object">
+    <ResponseField name="id" type="string">Unique identifier (UUID)</ResponseField>
+    <ResponseField name="name" type="string">Display name</ResponseField>
+    <ResponseField name="description" type="string">Optional description</ResponseField>
+    <ResponseField name="created_at" type="string">ISO 8601 creation timestamp</ResponseField>
+    <ResponseField name="test_cases" type="array">Array with a single `{ "count": N }` object</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl "https://api.magpipe.ai/functions/v1/test-cases?action=list_suites" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+</RequestExample>
+
+<ResponseExample>
+```json
+{
+  "suites": [
+    {
+      "id": "a1b2c3d4-1234-5678-9abc-def012345678",
+      "name": "Reception Agent — Core Flows",
+      "description": "Tests greeting, booking, and transfer flows",
+      "created_at": "2024-01-15T10:00:00.000Z",
+      "test_cases": [{ "count": 5 }]
+    }
+  ]
+}
+```
+</ResponseExample>

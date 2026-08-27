@@ -81,15 +81,20 @@ Deno.serve(async (req) => {
       return xmlResponse(scriptedCxml(script))
     }
 
+    // Silent legs hold the line for the case's max_duration_seconds (default 45)
+    // so tests of agent-initiated hangups (e.g. the idle watchdog) aren't cut
+    // short by the caller side hanging up first.
+    const silentSeconds = Number(tc?.max_duration_seconds) > 0 ? Number(tc.max_duration_seconds) : 45
+
     if (callerMode === 'agent') {
       // Future: route to caller agent via LiveKit SIP.
       // For now fall through to silent — agent mode requires separate SIP dispatch.
       console.warn(`test-caller-swml: agent mode not yet implemented, using silent`)
-      return xmlResponse(silentCxml())
+      return xmlResponse(silentCxml(silentSeconds))
     }
 
     // Default: silent
-    return xmlResponse(silentCxml())
+    return xmlResponse(silentCxml(silentSeconds))
   } catch (e: any) {
     console.error('test-caller-swml error:', e)
     return xmlResponse(silentCxml())

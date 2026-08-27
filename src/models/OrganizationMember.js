@@ -51,7 +51,7 @@ export class OrganizationMember {
    * @param {string} orgId - Organization UUID
    * @param {string} email - Invitee's email
    * @param {string} fullName - Invitee's name
-   * @param {string} role - Role (editor, support)
+   * @param {string} role - Role (admin, editor, support)
    * @param {string} invitedBy - UUID of user sending invite
    * @returns {Promise<{member: Object|null, error: Error|null}>}
    */

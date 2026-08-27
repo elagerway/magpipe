@@ -4,7 +4,7 @@ api: "POST /list-messages"
 description: "List SMS messages with filtering and pagination"
 ---
 
-Retrieve a paginated list of messages for your account. Supports filtering by thread, direction, and date range.
+Retrieve a paginated list of messages for your account. Supports filtering by direction, phone number, and date range.
 
 ## Request Body
 
@@ -14,10 +14,6 @@ Retrieve a paginated list of messages for your account. Supports filtering by th
 
 <ParamField body="offset" type="integer" default={0}>
   Number of messages to skip for pagination.
-</ParamField>
-
-<ParamField body="thread_id" type="string">
-  Filter by specific conversation thread.
 </ParamField>
 
 <ParamField body="direction" type="string">
@@ -39,7 +35,7 @@ Retrieve a paginated list of messages for your account. Supports filtering by th
 ## Response
 
 <ResponseField name="messages" type="array">
-  Array of message objects.
+  Array of message objects. Each carries a `thread_id` (stable conversation id — same for every message between a contact and service number), a `media` array (attachments with 24h-signed `url`, `mime_type`, `kind`, `caption`; empty when none), and a `delivery_error` object (`code`, `reason`, `at`) when `status` is `failed` or `undelivered`, otherwise `null`. See [Get Message](/api-reference/endpoints/get-message) for the full per-message shape.
 </ResponseField>
 
 <ResponseField name="total" type="integer">
@@ -107,25 +103,46 @@ print(f"Found {data['total']} messages")
   "messages": [
     {
       "id": "8e4f9a00-c3d4-6e5f-1a2b-890123cdef01",
-      "thread_id": "9f5a0b11-d4e5-7f6a-2b3c-901234def012",
+      "thread_id": "a17b4735-15d2-5274-9460-74f8554172cb",
       "from_number": "+16045551234",
       "to_number": "+14155551234",
       "body": "Your appointment is confirmed for tomorrow at 2pm.",
       "direction": "outbound",
       "status": "delivered",
       "is_ai_generated": false,
-      "created_at": "2024-01-15T10:30:00Z"
+      "created_at": "2024-01-15T10:30:00Z",
+      "media": [],
+      "delivery_error": null
     },
     {
       "id": "7d3e8b00-b2c3-5d4e-0a1b-789012bcde01",
-      "thread_id": "9f5a0b11-d4e5-7f6a-2b3c-901234def012",
+      "thread_id": "a17b4735-15d2-5274-9460-74f8554172cb",
       "from_number": "+14155551234",
       "to_number": "+16045551234",
       "body": "Thank you! I'll be there.",
       "direction": "inbound",
       "status": "delivered",
       "is_ai_generated": false,
-      "created_at": "2024-01-15T10:35:00Z"
+      "created_at": "2024-01-15T10:35:00Z",
+      "media": [],
+      "delivery_error": null
+    },
+    {
+      "id": "6c2d7a00-a1b2-4c3d-9f0a-678901abcd01",
+      "thread_id": "f0e1d2c3-b4a5-5968-8776-554433221100",
+      "from_number": "+16045551234",
+      "to_number": "+14155550000",
+      "body": "Reminder: your invoice is due.",
+      "direction": "outbound",
+      "status": "undelivered",
+      "is_ai_generated": false,
+      "created_at": "2024-01-15T10:40:00Z",
+      "media": [],
+      "delivery_error": {
+        "code": "30003",
+        "reason": "Unreachable destination handset",
+        "at": "2024-01-15T10:40:05Z"
+      }
     }
   ],
   "total": 42,

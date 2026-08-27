@@ -6,8 +6,13 @@ import {
   sendGmailReplyComposio,
   isBulkOrAutomated,
   quarantineEmail,
-  hasRecentAiReplyToSender
+  hasRecentAiReplyToSender,
+  extractImagePartsWithCid,
+  downloadAndUploadAttachmentsComposio,
+  rewriteCidReferences,
+  fetchMessageByIdComposio
 } from '../_shared/gmail-helpers.ts'
+import { reportError } from '../_shared/error-reporter.ts'
 
 // Public webhook (no JWT). Composio POSTs here when a Gmail trigger fires.
 // We HMAC-verify the request, look up our user_integrations row by the
@@ -118,6 +123,17 @@ Deno.serve(async (req) => {
 
   if (!integration) {
     console.error(`Composio webhook: no user_integrations row for connection_id=${connectionId}`)
+    // A trigger firing for a connection we can't map usually means the local
+    // user_integrations row was disconnected/deleted while Composio's trigger
+    // stayed live (or vice-versa) — surface it so the drift is visible.
+    await reportError(supabase, {
+      error_type: 'composio_trigger_error',
+      error_message: `Composio trigger fired but no connected user_integrations row for connection_id=${connectionId}`,
+      error_code: 'composio-trigger-webhook:no-integration',
+      source: 'composio',
+      severity: 'warning',
+      metadata: { connection_id: connectionId },
+    })
     // Return 200 so Composio doesn't retry forever for an unmapped connection
     return new Response('ok (no matching integration)', { status: 200 })
   }
@@ -216,6 +232,26 @@ Deno.serve(async (req) => {
     return new Response('ok (quarantined)', { status: 200 })
   }
 
+  // 7b. Inline images / attachments — re-host via Composio so screenshots render
+  // in admin (cid: refs don't resolve in a browser). The trigger envelope's
+  // payload can be partial, so fall back to fetching the full message by id.
+  let attachments: any[] = []
+  try {
+    let imgParts = extractImagePartsWithCid(gmailMsg.payload)
+    if (imgParts.length === 0) {
+      const full = await fetchMessageByIdComposio(integration.user_id, gmailMessageId)
+      if (full?.payload) imgParts = extractImagePartsWithCid(full.payload)
+    }
+    if (imgParts.length > 0) {
+      attachments = await downloadAndUploadAttachmentsComposio(
+        integration.user_id, gmailMessageId, parsed.thread_id || gmailMessageId, imgParts, supabase
+      )
+      if (attachments.length > 0) parsed.body_html = rewriteCidReferences(parsed.body_html, attachments)
+    }
+  } catch (e) {
+    console.error('Composio webhook: attachment handling failed (non-fatal):', e)
+  }
+
   // 8. Insert into the right table
   let sentiment: string | null = null
   try { sentiment = await analyzeSentiment(parsed.body_text || parsed.subject || '') } catch { /* non-fatal */ }
@@ -227,12 +263,14 @@ Deno.serve(async (req) => {
       from_email: parsed.from_email,
       from_name: parsed.from_name,
       to_email: parsed.to_email,
+      cc_email: parsed.cc_email || null,
       subject: parsed.subject,
       body_text: parsed.body_text,
       body_html: parsed.body_html,
       direction: parsed.direction,
       status: 'open',
-      received_at: parsed.received_at
+      received_at: parsed.received_at,
+      ...(attachments.length ? { attachments } : {})
     })
     // Cross-write so the user-facing /inbox view picks it up too
     await supabase.from('email_messages').insert({
@@ -243,6 +281,7 @@ Deno.serve(async (req) => {
       from_email: parsed.from_email,
       from_name: parsed.from_name,
       to_email: parsed.to_email,
+      cc: parsed.cc_email || null,
       subject: parsed.subject,
       body_text: parsed.body_text,
       body_html: parsed.body_html,
@@ -250,7 +289,8 @@ Deno.serve(async (req) => {
       status: 'delivered',
       is_read: false,
       sentiment,
-      sent_at: parsed.received_at
+      sent_at: parsed.received_at,
+      ...(attachments.length ? { attachments } : {})
     })
   } else {
     await supabase.from('email_messages').insert({
@@ -261,6 +301,7 @@ Deno.serve(async (req) => {
       from_email: parsed.from_email,
       from_name: parsed.from_name,
       to_email: parsed.to_email,
+      cc: parsed.cc_email || null,
       subject: parsed.subject,
       body_text: parsed.body_text,
       body_html: parsed.body_html,
@@ -301,6 +342,7 @@ function parseGmailMessage(msg: any, gmailAddress: string, sendAsEmail?: string)
 
     const from = getHeader('From')
     const to = getHeader('To')
+    const cc = getHeader('Cc')
     const subject = getHeader('Subject')
     const date = getHeader('Date')
     const messageIdHeader = getHeader('Message-ID') || getHeader('Message-Id')
@@ -336,6 +378,7 @@ function parseGmailMessage(msg: any, gmailAddress: string, sendAsEmail?: string)
       from_email: isOutbound && sendAsEmail ? sendAsEmail : fromEmail,
       from_name: fromName,
       to_email: normalizeEmail(to),
+      cc_email: cc ? normalizeEmail(cc) : '',
       subject,
       body_text: text,
       body_html: html,

@@ -5,12 +5,16 @@ import { showToast } from '../../lib/toast.js';
 
 export const functionsTabMethods = {
   renderFunctionsTab() {
+    const isVoice = ['inbound_voice', 'outbound_voice'].includes(this.agent.agent_type);
+    const isText = this.agent.agent_type === 'text';
+
     return `
       <div class="config-section">
         <h3>Built-in Functions</h3>
         <p class="section-desc">Enable capabilities for your agent.</p>
 
         <div class="function-toggles">
+          ${isVoice || isText ? `
           <div class="function-toggle sms-toggle-container" style="padding: 0; cursor: default;">
             <label style="display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem; cursor: pointer; flex: 1;">
               <input type="checkbox" id="func-sms" ${this.agent.functions?.sms?.enabled ? 'checked' : ''} style="margin-top: 0.2rem;" />
@@ -21,7 +25,9 @@ export const functionsTabMethods = {
             </label>
             <button id="configure-sms-btn" type="button" class="configure-btn">Configure</button>
           </div>
+          ` : ''}
 
+          ${isVoice ? `
           <div class="function-toggle transfer-toggle-container" style="padding: 0; cursor: default;">
             <label style="display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem; cursor: pointer; flex: 1;">
               <input type="checkbox" id="func-transfer" ${this.agent.functions?.transfer?.enabled ? 'checked' : ''} style="margin-top: 0.2rem;" />
@@ -32,6 +38,7 @@ export const functionsTabMethods = {
             </label>
             <button id="configure-transfer-btn" type="button" class="configure-btn">Configure</button>
           </div>
+          ` : ''}
 
           <div class="function-toggle booking-toggle-container" style="padding: 0; cursor: default;">
             <label style="display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem; cursor: pointer; flex: 1;">
@@ -55,6 +62,7 @@ export const functionsTabMethods = {
             <button id="configure-extract-btn" type="button" class="configure-btn">Configure</button>
           </div>
 
+          ${isVoice ? `
           <div class="function-toggle end-call-toggle-container" style="padding: 0; cursor: default;">
             <label style="display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem; cursor: pointer; flex: 1;">
               <input type="checkbox" id="func-end-call" ${this.agent.functions?.end_call?.enabled !== false ? 'checked' : ''} style="margin-top: 0.2rem;" />
@@ -65,6 +73,7 @@ export const functionsTabMethods = {
             </label>
             <button id="configure-end-call-btn" type="button" class="configure-btn">Configure</button>
           </div>
+          ` : ''}
 
           <div class="function-toggle semantic-match-toggle-container" style="padding: 0; cursor: default;">
             <label style="display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem; cursor: pointer; flex: 1;">
@@ -113,91 +122,6 @@ export const functionsTabMethods = {
     `;
   },
 
-  renderAppFunctionsSection() {
-    // App icons by slug
-    const appIcons = {
-      slack: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M14.5 2a2.5 2.5 0 0 0 0 5H17V4.5A2.5 2.5 0 0 0 14.5 2z" fill="#E01E5A"/><path d="M2 14.5a2.5 2.5 0 0 0 5 0V12H4.5A2.5 2.5 0 0 0 2 14.5z" fill="#36C5F0"/><path d="M9.5 22a2.5 2.5 0 0 0 0-5H7v2.5A2.5 2.5 0 0 0 9.5 22z" fill="#2EB67D"/><path d="M22 9.5a2.5 2.5 0 0 0-5 0V12h2.5A2.5 2.5 0 0 0 22 9.5z" fill="#ECB22E"/><path d="M9.5 2A2.5 2.5 0 0 0 7 4.5V7h2.5a2.5 2.5 0 0 0 0-5z" fill="#36C5F0"/><path d="M2 9.5A2.5 2.5 0 0 0 4.5 12H7V9.5a2.5 2.5 0 0 0-5 0z" fill="#E01E5A"/><path d="M14.5 22a2.5 2.5 0 0 0 2.5-2.5V17h-2.5a2.5 2.5 0 0 0 0 5z" fill="#ECB22E"/><path d="M22 14.5a2.5 2.5 0 0 0-2.5-2.5H17v2.5a2.5 2.5 0 0 0 5 0z" fill="#2EB67D"/></svg>`,
-      hubspot: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M17.5 8.2V5.8c.8-.4 1.3-1.2 1.3-2.1C18.8 2.2 17.6 1 16.1 1S13.4 2.2 13.4 3.7c0 .9.5 1.7 1.3 2.1v2.4c-1.1.2-2.1.7-2.9 1.4L5.6 5.1c.1-.2.1-.5.1-.7 0-1.2-1-2.2-2.2-2.2S1.3 3.2 1.3 4.4s1 2.2 2.2 2.2c.4 0 .8-.1 1.2-.3l6.1 4.5c-.7 1-1.1 2.2-1.1 3.5 0 1.2.4 2.4 1 3.3l-1.8 1.8c-.2-.1-.5-.1-.7-.1-1.2 0-2.2 1-2.2 2.2s1 2.2 2.2 2.2 2.2-1 2.2-2.2c0-.3 0-.5-.1-.7l1.8-1.8c1 .7 2.3 1.2 3.6 1.2 3.5 0 6.3-2.8 6.3-6.3 0-3.1-2.2-5.7-5.1-6.3h-.4zM16 18.5c-2.5 0-4.5-2-4.5-4.5s2-4.5 4.5-4.5 4.5 2 4.5 4.5-2 4.5-4.5 4.5z" fill="#FF7A59"/></svg>`,
-    };
-
-    // Only show apps that support push notifications
-    const notifiableApps = this.connectedApps.filter(a => ['slack', 'hubspot'].includes(a.slug));
-
-    if (notifiableApps.length === 0) {
-      return `
-        <div class="config-section">
-          <h3>Dynamic Data Flow</h3>
-          <p class="section-desc">Control which apps receive data from your Functions.</p>
-          <div class="placeholder-message">
-            <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
-            </svg>
-            <span>Connect apps in the <a href="#" onclick="navigateTo('/apps'); return false;">Apps</a> page to configure notifications</span>
-          </div>
-        </div>
-      `;
-    }
-
-    const hasTranslateTo = !!this.agent.translate_to;
-
-    const appCards = notifiableApps.map(app => {
-      const prefs = this.agent.functions?.app_functions?.[app.slug] || {};
-      const enabled = prefs.enabled !== false; // default ON
-      const sms = prefs.sms !== false;
-      const calls = prefs.calls !== false;
-      const webChat = prefs.web_chat !== false;
-      const translations = prefs.translations !== false;
-
-      const icon = appIcons[app.slug] || '';
-      const disabledClass = !enabled ? 'app-func-disabled' : '';
-
-      return `
-        <div class="app-func-card ${disabledClass}" data-app="${app.slug}">
-          <div class="app-func-header">
-            <div class="app-func-title">
-              <span class="app-func-icon">${icon}</span>
-              <span class="app-func-name">${app.name}</span>
-            </div>
-            <label class="toggle-switch-sm">
-              <input type="checkbox" class="app-func-master-toggle" data-app="${app.slug}" ${enabled ? 'checked' : ''} />
-              <span class="toggle-slider-sm"></span>
-            </label>
-          </div>
-          <div class="app-func-channels">
-            <label class="app-func-channel">
-              <input type="checkbox" class="app-func-channel-toggle" data-app="${app.slug}" data-channel="sms" ${sms ? 'checked' : ''} ${!enabled ? 'disabled' : ''} />
-              <span>SMS messages</span>
-            </label>
-            <label class="app-func-channel">
-              <input type="checkbox" class="app-func-channel-toggle" data-app="${app.slug}" data-channel="calls" ${calls ? 'checked' : ''} ${!enabled ? 'disabled' : ''} />
-              <span>Call summaries</span>
-            </label>
-            <label class="app-func-channel">
-              <input type="checkbox" class="app-func-channel-toggle" data-app="${app.slug}" data-channel="web_chat" ${webChat ? 'checked' : ''} ${!enabled ? 'disabled' : ''} />
-              <span>Web chat messages</span>
-            </label>
-            ${hasTranslateTo ? `
-              <label class="app-func-channel">
-                <input type="checkbox" class="app-func-channel-toggle" data-app="${app.slug}" data-channel="translations" ${translations ? 'checked' : ''} ${!enabled ? 'disabled' : ''} />
-                <span>Include translations</span>
-              </label>
-            ` : ''}
-          </div>
-        </div>
-      `;
-    }).join('');
-
-    return `
-      <div class="config-section">
-        <h3>Dynamic Data Flow</h3>
-        <p class="section-desc">Control which apps receive data from your Functions.</p>
-        <div class="app-func-cards">
-          ${appCards}
-        </div>
-      </div>
-    `;
-  },
-
   attachFunctionsTabListeners() {
     const funcSms = document.getElementById('func-sms');
     const funcTransfer = document.getElementById('func-transfer');
@@ -209,13 +133,14 @@ export const functionsTabMethods = {
     const updateFunctions = () => {
       const functions = {
         ...this.agent.functions,
-        sms: { ...this.agent.functions?.sms, enabled: funcSms?.checked ?? false },
-        transfer: { ...this.agent.functions?.transfer, enabled: funcTransfer?.checked ?? false },
         booking: { ...this.agent.functions?.booking, enabled: funcBooking?.checked ?? false },
         extract_data: { ...this.agent.functions?.extract_data, enabled: funcExtract?.checked ?? false },
-        end_call: { ...this.agent.functions?.end_call, enabled: funcEndCall?.checked ?? true },
         semantic_match: { ...this.agent.functions?.semantic_match, enabled: funcSemanticMatch?.checked ?? false },
       };
+      // Only update voice/text-specific functions when their UI is rendered
+      if (funcSms) functions.sms = { ...this.agent.functions?.sms, enabled: funcSms.checked };
+      if (funcTransfer) functions.transfer = { ...this.agent.functions?.transfer, enabled: funcTransfer.checked };
+      if (funcEndCall) functions.end_call = { ...this.agent.functions?.end_call, enabled: funcEndCall.checked };
       this.agent.functions = functions;
       this.scheduleAutoSave({ functions });
     };
@@ -414,20 +339,12 @@ export const functionsTabMethods = {
 
   attachAppFunctionListeners() {
     const saveAppFunctions = () => {
-      // Collect current state from all app function toggles
       const appFunctions = { ...(this.agent.functions?.app_functions || {}) };
 
       document.querySelectorAll('.app-func-master-toggle').forEach(toggle => {
         const app = toggle.dataset.app;
         if (!appFunctions[app]) appFunctions[app] = {};
         appFunctions[app].enabled = toggle.checked;
-      });
-
-      document.querySelectorAll('.app-func-channel-toggle').forEach(toggle => {
-        const app = toggle.dataset.app;
-        const channel = toggle.dataset.channel;
-        if (!appFunctions[app]) appFunctions[app] = {};
-        appFunctions[app][channel] = toggle.checked;
       });
 
       const functions = {
@@ -438,16 +355,10 @@ export const functionsTabMethods = {
       this.scheduleAutoSave({ functions });
     };
 
-    // Master toggles — enable/disable sub-toggles
     document.querySelectorAll('.app-func-master-toggle').forEach(toggle => {
       toggle.addEventListener('change', () => {
         const app = toggle.dataset.app;
         const card = document.querySelector(`.app-func-card[data-app="${app}"]`);
-        const channelToggles = card?.querySelectorAll('.app-func-channel-toggle') || [];
-
-        channelToggles.forEach(ct => {
-          ct.disabled = !toggle.checked;
-        });
 
         if (toggle.checked) {
           card?.classList.remove('app-func-disabled');
@@ -457,11 +368,6 @@ export const functionsTabMethods = {
 
         saveAppFunctions();
       });
-    });
-
-    // Channel toggles
-    document.querySelectorAll('.app-func-channel-toggle').forEach(toggle => {
-      toggle.addEventListener('change', saveAppFunctions);
     });
   },
 
@@ -513,6 +419,13 @@ export const functionsTabMethods = {
 
       // Get event types if connected
       let eventTypes = [];
+      // A broken connection and an empty account used to render identically —
+      // both as "No event types found. Create event types in Cal.com first.",
+      // which sends people off to create event types they already have. Track
+      // the failure separately so the modal can say what actually happened.
+      let loadFailed = false;
+      let reconnectRequired = false;
+
       if (isCalComConnected) {
         try {
           const { data: { session } } = await supabase.auth.getSession();
@@ -527,11 +440,16 @@ export const functionsTabMethods = {
               body: JSON.stringify({ action: 'get_event_types' }),
             }
           );
-          if (response.ok) {
-            const data = await response.json();
+          const data = await response.json().catch(() => ({}));
+          if (response.ok && !data.error) {
             eventTypes = data.eventTypes || [];
+          } else {
+            loadFailed = true;
+            reconnectRequired = !!data.reconnect_required;
+            console.error('Error fetching event types:', data.error || response.status);
           }
         } catch (err) {
+          loadFailed = true;
           console.error('Error fetching event types:', err);
         }
       }
@@ -567,7 +485,21 @@ export const functionsTabMethods = {
               <p style="margin: 0 0 1rem; color: var(--text-secondary); font-size: 0.875rem;">
                 Select which event types your agent can book appointments for.
               </p>
-              ${eventTypes.length === 0 ? `
+              ${loadFailed ? `
+                <div style="text-align: center; padding: 1.5rem 1rem;">
+                  <p style="margin: 0 0 0.5rem; color: var(--text-primary); font-weight: 500;">
+                    ${reconnectRequired ? 'Your Cal.com connection has expired' : "Couldn't reach Cal.com"}
+                  </p>
+                  <p style="margin: 0 0 1.25rem; color: var(--text-secondary); font-size: 0.875rem;">
+                    ${reconnectRequired
+                      ? 'Reconnect to load your event types. Your booking settings are kept.'
+                      : 'Your event types could not be loaded just now. Try again in a moment.'}
+                  </p>
+                  ${reconnectRequired
+                    ? '<button id="connect-calcom-btn" class="btn btn-primary">Reconnect Cal.com</button>'
+                    : ''}
+                </div>
+              ` : eventTypes.length === 0 ? `
                 <p style="color: var(--text-secondary); text-align: center; padding: 1rem;">
                   No event types found. Create event types in Cal.com first.
                 </p>
@@ -720,11 +652,6 @@ export const functionsTabMethods = {
 
       const variables = dynamicVars || [];
 
-      const extractChannels = this.agent.functions?.extract_data?.channels || {};
-      const chCalls = extractChannels.calls !== false;
-      const chSms = extractChannels.sms !== false;
-      const chWebChat = extractChannels.web_chat !== false;
-
       const sendTo = this.agent.functions?.extract_data?.send_to || {};
       // Build "Send to" checkboxes from connected apps
       const sendToApps = this.connectedApps.filter(a => ['slack', 'hubspot'].includes(a.slug));
@@ -742,24 +669,6 @@ export const functionsTabMethods = {
             <p style="margin: 0 0 1rem; color: var(--text-secondary); font-size: 0.875rem;">
               Define variables to extract from conversations. This data can be sent to CRMs, databases, or other integrations.
             </p>
-
-            <div style="margin-bottom: 1rem; padding: 0.75rem; border: 1px solid var(--border-color, #e5e7eb); border-radius: 8px; background: var(--bg-secondary, #f9fafb);">
-              <label style="display: block; font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.03em;">Extract from</label>
-              <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
-                <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-size: 0.875rem; color: var(--text-primary);">
-                  <input type="checkbox" id="extract-ch-calls" ${chCalls ? 'checked' : ''} style="accent-color: var(--primary-color);" />
-                  Calls
-                </label>
-                <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-size: 0.875rem; color: var(--text-primary);">
-                  <input type="checkbox" id="extract-ch-sms" ${chSms ? 'checked' : ''} style="accent-color: var(--primary-color);" />
-                  SMS
-                </label>
-                <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-size: 0.875rem; color: var(--text-primary);">
-                  <input type="checkbox" id="extract-ch-web-chat" ${chWebChat ? 'checked' : ''} style="accent-color: var(--primary-color);" />
-                  Web Chat
-                </label>
-              </div>
-            </div>
 
             ${sendToApps.length > 0 ? `
             <div style="margin-bottom: 1rem; padding: 0.75rem; border: 1px solid var(--border-color, #e5e7eb); border-radius: 8px; background: var(--bg-secondary, #f9fafb);">
@@ -838,6 +747,45 @@ export const functionsTabMethods = {
 
       // Attach input listeners
       this.attachExtractModalListeners();
+
+      // Lazy-load Slack channels in background, then backfill dropdowns
+      const hasSlack = this.connectedApps.some(a => a.slug === 'slack');
+      if (hasSlack && !this._slackChannelsCache) {
+        supabase.auth.getSession().then(({ data: { session } }) => {
+          if (!session) return;
+          fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-notification-slack`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${session.access_token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ action: 'list_channels' }),
+            }
+          )
+            .then(r => r.json())
+            .then(result => {
+              if (!result.channels) return;
+              this._slackChannelsCache = result.channels;
+              // Backfill channel dropdowns and show for checked Slack variables
+              const m = document.getElementById('extract-modal');
+              if (!m) return;
+              m.querySelectorAll('.dynamic-var-slack-channel').forEach(select => {
+                const idx = parseInt(select.dataset.index);
+                const v = this.modalDynamicVars[idx];
+                const currentVal = (v?.send_to?.slack_channel) || select.value || '';
+                select.innerHTML = '<option value="">Channel...</option>' +
+                  result.channels.map(ch => `<option value="#${ch.name}">#${ch.name}</option>`).join('');
+                if (currentVal) select.value = currentVal;
+                // Show dropdown if Slack is checked for this variable
+                const slackCb = m.querySelector(`.dynamic-var-send-to[data-index="${idx}"][data-app="slack"]`);
+                if (slackCb?.checked) select.style.display = 'inline-block';
+              });
+            })
+            .catch(err => console.error('Error fetching Slack channels:', err));
+        });
+      }
     } catch (err) {
       console.error('Error in showExtractDataModal:', err);
     }
@@ -917,6 +865,10 @@ export const functionsTabMethods = {
     const varSendTo = v.send_to || {}; // null/undefined = use global default
     const hasOverride = v.send_to != null;
 
+    // Build Slack channel dropdown options
+    const slackChannels = this._slackChannelsCache || [];
+    const selectedSlackChannel = varSendTo.slack_channel || '';
+
     const sendToPills = sendToApps.length > 0 ? `
       <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.4rem; flex-wrap: wrap;">
         <span style="font-size: 0.75rem; color: var(--text-tertiary, #9ca3af);">Send to:</span>
@@ -924,12 +876,23 @@ export const functionsTabMethods = {
           // If no per-variable override, show as checked (inherits global)
           const checked = hasOverride ? varSendTo[app.slug] !== false : true;
           const isDefault = !hasOverride;
-          return `
+          const label = `
             <label style="display: flex; align-items: center; gap: 0.25rem; cursor: pointer; font-size: 0.75rem; color: ${isDefault ? 'var(--text-tertiary, #9ca3af)' : 'var(--text-secondary)'};" title="${isDefault ? 'Using global default' : 'Per-variable override'}">
               <input type="checkbox" class="dynamic-var-send-to" data-index="${index}" data-app="${app.slug}" ${checked ? 'checked' : ''} style="width: 13px; height: 13px; accent-color: var(--primary-color);" />
               ${app.name}
             </label>
           `;
+          // Add channel picker after Slack checkbox (always render, backfill populates options)
+          if (app.slug === 'slack') {
+            const showPicker = checked && slackChannels.length > 0;
+            return label + `
+              <select class="dynamic-var-slack-channel form-input" data-index="${index}" style="font-size: 0.7rem; padding: 0.15rem 0.3rem; height: 22px; max-width: 140px; display: ${showPicker ? 'inline-block' : 'none'};">
+                <option value="">Channel...</option>
+                ${slackChannels.map(ch => `<option value="#${ch.name}" ${selectedSlackChannel === '#' + ch.name ? 'selected' : ''}>#${ch.name}</option>`).join('')}
+              </select>
+            `;
+          }
+          return label;
         }).join('')}
       </div>
     ` : '';
@@ -1071,7 +1034,28 @@ export const functionsTabMethods = {
           v.send_to[app] = checked;
           const label = varCb.closest('label');
           if (label) label.style.color = 'var(--text-secondary)';
+          // Show/hide Slack channel picker
+          if (app === 'slack') {
+            const channelSelect = modal.querySelector(`.dynamic-var-slack-channel[data-index="${index}"]`);
+            if (channelSelect) {
+              channelSelect.style.display = checked ? 'inline-block' : 'none';
+              if (!checked) {
+                channelSelect.value = '';
+                v.send_to.slack_channel = null;
+              }
+            }
+          }
         });
+      });
+    });
+
+    // Per-variable Slack channel dropdowns
+    modal.querySelectorAll('.dynamic-var-slack-channel').forEach(select => {
+      select.addEventListener('change', (e) => {
+        const index = parseInt(e.target.dataset.index);
+        const v = this.modalDynamicVars[index];
+        if (!v.send_to) v.send_to = {};
+        v.send_to.slack_channel = e.target.value || null;
       });
     });
 
@@ -1086,6 +1070,18 @@ export const functionsTabMethods = {
         // Update label style to show it's now an override
         const label = e.target.closest('label');
         if (label) label.style.color = 'var(--text-secondary)';
+
+        // Show/hide Slack channel picker when Slack checkbox toggles
+        if (app === 'slack') {
+          const channelSelect = modal.querySelector(`.dynamic-var-slack-channel[data-index="${index}"]`);
+          if (channelSelect) {
+            channelSelect.style.display = e.target.checked ? 'inline-block' : 'none';
+            if (!e.target.checked) {
+              channelSelect.value = '';
+              v.send_to.slack_channel = null;
+            }
+          }
+        }
 
         // If unchecked, deselect the global toggle for this app
         if (!e.target.checked) {
@@ -1125,13 +1121,17 @@ export const functionsTabMethods = {
         return;
       }
 
+      const dbOps = [];
       for (const v of this.modalDynamicVars) {
-        // Skip empty entries
         if (!v.name) continue;
 
+        // Ensure slack: true when a slack_channel is set
+        if (v.send_to?.slack_channel && v.send_to.slack === undefined) {
+          v.send_to.slack = true;
+        }
+
         if (v.id) {
-          // Update existing
-          await supabase
+          dbOps.push(supabase
             .from('dynamic_variables')
             .update({
               name: v.name,
@@ -1141,10 +1141,9 @@ export const functionsTabMethods = {
               send_to: v.send_to || null,
               updated_at: new Date().toISOString(),
             })
-            .eq('id', v.id);
+            .eq('id', v.id));
         } else if (v.name) {
-          // Insert new
-          await supabase
+          dbOps.push(supabase
             .from('dynamic_variables')
             .insert({
               user_id: this.agent.user_id,
@@ -1154,16 +1153,10 @@ export const functionsTabMethods = {
               var_type: v.var_type,
               enum_options: v.var_type === 'enum' ? v.enum_options : null,
               send_to: v.send_to || null,
-            });
+            }));
         }
       }
-
-      // Save channel selections from the modal
-      const channels = {
-        calls: document.getElementById('extract-ch-calls')?.checked ?? true,
-        sms: document.getElementById('extract-ch-sms')?.checked ?? true,
-        web_chat: document.getElementById('extract-ch-web-chat')?.checked ?? true,
-      };
+      await Promise.all(dbOps);
 
       // Save send_to app selections
       const sendTo = { ...(this.agent.functions?.extract_data?.send_to || {}) };
@@ -1177,7 +1170,6 @@ export const functionsTabMethods = {
         ...this.agent.functions,
         extract_data: {
           ...this.agent.functions?.extract_data,
-          channels,
           send_to: sendTo,
           ...(shouldEnable ? { enabled: true } : {}),
         },
@@ -1203,11 +1195,13 @@ export const functionsTabMethods = {
       // enablingMode = true means user is trying to enable the function, needs valid config to proceed
       this._smsEnablingMode = enablingMode;
 
-      // Load SMS templates from database
+      // Load SMS templates for THIS agent (scoped by agent_id — templates are
+      // per-agent, not per-user, so one agent never shows another's. #101)
       const { data: smsTemplates, error } = await supabase
         .from('sms_templates')
         .select('*')
         .eq('user_id', this.agent.user_id)
+        .eq('agent_id', this.agent.id)
         .order('created_at', { ascending: true });
 
       if (error) {
@@ -1424,6 +1418,7 @@ export const functionsTabMethods = {
             .from('sms_templates')
             .insert({
               user_id: this.agent.user_id,
+              agent_id: this.agent.id, // scope to this agent (#101)
               name: tmpl.name,
               content: tmpl.content,
             });

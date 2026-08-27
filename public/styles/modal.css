@@ -35,14 +35,24 @@
   display: none;
 }
 
-.modal-backdrop {
+/* Scoped to `.modal > .modal-backdrop` (specificity 0,2,0) so it beats
+   KnowledgeSourceManager's global `.modal-backdrop { position: fixed;
+   z-index: 1000 }` rule, which otherwise leaks onto every page that
+   loads its styles and turns the backdrop into a click-blocking
+   full-screen overlay above the modal buttons. */
+.modal > .modal-backdrop {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
-  z-index: -1;
+  background-color: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  /* z-index: 0 (not -1) because backdrop-filter creates its own
+     stacking context, and -1 in a stacking context still paints above
+     siblings without z-indexes. .modal-content (z-index: 1) sits on top. */
+  z-index: 0;
 }
 
 .modal-content {

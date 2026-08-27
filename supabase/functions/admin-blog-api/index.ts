@@ -45,6 +45,10 @@ Deno.serve(async (req) => {
         return await handleCheckTwitter(supabase)
       case 'disconnect_twitter':
         return await handleDisconnectTwitter(supabase)
+      case 'check_linkedin':
+        return await handleCheckLinkedIn(supabase)
+      case 'disconnect_linkedin':
+        return await handleDisconnectLinkedIn(supabase)
       default:
         return errorResponse(`Unknown action: ${action}`)
     }
@@ -68,7 +72,7 @@ function slugify(text: string): string {
 async function handleListPosts(supabase: any) {
   const { data, error } = await supabase
     .from('blog_posts')
-    .select('id, slug, title, status, author_name, published_at, scheduled_at, updated_at, tags, excerpt, tweeted_at, tweet_id')
+    .select('id, slug, title, status, author_name, published_at, scheduled_at, updated_at, tags, excerpt, tweeted_at, tweet_id, linkedin_posted_at, linkedin_post_id')
     .order('updated_at', { ascending: false })
 
   if (error) return errorResponse('Failed to list posts: ' + error.message, 500)
@@ -137,9 +141,10 @@ async function handleCreatePost(supabase: any, body: any) {
 
   if (error) return errorResponse('Failed to create post: ' + error.message, 500)
 
-  // Fire-and-forget: tweet if published
+  // Fire-and-forget: post if published
   if (data.status === 'published') {
     fireTweet(data.id)
+    fireLinkedIn(data.id)
   }
 
   return successResponse({ post: data })
@@ -197,9 +202,12 @@ async function handleUpdatePost(supabase: any, body: any) {
 
   if (error) return errorResponse('Failed to update post: ' + error.message, 500)
 
-  // Fire-and-forget: tweet if just published (not already tweeted)
+  // Fire-and-forget: post if just published
   if (updates.status === 'published' && !data.tweeted_at) {
     fireTweet(data.id)
+  }
+  if (updates.status === 'published' && !data.linkedin_posted_at) {
+    fireLinkedIn(data.id)
   }
 
   return successResponse({ post: data })
@@ -230,21 +238,46 @@ async function handleCheckTwitter(supabase: any) {
   return successResponse({ connected: true })
 }
 
-/**
- * Fire-and-forget call to publish-blog-to-twitter for a single post
- */
 function fireTweet(postId: string) {
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-
   fetch(`${supabaseUrl}/functions/v1/publish-blog-to-twitter`, {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${serviceKey}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ mode: 'single', post_id: postId }),
   }).catch(err => console.error('Fire-and-forget tweet failed:', err))
+}
+
+function fireLinkedIn(postId: string) {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  fetch(`${supabaseUrl}/functions/v1/publish-blog-to-linkedin`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode: 'single', post_id: postId }),
+  }).catch(err => console.error('Fire-and-forget LinkedIn failed:', err))
+}
+
+async function handleCheckLinkedIn(supabase: any) {
+  const { data, error } = await supabase
+    .from('linkedin_oauth_tokens')
+    .select('id, expires_at, person_id')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error || !data) return successResponse({ connected: false })
+  return successResponse({ connected: true, person_id: data.person_id })
+}
+
+async function handleDisconnectLinkedIn(supabase: any) {
+  const { error } = await supabase
+    .from('linkedin_oauth_tokens')
+    .delete()
+    .neq('id', '00000000-0000-0000-0000-000000000000')
+
+  if (error) return errorResponse('Failed to disconnect: ' + error.message, 500)
+  return successResponse({ success: true })
 }
 
 async function handleDeletePost(supabase: any, body: any) {

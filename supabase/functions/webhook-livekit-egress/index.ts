@@ -1,3 +1,4 @@
+import { corsHeaders, handleCors } from '../_shared/cors.ts'
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { analyzeSentiment, extractCallerMessages } from '../_shared/sentiment-analysis.ts'
 import { filterExtractedDataForApp } from '../_shared/app-function-prefs.ts'
@@ -348,7 +349,6 @@ async function updateSlackMessageWithRecording(
       } else if (contact.name === 'Unknown' || contact.name === 'unknown' || !contact.name) {
         // Contact exists but has no real name - update it
         console.log(`Updating contact name from "${contact.name}" to "${callerName}"`)
-import { corsHeaders, handleCors } from '../_shared/cors.ts'
         const { data: updatedContact, error: updateError } = await supabase
           .from('contacts')
           .update({ name: callerName, updated_at: new Date().toISOString() })
@@ -379,23 +379,16 @@ import { corsHeaders, handleCors } from '../_shared/cors.ts'
     const hasUrgent = extractedData && Object.entries(extractedData).some(([key, value]) =>
       (key.toLowerCase().includes('urgent') && value === true)
     )
-    const emoji = isInbound ? '📞' : '📱'
     const directionText = isInbound ? 'Inbound call from' : 'Outbound call to'
 
-    // Sentiment emoji
-    const sentimentEmoji = sentiment === 'positive' ? '😊'
-      : sentiment === 'negative' ? '😠'
-      : sentiment === 'neutral' ? '😐'
-      : ''
-
     // Build header text
-    let headerText = `${emoji} *${directionText} ${displayName}*`
+    let headerText = `*${directionText} ${displayName}*`
     if (hasUrgent) {
-      headerText += `\n🚨 *URGENT*`
+      headerText += `\n*URGENT*`
     }
     headerText += `\nDuration: ${durationStr}`
-    if (sentimentEmoji) {
-      headerText += ` • Sentiment: ${sentimentEmoji} ${sentiment}`
+    if (sentiment) {
+      headerText += ` • Sentiment: ${sentiment}`
     }
 
     // Build updated message blocks
@@ -418,7 +411,7 @@ import { corsHeaders, handleCors } from '../_shared/cors.ts'
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `📝 *Summary:* ${truncatedSummary}`
+          text: `*Summary:* ${truncatedSummary}`
         }
       })
     }
@@ -441,9 +434,9 @@ import { corsHeaders, handleCors } from '../_shared/cors.ts'
             const displayKey = key.replace(/_/g, ' ')
             let displayValue: string
             if (value === true) {
-              displayValue = '✅ Yes'
+              displayValue = 'Yes'
             } else if (value === false) {
-              displayValue = '❌ No'
+              displayValue = 'No'
             } else if (typeof value === 'string' && value.length > 100) {
               displayValue = value.substring(0, 100) + '...'
             } else {
@@ -458,7 +451,7 @@ import { corsHeaders, handleCors } from '../_shared/cors.ts'
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `📊 *Extracted Data*\n${extractedFields}`
+              text: `*Extracted Data*\n${extractedFields}`
             }
           })
         }
@@ -471,7 +464,7 @@ import { corsHeaders, handleCors } from '../_shared/cors.ts'
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `🎙️ <${recordingUrl}|Play Recording>`
+          text: `<${recordingUrl}|Play Recording>`
         }
       })
     }
@@ -487,6 +480,9 @@ import { corsHeaders, handleCors } from '../_shared/cors.ts'
       ]
     })
 
+    // Trailing divider separates consecutive notifications in the channel
+    blocks.push({ type: 'divider' })
+
     // Update the main message
     const updateResponse = await fetch('https://slack.com/api/chat.update', {
       method: 'POST',
@@ -497,7 +493,7 @@ import { corsHeaders, handleCors } from '../_shared/cors.ts'
       body: JSON.stringify({
         channel: channelId,
         ts: messageTs,
-        text: `${emoji} ${directionText} ${displayName}`,
+        text: `${directionText} ${displayName}`,
         blocks,
       }),
     })
@@ -517,7 +513,7 @@ import { corsHeaders, handleCors } from '../_shared/cors.ts'
         body: JSON.stringify({
           channel: channelId,
           thread_ts: messageTs,
-          text: `💬 *Full Transcript*\n\n${transcript}`,
+          text: `*Full Transcript*\n\n${transcript}`,
         }),
       })
       const transcriptResult = await transcriptResponse.json()

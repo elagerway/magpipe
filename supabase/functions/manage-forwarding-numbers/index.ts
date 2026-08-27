@@ -7,8 +7,8 @@
  * PATCH  { id, label?, is_default? }        → update label and/or promote to default
  * DELETE ?id=<uuid>                         → delete
  *
- * `number` accepts any common format: "(555) 555-1234", "555-555-1234",
- * "+15555551234", etc. Normalization is via _shared/phone-e164.ts.
+ * `number` accepts any common format: "(604) 562-8647", "604-562-8647",
+ * "+16045628647", etc. Normalization is via _shared/phone-e164.ts.
  *
  * Setting is_default=true auto-demotes any existing default for the
  * same user (partial unique index forbids multiple defaults). DELETE
@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
       if (!normalized) {
         return err(
           'invalid_number',
-          'Invalid phone number — provide a number like (555) 555-1234 or +15555551234',
+          'Invalid phone number — provide a number like (604) 562-8647 or +16045628647',
         )
       }
 

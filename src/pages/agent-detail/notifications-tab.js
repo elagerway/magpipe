@@ -9,10 +9,54 @@ import {
   showTestNotification
 } from '../../services/pushNotifications.js';
 
+const CONTENT_FIELDS = [
+  { key: 'caller_info', label: 'Caller info (caller + number dialled)' },
+  { key: 'agent_name', label: 'Agent name' },
+  { key: 'sentiment', label: 'Caller sentiment' },
+  { key: 'session_id', label: 'Session ID' },
+  { key: 'summary', label: 'Call summary' },
+  { key: 'caller_lookup', label: 'Unknown-caller lookup (city, line type, carrier, CNAM)' },
+  { key: 'recording_url', label: 'Recording URL' },
+];
+
+const TEXT_CONTENT_FIELDS = [
+  { key: 'caller_info', label: 'Sender info (phone number)' },
+  { key: 'agent_name', label: 'Agent name' },
+  { key: 'sentiment', label: 'Sender sentiment' },
+  { key: 'session_id', label: 'Session ID' },
+  { key: 'summary', label: 'Message summary' },
+];
+
+function renderContentConfigUI(channel, fields = CONTENT_FIELDS) {
+  return `
+    <details style="margin-top: 0.5rem; margin-left: 0.5rem;">
+      <summary style="font-size: 0.8rem; cursor: pointer; color: var(--text-secondary); user-select: none; list-style: none; display: flex; align-items: center; gap: 0.35rem;">
+        <span>▶</span> Customize what's included
+      </summary>
+      <div style="padding: 0.5rem 0 0 0.25rem; display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.35rem;">
+        ${fields.map(f => `
+          <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.8rem;">
+            <input type="checkbox" class="notif-content-field" data-channel="${channel}" data-field="${f.key}" />
+            <span>${f.label}</span>
+          </label>
+        `).join('')}
+        <div style="margin-top: 0.35rem;">
+          <label style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.25rem;">Custom text (prepended to message)</label>
+          <textarea class="form-input notif-content-custom-text" data-channel="${channel}" rows="2" style="font-size: 0.8rem; resize: vertical;" placeholder="e.g. New message alert!"></textarea>
+        </div>
+      </div>
+    </details>
+  `;
+}
+
 export const notificationsTabMethods = {
   renderNotificationsTab() {
     // notifPrefs is loaded in attachNotificationsTabListeners via async fetch
     const prefs = this._notifPrefs || {};
+    const isVoice = ['inbound_voice', 'outbound_voice'].includes(this.agent.agent_type);
+    const isText = this.agent.agent_type === 'text';
+    const isWebChat = this.agent.agent_type === 'web_chat';
+    const isWhatsApp = this.agent.agent_type === 'whatsapp';
 
     return `
       <div class="config-section">
@@ -39,6 +83,7 @@ export const notificationsTabMethods = {
             <input type="email" id="notif-email-address" class="form-input" placeholder="your@email.com" />
           </div>
           <div style="display: flex; flex-direction: column; gap: 0.5rem; padding-left: 0.5rem;">
+            ${isVoice ? `
             <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
               <input type="checkbox" id="notif-email-inbound-calls" />
               <span>Inbound calls</span>
@@ -47,6 +92,8 @@ export const notificationsTabMethods = {
               <input type="checkbox" id="notif-email-all-calls" />
               <span>All calls</span>
             </label>
+            ` : ''}
+            ${isText || isWebChat ? `
             <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
               <input type="checkbox" id="notif-email-inbound-messages" />
               <span>Inbound messages</span>
@@ -55,7 +102,10 @@ export const notificationsTabMethods = {
               <input type="checkbox" id="notif-email-all-messages" />
               <span>All messages</span>
             </label>
+            ` : ''}
           </div>
+          ${isVoice ? renderContentConfigUI('email') : isText ? renderContentConfigUI('email', TEXT_CONTENT_FIELDS) : ''}
+          <button class="btn btn-sm btn-secondary" id="notif-test-email-btn" style="margin-top: 0.75rem;">Send Test Notification</button>
         </div>
 
         <!-- SMS Notifications -->
@@ -75,6 +125,7 @@ export const notificationsTabMethods = {
             <input type="tel" id="notif-sms-phone-number" class="form-input" placeholder="+1 (555) 123-4567" />
           </div>
           <div style="display: flex; flex-direction: column; gap: 0.5rem; padding-left: 0.5rem;">
+            ${isVoice ? `
             <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
               <input type="checkbox" id="notif-sms-inbound-calls" />
               <span>Inbound calls</span>
@@ -83,6 +134,8 @@ export const notificationsTabMethods = {
               <input type="checkbox" id="notif-sms-all-calls" />
               <span>All calls</span>
             </label>
+            ` : ''}
+            ${isText || isWebChat || isWhatsApp ? `
             <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
               <input type="checkbox" id="notif-sms-inbound-messages" />
               <span>Inbound messages</span>
@@ -91,7 +144,14 @@ export const notificationsTabMethods = {
               <input type="checkbox" id="notif-sms-all-messages" />
               <span>All messages</span>
             </label>
+            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
+              <input type="checkbox" id="notif-sms-first-inbound-message" />
+              <span>First message in a conversation (last 12 hours)</span>
+            </label>
+            ` : ''}
           </div>
+          ${isVoice ? renderContentConfigUI('sms') : (isText || isWhatsApp) ? renderContentConfigUI('sms', TEXT_CONTENT_FIELDS) : ''}
+          <button class="btn btn-sm btn-secondary" id="notif-test-sms-btn" style="margin-top: 0.75rem;">Send Test Notification</button>
         </div>
 
         <!-- Push Notifications -->
@@ -111,6 +171,7 @@ export const notificationsTabMethods = {
           </div>
           <div id="notif-push-options" style="display: none;">
             <div style="display: flex; flex-direction: column; gap: 0.5rem; padding-left: 0.5rem;">
+              ${isVoice ? `
               <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
                 <input type="checkbox" id="notif-push-inbound-calls" />
                 <span>Inbound calls</span>
@@ -119,6 +180,8 @@ export const notificationsTabMethods = {
                 <input type="checkbox" id="notif-push-all-calls" />
                 <span>All calls</span>
               </label>
+              ` : ''}
+              ${isText || isWebChat ? `
               <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;">
                 <input type="checkbox" id="notif-push-inbound-messages" />
                 <span>Inbound messages</span>
@@ -127,6 +190,7 @@ export const notificationsTabMethods = {
                 <input type="checkbox" id="notif-push-all-messages" />
                 <span>All messages</span>
               </label>
+              ` : ''}
             </div>
             <button class="btn btn-sm btn-secondary" id="notif-test-push-btn" style="margin-top: 0.75rem;">
               Send Test Notification
@@ -134,89 +198,11 @@ export const notificationsTabMethods = {
           </div>
         </div>
 
+        <!-- Slack: configured via Skills / Custom Functions, not here -->
+
         <div id="notif-save-status" style="text-align: center; font-size: 0.875rem; color: var(--text-secondary); min-height: 1.25rem;"></div>
 
-        <!-- App Notifications (Slack, HubSpot) -->
-        ${this.renderAppNotificationCards()}
-
         </div>
-      </div>
-    `;
-  },
-
-  renderAppNotificationCards() {
-    const appIcons = {
-      slack: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M14.5 2a2.5 2.5 0 0 0 0 5H17V4.5A2.5 2.5 0 0 0 14.5 2z" fill="#E01E5A"/><path d="M2 14.5a2.5 2.5 0 0 0 5 0V12H4.5A2.5 2.5 0 0 0 2 14.5z" fill="#36C5F0"/><path d="M9.5 22a2.5 2.5 0 0 0 0-5H7v2.5A2.5 2.5 0 0 0 9.5 22z" fill="#2EB67D"/><path d="M22 9.5a2.5 2.5 0 0 0-5 0V12h2.5A2.5 2.5 0 0 0 22 9.5z" fill="#ECB22E"/><path d="M9.5 2A2.5 2.5 0 0 0 7 4.5V7h2.5a2.5 2.5 0 0 0 0-5z" fill="#36C5F0"/><path d="M2 9.5A2.5 2.5 0 0 0 4.5 12H7V9.5a2.5 2.5 0 0 0-5 0z" fill="#E01E5A"/><path d="M14.5 22a2.5 2.5 0 0 0 2.5-2.5V17h-2.5a2.5 2.5 0 0 0 0 5z" fill="#ECB22E"/><path d="M22 14.5a2.5 2.5 0 0 0-2.5-2.5H17v2.5a2.5 2.5 0 0 0 5 0z" fill="#2EB67D"/></svg>`,
-      hubspot: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M17.5 8.2V5.8c.8-.4 1.3-1.2 1.3-2.1C18.8 2.2 17.6 1 16.1 1S13.4 2.2 13.4 3.7c0 .9.5 1.7 1.3 2.1v2.4c-1.1.2-2.1.7-2.9 1.4L5.6 5.1c.1-.2.1-.5.1-.7 0-1.2-1-2.2-2.2-2.2S1.3 3.2 1.3 4.4s1 2.2 2.2 2.2c.4 0 .8-.1 1.2-.3l6.1 4.5c-.7 1-1.1 2.2-1.1 3.5 0 1.2.4 2.4 1 3.3l-1.8 1.8c-.2-.1-.5-.1-.7-.1-1.2 0-2.2 1-2.2 2.2s1 2.2 2.2 2.2 2.2-1 2.2-2.2c0-.3 0-.5-.1-.7l1.8-1.8c1 .7 2.3 1.2 3.6 1.2 3.5 0 6.3-2.8 6.3-6.3 0-3.1-2.2-5.7-5.1-6.3h-.4zM16 18.5c-2.5 0-4.5-2-4.5-4.5s2-4.5 4.5-4.5 4.5 2 4.5 4.5-2 4.5-4.5 4.5z" fill="#FF7A59"/></svg>`,
-    };
-
-    const notifiableApps = this.connectedApps.filter(a => ['slack', 'hubspot'].includes(a.slug));
-
-    if (notifiableApps.length === 0) {
-      return `
-        <div style="border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1rem;">
-          <h3 style="margin: 0 0 0.5rem 0; font-size: 1rem;">App Notifications</h3>
-          <p class="text-muted" style="margin: 0; font-size: 0.875rem;">
-            Connect apps in the <a href="#" onclick="navigateTo('/apps'); return false;">Apps</a> page to send data to Slack, HubSpot, and more.
-          </p>
-        </div>
-      `;
-    }
-
-    const hasTranslateTo = !!this.agent.translate_to;
-
-    const appCards = notifiableApps.map(app => {
-      const prefs = this.agent.functions?.app_functions?.[app.slug] || {};
-      const enabled = prefs.enabled !== false;
-      const sms = prefs.sms !== false;
-      const calls = prefs.calls !== false;
-      const webChat = prefs.web_chat !== false;
-      const translations = prefs.translations !== false;
-
-      const icon = appIcons[app.slug] || '';
-      const disabledClass = !enabled ? 'app-func-disabled' : '';
-
-      return `
-        <div class="app-func-card ${disabledClass}" data-app="${app.slug}">
-          <div class="app-func-header">
-            <div class="app-func-title">
-              <span class="app-func-icon">${icon}</span>
-              <span class="app-func-name">${app.name}</span>
-            </div>
-            <label class="toggle-switch-sm">
-              <input type="checkbox" class="app-func-master-toggle" data-app="${app.slug}" ${enabled ? 'checked' : ''} />
-              <span class="toggle-slider-sm"></span>
-            </label>
-          </div>
-          <div class="app-func-channels">
-            <label class="app-func-channel">
-              <input type="checkbox" class="app-func-channel-toggle" data-app="${app.slug}" data-channel="sms" ${sms ? 'checked' : ''} ${!enabled ? 'disabled' : ''} />
-              <span>SMS messages</span>
-            </label>
-            <label class="app-func-channel">
-              <input type="checkbox" class="app-func-channel-toggle" data-app="${app.slug}" data-channel="calls" ${calls ? 'checked' : ''} ${!enabled ? 'disabled' : ''} />
-              <span>Call summaries</span>
-            </label>
-            <label class="app-func-channel">
-              <input type="checkbox" class="app-func-channel-toggle" data-app="${app.slug}" data-channel="web_chat" ${webChat ? 'checked' : ''} ${!enabled ? 'disabled' : ''} />
-              <span>Web chat messages</span>
-            </label>
-            ${hasTranslateTo ? `
-              <label class="app-func-channel">
-                <input type="checkbox" class="app-func-channel-toggle" data-app="${app.slug}" data-channel="translations" ${translations ? 'checked' : ''} ${!enabled ? 'disabled' : ''} />
-                <span>Include translations</span>
-              </label>
-            ` : ''}
-          </div>
-        </div>
-      `;
-    }).join('');
-
-    return `
-      <h3 style="margin: 1rem 0 0.5rem 0; font-size: 1rem;">App Notifications</h3>
-      <p class="section-desc" style="margin-bottom: 0.75rem;">Control which apps receive data from conversations.</p>
-      <div class="app-func-cards" style="margin-bottom: 1rem;">
-        ${appCards}
       </div>
     `;
   },
@@ -280,6 +266,7 @@ export const notificationsTabMethods = {
     setChecked('notif-sms-all-calls', prefs?.sms_all_calls);
     setChecked('notif-sms-inbound-messages', prefs?.sms_inbound_messages);
     setChecked('notif-sms-all-messages', prefs?.sms_all_messages);
+    setChecked('notif-sms-first-inbound-message', prefs?.sms_first_inbound_message);
 
     // Push
     setChecked('notif-push-enabled', prefs?.push_enabled);
@@ -287,6 +274,18 @@ export const notificationsTabMethods = {
     setChecked('notif-push-all-calls', prefs?.push_all_calls);
     setChecked('notif-push-inbound-messages', prefs?.push_inbound_messages !== false);
     setChecked('notif-push-all-messages', prefs?.push_all_messages);
+
+    // Content config — populate checkboxes + custom text per channel
+    const contentConfig = prefs?.content_config || {};
+    for (const channel of ['email', 'sms']) {
+      const channelConfig = contentConfig[channel] || {};
+      const fields = channelConfig.fields || [];
+      document.querySelectorAll(`.notif-content-field[data-channel="${channel}"]`).forEach(cb => {
+        cb.checked = fields.includes(cb.dataset.field);
+      });
+      const textArea = document.querySelector(`.notif-content-custom-text[data-channel="${channel}"]`);
+      if (textArea) textArea.value = channelConfig.custom_text || '';
+    }
 
     // Show push options if enabled
     const pushOptions = document.getElementById('notif-push-options');
@@ -311,6 +310,19 @@ export const notificationsTabMethods = {
       notifSaveTimer = setTimeout(async () => {
         if (statusEl) statusEl.textContent = 'Saving...';
         try {
+          // Collect content_config per channel
+          const content_config = {};
+          for (const channel of ['email', 'sms']) {
+            const fields = [];
+            document.querySelectorAll(`.notif-content-field[data-channel="${channel}"]:checked`).forEach(cb => {
+              fields.push(cb.dataset.field);
+            });
+            const customText = document.querySelector(`.notif-content-custom-text[data-channel="${channel}"]`)?.value || '';
+            if (fields.length > 0 || customText) {
+              content_config[channel] = { fields, custom_text: customText };
+            }
+          }
+
           const preferences = {
             user_id: userId,
             agent_id: agentId,
@@ -326,11 +338,13 @@ export const notificationsTabMethods = {
             sms_all_calls: document.getElementById('notif-sms-all-calls')?.checked || false,
             sms_inbound_messages: document.getElementById('notif-sms-inbound-messages')?.checked || false,
             sms_all_messages: document.getElementById('notif-sms-all-messages')?.checked || false,
+            sms_first_inbound_message: document.getElementById('notif-sms-first-inbound-message')?.checked || false,
             push_enabled: document.getElementById('notif-push-enabled')?.checked || false,
             push_inbound_calls: document.getElementById('notif-push-inbound-calls')?.checked || false,
             push_all_calls: document.getElementById('notif-push-all-calls')?.checked || false,
             push_inbound_messages: document.getElementById('notif-push-inbound-messages')?.checked || false,
             push_all_messages: document.getElementById('notif-push-all-messages')?.checked || false,
+            content_config,
             updated_at: new Date().toISOString()
           };
           const { error } = await supabase
@@ -346,14 +360,22 @@ export const notificationsTabMethods = {
     };
 
     // Bind change events on all notification checkboxes
-    document.querySelectorAll('#notif-email-enabled, #notif-email-inbound-calls, #notif-email-all-calls, #notif-email-inbound-messages, #notif-email-all-messages, #notif-sms-enabled, #notif-sms-inbound-calls, #notif-sms-all-calls, #notif-sms-inbound-messages, #notif-sms-all-messages, #notif-push-enabled, #notif-push-inbound-calls, #notif-push-all-calls, #notif-push-inbound-messages, #notif-push-all-messages').forEach(el => {
+    document.querySelectorAll('#notif-email-enabled, #notif-email-inbound-calls, #notif-email-all-calls, #notif-email-inbound-messages, #notif-email-all-messages, #notif-sms-enabled, #notif-sms-inbound-calls, #notif-sms-all-calls, #notif-sms-inbound-messages, #notif-sms-all-messages, #notif-sms-first-inbound-message, #notif-push-enabled, #notif-push-inbound-calls, #notif-push-all-calls, #notif-push-inbound-messages, #notif-push-all-messages').forEach(el => {
       el.addEventListener('change', autoSaveNotifications);
     });
 
-    // Debounce text inputs (email address, phone number)
-    document.querySelectorAll('#notif-email-address, #notif-sms-phone-number').forEach(el => {
+    // Content config field checkboxes
+    document.querySelectorAll('.notif-content-field').forEach(el => {
+      el.addEventListener('change', autoSaveNotifications);
+    });
+
+    // Debounce text inputs (email address, phone number, custom text)
+    document.querySelectorAll('#notif-email-address, #notif-sms-phone-number, .notif-content-custom-text').forEach(el => {
       el.addEventListener('input', autoSaveNotifications);
     });
+
+    // Test notification buttons
+    this.attachTestNotificationListeners();
 
     // App Functions listeners (Slack, HubSpot cards)
     this.attachAppFunctionListeners();
@@ -439,5 +461,59 @@ export const notificationsTabMethods = {
         }
       });
     }
+  },
+
+  attachTestNotificationListeners() {
+    const sendTest = async (btn, endpoint, payload) => {
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const resp = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${endpoint}`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload),
+          }
+        );
+        const result = await resp.json();
+        if (!resp.ok) throw new Error(result.error || 'Failed to send');
+        if (!result.success) throw new Error(result.message || result.error || 'Notification was not delivered');
+        showToast('Test notification sent!', 'success');
+      } catch (err) {
+        showToast(err.message || 'Failed to send test notification', 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Send Test Notification';
+      }
+    };
+
+    const testPayload = {
+      userId: this.userId,
+      agentId: this.agentId,
+      type: 'completed_call',
+      test: true,
+      data: {
+        callerNumber: '+1 (555) 000-0000',
+        timestamp: new Date().toISOString(),
+        duration: 42,
+        successful: true,
+      },
+    };
+
+    const emailBtn = document.getElementById('notif-test-email-btn');
+    if (emailBtn) {
+      emailBtn.addEventListener('click', () => sendTest(emailBtn, 'send-notification-email', testPayload));
+    }
+
+    const smsBtn = document.getElementById('notif-test-sms-btn');
+    if (smsBtn) {
+      smsBtn.addEventListener('click', () => sendTest(smsBtn, 'send-notification-sms', testPayload));
+    }
+
   },
 };

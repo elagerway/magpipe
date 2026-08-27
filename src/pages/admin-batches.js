@@ -7,6 +7,7 @@ import { getCurrentUser, supabase } from '../lib/supabase.js';
 import AdminHeader from '../components/AdminHeader.js';
 import { showToast } from '../lib/toast.js';
 import { showConfirmModal } from '../components/ConfirmModal.js';
+import { escapeHtml } from '../lib/formatters.js';
 
 export default class AdminBatchesPage {
   constructor() {
@@ -182,14 +183,14 @@ export default class AdminBatchesPage {
       return `
         <div class="admin-batch-row">
           <div>
-            <div class="admin-batch-name">${this.escapeHtml(b.name)}</div>
+            <div class="admin-batch-name">${escapeHtml(b.name)}</div>
           </div>
-          <div class="admin-batch-email" title="${this.escapeHtml(b.user_email)}">${this.escapeHtml(b.user_email)}</div>
+          <div class="admin-batch-email" title="${escapeHtml(b.user_email)}">${escapeHtml(b.user_email)}</div>
           <span class="batch-status-badge batch-status-${b.status}">${b.status}</span>
           <span class="admin-batch-counts">${b.completed_count || 0}/${b.total_recipients || 0} done, ${b.failed_count || 0} failed</span>
           <span class="admin-batch-date">${startedAt}</span>
           <div>
-            ${canCancel ? `<button class="admin-cancel-btn" data-batch-id="${b.id}" data-batch-name="${this.escapeHtml(b.name)}">Cancel</button>` : ''}
+            ${canCancel ? `<button class="admin-cancel-btn" data-batch-id="${b.id}" data-batch-name="${escapeHtml(b.name)}">Cancel</button>` : ''}
           </div>
         </div>
       `;
@@ -235,13 +236,6 @@ export default class AdminBatchesPage {
       btn.disabled = false;
       btn.textContent = 'Cancel';
     }
-  }
-
-  escapeHtml(str) {
-    if (!str) return '';
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
   }
 
   cleanup() {}

@@ -8,6 +8,7 @@
 
 import { corsHeaders, handleCors } from '../_shared/cors.ts'
 import { getServiceClient } from '../_shared/supabase-client.ts'
+import { reportError } from '../_shared/error-reporter.ts'
 
 const CHUNK_SIZE = 5 // Process this many recipients per invocation
 const CALL_DELAY_MS = 1200 // Each recipient fires 2 API calls (agent + PSTN), 1200ms keeps us under SignalWire's 1 CPS limit
@@ -32,6 +33,8 @@ Deno.serve(async (req: Request) => {
     return await processBatch(client, batch_id)
   } catch (err) {
     console.error('process-batch-calls error:', err)
+    const _sb = getServiceClient()
+    await reportError(_sb, { error_type: 'edge_function_error', error_message: String(err.message || err), error_code: 'process-batch-calls:outer', source: 'supabase' })
     return jsonResponse({ error: err.message || 'Internal server error' }, 500)
   }
 })
@@ -449,6 +452,7 @@ async function processBatch(client: any, batchId: string) {
       }
     } catch (err) {
       console.error(`Failed to process recipient ${recipient.id}:`, err)
+      await reportError(client, { error_type: 'edge_function_error', error_message: String(err.message || err), error_code: 'process-batch-calls:recipient', source: 'supabase', metadata: { recipient_id: recipient.id, batch_id: batchId } })
 
       await client
         .from('batch_call_recipients')

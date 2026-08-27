@@ -19,8 +19,29 @@ PROJECT_REF="mtxbiyilvgwhbdptysex"
 
 # ─── Functions that MUST have --no-verify-jwt ────────────────────────────
 # Reason: resolveUser() API key auth OR external webhook (no JWT sent)
-NO_VERIFY_JWT=(
+#
+# Source of truth: supabase/functions/_shared/jwt-policy.json. The
+# enforce-jwt-policy edge function reads the same file and auto-heals
+# drift every 5 min via pg_cron. Editing this array directly is a no-op
+# now — update the JSON instead. Loading it here for backwards-compat
+# with downstream code that grep'd this array shape.
+POLICY_FILE="$(dirname "$0")/../supabase/functions/_shared/jwt-policy.json"
+NO_VERIFY_JWT=()
+while IFS= read -r line; do
+  NO_VERIFY_JWT+=("$line")
+done < <(python3 -c "import json,sys; d=json.load(open('$POLICY_FILE')); [print(s) for s in d['no_verify_jwt']]")
+
+# Original hardcoded list kept here for reference / paranoia diff. Sync
+# any additions to the JSON file as well — without that, enforce-jwt-policy
+# won't know about the new function and could "auto-heal" it back to
+# verify_jwt=true if the deploy script flipped it the right way once.
+_NO_VERIFY_JWT_LEGACY=(
+  # ── Public endpoints (called with apikey only, no JWT) ──
+  log-error
+  signup-with-captcha
+
   # ── API/MCP endpoints (resolveUser) ──
+  assign-phone-number
   access-code-update
   batch-calls
   cal-com-cancel-booking
@@ -57,6 +78,7 @@ NO_VERIFY_JWT=(
   list-voices
   lookup-phone-number
   manage-api-keys
+  manage-call-whitelist
   manage-dynamic-variables
   omni-chat
   org-analytics
@@ -77,6 +99,8 @@ NO_VERIFY_JWT=(
   callback-call-handler
   callback-call-status
   conference-transfer
+  batch-call-cxml
+  batch-conf-status
   conference-twiml
   forward-to-sip
   outbound-call-status
@@ -95,16 +119,64 @@ NO_VERIFY_JWT=(
   webhook-inbound-call
   webhook-inbound-sms
   webhook-sms-status
+  whitelist-call-complete
+
+  # ── Admin functions (requireAdmin — custom auth, no JWT) ──
+  admin-adjust-credits
+  admin-analytics
+  admin-blog-api
+  admin-consume-impersonation
+  admin-directories-api
+  admin-get-user
+  admin-impersonate
+  admin-list-users
+  admin-manage-numbers
+  admin-notifications-api
+  admin-signalwire-numbers
+  admin-reviews-api
+  admin-send-welcome-email
+  admin-social-listening-api
+  admin-status
+  admin-update-user
+  generate-blog-image
+  publish-blog-to-twitter
+  support-tickets-api
+
+  # ── Other functions using resolveUser (missing from original list) ──
+  manage-skills
+  send-notification-email
+  send-notification-push
+  send-notification-slack
+  send-notification-sms
 
   # ── Other external webhooks (no JWT) ──
   cal-com-oauth-callback
+  composio-callback
+  composio-trigger-webhook
   gmail-push-webhook
   integration-oauth-callback
   livekit-swml-handler
   stripe-webhook
   twitter-oauth-callback
   webhook-inbound-email
+  webhook-inbound-whatsapp
   webhook-livekit-egress
+  webhook-meta-deauth
+
+  # ── WhatsApp API (resolveUser + external calls) ──
+  send-whatsapp-message
+  send-whatsapp-template
+
+  # ── Test framework (resolveUser + service-role internal calls) ──
+  run-test
+  test-ai-analyze
+  test-cases
+  test-runs
+  test-caller-swml
+  test-log-collector
+  test-call-status
+  whatsapp-connect
+  refresh-whatsapp-tokens
 
   # ── Cron/worker functions (service role, no JWT) ──
   process-batch-calls
@@ -121,9 +193,12 @@ NO_VERIFY_JWT=(
   # ── Public endpoints (no auth required) ──
   blog-rss
   notify-signup
+  public-status
   send-contact-email
   send-custom-plan-inquiry
   send-password-reset
+  status-notify
+  status-subscribe
 )
 
 # ─── Helper ──────────────────────────────────────────────────────────────
@@ -213,7 +288,8 @@ fi
 # ─── Ensure access token ────────────────────────────────────────────────
 
 if [[ -z "$SUPABASE_ACCESS_TOKEN" ]]; then
-  export SUPABASE_ACCESS_TOKEN=YOUR_SUPABASE_ACCESS_TOKEN
+  echo "❌ SUPABASE_ACCESS_TOKEN is not set. Export it from your .env or Supabase dashboard."
+  exit 1
 fi
 
 # ─── Deploy specific functions or all ────────────────────────────────────

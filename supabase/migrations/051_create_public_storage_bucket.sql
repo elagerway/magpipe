@@ -5,7 +5,7 @@ VALUES (
   'public',
   true,
   52428800, -- 50MB
-  ARRAY['audio/mpeg', 'audio/mp3', 'image/png', 'image/jpeg', 'image/jpg', 'image/webp']
+  ARRAY['audio/mpeg', 'audio/mp3', 'image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif']
 )
 ON CONFLICT (id) DO NOTHING;
 

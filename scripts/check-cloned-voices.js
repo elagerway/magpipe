@@ -1,8 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const supabase = createClient(
-  'https://mtxbiyilvgwhbdptysex.supabase.co',
-  'YOUR_SUPABASE_KEY'
+  'https://api.magpipe.ai',
+  process.env.VITE_SUPABASE_ANON_KEY
 );
 
 async function checkClonedVoices() {

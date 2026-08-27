@@ -4,6 +4,8 @@
  */
 
 import { supabase } from '../lib/supabase.js';
+import { getRecommendedSettings } from '../lib/recommended-settings.js';
+import { resolveAgentLanguage } from '../lib/agent-language.js';
 
 export class AgentConfig {
   /**
@@ -12,9 +14,14 @@ export class AgentConfig {
    * @returns {Promise<{config: Object|null, error: Error|null}>}
    */
   static async create(configData) {
+    // English-default language at the shared insert chokepoint so EVERY model-based
+    // creation path (createAgent, getOrCreate fallback, config form) gets it — not
+    // just createAgent — and we never persist null. Multilingual ('multi') and other
+    // explicit values are preserved. See lib/agent-language.js.
+    const row = { ...configData, language: resolveAgentLanguage(configData.language) };
     const { data, error } = await supabase
       .from('agent_configs')
-      .insert(configData)
+      .insert(row)
       .select()
       .single();
 
@@ -155,15 +162,27 @@ export class AgentConfig {
     // Generate type-specific default prompt
     const defaultPrompt = this.getDefaultPromptForType(agentType, firstName, agentName);
 
+    // Seed with platform-recommended settings for this (agent_type, llm_model)
+    // pair. These are documented in src/lib/recommended-settings.js — they're
+    // the values we'd actually pick if we were configuring the agent ourselves
+    // (lower temperature for voice, backchannel off, stability=0.5, etc).
+    // Anything in agentData wins via the spread below.
+    const llmModel = agentData.llm_model || 'gpt-4.1-mini';
+    const recommended = getRecommendedSettings(agentType, llmModel);
+
     const newAgentData = {
       user_id: userId,
       name: agentName,
       agent_type: agentType,
       is_default: isFirstAgent, // First agent is always default
-      voice_id: agentData.voice_id || '21m00Tcm4TlvDq8ikWAM',
+      voice_id: agentData.voice_id || 'EXAVITQu4vr4xnSDxMaL',
       system_prompt: agentData.system_prompt || defaultPrompt,
+      llm_model: llmModel,
+      ...recommended,
       ...agentData,
     };
+    // Note: language defaulting (English unless explicit) happens in create() so
+    // every creation path is covered, not just this one.
 
     return await this.create(newAgentData);
   }
@@ -339,7 +358,7 @@ export class AgentConfig {
         return this.getDefaultChatWidgetPrompt(firstName);
       case 'inbound_voice':
       default:
-        return this.getDefaultInboundVoicePrompt(firstName);
+        return this.getDefaultInboundVoicePrompt(firstName, agentName);
     }
   }
 
@@ -348,11 +367,12 @@ export class AgentConfig {
    * @param {string} firstName - User's first name
    * @returns {string} Default inbound voice prompt
    */
-  static getDefaultInboundVoicePrompt(firstName) {
-    return `You are Maggie, a professional AI assistant. Your job is to handle incoming calls on behalf of the business.
+  static getDefaultInboundVoicePrompt(firstName, agentName = null) {
+    const name = agentName || 'Assistant';
+    return `You are ${name}, a professional AI assistant. Your job is to handle incoming calls on behalf of the business.
 
 When someone calls:
-1. Greet them warmly and introduce yourself as Maggie
+1. Greet them warmly and introduce yourself as ${name}
 2. Ask for their name and the purpose of their call
 3. Determine if this is a legitimate inquiry
 
@@ -447,8 +467,8 @@ Focus on converting visitors into contacts by being genuinely helpful.`;
   }
 
   // Legacy aliases for backward compatibility
-  static getDefaultInboundPrompt(firstName) {
-    return this.getDefaultInboundVoicePrompt(firstName);
+  static getDefaultInboundPrompt(firstName, agentName = null) {
+    return this.getDefaultInboundVoicePrompt(firstName, agentName);
   }
 
   static getDefaultOutboundPrompt(orgName, agentName = null) {

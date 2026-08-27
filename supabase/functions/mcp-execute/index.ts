@@ -8,6 +8,7 @@ import { handleListAvailableIntegrations, handleStartIntegrationConnection, hand
 import { handleHubSpotTool } from './hubspot.ts'
 import { handleMcpServerTool } from './mcp-server.ts'
 import { corsHeaders, handleCors } from '../_shared/cors.ts'
+import { fetchCalEventTypes, refreshCalToken } from '../_shared/cal-com.ts'
 
 interface McpExecuteRequest {
   tool_name: string;
@@ -128,7 +129,11 @@ Deno.serve(async (req) => {
       case 'hubspot_search_contacts':
       case 'hubspot_get_contact':
       case 'hubspot_create_note':
+      case 'hubspot_list_contact_properties':
         response = await handleHubSpotTool(supabase, userId, tool_name, args);
+        break;
+      case 'cal_com_list_event_types':
+        response = await handleCalComListEventTypes(supabase, userId);
         break;
       default:
         if (tool_name.includes(':')) {
@@ -164,3 +169,58 @@ Deno.serve(async (req) => {
     );
   }
 });
+
+/**
+ * Fetch Cal.com event types for the authenticated user.
+ */
+async function handleCalComListEventTypes(supabase: any, userId: string): Promise<McpExecuteResponse> {
+  const { data: integration } = await supabase
+    .from('user_integrations')
+    .select('id, access_token, refresh_token, token_expires_at, integration_providers!inner(slug)')
+    .eq('user_id', userId)
+    .eq('integration_providers.slug', 'cal_com')
+    .eq('status', 'connected')
+    .single();
+
+  if (!integration?.access_token) {
+    return { success: false, message: 'Cal.com not connected.' };
+  }
+
+  // Refresh token if expired
+  let accessToken = integration.access_token;
+  const expiry = new Date(integration.token_expires_at || 0);
+  if (expiry.getTime() - Date.now() < 5 * 60 * 1000 && integration.refresh_token) {
+    try {
+      const tokens = await refreshCalToken(integration.refresh_token);
+      accessToken = tokens.access_token;
+      const newExpiry = new Date(Date.now() + (tokens.expires_in || 3600) * 1000);
+      await supabase.from('user_integrations').update({
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token || integration.refresh_token,
+        token_expires_at: newExpiry.toISOString(),
+        updated_at: new Date().toISOString(),
+      }).eq('id', integration.id);
+      // Also update legacy users table
+      await supabase.from('users').update({
+        cal_com_access_token: tokens.access_token,
+        cal_com_refresh_token: tokens.refresh_token || integration.refresh_token,
+        cal_com_token_expires_at: newExpiry.toISOString(),
+      }).eq('id', userId);
+    } catch (err) {
+      console.error('Cal.com token refresh error:', err);
+      return { success: false, message: 'Cal.com token expired and could not be refreshed. Please reconnect Cal.com.' };
+    }
+  }
+
+  try {
+    const eventTypes = await fetchCalEventTypes(accessToken);
+    return {
+      success: true,
+      message: `Found ${eventTypes.length} event type(s).`,
+      result: { event_types: eventTypes },
+    };
+  } catch (err) {
+    console.error('Cal.com list event types error:', err);
+    return { success: false, message: 'Failed to fetch Cal.com event types.' };
+  }
+}

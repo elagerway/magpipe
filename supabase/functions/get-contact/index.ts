@@ -73,7 +73,7 @@ Deno.serve(async (req) => {
         .from("sms_messages")
         .select("id", { count: "exact", head: true })
         .eq("user_id", user.id)
-        .or(`from_number.eq.${contact.phone_number},to_number.eq.${contact.phone_number}`),
+        .or(`sender_number.eq.${contact.phone_number},recipient_number.eq.${contact.phone_number}`),
     ]);
 
     const response = {

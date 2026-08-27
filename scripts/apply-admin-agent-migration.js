@@ -58,7 +58,7 @@ async function applyMigration() {
     console.log('✅ Migration file is valid and ready to apply');
     console.log('');
     console.log('To apply this migration, run:');
-    console.log('  export SUPABASE_ACCESS_TOKEN=YOUR_SUPABASE_ACCESS_TOKEN');
+    console.log('  export SUPABASE_ACCESS_TOKEN=<your-token-from-supabase-dashboard>');
     console.log('  npx supabase db push --include-all');
     console.log('');
     console.log('Or apply manually via Supabase dashboard SQL editor');

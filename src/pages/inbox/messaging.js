@@ -2,6 +2,7 @@ import { supabase } from '../../lib/supabase.js';
 import { showAlertModal } from '../../components/ConfirmModal.js';
 import { showToast } from '../../lib/toast.js';
 import { loadVoiceRecognition, isVoiceSupported } from './voice-loader.js';
+import { formatPhoneNumber } from '../../lib/formatters.js';
 
 export const messagingMethods = {
   async showNewConversationModal() {
@@ -110,7 +111,7 @@ export const messagingMethods = {
             onmouseout="this.style.background='none'"
           >
             <span style="font-size: 1.2rem;">${defaultNumber ? this.getCountryFlag(defaultNumber.phone_number) : '🌍'}</span>
-            <span id="selected-number-display">${defaultNumber ? this.formatPhoneNumber(defaultNumber.phone_number) : 'Select number'}</span>
+            <span id="selected-number-display">${defaultNumber ? formatPhoneNumber(defaultNumber.phone_number) : 'Select number'}</span>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
@@ -163,7 +164,7 @@ export const messagingMethods = {
               >
                 <span style="font-size: 1.5rem;">${this.getCountryFlag(num.phone_number)}</span>
                 <div style="flex: 1; text-align: left;">
-                  <div style="font-weight: 600; font-size: 0.95rem;">${this.formatPhoneNumber(num.phone_number)}</div>
+                  <div style="font-weight: 600; font-size: 0.95rem;">${formatPhoneNumber(num.phone_number)}</div>
                 </div>
               </button>
             `).join('') || '<p class="text-muted">No active numbers</p>'}
@@ -209,7 +210,7 @@ export const messagingMethods = {
         // Update display
         const displayEl = document.getElementById('selected-number-display');
         const flagEl = document.getElementById('from-number-btn').querySelector('span');
-        displayEl.textContent = this.formatPhoneNumber(number);
+        displayEl.textContent = formatPhoneNumber(number);
         flagEl.textContent = this.getCountryFlag(number);
 
         // Close modal
@@ -285,7 +286,7 @@ export const messagingMethods = {
               ${contact.name || 'Unknown'}
             </div>
             <div style="font-size: 0.75rem; color: var(--text-secondary);">
-              ${this.formatPhoneNumber(contact.phone_number)}${contact.company ? ` · ${contact.company}` : ''}
+              ${formatPhoneNumber(contact.phone_number)}${contact.company ? ` · ${contact.company}` : ''}
             </div>
           </div>
         </div>
@@ -424,7 +425,7 @@ export const messagingMethods = {
             onmouseout="this.style.background='none'"
           >
             <span style="font-size: 1.2rem;">${defaultNumber ? this.getCountryFlag(defaultNumber.phone_number) : '🌍'}</span>
-            <span id="agent-selected-number-display">${defaultNumber ? this.formatPhoneNumber(defaultNumber.phone_number) : 'Select number'}</span>
+            <span id="agent-selected-number-display">${defaultNumber ? formatPhoneNumber(defaultNumber.phone_number) : 'Select number'}</span>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
@@ -569,7 +570,7 @@ Examples:
               >
                 <span style="font-size: 1.5rem;">${this.getCountryFlag(num.phone_number)}</span>
                 <div style="flex: 1; text-align: left;">
-                  <div style="font-weight: 600; font-size: 0.95rem;">${this.formatPhoneNumber(num.phone_number)}</div>
+                  <div style="font-weight: 600; font-size: 0.95rem;">${formatPhoneNumber(num.phone_number)}</div>
                 </div>
               </button>
             `).join('') || '<p class="text-muted">No active numbers</p>'}
@@ -614,7 +615,7 @@ Examples:
         this.selectedServiceNumber = number;
         const displayEl = document.getElementById('agent-selected-number-display');
         const flagEl = document.getElementById('agent-from-number-btn').querySelector('span');
-        displayEl.textContent = this.formatPhoneNumber(number);
+        displayEl.textContent = formatPhoneNumber(number);
         flagEl.textContent = this.getCountryFlag(number);
         document.getElementById('agent-number-select-modal').classList.add('hidden');
       });
@@ -681,7 +682,7 @@ Examples:
               ${contact.name || 'Unknown'}
             </div>
             <div style="font-size: 0.75rem; color: var(--text-secondary);">
-              ${this.formatPhoneNumber(contact.phone_number)}${contact.company ? ` · ${contact.company}` : ''}
+              ${formatPhoneNumber(contact.phone_number)}${contact.company ? ` · ${contact.company}` : ''}
             </div>
           </div>
         </div>
@@ -693,7 +694,7 @@ Examples:
         el.addEventListener('click', () => {
           const phone = el.dataset.phone;
           const name = el.dataset.name;
-          phoneInput.value = name ? `${name} ${this.formatPhoneNumber(phone)}` : phone;
+          phoneInput.value = name ? `${name} ${formatPhoneNumber(phone)}` : phone;
           phoneInput.dataset.selectedPhone = phone;
           phoneInput.dataset.selectedName = name;
           suggestionsEl.style.display = 'none';
@@ -1139,7 +1140,19 @@ Examples:
         <button class="email-format-btn" data-cmd="formatBlock" data-value="blockquote" title="Quote" style="
           background: none; border: none; padding: 0.375rem; cursor: pointer; border-radius: 4px; color: var(--text-primary); font-size: 1rem;
         ">&ldquo;</button>
+        <div style="width: 1px; height: 18px; background: var(--border-color); margin: 0 0.25rem;"></div>
+        <button id="email-attach-btn" title="Attach file" style="
+          background: none; border: none; padding: 0.375rem; cursor: pointer; border-radius: 4px; color: var(--text-primary);
+        ">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
+          </svg>
+        </button>
+        <input type="file" id="email-file-input" multiple accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt" style="display: none;" />
       </div>
+
+      <!-- Attachment previews -->
+      <div id="email-attachment-previews" class="email-attachment-previews" style="display: none;"></div>
 
       <!-- Body -->
       <div id="email-body" contenteditable="true" style="
@@ -1185,12 +1198,13 @@ Examples:
       </div>
     `;
 
-    // Store compose context
+    // Store compose context and reset attachments
     this._emailComposeContext = {
       threadId: threadId || null,
       inReplyTo: inReplyTo || null,
       agentMode: agentMode || false,
     };
+    this._emailAttachments = [];
 
     // Handle mobile
     const isMobile = window.innerWidth <= 768;
@@ -1231,6 +1245,71 @@ Examples:
         }
         document.getElementById('email-body').focus();
       });
+    });
+
+    // Attachment upload handler
+    const attachBtn = document.getElementById('email-attach-btn');
+    const fileInput = document.getElementById('email-file-input');
+    attachBtn.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', async (e) => {
+      const files = Array.from(e.target.files);
+      if (!files.length) return;
+
+      const MAX_FILES = 5;
+      const MAX_SIZE = 25 * 1024 * 1024; // 25MB
+
+      if (this._emailAttachments.length + files.length > MAX_FILES) {
+        showAlertModal('Limit Reached', `Maximum ${MAX_FILES} attachments allowed.`);
+        fileInput.value = '';
+        return;
+      }
+
+      for (const file of files) {
+        if (file.size > MAX_SIZE) {
+          showAlertModal('File Too Large', `${file.name} exceeds 25MB limit.`);
+          continue;
+        }
+
+        // Upload to support-attachments bucket
+        const { data: { session: s } } = await supabase.auth.getSession();
+        const userId = s?.user?.id || 'anonymous';
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${fileExt}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('support-attachments')
+          .upload(fileName, file, { cacheControl: '3600', upsert: false });
+
+        if (uploadError) {
+          console.error('Upload error:', uploadError);
+          showToast('Failed to upload ' + file.name);
+          continue;
+        }
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('support-attachments')
+          .getPublicUrl(fileName);
+
+        const attachment = {
+          url: publicUrl,
+          filename: file.name,
+          type: file.type,
+          size: file.size,
+        };
+        this._emailAttachments.push(attachment);
+
+        // Insert inline image into email body
+        if (file.type.startsWith('image/')) {
+          const bodyEl = document.getElementById('email-body');
+          bodyEl.focus();
+          document.execCommand('insertHTML', false,
+            `<img src="${publicUrl}" alt="${file.name}" style="max-width: 100%; height: auto; border-radius: 4px; margin: 0.5rem 0;">`
+          );
+        }
+      }
+
+      this._renderEmailAttachmentPreviews();
+      fileInput.value = '';
     });
 
     // Placeholder behavior for contenteditable
@@ -1378,6 +1457,7 @@ Examples:
           agent_id: ctx.agentMode ? undefined : undefined, // Agent selection TBD
           thread_id: ctx.threadId || undefined,
           in_reply_to: ctx.inReplyTo || undefined,
+          attachments: this._emailAttachments?.length ? this._emailAttachments : undefined,
         }),
       });
 
@@ -1420,6 +1500,47 @@ Examples:
         Send Email
       `;
     }
+  },
+
+  _renderEmailAttachmentPreviews() {
+    const container = document.getElementById('email-attachment-previews');
+    if (!container) return;
+
+    if (!this._emailAttachments?.length) {
+      container.style.display = 'none';
+      container.innerHTML = '';
+      return;
+    }
+
+    container.style.display = 'flex';
+    const esc = (text) => { const d = document.createElement('div'); d.textContent = text; return d.innerHTML; };
+    container.innerHTML = this._emailAttachments.map((a, i) => {
+      const isVideo = a.type?.startsWith('video/');
+      const isImage = a.type?.startsWith('image/');
+      const safeName = esc(a.filename || 'file');
+      const thumb = isImage
+        ? `<img src="${a.url}" alt="${safeName}" loading="lazy">`
+        : isVideo
+          ? `<video src="${a.url}" muted></video>`
+          : `<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:1.5rem;">📎</div>`;
+
+      return `
+        <div class="email-attachment-preview">
+          ${thumb}
+          <button class="remove-attachment" data-idx="${i}" title="Remove">&times;</button>
+          <div class="attachment-name">${safeName}</div>
+        </div>
+      `;
+    }).join('');
+
+    // Wire up remove buttons
+    container.querySelectorAll('.remove-attachment').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const idx = parseInt(e.currentTarget.dataset.idx);
+        this._emailAttachments.splice(idx, 1);
+        this._renderEmailAttachmentPreviews();
+      });
+    });
   },
 
 };

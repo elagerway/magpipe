@@ -4,6 +4,9 @@
  * Automatically adds/removes phone numbers from the LiveKit SIP inbound trunk
  * so new numbers are immediately routable without manual CLI work.
  *
+ * Uses updateSipInboundTrunkFields with ListUpdate for atomic add/remove
+ * without needing to list the trunk first.
+ *
  * Requires env vars: LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, LIVEKIT_SIP_TRUNK_ID
  */
 
@@ -39,29 +42,12 @@ export async function addNumberToSipTrunk(phoneNumber: string): Promise<boolean>
       return false
     }
 
-    // List trunks to find current one and get its numbers
-    const trunks = await sipClient.listSipInboundTrunk()
-    const trunk = trunks.find((t: any) => t.sipTrunkId === trunkId)
+    console.log('LiveKit SIP: Adding number to trunk:', phoneNumber)
 
-    if (!trunk) {
-      console.error('LiveKit SIP: Trunk not found:', trunkId)
-      return false
-    }
-
-    const currentNumbers: string[] = trunk.numbers || []
-
-    // Check if already registered
-    if (currentNumbers.includes(phoneNumber)) {
-      console.log('LiveKit SIP: Number already in trunk:', phoneNumber)
-      return true
-    }
-
-    // Update trunk with new number added
-    const updatedNumbers = [...currentNumbers, phoneNumber]
-    console.log('LiveKit SIP: Adding number to trunk:', phoneNumber, '→', updatedNumbers.length, 'total')
-
-    await sipClient.updateSipInboundTrunk(trunkId, {
-      numbers: updatedNumbers,
+    // Use updateSipInboundTrunkFields with ListUpdate.add for atomic append
+    // This avoids needing to list the trunk first and handles deduplication
+    await sipClient.updateSipInboundTrunkFields(trunkId, {
+      numbers: { add: [phoneNumber] },
     })
 
     console.log('✅ LiveKit SIP: Number added to trunk:', phoneNumber)
@@ -87,27 +73,11 @@ export async function removeNumberFromSipTrunk(phoneNumber: string): Promise<boo
       return false
     }
 
-    // List trunks to find current one and get its numbers
-    const trunks = await sipClient.listSipInboundTrunk()
-    const trunk = trunks.find((t: any) => t.sipTrunkId === trunkId)
+    console.log('LiveKit SIP: Removing number from trunk:', phoneNumber)
 
-    if (!trunk) {
-      console.error('LiveKit SIP: Trunk not found:', trunkId)
-      return false
-    }
-
-    const currentNumbers: string[] = trunk.numbers || []
-
-    if (!currentNumbers.includes(phoneNumber)) {
-      console.log('LiveKit SIP: Number not in trunk (already removed):', phoneNumber)
-      return true
-    }
-
-    const updatedNumbers = currentNumbers.filter(n => n !== phoneNumber)
-    console.log('LiveKit SIP: Removing number from trunk:', phoneNumber, '→', updatedNumbers.length, 'remaining')
-
-    await sipClient.updateSipInboundTrunk(trunkId, {
-      numbers: updatedNumbers,
+    // Use updateSipInboundTrunkFields with ListUpdate.remove for atomic removal
+    await sipClient.updateSipInboundTrunkFields(trunkId, {
+      numbers: { remove: [phoneNumber] },
     })
 
     console.log('✅ LiveKit SIP: Number removed from trunk:', phoneNumber)

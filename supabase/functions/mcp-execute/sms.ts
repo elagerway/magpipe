@@ -1,5 +1,6 @@
 import { SupabaseClient } from 'npm:@supabase/supabase-js@2'
 import { normalizePhoneNumber, findContacts, McpExecuteResponse } from './utils.ts'
+import { dispatchWebhook } from '../_shared/webhook-dispatcher.ts'
 
 export async function handleSendSms(supabase: any, userId: string, args: any, mode: string): Promise<McpExecuteResponse> {
   const { recipient, message, sender_number } = args;
@@ -119,6 +120,7 @@ export async function executeSendSms(supabase: any, userId: string, toNumber: st
   }
 
   // Save to sms_messages table
+  const sentAt = new Date().toISOString();
   const insertData: any = {
     user_id: userId,
     direction: 'outbound',
@@ -127,10 +129,26 @@ export async function executeSendSms(supabase: any, userId: string, toNumber: st
     content: message,
     is_ai_generated: false,
     status: 'sent',
-    sent_at: new Date().toISOString(),
+    sent_at: sentAt,
   };
   if (agentId) insertData.agent_id = agentId;
-  await supabase.from('sms_messages').insert(insertData);
+  const { data: outboundRow } = await supabase
+    .from('sms_messages')
+    .insert(insertData)
+    .select('id')
+    .single();
+
+  // Fire sms.sent webhook (fire-and-forget, API/MCP path).
+  dispatchWebhook(supabase, userId, 'sms.sent', {
+    sms_message_id: outboundRow?.id ?? null,
+    agent_id: agentId,
+    service_number: senderNumber,
+    from_number: senderNumber,
+    to_number: toNumber,
+    body: message,
+    trigger: 'api',
+    sent_at: sentAt,
+  }).catch((err: unknown) => console.error('🔔 sms.sent dispatch failed:', err));
 
   // Deduct credits for the SMS
   deductSmsCredits(userId, 1).catch(err => console.error('Failed to deduct SMS credits:', err));

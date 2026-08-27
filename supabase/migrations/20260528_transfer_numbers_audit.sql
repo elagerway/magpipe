@@ -1,7 +1,7 @@
 -- Audit trail for transfer_numbers edits.
 --
 -- Context: on 2026-05-28 the "Erik" transfer target was rewritten several
--- times within an hour (+15555550101 → +15555550102 → +15555550100) with
+-- times within an hour (+16726991420 → +13109949459 → +16045628647) with
 -- no trace — UI/app edits don't bump updated_at and there was no history
 -- table, so the source was untraceable. This logs every insert/update/
 -- delete with the old→new phone number and the request identity (Postgres

@@ -1,5 +1,8 @@
 import { SupabaseClient } from 'npm:@supabase/supabase-js@2'
 import { redactPii } from '../_shared/pii-redaction.ts'
+import { reportError } from '../_shared/error-reporter.ts'
+import { dispatchWebhook } from '../_shared/webhook-dispatcher.ts'
+import { describeBridge, languageName, normalizeLanguageCode } from '../_shared/languages.ts'
 
 export async function sendSMS(
   userId: string,
@@ -25,10 +28,14 @@ export async function sendSMS(
     const shouldAddOptOutText = addOptOutText && fromIsUSNumber
     const messageBody = shouldAddOptOutText ? `${body}\n\nSTOP to opt out` : body
 
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+    const statusCallbackUrl = `${supabaseUrl}/functions/v1/webhook-sms-status`
+
     const smsData = new URLSearchParams({
       From: fromNumber,
       To: to,
       Body: messageBody,
+      StatusCallback: statusCallbackUrl,
     })
 
     const auth = btoa(`${signalwireProjectId}:${signalwireApiToken}`)
@@ -47,9 +54,19 @@ export async function sendSMS(
     if (!smsResponse.ok) {
       const errorText = await smsResponse.text()
       console.error('SignalWire SMS send error:', errorText)
+      await reportError(supabase, {
+        error_type: 'signalwire_sms_send_failure',
+        error_message: errorText,
+        error_code: String(smsResponse.status),
+        source: 'webhook-inbound-sms/sms-delivery',
+        severity: 'error',
+        metadata: { channel: 'sms', from: fromNumber, to, ai_reply: true },
+        user_id: userId,
+      }).catch(() => {})
     } else {
       const smsResult = await smsResponse.json()
-      console.log('SMS sent:', smsResult.sid)
+      const messageSid = smsResult.sid
+      console.log('SMS sent:', messageSid)
 
       // Log the outbound SMS (respect PII storage mode)
       let outboundContent: string | null = body
@@ -59,7 +76,8 @@ export async function sendSMS(
         outboundContent = await redactPii(body)
       }
 
-      await supabase
+      const sentAt = new Date().toISOString()
+      const { data: outboundRow } = await supabase
         .from('sms_messages')
         .insert({
           user_id: userId,
@@ -67,10 +85,25 @@ export async function sendSMS(
           recipient_number: to,
           direction: 'outbound',
           content: outboundContent,
-          status: 'sent',
-          sent_at: new Date().toISOString(),
+          status: 'pending',
+          message_sid: messageSid,
+          sent_at: sentAt,
           is_ai_generated: true,
         })
+        .select('id')
+        .single()
+
+      // Fire sms.sent webhook (fire-and-forget, AI-reply path).
+      dispatchWebhook(supabase, userId, 'sms.sent', {
+        sms_message_id: outboundRow?.id ?? null,
+        agent_id: null,
+        service_number: fromNumber,
+        from_number: fromNumber,
+        to_number: to,
+        body: outboundContent,
+        trigger: 'agent_reply',
+        sent_at: sentAt,
+      }).catch(err => console.error('🔔 sms.sent dispatch failed:', err))
 
       // Deduct credits for the AI-generated SMS (fire and forget)
       // Includes AI surcharge ($0.005) on top of base SMS rate ($0.01)
@@ -84,6 +117,15 @@ export async function sendSMS(
     }
   } catch (error) {
     console.error('Error sending SMS:', error)
+    reportError(supabase, {
+      error_type: 'sms_send_failure',
+      error_message: String((error as Error)?.message || error),
+      error_code: 'sendSMS',
+      source: 'supabase',
+      severity: 'error',
+      metadata: { to, from, user_id: userId },
+      user_id: userId,
+    }).catch(() => {})
   }
 }
 
@@ -103,8 +145,7 @@ export async function translateAndCacheSms(
   slackTranslationsEnabled: boolean = true
 ) {
   const targetLang = translateTo.split('-').pop() || 'en'
-  const langNames: Record<string, string> = { en: 'English', fr: 'French', es: 'Spanish', de: 'German' }
-  const targetLangName = langNames[targetLang] || targetLang
+  const targetLangName = languageName(targetLang) || targetLang
 
   const openaiApiKey = Deno.env.get('OPENAI_API_KEY')!
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -116,29 +157,55 @@ export async function translateAndCacheSms(
     body: JSON.stringify({
       model: 'gpt-4o-mini',
       max_tokens: 500,
+      response_format: { type: 'json_object' },
       messages: [
-        { role: 'system', content: `Translate to ${targetLangName}. Return a JSON array with exactly 2 strings: translation of first text, then second text.` },
+        {
+          role: 'system',
+          content: `Translate both texts to ${targetLangName}. Also detect the language the FIRST text was originally written in. ` +
+            `Return ONLY JSON of the form {"source_lang":"<ISO 639-1 code of first text, e.g. zh, fr, en>","translations":["<first text translated>","<second text translated>"]}.`,
+        },
         { role: 'user', content: JSON.stringify([inboundText, outboundText]) },
       ],
     }),
   })
 
   if (!response.ok) {
-    console.error('Translation API error:', await response.text())
+    const errorText = await response.text()
+    console.error('Translation API error:', errorText)
+    await reportError(supabase, {
+      error_type: 'openai_chat_failure',
+      error_message: errorText,
+      error_code: String(response.status),
+      source: 'webhook-inbound-sms/translate',
+      severity: 'error',
+      metadata: { channel: 'sms', from: contactNumber, to: serviceNumber, model: 'gpt-4o-mini', purpose: 'translate' },
+      user_id: userId,
+    }).catch(() => {})
     return
   }
 
   const result = await response.json()
   const raw = result.choices[0].message.content.trim()
   let translations: string[]
+  let sourceLang: string | null = null
   try {
-    translations = JSON.parse(raw)
+    const parsed = JSON.parse(raw)
+    // New shape: { source_lang, translations[] }. Tolerate the old bare-array shape.
+    if (Array.isArray(parsed)) {
+      translations = parsed
+    } else {
+      translations = parsed.translations || []
+      sourceLang = normalizeLanguageCode(parsed.source_lang)
+    }
   } catch {
     console.error('Failed to parse translation response:', raw)
     return
   }
 
   if (translations.length < 2) return
+
+  // Only record a source language when it's a real cross-language bridge
+  const sourceLangToStore = sourceLang && sourceLang !== normalizeLanguageCode(targetLang) ? sourceLang : null
 
   // Update the most recent inbound message from this contact
   const { data: inboundMsg } = await supabase
@@ -155,7 +222,7 @@ export async function translateAndCacheSms(
   if (inboundMsg) {
     await supabase
       .from('sms_messages')
-      .update({ translation: translations[0] })
+      .update({ translation: translations[0], source_language: sourceLangToStore })
       .eq('id', inboundMsg.id)
   }
 
@@ -183,16 +250,18 @@ export async function translateAndCacheSms(
   // Post translation as a Slack thread reply (if translations enabled)
   if (slackThread && translations[0] && slackTranslationsEnabled) {
     try {
+      const bridge = describeBridge(sourceLangToStore, targetLang)
+      const bridgeLabel = bridge ? ` (${bridge})` : ''
       const slackMessage = {
         channel: slackThread.channel,
         thread_ts: slackThread.ts,
-        text: `🌐 Translation: ${translations[0]}`,
+        text: `Translation${bridgeLabel}: ${translations[0]}`,
         blocks: [
           {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `🌐 *Translation:*\n>${translations[0].replace(/\n/g, '\n>')}`
+              text: `*Translation${bridgeLabel}:*\n>${translations[0].replace(/\n/g, '\n>')}`
             }
           }
         ]

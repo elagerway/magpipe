@@ -258,6 +258,7 @@ export const memoryTabMethods = {
             </svg>
             Clear
           </button>
+          ${mem.createdAt ? `<span style="font-size: 0.7rem; color: var(--text-tertiary);">${new Date(mem.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} ${new Date(mem.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>` : ''}
           <span class="copy-memory-id-btn" data-memory-id="${mem.id}" title="Click to copy">${mem.id}</span>
         </div>
       </div>

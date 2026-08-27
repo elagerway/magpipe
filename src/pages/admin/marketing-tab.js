@@ -7,6 +7,7 @@
 const MARKETING_SUBTABS = [
   { id: 'blog', label: 'Blog' },
   { id: 'directories', label: 'Directories' },
+  { id: 'coupons', label: 'Coupon codes' },
   { id: 'reviews', label: 'Reviews' },
   { id: 'monitor', label: 'Monitor' },
 ];
@@ -73,6 +74,8 @@ export const marketingTabMethods = {
           await this.renderBlogTab();
         } else if (subtab === 'directories') {
           await this.renderDirectoriesTab();
+        } else if (subtab === 'coupons') {
+          await this.renderCouponsTab();
         } else if (subtab === 'reviews') {
           await this.renderReviewsTab();
         } else if (subtab === 'monitor') {

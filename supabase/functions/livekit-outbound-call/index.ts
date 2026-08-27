@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { SipClient, RoomServiceClient, AgentDispatchClient } from 'npm:livekit-server-sdk@2.14.0'
 import { corsHeaders, handleCors } from '../_shared/cors.ts'
+import { normalizeE164 } from '../_shared/phone-e164.ts'
 
 // LiveKit outbound SIP trunk ID
 const OUTBOUND_TRUNK_ID = 'ST_gjX5nwd4CNYq'
@@ -174,7 +175,8 @@ Deno.serve(async (req) => {
           user_id: userId,
           caller_number: callerIdNumber || '+10000000000',
           contact_phone: phoneNumber,
-          service_number: callerIdNumber || '+10000000000',
+          // Clean E.164 so call.completed webhook scoping matches api_key_numbers
+          service_number: (callerIdNumber ? normalizeE164(callerIdNumber) || callerIdNumber : null) || '+10000000000',
           direction: 'outbound',
           status: 'initiated',
           disposition: 'transferred_to_user',

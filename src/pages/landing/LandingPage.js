@@ -152,8 +152,8 @@ export default class LandingPage {
             <p>Pay only for what you use. No monthly minimums, no contracts.</p>
             <div class="lp-pricing-highlights">
               <div class="lp-pricing-item">
-                <span class="lp-pricing-amount">$0.07</span>
-                <span class="lp-pricing-label">per voice minute</span>
+                <span class="lp-pricing-amount">$0.05</span>
+                <span class="lp-pricing-label">from, per voice minute</span>
               </div>
               <div class="lp-pricing-item">
                 <span class="lp-pricing-amount">$0.01</span>

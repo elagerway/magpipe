@@ -1,27 +1,70 @@
 import { getCurrentUser, supabase } from '../../lib/supabase.js';
 
+const AVATAR_BASE = 'https://api.magpipe.ai/storage/v1/object/public/public/avatars/voices';
+
 export const ELEVENLABS_VOICES = [
-  { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel', label: 'Rachel (Default)', accent: 'American', gender: 'Female', description: 'Calm' },
-  { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam', label: 'Adam', accent: 'American', gender: 'Male', description: 'Deep' },
-  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah', label: 'Sarah', accent: 'American', gender: 'Female', description: 'Soft' },
-  { id: 'MF3mGyEYCl7XYWbV9V6O', name: 'Elli', label: 'Elli', accent: 'American', gender: 'Female', description: 'Youthful' },
-  { id: 'TxGEqnHWrfWFTfGW9XjX', name: 'Josh', label: 'Josh', accent: 'American', gender: 'Male', description: 'Strong' },
-  { id: 'pFZP5JQG7iQjIQuC4Bku', name: 'Lily', label: 'Lily', accent: 'British', gender: 'Female', description: 'Warm' },
-  { id: 'nPczCjzI2devNBz1zQrb', name: 'Brian', label: 'Brian', accent: 'American', gender: 'Male', description: 'Narration' },
-  { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel', label: 'Daniel', accent: 'British', gender: 'Male', description: 'Authoritative' },
-  { id: 'cjVigY5qzO86Huf0OWal', name: 'Eric', label: 'Eric', accent: 'American', gender: 'Male', description: 'Friendly' },
-  { id: 'cgSgspJ2msm6clMCkdW9', name: 'Jessica', label: 'Jessica', accent: 'American', gender: 'Female', description: 'Expressive' },
-  { id: 'XrExE9yKIg1WjnnlVkGX', name: 'Matilda', label: 'Matilda', accent: 'American', gender: 'Female', description: 'Warm' },
+  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah', accent: 'American', gender: 'Female', age: 'Young', tone: 'Professional', use: 'Entertainment', langs: 'Arabic, Chinese, French, Hindi, Spanish', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/EXAVITQu4vr4xnSDxMaL/01a3e33c-6e99-4ee7-8543-ff2216a32186.mp3' },
+  { id: 'pFZP5JQG7iQjIQuC4Bku', name: 'Lily', accent: 'British', gender: 'Female', age: 'Middle-aged', tone: 'Confident', use: 'Educational', langs: 'Chinese, Czech, Dutch, German, Italian, Polish', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/pFZP5JQG7iQjIQuC4Bku/89b68b35-b3dd-4348-a84a-a3c13a3c2b30.mp3' },
+  { id: 'nPczCjzI2devNBz1zQrb', name: 'Brian', accent: 'American', gender: 'Male', age: 'Middle-aged', tone: 'Classy', use: 'Social Media', langs: 'Arabic, Chinese, Dutch, German, Hindi, Portuguese, Romanian, Slovak', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/nPczCjzI2devNBz1zQrb/2dd3e72c-4fd3-42f1-93ea-abc5d4e5aa1d.mp3' },
+  { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel', accent: 'British', gender: 'Male', age: 'Middle-aged', tone: 'Formal', use: 'Educational', langs: 'German, Turkish', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/onwK4e9ZLuTAKqWW03F9/7eee0236-1a72-4b86-b303-5dcadc007ba9.mp3' },
+  { id: 'cjVigY5qzO86Huf0OWal', name: 'Eric', accent: 'American', gender: 'Male', age: 'Middle-aged', tone: 'Classy', use: 'Conversational', langs: 'French, German, Portuguese, Slovak, Spanish', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/cjVigY5qzO86Huf0OWal/d098fda0-6456-4030-b3d8-63aa048c9070.mp3' },
+  { id: 'cgSgspJ2msm6clMCkdW9', name: 'Jessica', accent: 'American', gender: 'Female', age: 'Young', tone: 'Cute', use: 'Conversational', langs: 'Arabic, Chinese, Czech, French, German, Hindi, Japanese', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/cgSgspJ2msm6clMCkdW9/56a97bf8-b69b-448f-846c-c3a11683d45a.mp3' },
+  { id: 'XrExE9yKIg1WjnnlVkGX', name: 'Matilda', accent: 'American', gender: 'Female', age: 'Middle-aged', tone: 'Upbeat', use: 'Educational', langs: 'Arabic, French, German, Italian, Spanish', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/XrExE9yKIg1WjnnlVkGX/b930e18d-6b4d-466e-bab2-0ae97c6d8535.mp3' },
+  { id: 'CwhRBWXzGAHq8TQ4Fs17', name: 'Roger', accent: 'American', gender: 'Male', age: 'Middle-aged', tone: 'Classy', use: 'Conversational', langs: 'Dutch, French, German, Spanish', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/CwhRBWXzGAHq8TQ4Fs17/58ee3ff5-f6f2-4628-93b8-e38eb31806b0.mp3' },
+  { id: 'FGY2WhTYpPnrIDTdsKH5', name: 'Laura', accent: 'American', gender: 'Female', age: 'Young', tone: 'Sassy', use: 'Social Media', langs: 'Arabic, Chinese, French, German', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/FGY2WhTYpPnrIDTdsKH5/67341759-ad08-41a5-be6e-de12fe448618.mp3' },
+  { id: 'IKne3meq5aSn9XLyUdCD', name: 'Charlie', accent: 'Australian', gender: 'Male', age: 'Young', tone: 'Hyped', use: 'Conversational', langs: 'Chinese, Filipino, Portuguese, Spanish', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/IKne3meq5aSn9XLyUdCD/102de6f2-22ed-43e0-a1f1-111fa75c5481.mp3' },
+  { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George', accent: 'British', gender: 'Male', age: 'Middle-aged', tone: 'Mature', use: 'Storytelling', langs: 'Arabic, Czech, Filipino, French, Hindi, Japanese, Spanish', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/JBFqnCBsd6RMkjVDRZzb/e6206d1a-0721-4787-aafb-06a6e705cac5.mp3' },
+  { id: 'N2lVS1w4EtoT3dr4eOWO', name: 'Callum', accent: 'American', gender: 'Male', age: 'Middle-aged', tone: 'Husky', use: 'Characters', langs: 'French, Hindi', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/N2lVS1w4EtoT3dr4eOWO/ac833bd8-ffda-4938-9ebc-b0f99ca25481.mp3' },
+  { id: 'SAz9YHcvj6GT2YYXdXww', name: 'River', accent: 'American', gender: 'Neutral', age: 'Middle-aged', tone: 'Calm', use: 'Conversational', langs: 'Chinese, French, Italian, Portuguese', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/SAz9YHcvj6GT2YYXdXww/e6c95f0b-2227-491a-b3d7-2249240decb7.mp3' },
+  { id: 'SOYHLrjzK2X1ezoPC6cr', name: 'Harry', accent: 'American', gender: 'Male', age: 'Young', tone: 'Rough', use: 'Characters', langs: '', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/SOYHLrjzK2X1ezoPC6cr/86d178f6-f4b6-4e0e-85be-3de19f490794.mp3' },
+  { id: 'TX3LPaxmHKxFdv7VOQHJ', name: 'Liam', accent: 'American', gender: 'Male', age: 'Young', tone: 'Confident', use: 'Social Media', langs: 'Czech, German, Hindi, Polish, Portuguese, Turkish', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/TX3LPaxmHKxFdv7VOQHJ/63148076-6363-42db-aea8-31424308b92c.mp3' },
+  { id: 'Xb7hH8MSUJpSbSDYk0k2', name: 'Alice', accent: 'British', gender: 'Female', age: 'Middle-aged', tone: 'Professional', use: 'Educational', langs: 'Arabic, French, Hindi, Italian, Japanese, Polish', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/Xb7hH8MSUJpSbSDYk0k2/d10f7534-11f6-41fe-a012-2de1e482d336.mp3' },
+  { id: 'bIHbv24MWmeRgasZH58o', name: 'Will', accent: 'American', gender: 'Male', age: 'Young', tone: 'Chill', use: 'Conversational', langs: 'Chinese, Czech, Filipino, French, German, Portuguese, Slovak, Spanish, Swedish', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/bIHbv24MWmeRgasZH58o/8caf8f3d-ad29-4980-af41-53f20c72d7a4.mp3' },
+  { id: 'hpp4J3VqNfWAUOO0d1Us', name: 'Bella', accent: 'American', gender: 'Female', age: 'Middle-aged', tone: 'Professional', use: 'Educational', langs: '', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/hpp4J3VqNfWAUOO0d1Us/dab0f5ba-3aa4-48a8-9fad-f138fea1126d.mp3' },
+  { id: 'iP95p4xoKVk53GoZ742B', name: 'Chris', accent: 'American', gender: 'Male', age: 'Middle-aged', tone: 'Casual', use: 'Conversational', langs: 'Arabic, French, Hindi, Portuguese, Swedish', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/iP95p4xoKVk53GoZ742B/3f4bde72-cc48-40dd-829f-57fbf906f4d7.mp3' },
+  { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam', accent: 'American', gender: 'Male', age: 'Middle-aged', tone: 'Deep', use: 'Social Media', langs: '', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/pNInz6obpgDQGcFmaJgB/d6905d7a-dd26-4187-bfff-1bd3a5ea7cac.mp3' },
+  { id: 'pqHfZKP75CvOlQylNhV4', name: 'Bill', accent: 'American', gender: 'Male', age: 'Senior', tone: 'Crisp', use: 'Advertisement', langs: 'Arabic, Chinese, Czech, French, German', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/pqHfZKP75CvOlQylNhV4/d782b3ff-84ba-4029-848c-acf01285524d.mp3' },
 ];
 
+const OAI_PREVIEW_BASE = 'https://api.magpipe.ai/storage/v1/object/public/public/avatars/voices';
+
 export const OPENAI_VOICES = [
-  { id: 'openai-alloy', name: 'Alloy', accent: 'Neutral', gender: 'Neutral', description: 'Balanced' },
-  { id: 'openai-echo', name: 'Echo', accent: 'Neutral', gender: 'Male', description: 'Clear' },
-  { id: 'openai-fable', name: 'Fable', accent: 'British', gender: 'Male', description: 'Expressive' },
-  { id: 'openai-nova', name: 'Nova', accent: 'American', gender: 'Female', description: 'Energetic' },
-  { id: 'openai-onyx', name: 'Onyx', accent: 'American', gender: 'Male', description: 'Deep' },
-  { id: 'openai-shimmer', name: 'Shimmer', accent: 'American', gender: 'Female', description: 'Warm' },
+  { id: 'openai-alloy', name: 'Alloy', accent: 'Neutral', gender: 'Neutral', age: 'Young', tone: 'Balanced', use: 'Conversational', langs: 'All languages (auto-detect)', preview: `${OAI_PREVIEW_BASE}/openai-alloy-preview.mp3` },
+  { id: 'openai-echo', name: 'Echo', accent: 'Neutral', gender: 'Male', age: 'Middle-aged', tone: 'Warm', use: 'Conversational', langs: 'All languages (auto-detect)', preview: `${OAI_PREVIEW_BASE}/openai-echo-preview.mp3` },
+  { id: 'openai-fable', name: 'Fable', accent: 'British', gender: 'Male', age: 'Young', tone: 'Expressive', use: 'Storytelling', langs: 'All languages (auto-detect)', preview: `${OAI_PREVIEW_BASE}/openai-fable-preview.mp3` },
+  { id: 'openai-nova', name: 'Nova', accent: 'American', gender: 'Female', age: 'Young', tone: 'Energetic', use: 'Social Media', langs: 'All languages (auto-detect)', preview: `${OAI_PREVIEW_BASE}/openai-nova-preview.mp3` },
+  { id: 'openai-onyx', name: 'Onyx', accent: 'American', gender: 'Male', age: 'Middle-aged', tone: 'Authoritative', use: 'Advertisement', langs: 'All languages (auto-detect)', preview: `${OAI_PREVIEW_BASE}/openai-onyx-preview.mp3` },
+  { id: 'openai-shimmer', name: 'Shimmer', accent: 'American', gender: 'Female', age: 'Young', tone: 'Soft', use: 'Educational', langs: 'All languages (auto-detect)', preview: `${OAI_PREVIEW_BASE}/openai-shimmer-preview.mp3` },
 ];
+
+function voiceAvatarUrl(voiceId) {
+  return `${AVATAR_BASE}/${voiceId}.jpg`;
+}
+
+function renderVoiceCard(v, selectedVoiceId) {
+  const isSelected = selectedVoiceId === v.id;
+  const avatarUrl = voiceAvatarUrl(v.id);
+  return `
+    <div class="voice-option ${isSelected ? 'selected' : ''}" data-voice-id="${v.id}">
+      <div class="voice-option-top">
+        <img class="voice-avatar" src="${avatarUrl}" alt="${v.name}" onerror="this.style.display='none'" />
+        <div class="voice-info">
+          <span class="voice-name">${v.name}</span>
+          <div class="voice-tags">
+            <span class="voice-tag">${v.accent}</span>
+            ${v.tone ? `<span class="voice-tag">${v.tone}</span>` : ''}
+            ${v.age ? `<span class="voice-tag">${v.age}</span>` : ''}
+            ${v.use ? `<span class="voice-tag voice-tag-use">${v.use}</span>` : ''}
+          </div>
+          ${v.langs ? `<div class="voice-langs" title="${v.langs}">+ ${v.langs}</div>` : ''}
+        </div>
+        ${v.preview ? `<button class="voice-preview-btn" data-preview="${v.preview}" title="Preview voice">
+          <svg class="progress-ring" viewBox="0 0 36 36"><circle cx="18" cy="18" r="16"></circle></svg>
+          <svg class="play-icon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+        </button>` : ''}
+      </div>
+    </div>`;
+}
 
 export const modalsMethods = {
   showVoiceModal() {
@@ -39,11 +82,30 @@ export const modalsMethods = {
             <div class="voice-section">
               <h4>Your Cloned Voices</h4>
               <div class="voice-grid">
-                ${this.clonedVoices.map(v => `
-                  <button class="voice-option ${this.agent.voice_id === `11labs-${v.voice_id}` ? 'selected' : ''}" data-voice-id="11labs-${v.voice_id}">
-                    ${v.voice_name}
-                  </button>
-                `).join('')}
+                ${this.clonedVoices.map(v => {
+                  const isSelected = this.agent.voice_id === `11labs-${v.voice_id}`;
+                  const initials = (v.voice_name || 'CV').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+                  const previewUrl = v.preview_url || `${AVATAR_BASE}/${v.voice_id}-preview.mp3`;
+                  const userAvatar = this.userAvatarUrl;
+                  return `
+                  <div class="voice-option ${isSelected ? 'selected' : ''}" data-voice-id="11labs-${v.voice_id}">
+                    <div class="voice-option-top">
+                      ${userAvatar
+                        ? `<img class="voice-avatar" src="${userAvatar}" alt="${v.voice_name}" onerror="this.outerHTML='<div class=\\'voice-avatar voice-avatar-placeholder\\'>${initials}</div>'" />`
+                        : `<div class="voice-avatar voice-avatar-placeholder">${initials}</div>`}
+                      <div class="voice-info">
+                        <span class="voice-name">${v.voice_name || 'Cloned Voice'}</span>
+                        <div class="voice-tags">
+                          <span class="voice-tag voice-tag-use">Cloned</span>
+                        </div>
+                      </div>
+                      ${previewUrl ? `<button class="voice-preview-btn" data-preview="${previewUrl}" title="Preview voice">
+                        <svg class="progress-ring" viewBox="0 0 36 36"><circle cx="18" cy="18" r="16"></circle></svg>
+                        <svg class="play-icon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                      </button>` : ''}
+                    </div>
+                  </div>`;
+                }).join('')}
               </div>
             </div>
           ` : ''}
@@ -51,24 +113,14 @@ export const modalsMethods = {
           <div class="voice-section">
             <h4>ElevenLabs Voices</h4>
             <div class="voice-grid">
-              ${ELEVENLABS_VOICES.map(v => `
-                <button class="voice-option ${this.agent.voice_id === v.id ? 'selected' : ''}" data-voice-id="${v.id}">
-                  <span class="voice-name">${v.name}</span>
-                  <span class="voice-meta">${v.gender} - ${v.description}</span>
-                </button>
-              `).join('')}
+              ${ELEVENLABS_VOICES.map(v => renderVoiceCard(v, this.agent.voice_id)).join('')}
             </div>
           </div>
 
           <div class="voice-section">
             <h4>OpenAI Voices</h4>
             <div class="voice-grid">
-              ${OPENAI_VOICES.map(v => `
-                <button class="voice-option ${this.agent.voice_id === v.id ? 'selected' : ''}" data-voice-id="${v.id}">
-                  <span class="voice-name">${v.name}</span>
-                  <span class="voice-meta">${v.gender} - ${v.description}</span>
-                </button>
-              `).join('')}
+              ${OPENAI_VOICES.map(v => renderVoiceCard(v, this.agent.voice_id)).join('')}
             </div>
           </div>
         </div>
@@ -89,25 +141,91 @@ export const modalsMethods = {
       }
     });
 
-    // Voice selection
+    // Voice selection — click on card (but not preview button) selects the voice
     modal.querySelectorAll('.voice-option').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', (e) => {
+        if (e.target.closest('.voice-preview-btn')) return;
         const voiceId = btn.dataset.voiceId;
         this.selectVoice(voiceId);
         document.body.removeChild(modal);
+      });
+    });
+
+    // Preview audio playback
+    let activeAudio = null;
+    let activeBtn = null;
+
+    function setPlayIcon(btn) {
+      btn.querySelector('.play-icon').innerHTML = '<polygon points="5 3 19 12 5 21 5 3"></polygon>';
+    }
+    function setPauseIcon(btn) {
+      btn.querySelector('.play-icon').innerHTML = '<rect x="5" y="3" width="4" height="18"></rect><rect x="15" y="3" width="4" height="18"></rect>';
+    }
+
+    function stopPlaying() {
+      if (activeAudio) {
+        activeAudio.pause();
+        activeAudio = null;
+      }
+      if (activeBtn) {
+        setPlayIcon(activeBtn);
+        activeBtn.classList.remove('playing');
+        const ring = activeBtn.querySelector('.progress-ring circle');
+        if (ring) ring.style.strokeDashoffset = '100';
+        activeBtn = null;
+      }
+    }
+
+    modal.querySelectorAll('.voice-preview-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const url = btn.dataset.preview;
+
+        if (activeBtn === btn) {
+          stopPlaying();
+          return;
+        }
+
+        stopPlaying();
+
+        activeAudio = new Audio(url);
+        activeBtn = btn;
+        setPauseIcon(btn);
+        btn.classList.add('playing');
+        activeAudio.play();
+
+        const ring = btn.querySelector('.progress-ring circle');
+        activeAudio.addEventListener('timeupdate', () => {
+          if (activeAudio && activeAudio.duration && ring) {
+            const pct = activeAudio.currentTime / activeAudio.duration;
+            ring.style.strokeDashoffset = String(100 - (pct * 100));
+          }
+        });
+
+        activeAudio.addEventListener('ended', () => {
+          stopPlaying();
+        });
       });
     });
   },
 
   selectVoice(voiceId) {
     this.agent.voice_id = voiceId;
-    this.scheduleAutoSave({ voice_id: voiceId });
+    // Keep the avatar in lockstep with the voice — it's derived from the voice id
+    // (…/avatars/voices/{voice_id}.jpg). Without this the avatar stays on the
+    // previously selected voice. (#108)
+    const avatarUrl = voiceAvatarUrl(voiceId);
+    this.agent.avatar_url = avatarUrl;
+    this.scheduleAutoSave({ voice_id: voiceId, avatar_url: avatarUrl });
 
     // Update display
     const display = document.querySelector('.voice-current');
     if (display) {
       display.textContent = this.getVoiceDisplayName(voiceId);
     }
+    // Update the avatar preview in the configure tab if present
+    document.querySelectorAll('.agent-avatar img, img.agent-avatar, .voice-current-avatar').forEach((el) => {
+      if (el && 'src' in el) el.src = avatarUrl;
+    });
   },
 
   /**
@@ -210,6 +328,19 @@ export const modalsMethods = {
         return prompt;
       }
 
+      case 'whatsapp': {
+        let prompt = identityPrefix;
+        prompt += `You handle WhatsApp conversations.\n\n`;
+        prompt += `Guidelines:\n`;
+        prompt += `- Keep responses concise and conversational (1-3 sentences)\n`;
+        prompt += `- Use a warm, friendly tone suitable for WhatsApp\n`;
+        prompt += `- You can use basic WhatsApp formatting: *bold*, _italic_\n`;
+        prompt += `- Ask for the contact's name if unknown\n`;
+        if (owner) prompt += `- Offer to connect them with ${owner} for complex matters\n`;
+        prompt += `- Never share sensitive information via messaging`;
+        return prompt;
+      }
+
       default:
         return identityPrefix;
     }
@@ -236,12 +367,9 @@ export const modalsMethods = {
    * Called when identity fields change - optionally auto-regenerate prompt
    */
   onIdentityFieldChange(field, value) {
-    // Update local state and save
+    // Update local state and save — do NOT regenerate system_prompt
     this.agent[field] = value;
     this.scheduleAutoSave({ [field]: value });
-
-    // Always regenerate the prompt when identity fields change
-    this.regeneratePrompts();
   },
 
   async startRecording() {

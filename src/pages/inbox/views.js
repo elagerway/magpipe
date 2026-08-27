@@ -2,6 +2,9 @@ import { supabase } from '../../lib/supabase.js';
 import { setPhoneNavActive } from '../../components/BottomNav.js';
 import { User, ChatSession } from '../../models/index.js';
 import { isVoiceSupported } from './voice-loader.js';
+import { escapeHtml, formatPhoneNumber } from '../../lib/formatters.js';
+import { normalizeE164 } from '../../lib/phone-e164.js';
+import { describeBridge, languageName } from '../../lib/languages.js';
 
 // Image lightbox for attachment thumbnails
 window.openImageLightbox = function(url, filename) {
@@ -32,6 +35,69 @@ window.openImageLightbox = function(url, filename) {
 };
 
 export const viewsMethods = {
+  // Spam control pill for the thread header. Shows "Mark spam" when the caller
+  // isn't on the blocklist, or a filled "Spam · Undo" label when they already are
+  // (looked up in this.blockedCallers, loaded on inbox init, keyed by normalized
+  // E.164). For a call with no caller ID → disabled pill; for a non-phone
+  // conversation (no phone) → nothing. Handlers wired in attachConversationListeners.
+  renderSpamControl({ phone, serviceNumber = '', channel = 'sms' }) {
+    const base = 'padding:0.2rem 0.5rem;text-decoration:none;border:1px solid var(--border-color,#e5e7eb);border-radius:9999px;font-size:0.7rem;transition:background-color 0.15s ease;';
+    if (!phone) {
+      if (channel !== 'call') return '';
+      return `<span class="mark-spam-disabled" style="${base}color:var(--text-secondary);opacity:0.5;cursor:not-allowed;" title="Can't block — caller ID was anonymous on this call">🚫 Mark spam</span>`;
+    }
+    const key = normalizeE164(phone) || phone;
+    const blocked = this.blockedCallers && this.blockedCallers.get(key);
+    if (blocked) {
+      return `<a href="#" class="unmark-spam-link" data-phone="${escapeHtml(phone)}" data-blocked-id="${escapeHtml(blocked.id)}" style="${base}color:#b91c1c;background-color:#fee2e2;border-color:#fecaca;" onmouseenter="this.style.backgroundColor='#fecaca'" onmouseleave="this.style.backgroundColor='#fee2e2'" title="Marked as spam — click to unblock this number">🚫 Spam · Undo</a>`;
+    }
+    const title = channel === 'call'
+      ? 'Block this number — calls return busy; SMS/WhatsApp are dropped'
+      : 'Block this number across calls, SMS, and WhatsApp';
+    return `<a href="#" class="mark-spam-link" data-phone="${escapeHtml(phone)}" data-service-number="${escapeHtml(serviceNumber || '')}" data-channel="${escapeHtml(channel)}" style="${base}color:#b91c1c;" onmouseenter="this.style.backgroundColor='#fee2e2'" onmouseleave="this.style.backgroundColor=''" title="${title}">🚫 Mark spam</a>`;
+  },
+
+  // Shared pin/unpin toggle button. Styling/hover lives in CSS (.pin-toggle-btn);
+  // the inner SVG is pointer-events:none (via CSS) so the click target is always
+  // the <button> itself (closest('.pin-toggle-btn') is reliable; avoids the click
+  // landing on an SVG child where closest() can miss).
+  renderPinButton(convKey, isPinned, size = 14) {
+    return `<button type="button" class="pin-toggle-btn${isPinned ? ' pinned' : ''}" data-conv-key="${convKey}" title="${isPinned ? 'Unpin' : 'Pin to top'}" aria-label="${isPinned ? 'Unpin conversation' : 'Pin conversation to top'}"><svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h6l-1 7 3 3H7l3-3-1-7z"></path><line x1="12" y1="14" x2="12" y2="21"></line></svg></button>`;
+  },
+
+  // Small "+" button shown beside an un-named phone number to create a contact
+  // pre-filled with that number. Wired via the #message-thread click delegate.
+  renderAddContactButton(phone) {
+    if (!phone) return '';
+    return `<button type="button" class="add-contact-btn" data-phone="${phone}" title="Add to contacts" aria-label="Add to contacts"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>`;
+  },
+
+  // Copy-on-click short thread/conversation id chip, shown top-right of a
+  // thread header. Click handled by the #message-thread .copy-thread-id delegate.
+  renderThreadIdChip(id, label = 'Thread', { full = false, icon = '' } = {}) {
+    if (!id) return '';
+    const idStr = String(id);
+    const text = full ? idStr : idStr.slice(0, 8);
+    const display = icon ? `${icon} ${escapeHtml(text)}` : `${escapeHtml(label)}: ${escapeHtml(text)}`;
+    const title = `${label}${full ? '' : ' ID'} — click to copy`;
+    return `<span class="copy-thread-id" data-thread-id="${escapeHtml(idStr)}" title="${escapeHtml(title)}" style="font-size: 0.7rem; color: var(--text-secondary); opacity: 0.6; cursor: pointer; font-family: monospace; white-space: nowrap;">${display}</span>`;
+  },
+
+  // Support-ticket chip for the email thread header — full (untruncated) ref with an
+  // icon, via the shared chip renderer (reuses the .copy-thread-id click handler). #103
+  renderTicketChip(ref) {
+    return this.renderThreadIdChip(ref, 'Support ticket', { full: true, icon: '🎫' });
+  },
+
+  // Right-side header cluster: thread-id chip then pin toggle, laid out as a
+  // single right-aligned row so the cluster sits snug against the action
+  // buttons. (A vertical stack made the aside as wide as the chip, leaving a
+  // large gap between the buttons and the right-aligned pin.) Wraps on narrow
+  // widths (e.g. the email header's two chips) rather than squeezing the title.
+  renderHeaderAside(convKey, isPinned, idChipHtml) {
+    return `<div style="flex-shrink: 0; display: flex; flex-direction: row; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 0.5rem; padding-top: 2px;">${idChipHtml || ''}${this.renderPinButton(convKey, isPinned, 18)}</div>`;
+  },
+
   renderConversationList() {
     // Filter out hidden conversations
     let visibleConversations = this.conversations.filter(conv => {
@@ -44,9 +110,9 @@ export const viewsMethods = {
       visibleConversations = visibleConversations.filter(conv => {
         if (this.typeFilter === 'calls') return conv.type === 'call';
         if (this.typeFilter === 'texts') return conv.type === 'sms';
-        if (this.typeFilter === 'whatsapp') return conv.type === 'whatsapp';
         if (this.typeFilter === 'chat') return conv.type === 'chat';
         if (this.typeFilter === 'email') return conv.type === 'email';
+        if (this.typeFilter === 'whatsapp') return conv.type === 'whatsapp';
         return true;
       });
     }
@@ -155,6 +221,16 @@ export const viewsMethods = {
       }
     }
 
+    // Float pinned conversations to the top, preserving last-activity order within each group
+    if (this.pinnedConversations?.size > 0) {
+      visibleConversations.sort((a, b) => {
+        const aPinned = this.pinnedConversations.has(this.getConversationKey(a)) ? 1 : 0;
+        const bPinned = this.pinnedConversations.has(this.getConversationKey(b)) ? 1 : 0;
+        if (aPinned !== bPinned) return bPinned - aPinned;
+        return b.lastActivity - a.lastActivity;
+      });
+    }
+
     if (visibleConversations.length === 0) {
       return `
         <div style="padding: 2rem; text-align: center; color: var(--text-secondary);">
@@ -174,16 +250,21 @@ export const viewsMethods = {
                         (conv.type === 'chat' && this.selectedChatSessionId === conv.chatSessionId) ||
                         (conv.type === 'email' && this.selectedEmailThreadId === conv.emailThreadId);
 
+      // Pin/unpin toggle (pinned conversations float to the top of the inbox)
+      const convKey = this.getConversationKey(conv);
+      const isPinned = this.pinnedConversations?.has(convKey);
+      const pinBtn = this.renderPinButton(convKey, isPinned);
+
       // Shared avatar style: 40px circle with border, initial letter
       const avatarStyle = 'flex-shrink: 0; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 1rem; border: 2px solid var(--border-color, #e5e7eb); background: var(--bg-secondary, #f9fafb); color: var(--text-primary, #374151);';
 
       // Type indicator icons (small, shown next to timestamp)
       const typeIcons = {
         sms: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>`,
-        whatsapp: `<svg width="13" height="13" viewBox="0 0 24 24" fill="#15803d"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>`,
         call: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>`,
         email: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>`,
         chat: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>`,
+        whatsapp: `<svg width="13" height="13" viewBox="0 0 24 24" fill="#15803d"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>`,
       };
 
       if (conv.type === 'chat') {
@@ -211,6 +292,7 @@ export const viewsMethods = {
                   <span class="conversation-name">${conv.visitorName}${conv.aiPaused ? ' <span style="font-size: 0.65rem; background: #fef3c7; color: #92400e; padding: 0.125rem 0.375rem; border-radius: 0.25rem; margin-left: 0.25rem;">Human</span>' : ''}</span>
                   <div style="display: flex; align-items: center; gap: 0.375rem; margin-left: 0.5rem;">
                     ${conv.unreadCount > 0 ? `<span class="conversation-unread-badge">${conv.unreadCount > 99 ? '99+' : conv.unreadCount}</span>` : ''}
+                    ${pinBtn}
                     ${typeIcons.chat}
                     <span class="conversation-time" style="white-space: nowrap;">${this.formatTimestamp(conv.lastActivity)}</span>
                   </div>
@@ -256,6 +338,7 @@ export const viewsMethods = {
                   <span class="conversation-name">${displayName}</span>
                   <div style="display: flex; align-items: center; gap: 0.375rem; margin-left: 0.5rem;">
                     ${conv.unreadCount > 0 ? `<span class="conversation-unread-badge">${conv.unreadCount > 99 ? '99+' : conv.unreadCount}</span>` : ''}
+                    ${pinBtn}
                     ${typeIcons.email}
                     <span class="conversation-time" style="white-space: nowrap;">${this.formatTimestamp(conv.lastActivity)}</span>
                   </div>
@@ -297,13 +380,14 @@ export const viewsMethods = {
               }
               <div class="conversation-content" style="flex: 1 !important; min-width: 0;">
                 <div class="conversation-header" style="display: flex !important; justify-content: space-between !important; align-items: baseline; width: 100%;">
-                  <span class="conversation-name">${contactName || this.formatPhoneNumber(primaryNumber)}</span>
+                  <span class="conversation-name">${contactName || formatPhoneNumber(primaryNumber)}</span>
                   <div style="display: flex; align-items: center; gap: 0.375rem; margin-left: 0.5rem;">
+                    ${pinBtn}
                     ${typeIcons.call}
                     <span class="conversation-time" style="white-space: nowrap;">${this.formatTimestamp(conv.lastActivity)}</span>
                   </div>
                 </div>
-                ${contactName ? `<div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 2px;">${this.formatPhoneNumber(primaryNumber)}</div>` : ''}
+                ${contactName ? `<div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 2px;">${formatPhoneNumber(primaryNumber)}</div>` : ''}
                 <div class="conversation-preview" style="display: flex; align-items: center;">
                   <span class="call-status-indicator ${conv.statusInfo.class}" style="color: ${conv.statusInfo.color}; margin-right: 0.25rem;">${conv.statusInfo.icon}</span>
                   <span style="flex: 1;">${conv.lastMessage}</span>
@@ -340,14 +424,15 @@ export const viewsMethods = {
               }
               <div class="conversation-content" style="flex: 1 !important; min-width: 0;">
                 <div class="conversation-header" style="display: flex !important; justify-content: space-between !important; align-items: baseline; width: 100%;">
-                  <span class="conversation-name">${contactName || this.formatPhoneNumber(conv.phone)}</span>
+                  <span class="conversation-name">${contactName || formatPhoneNumber(conv.phone)}</span>
                   <div style="display: flex; align-items: center; gap: 0.375rem; margin-left: 0.5rem;">
                     ${conv.unreadCount > 0 ? `<span class="conversation-unread-badge">${conv.unreadCount > 99 ? '99+' : conv.unreadCount}</span>` : ''}
+                    ${pinBtn}
                     ${typeIcons[conv.type] || typeIcons.sms}
                     <span class="conversation-time" style="white-space: nowrap;">${this.formatTimestamp(conv.lastActivity)}</span>
                   </div>
                 </div>
-                ${contactName ? `<div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 2px;">${this.formatPhoneNumber(conv.phone)}</div>` : ''}
+                ${contactName ? `<div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 2px;">${formatPhoneNumber(conv.phone)}</div>` : ''}
                 <div class="conversation-preview" style="display: flex; align-items: center;">
                   <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${conv.lastMessage}</span>
                   ${this.formatSentimentLabel(this.getConversationSentiment(conv))}
@@ -402,8 +487,13 @@ export const viewsMethods = {
     // Get contact info if available
     const contact = this.contactsMap?.[conv.phone];
     const contactName = contact ? [contact.first_name, contact.last_name].filter(Boolean).join(' ') || contact.name : null;
-    const serviceNumberDisplay = this.formatPhoneNumber(conv.serviceNumber);
+    const serviceNumberDisplay = formatPhoneNumber(conv.serviceNumber);
     const smsSentiment = this.getConversationSentiment(conv);
+
+    // Derive the agent_id this thread belongs to (any message in the
+    // thread that has one — most recent first). Needed so the
+    // "Mark friendly" action knows which agent's whitelist to write to.
+    const threadAgentId = (conv.messages || []).slice().reverse().find(m => m.agent_id)?.agent_id || null;
 
     return `
       <div class="thread-header" style="display: flex; align-items: flex-start; gap: 0.75rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border-color);">
@@ -425,8 +515,8 @@ export const viewsMethods = {
         `}
         <div style="flex: 1; display: flex; flex-direction: column; gap: 0.25rem;">
           <div style="display: flex; align-items: center; gap: 0.75rem; justify-content: space-between;">
-            <h2 style="margin: 0; font-size: calc(1.125rem - 5px); font-weight: 600; line-height: 1;">
-              ${contactName ? contactName : `<span class="clickable-phone" data-phone="${conv.phone}" style="cursor: pointer;">${this.formatPhoneNumber(conv.phone)}</span>`}
+            <h2 style="margin: 0; font-size: calc(1.125rem - 5px); font-weight: 600; line-height: 1; display: inline-flex; align-items: center; gap: 0.35rem;">
+              ${contactName ? contactName : `<span class="clickable-phone" data-phone="${conv.phone}" style="cursor: pointer;">${formatPhoneNumber(conv.phone)}</span>${this.renderAddContactButton(conv.phone)}`}
             </h2>
             <div style="display: flex; align-items: center; gap: 0.5rem; padding-bottom: 5px;">
               <a href="#" id="call-action-btn" data-phone="${conv.phone}" style="
@@ -438,6 +528,18 @@ export const viewsMethods = {
                 font-size: 0.7rem;
                 transition: background-color 0.15s ease;
               " onmouseenter="this.style.backgroundColor='var(--bg-tertiary, #f3f4f6)'" onmouseleave="this.style.backgroundColor=''">Call</a>
+              ${threadAgentId && conv.phone ? `
+                <a href="#" class="mark-friendly-link" data-phone="${conv.phone}" data-agent="${threadAgentId}" ${contactName ? `data-suggested-name="${escapeHtml(contactName)}"` : ''} style="
+                  padding: 0.2rem 0.5rem;
+                  color: #16a34a;
+                  text-decoration: none;
+                  border: 1px solid var(--border-color, #e5e7eb);
+                  border-radius: 9999px;
+                  font-size: 0.7rem;
+                  transition: background-color 0.15s ease;
+                " onmouseenter="this.style.backgroundColor='#dcfce7'" onmouseleave="this.style.backgroundColor=''" title="Auto-forward future calls from this number">★ Mark friendly</a>
+              ` : ''}
+              ${this.renderSpamControl({ phone: conv.phone, serviceNumber: conv.serviceNumber, channel: conv.type === 'whatsapp' ? 'whatsapp' : 'sms' })}
               ${contact?.company || contact?.job_title || contact?.linkedin_url || contact?.twitter_url ? `
                 <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; color: var(--text-secondary);">
                   ${contact?.company || contact?.job_title ? `
@@ -462,10 +564,11 @@ export const viewsMethods = {
                           </div>
           </div>
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: -5px;">
-            ${contactName ? `<span class="clickable-phone" data-phone="${conv.phone}" style="font-size: 0.8rem; color: var(--text-secondary); cursor: pointer;">${this.formatPhoneNumber(conv.phone)}</span>` : ''}
+            ${contactName ? `<span class="clickable-phone" data-phone="${conv.phone}" style="font-size: 0.8rem; color: var(--text-secondary); cursor: pointer;">${formatPhoneNumber(conv.phone)}</span>` : ''}
             <span style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.7;">Messaged: <span class="clickable-phone" data-phone="${conv.serviceNumber}" style="cursor: pointer;">${serviceNumberDisplay}</span></span>
           </div>
         </div>
+        ${this.renderHeaderAside(this.getConversationKey(conv), this.pinnedConversations?.has(this.getConversationKey(conv)), this.renderThreadIdChip(conv.threadId, 'Thread'))}
       </div>
       ${this.shouldShowTranslate(conv.serviceNumber) && conv.messages.some(m => !m.translation) ? `
         <div style="display: flex; justify-content: center; padding: 0.5rem 0;">
@@ -585,9 +688,15 @@ export const viewsMethods = {
     let translationHtml = '';
     if (this.shouldShowTranslate(this.selectedServiceNumber)) {
       if (msg.translation) {
+        // Bridge label, e.g. "🌐 Mandarin → English", when we detected the source language.
+        const targetLang = (this.translateTo || '').split('-').pop();
+        const bridge = describeBridge(msg.source_language, targetLang);
+        const bridgeLabel = bridge
+          ? `<div style="font-size: 0.7rem; color: var(--text-secondary); opacity: 0.7; margin-bottom: 0.2rem;">🌐 ${bridge}</div>`
+          : '';
         translationHtml = `
           <div style="margin-top: 0.375rem; padding: 0.375rem 0.5rem; background: var(--bg-secondary); border-radius: var(--radius-md); border-left: 2px solid var(--primary-color); font-size: 0.85rem; color: var(--text-secondary);">
-            ${this.linkifyPhoneNumbers(msg.translation)}
+            ${bridgeLabel}${this.linkifyPhoneNumbers(msg.translation)}
           </div>`;
       } else {
         translationHtml = `
@@ -604,15 +713,15 @@ export const viewsMethods = {
       ? `<div class="message-media">${mediaItems.map((m, idx) => {
           const isImage = (m.mime_type || 'image/').startsWith('image/');
           if (isImage) {
-            return `<img class="message-media-img" src="${this.escapeHtml(m.url || '')}" alt="${this.escapeHtml(m.caption || 'photo')}" loading="lazy"
-               data-msg-id="${this.escapeHtml(msg.id)}" data-media-idx="${idx}"
+            return `<img class="message-media-img" src="${escapeHtml(m.url || '')}" alt="${escapeHtml(m.caption || 'photo')}" loading="lazy"
+               data-msg-id="${escapeHtml(msg.id)}" data-media-idx="${idx}"
                style="max-width: 220px; max-height: 260px; border-radius: 10px; margin-top: 0.375rem; display: block; cursor: pointer; object-fit: cover;"
                onclick="window.open(this.src, '_blank')"
                onerror="window.__refreshInboxMedia && window.__refreshInboxMedia(this)" />`;
           }
           const kind = (m.mime_type || 'attachment').split('/')[1] || 'attachment';
-          return `<a class="message-media-file" href="${this.escapeHtml(m.url || '')}" target="_blank" rel="noopener"
-               style="display: inline-block; margin-top: 0.375rem; padding: 0.375rem 0.625rem; background: var(--bg-secondary); border-radius: 8px; font-size: 0.85rem; text-decoration: none;">📎 ${this.escapeHtml(kind)}</a>`;
+          return `<a class="message-media-file" href="${escapeHtml(m.url || '')}" target="_blank" rel="noopener"
+               style="display: inline-block; margin-top: 0.375rem; padding: 0.375rem 0.625rem; background: var(--bg-secondary); border-radius: 8px; font-size: 0.85rem; text-decoration: none;">📎 ${escapeHtml(kind)}</a>`;
         }).join('')}</div>`
       : '';
     // Suppress the bare "[image]" placeholder when we actually have the photo.
@@ -624,7 +733,7 @@ export const viewsMethods = {
         ${mediaHtml}
         ${translationHtml}
         <div class="message-time">
-          ${this.formatTime(timestamp)}
+          ${this.formatTimestamp(timestamp)}
           ${deliveryStatus}
         </div>
       </div>
@@ -725,12 +834,13 @@ export const viewsMethods = {
         `}
         <div style="flex: 1; display: flex; flex-direction: column; gap: 0.25rem;">
         <div style="display: flex; align-items: center; gap: 0.75rem; justify-content: space-between;">
-            <h2 style="margin: 0; font-size: calc(1.125rem - 5px); font-weight: 600; line-height: 1;">
+            <h2 style="margin: 0; font-size: calc(1.125rem - 5px); font-weight: 600; line-height: 1; display: inline-flex; align-items: center; gap: 0.35rem;">
               ${contactName && !isUnknownContact
                 ? contactName
                 : suggestedName
                   ? `Unknown <span style="font-weight: 400; font-size: 0.85em;">(could be <a href="#" class="add-contact-link" data-name="${suggestedName}" data-phone="${call.contact_phone}" style="color: var(--primary-color); text-decoration: underline; cursor: pointer;">${suggestedName}</a>)</span>`
                   : 'Unknown'}
+              ${isUnknownContact && call.contact_phone ? this.renderAddContactButton(call.contact_phone) : ''}
             </h2>
           <div style="display: flex; align-items: center; gap: 0.5rem; padding-bottom: 5px;">
               <a href="#" id="call-action-btn" data-phone="${call.contact_phone}" style="
@@ -751,6 +861,18 @@ export const viewsMethods = {
                 font-size: 0.7rem;
                 transition: background-color 0.15s ease;
               " onmouseenter="this.style.backgroundColor='var(--bg-tertiary, #f3f4f6)'" onmouseleave="this.style.backgroundColor=''">Message</a>
+              ${call.direction === 'inbound' && call.agent_id && call.contact_phone ? `
+                <a href="#" class="mark-friendly-link" data-phone="${call.contact_phone}" data-agent="${call.agent_id}" ${suggestedName || contactName ? `data-suggested-name="${escapeHtml(suggestedName || contactName || '')}"` : ''} style="
+                  padding: 0.2rem 0.5rem;
+                  color: #16a34a;
+                  text-decoration: none;
+                  border: 1px solid var(--border-color, #e5e7eb);
+                  border-radius: 9999px;
+                  font-size: 0.7rem;
+                  transition: background-color 0.15s ease;
+                " onmouseenter="this.style.backgroundColor='#dcfce7'" onmouseleave="this.style.backgroundColor=''" title="Auto-forward future calls from this number">★ Mark friendly</a>
+              ` : ''}
+              ${call.direction === 'inbound' ? this.renderSpamControl({ phone: call.contact_phone, serviceNumber: call.service_number, channel: 'call' }) : ''}
             ${contact?.company || contact?.job_title || contact?.linkedin_url || contact?.twitter_url ? `
               <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; color: var(--text-secondary);">
                 ${contact?.company || contact?.job_title ? `
@@ -775,21 +897,39 @@ export const viewsMethods = {
           </div>
         </div>
         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: -5px;">
-          <span class="clickable-phone" data-phone="${call.contact_phone}" style="font-size: 0.8rem; color: var(--text-secondary); cursor: pointer;">${this.formatPhoneNumber(call.contact_phone)}</span>
-          <span style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.7;">Called: <span class="clickable-phone" data-phone="${call.service_number || (call.direction === 'inbound' ? call.callee_number : call.caller_number) || ''}" style="cursor: pointer;">${this.formatPhoneNumber(call.service_number || (call.direction === 'inbound' ? call.callee_number : call.caller_number) || '')}</span></span>
+          <span class="clickable-phone" data-phone="${call.contact_phone}" style="font-size: 0.8rem; color: var(--text-secondary); cursor: pointer;">${formatPhoneNumber(call.contact_phone)}</span>
+          <span style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.7;">Called: <span class="clickable-phone" data-phone="${(call.direction === 'outbound' ? call.caller_number : call.service_number) || ''}" style="cursor: pointer;">${formatPhoneNumber((call.direction === 'outbound' ? call.caller_number : call.service_number) || '')}</span></span>
         </div>
         </div>
+        ${this.renderHeaderAside(`call_${this.selectedCallId}`, this.pinnedConversations?.has(`call_${this.selectedCallId}`), this.renderThreadIdChip(call.id, 'Call'))}
       </div>
 
       <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 1rem; background: var(--bg-tertiary); border-bottom: 1px solid var(--border-color); font-size: 0.75rem; color: var(--text-secondary);">
         <span>${call.created_at ? new Date(call.created_at).toLocaleString() : ''}</span>
+        ${describeBridge(call.source_language, (this.translateTo || '').split('-').pop() || 'en') ? `<span title="Caller's detected language">🌐 ${describeBridge(call.source_language, (this.translateTo || '').split('-').pop() || 'en')}</span>` : ''}
         <span class="copy-call-id-btn" data-call-id="${call.id}" title="Click to copy" style="font-family: monospace; cursor: pointer; position: relative;">${call.id || ''}</span>
       </div>
 
       <div class="thread-messages" id="thread-messages">
         ${this.renderRecordings(call, messages)}
+        ${this.renderPostCallMessages(call)}
       </div>
     `;
+  },
+
+  renderPostCallMessages(call) {
+    if (!call._postCallMessages?.length) return '';
+    return call._postCallMessages.map(msg => {
+      const time = new Date(msg.sent_at || msg.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      return `
+        <div style="margin-top: 0.75rem; padding: 0.75rem; background: var(--bg-tertiary); border-radius: 8px; border: 1px solid var(--border-color);">
+          <div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 0.35rem; display: flex; align-items: center; gap: 0.35rem;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            Follow-up SMS sent at ${time}
+          </div>
+          <div style="font-size: 0.85rem; white-space: pre-wrap;">${this.linkifyPhoneNumbers(msg.content || '')}</div>
+        </div>`;
+    }).join('');
   },
 
   formatRecordingLabel(label) {
@@ -798,59 +938,12 @@ export const viewsMethods = {
       'reconnect_conversation': 'Reconnect Conversation',
       'main': 'Main Call',
       'transfer_conference': 'Transferred Call',
-      'transferee_consult': 'Transfer Consultation',
+      'transferee_consult': 'Transferred Call',
       'reconnect_after_decline': 'Reconnect After Decline',
       'reconnect_to_agent': 'Reconnect',
       'back_to_agent': 'Back to Agent',
     };
     return labels[label] || label.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-  },
-
-  /**
-   * Split a transcript text into segments by detecting speaker changes.
-   * Detects speaker changes at:
-   * - Question marks (Q&A pattern)
-   * - After prompts like "say you're busy" followed by a short response
-   * - Before phrases like "I'll let [name] know" (bot responding to input)
-   */
-  splitTranscriptBySpeaker(text, startsAsAgent) {
-    const segments = [];
-    let isAgent = startsAsAgent;
-
-    // First, try to detect the transfer consultation pattern:
-    // "...or say you're busy. [short response]. I'll let [name] know..."
-    const consultMatch = text.match(/^(.+(?:say you're busy|or say busy)[^.]*\.)\s*([^.]{1,30}\.)\s*(I'll let .+)$/i);
-    if (consultMatch) {
-      segments.push({ text: consultMatch[1].trim(), isAgent });
-      segments.push({ text: consultMatch[2].trim(), isAgent: !isAgent });
-      segments.push({ text: consultMatch[3].trim(), isAgent });
-      return segments;
-    }
-
-    // Split on question marks followed by a space and capital letter
-    const parts = text.split(/(\?)\s+(?=[A-Z])/);
-
-    let currentSegment = '';
-    for (let i = 0; i < parts.length; i++) {
-      const part = parts[i];
-      if (part === '?') {
-        currentSegment += '?';
-        if (currentSegment.trim()) {
-          segments.push({ text: currentSegment.trim(), isAgent });
-        }
-        currentSegment = '';
-        isAgent = !isAgent; // Switch speaker after question
-      } else {
-        currentSegment += part;
-      }
-    }
-
-    // Add remaining text
-    if (currentSegment.trim()) {
-      segments.push({ text: currentSegment.trim(), isAgent });
-    }
-
-    return segments.length > 0 ? segments : [{ text, isAgent: startsAsAgent }];
   },
 
   formatDurationShort(seconds) {
@@ -1056,13 +1149,9 @@ export const viewsMethods = {
               const isAgent = !['caller', 'user'].includes(speaker);
               lastIsAgent = isAgent;
 
-              // Split text into segments by detecting speaker changes
-              const segments = this.splitTranscriptBySpeaker(text, isAgent);
-              for (const seg of segments) {
-                bubbles.push(`<div class="message-bubble ${seg.isAgent ? 'outbound' : 'inbound'}">
-                  <div class="message-content">${this.linkifyPhoneNumbers(seg.text)}</div>
-                </div>`);
-              }
+              bubbles.push(`<div class="message-bubble ${isAgent ? 'outbound' : 'inbound'}">
+                <div class="message-content">${this.linkifyPhoneNumbers(text)}</div>
+              </div>`);
             } else {
               const trimmed = line.trim();
               if (trimmed === '...' || trimmed === '…') continue;
@@ -1123,13 +1212,9 @@ export const viewsMethods = {
               const isAgent = !['caller', 'user'].includes(speaker);
               lastIsAgent = isAgent;
 
-              // Split text into segments by detecting speaker changes at question marks
-              const segments = this.splitTranscriptBySpeaker(text, isAgent);
-              for (const seg of segments) {
-                bubbles.push(`<div class="message-bubble ${seg.isAgent ? 'outbound' : 'inbound'}">
-                  <div class="message-content">${this.linkifyPhoneNumbers(seg.text)}</div>
-                </div>`);
-              }
+              bubbles.push(`<div class="message-bubble ${isAgent ? 'outbound' : 'inbound'}">
+                <div class="message-content">${this.linkifyPhoneNumbers(text)}</div>
+              </div>`);
             } else {
               // Continuation of previous speaker (no label) — skip filler like "..."
               const trimmed = line.trim();
@@ -1156,7 +1241,9 @@ export const viewsMethods = {
       );
       const isSyncing = rec.status === 'pending_sync' || !hasValidUrl;
       // transcript: undefined/null = not yet attempted, "" = no speech detected (complete)
-      const needsTranscript = (rec.transcript === undefined || rec.transcript === null) && hasValidUrl;
+      // Also check call.transcript — LiveKit calls store transcript on the call record, not the recording
+      const hasTranscript = (rec.transcript !== undefined && rec.transcript !== null) || (isFirstMainRecording && call.transcript);
+      const needsTranscript = !hasTranscript && hasValidUrl;
 
       const syncingIndicator = (isSyncing || needsTranscript) ? `
         <div style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem; background: var(--bg-secondary); border-radius: 6px; margin-top: 0.5rem;">
@@ -1171,7 +1258,7 @@ export const viewsMethods = {
       const audioHtml = rec.url ? `<audio controls src="${rec.url}" style="width: 100%; height: 36px;"></audio>` : '';
 
       return `
-        <div style="width: 100%; margin-bottom: 0.75rem; padding: 0.75rem; background: var(--bg-tertiary); border-radius: 8px;">
+        <div style="width: 100%; padding: 0.75rem; background: var(--bg-tertiary); border-radius: 8px;">
           <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.25rem; display: flex; justify-content: space-between; align-items: center;">
             <span>
               <span style="font-weight: 500;">${this.formatRecordingLabel(rec.label)}</span>
@@ -1206,7 +1293,7 @@ export const viewsMethods = {
     if (!this.translateTo) return;
     const targetLang = this.translateTo.split('-').pop() || 'en';
 
-    // Find the message in current SMS conversation
+    // Find the message in current SMS/WhatsApp conversation
     const conv = this.conversations.find(c =>
       (c.type === 'sms' || c.type === 'whatsapp') && c.phone === this.selectedContact && c.serviceNumber === this.selectedServiceNumber
     );
@@ -1580,6 +1667,7 @@ export const viewsMethods = {
             <span style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.7;">${conv.subject || 'No subject'}</span>
           </div>
         </div>
+        ${this.renderHeaderAside(this.getConversationKey(conv), this.pinnedConversations?.has(this.getConversationKey(conv)), this.renderTicketChip(conv.ticketRef) + this.renderThreadIdChip(conv.emailThreadId, 'Thread'))}
       </div>
 
       <div class="thread-messages" id="thread-messages">
@@ -1635,6 +1723,101 @@ export const viewsMethods = {
     return cleanLines.join('\n').trim();
   },
 
+  sanitizeHtml(html) {
+    if (!html) return '';
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+
+    // Tags to remove entirely (including content)
+    const removeTags = ['script', 'style', 'iframe', 'object', 'embed', 'form', 'input', 'textarea', 'select', 'button'];
+    removeTags.forEach(tag => {
+      doc.querySelectorAll(tag).forEach(el => el.remove());
+    });
+
+    // Safe tags whitelist
+    const safeTags = new Set([
+      'p', 'br', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+      'blockquote', 'a', 'b', 'strong', 'i', 'em', 'u', 'span', 'div',
+      'table', 'thead', 'tbody', 'tr', 'td', 'th', 'img', 'hr', 'pre', 'code',
+      'sup', 'sub', 'dl', 'dt', 'dd', 'abbr', 'mark', 'small',
+    ]);
+
+    // Walk all elements and sanitize
+    const allElements = doc.body.querySelectorAll('*');
+    for (const el of allElements) {
+      const tagName = el.tagName.toLowerCase();
+
+      // Remove non-whitelisted tags but keep their children
+      if (!safeTags.has(tagName)) {
+        el.replaceWith(...el.childNodes);
+        continue;
+      }
+
+      // Remove on* event handlers and dangerous attributes
+      const attrs = [...el.attributes];
+      for (const attr of attrs) {
+        const name = attr.name.toLowerCase();
+        if (name.startsWith('on') || name === 'srcdoc' || name === 'formaction') {
+          el.removeAttribute(attr.name);
+        }
+        // Remove javascript: URLs
+        if (['href', 'src', 'action'].includes(name)) {
+          const val = (attr.value || '').trim().toLowerCase();
+          if (val.startsWith('javascript:') || val.startsWith('data:text/html')) {
+            el.removeAttribute(attr.name);
+          }
+        }
+      }
+
+      // Force links to open in new tab
+      if (tagName === 'a') {
+        el.setAttribute('target', '_blank');
+        el.setAttribute('rel', 'noopener noreferrer');
+      }
+
+      // Constrain images
+      if (tagName === 'img') {
+        el.style.maxWidth = '100%';
+        el.style.height = 'auto';
+      }
+    }
+
+    return doc.body.innerHTML;
+  },
+
+  stripHtmlQuotedText(html) {
+    if (!html) return '';
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+
+    // Remove Gmail quoted sections
+    doc.querySelectorAll('.gmail_quote, .gmail_extra, .gmail_signature').forEach(el => el.remove());
+    // Remove Yahoo quoted sections
+    doc.querySelectorAll('.yahoo_quoted, .yahoo-quoted').forEach(el => el.remove());
+    // Remove Outlook quoted sections
+    doc.querySelectorAll('#divRplyFwdMsg, #appendonsend, .MsoNormal[style*="border-top"]').forEach(el => el.remove());
+    // Remove blockquote[type="cite"] (Apple Mail, Thunderbird)
+    doc.querySelectorAll('blockquote[type="cite"]').forEach(el => el.remove());
+    // Remove "On ... wrote:" pattern — find text nodes containing it
+    const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+    let node;
+    while (node = walker.nextNode()) {
+      if (/^On\s.+wrote:\s*$/.test(node.textContent.trim())) {
+        // Remove this node and all following siblings
+        let current = node.parentElement;
+        if (current) {
+          while (current.nextSibling) {
+            current.parentNode.removeChild(current.nextSibling);
+          }
+          current.remove();
+        }
+        break;
+      }
+    }
+
+    return doc.body.innerHTML;
+  },
+
   renderEmailMessage(msg, conv) {
     const isInbound = msg.direction === 'inbound';
     const isAI = msg.is_ai_generated === true;
@@ -1642,26 +1825,49 @@ export const viewsMethods = {
     const timestamp = new Date(msg.sent_at || msg.created_at);
     const deliveryStatus = this.getDeliveryStatusIcon(msg);
 
-    // Strip quoted replies and signatures from email body
-    const rawText = msg.body_text || '';
-    const cleanedText = this.stripEmailQuotedText(rawText);
-    const content = cleanedText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    // Prefer HTML body, fall back to plain text
+    let contentHtml;
+    let contentClass;
+    if (msg.body_html) {
+      const strippedHtml = this.stripHtmlQuotedText(msg.body_html);
+      contentHtml = this.sanitizeHtml(strippedHtml);
+      contentClass = 'email-html-content';
+    } else {
+      const rawText = msg.body_text || '';
+      const cleanedText = this.stripEmailQuotedText(rawText);
+      contentHtml = cleanedText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      contentClass = 'email-text-content';
+    }
 
     return `
       <div class="message-bubble ${isInbound ? 'inbound' : 'outbound'} ${isAI ? 'ai-message' : ''} ${isHuman ? 'human-message' : ''}" data-message-id="${msg.id}">
-        <div class="message-content">${content}</div>
+        <div class="message-content ${contentClass}">${contentHtml}</div>
         ${msg.attachments && msg.attachments.length > 0 ? `
           <div class="tv-msg-attachments">
-            ${msg.attachments.map(a => `
-              <div class="tv-attachment-thumb" onclick="window.openImageLightbox('${a.url.replace(/'/g, "\\'")}', '${(a.filename || 'image').replace(/'/g, "\\'")}')">
-                <img src="${a.url}" loading="lazy" alt="${a.filename || 'attachment'}">
-                <span>${a.filename || 'image'}</span>
-              </div>
-            `).join('')}
+            ${msg.attachments.map(a => {
+              const isVideo = a.type?.startsWith('video/');
+              const escapedUrl = a.url.replace(/'/g, "\\'");
+              const safeName = escapeHtml(a.filename || 'attachment');
+              const escapedName = safeName.replace(/'/g, "\\'");
+              if (isVideo) {
+                return `
+                  <div class="tv-attachment-thumb" onclick="window.open('${escapedUrl}', '_blank')">
+                    <video src="${a.url}" muted preload="metadata" style="width:100%;height:100%;object-fit:cover;"></video>
+                    <span>${safeName}</span>
+                  </div>
+                `;
+              }
+              return `
+                <div class="tv-attachment-thumb" onclick="window.openImageLightbox('${escapedUrl}', '${escapedName}')">
+                  <img src="${a.url}" loading="lazy" alt="${safeName}">
+                  <span>${safeName}</span>
+                </div>
+              `;
+            }).join('')}
           </div>
         ` : ''}
         <div class="message-time">
-          ${this.formatTime(timestamp)}
+          ${this.formatTimestamp(timestamp)}
           ${deliveryStatus}
         </div>
       </div>
@@ -1715,6 +1921,7 @@ export const viewsMethods = {
             ${conv.visitorEmail ? `<span>• ${conv.visitorEmail}</span>` : ''}
           </div>
         </div>
+        ${this.renderHeaderAside(`chat_${this.selectedChatSessionId}`, this.pinnedConversations?.has(`chat_${this.selectedChatSessionId}`), this.renderThreadIdChip(conv.chatSessionId, 'Chat'))}
       </div>
 
       <div class="thread-messages" id="thread-messages">
@@ -1752,16 +1959,6 @@ export const viewsMethods = {
            this.missedFilter ||
            this.unreadFilter ||
            this.sentimentFilter !== 'all';
-  },
-
-  formatPhoneNumber(phone) {
-    if (!phone) return 'Unknown';
-    const cleaned = phone.replace(/\D/g, '');
-    const match = cleaned.match(/^1?(\d{3})(\d{3})(\d{4})$/);
-    if (match) {
-      return `+1 (${match[1]}) ${match[2]}-${match[3]}`;
-    }
-    return phone;
   },
 
   /**

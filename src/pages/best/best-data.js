@@ -69,7 +69,7 @@ export const bestPages = {
           'Newer platform — smaller community than legacy players',
           'Advanced EHR integrations may require setup assistance',
         ],
-        pricing: '$0.07/min voice, $0.01/msg SMS — pay-per-use, no monthly fees',
+        pricing: 'from $0.05/min voice, $0.01/msg SMS — pay-per-use, no monthly fees',
         bestFor: 'Best for clinics and healthcare practices that need multi-channel AI (voice, SMS, email) with multilingual support and flexible integrations.',
       },
       {
@@ -203,7 +203,7 @@ export const bestPages = {
       },
       {
         question: 'How much does an AI phone agent cost for a healthcare practice?',
-        answer: 'Costs vary widely. Budget options like Goodcall start at $19/mo for basic call answering. Enterprise platforms like Bland AI charge $299+/mo plus per-minute fees. Magpipe uses pay-per-use pricing ($0.07/min voice, $0.01/msg SMS) with no monthly fees, which typically saves 40-60% for small-to-mid-size practices.',
+        answer: 'Costs vary widely. Budget options like Goodcall start at $19/mo for basic call answering. Enterprise platforms like Bland AI charge $299+/mo plus per-minute fees. Magpipe uses pay-per-use pricing (from $0.05/min voice, $0.01/msg SMS) with no monthly fees, which typically saves 40-60% for small-to-mid-size practices.',
       },
       {
         question: 'Can AI phone agents handle multilingual patients?',
@@ -244,7 +244,7 @@ export const bestPages = {
           'Newer platform — building insurance-specific templates',
           'Complex policy logic may require custom knowledge base setup',
         ],
-        pricing: '$0.07/min voice, $0.01/msg SMS — pay-per-use, no monthly fees',
+        pricing: 'from $0.05/min voice, $0.01/msg SMS — pay-per-use, no monthly fees',
         bestFor: 'Best for insurance agencies that need multi-channel AI communication with flexible CRM and policy system integrations.',
       },
       {
@@ -374,7 +374,7 @@ export const bestPages = {
       },
       {
         question: 'How much does an AI phone agent cost for insurance?',
-        answer: 'Budget options start at $19/mo (Goodcall) for basic call answering. Mid-range options like Synthflow cost $29+/mo plus per-minute fees. Enterprise platforms (Bland AI) start at $299+/mo. Magpipe uses pay-per-use pricing ($0.07/min, $0.01/SMS) with no monthly fees.',
+        answer: 'Budget options start at $19/mo (Goodcall) for basic call answering. Mid-range options like Synthflow cost $29+/mo plus per-minute fees. Enterprise platforms (Bland AI) start at $299+/mo. Magpipe uses pay-per-use pricing (from $0.05/min, $0.01/SMS) with no monthly fees.',
       },
       {
         question: 'Can AI phone agents integrate with insurance CRM systems?',
@@ -419,7 +419,7 @@ export const bestPages = {
           'Newer platform compared to established fintech solutions',
           'Complex financial compliance may need custom configuration',
         ],
-        pricing: '$0.07/min voice, $0.01/msg SMS — pay-per-use, no monthly fees',
+        pricing: 'from $0.05/min voice, $0.01/msg SMS — pay-per-use, no monthly fees',
         bestFor: 'Best for financial advisors, banks, and fintech companies that need multi-channel AI with flexible system integrations.',
       },
       {
@@ -549,7 +549,7 @@ export const bestPages = {
       },
       {
         question: 'How much does an AI phone agent cost for financial advisors?',
-        answer: 'Costs range from $19/mo (Goodcall, basic answering) to $299+/mo (Bland AI, enterprise). Magpipe\'s pay-per-use model ($0.07/min voice, $0.01/SMS) typically costs less for firms with moderate call volumes since there are no monthly platform fees.',
+        answer: 'Costs range from $19/mo (Goodcall, basic answering) to $299+/mo (Bland AI, enterprise). Magpipe\'s pay-per-use model (from $0.05/min voice, $0.01/SMS) typically costs less for firms with moderate call volumes since there are no monthly platform fees.',
       },
       {
         question: 'Can AI handle client appointment scheduling for financial advisors?',
@@ -594,7 +594,7 @@ export const bestPages = {
           'Newer platform — building logistics-specific templates',
           'Complex multi-stop routing logic may need custom setup',
         ],
-        pricing: '$0.07/min voice, $0.01/msg SMS — pay-per-use, no monthly fees',
+        pricing: 'from $0.05/min voice, $0.01/msg SMS — pay-per-use, no monthly fees',
         bestFor: 'Best for logistics companies needing multi-channel AI across customer service, dispatch, and driver communication.',
       },
       {
@@ -724,7 +724,7 @@ export const bestPages = {
       },
       {
         question: 'How much does an AI logistics bot cost?',
-        answer: 'Basic call answering starts at $19/mo (Goodcall). Mid-range options cost $29+/mo (Synthflow). Enterprise solutions run $299+/mo (Bland AI). Magpipe charges per use ($0.07/min, $0.01/SMS) with no monthly fees, making it cost-effective for variable volumes.',
+        answer: 'Basic call answering starts at $19/mo (Goodcall). Mid-range options cost $29+/mo (Synthflow). Enterprise solutions run $299+/mo (Bland AI). Magpipe charges per use (from $0.05/min, $0.01/SMS) with no monthly fees, making it cost-effective for variable volumes.',
       },
       {
         question: 'Can AI agents coordinate dispatch for delivery drivers?',
@@ -769,7 +769,7 @@ export const bestPages = {
           'Newer platform — building home services templates',
           'Initial knowledge base setup required for service-specific details',
         ],
-        pricing: '$0.07/min voice, $0.01/msg SMS — pay-per-use, no monthly fees',
+        pricing: 'from $0.05/min voice, $0.01/msg SMS — pay-per-use, no monthly fees',
         bestFor: 'Best for home service companies that want multi-channel AI with field service management integrations.',
       },
       {
@@ -899,7 +899,7 @@ export const bestPages = {
       },
       {
         question: 'How much does an AI answering service cost for home services?',
-        answer: 'Basic AI answering starts at $19/mo (Goodcall). Feature-rich options range from $29/mo (Synthflow) to $299+/mo (Bland AI). Magpipe charges per use ($0.07/min, $0.01/SMS) with no monthly fees, typically saving 30-50% for seasonal businesses.',
+        answer: 'Basic AI answering starts at $19/mo (Goodcall). Feature-rich options range from $29/mo (Synthflow) to $299+/mo (Bland AI). Magpipe charges per use (from $0.05/min, $0.01/SMS) with no monthly fees, typically saving 30-50% for seasonal businesses.',
       },
       {
         question: 'Can AI handle emergency home service calls?',
@@ -944,7 +944,7 @@ export const bestPages = {
           'Newer platform — building retail-specific templates',
           'Large product catalogs may need structured knowledge base setup',
         ],
-        pricing: '$0.07/min voice, $0.01/msg SMS — pay-per-use, no monthly fees',
+        pricing: 'from $0.05/min voice, $0.01/msg SMS — pay-per-use, no monthly fees',
         bestFor: 'Best for retail businesses that need multi-channel AI with e-commerce and POS integrations.',
       },
       {
@@ -1074,7 +1074,7 @@ export const bestPages = {
       },
       {
         question: 'How much does an AI phone agent cost for retail?',
-        answer: 'Basic options start at $19/mo (Goodcall). Feature-rich platforms cost $29+/mo (Synthflow) to $299+/mo (Bland AI). Magpipe\'s pay-per-use model ($0.07/min, $0.01/SMS) has no monthly fees, making it ideal for seasonal retail businesses.',
+        answer: 'Basic options start at $19/mo (Goodcall). Feature-rich platforms cost $29+/mo (Synthflow) to $299+/mo (Bland AI). Magpipe\'s pay-per-use model (from $0.05/min, $0.01/SMS) has no monthly fees, making it ideal for seasonal retail businesses.',
       },
       {
         question: 'Can AI handle product recommendations by phone?',
@@ -1119,7 +1119,7 @@ export const bestPages = {
           'Newer platform — building hospitality-specific templates',
           'Complex PMS integrations may require initial setup assistance',
         ],
-        pricing: '$0.07/min voice, $0.01/msg SMS — pay-per-use, no monthly fees',
+        pricing: 'from $0.05/min voice, $0.01/msg SMS — pay-per-use, no monthly fees',
         bestFor: 'Best for hotels and travel businesses needing multilingual, multi-channel AI with property management integrations.',
       },
       {
@@ -1249,7 +1249,7 @@ export const bestPages = {
       },
       {
         question: 'How much does an AI hotel bot cost?',
-        answer: 'Budget options start at $19/mo (Goodcall) for basic call answering. Feature-rich platforms range from $29/mo (Synthflow) to $299+/mo (Bland AI). Magpipe charges per use ($0.07/min, $0.01/SMS) with no monthly fees — ideal for seasonal properties.',
+        answer: 'Budget options start at $19/mo (Goodcall) for basic call answering. Feature-rich platforms range from $29/mo (Synthflow) to $299+/mo (Bland AI). Magpipe charges per use (from $0.05/min, $0.01/SMS) with no monthly fees — ideal for seasonal properties.',
       },
       {
         question: 'Can AI concierge bots recommend local attractions?',
@@ -1294,7 +1294,7 @@ export const bestPages = {
           'Newer platform — compliance templates being developed',
           'Complex regulatory rules may need custom scripting',
         ],
-        pricing: '$0.07/min voice, $0.01/msg SMS — pay-per-use, no monthly fees',
+        pricing: 'from $0.05/min voice, $0.01/msg SMS — pay-per-use, no monthly fees',
         bestFor: 'Best for collection agencies that need multi-channel outreach with flexible system integrations and pay-per-use pricing.',
       },
       {
@@ -1424,7 +1424,7 @@ export const bestPages = {
       },
       {
         question: 'How much does an AI collections bot cost?',
-        answer: 'Basic inbound handling starts at $19/mo (Goodcall). Active collections platforms range from $29/mo (Synthflow) to $299+/mo (Bland AI). Magpipe charges per use ($0.07/min, $0.01/SMS) with no monthly fees — you only pay for actual debtor contacts.',
+        answer: 'Basic inbound handling starts at $19/mo (Goodcall). Active collections platforms range from $29/mo (Synthflow) to $299+/mo (Bland AI). Magpipe charges per use (from $0.05/min, $0.01/SMS) with no monthly fees — you only pay for actual debtor contacts.',
       },
       {
         question: 'Can AI negotiate payment plans with debtors?',
@@ -1469,7 +1469,7 @@ export const bestPages = {
           'Newer platform — building real estate templates',
           'MLS integration may require initial configuration',
         ],
-        pricing: '$0.07/min voice, $0.01/msg SMS — pay-per-use, no monthly fees',
+        pricing: 'from $0.05/min voice, $0.01/msg SMS — pay-per-use, no monthly fees',
         bestFor: 'Best for real estate agents and teams that need multi-channel AI with CRM and MLS integrations.',
       },
       {
@@ -1599,7 +1599,7 @@ export const bestPages = {
       },
       {
         question: 'How much does an AI phone agent cost for real estate agents?',
-        answer: 'Basic call answering starts at $19/mo (Goodcall). Feature-rich options range from $29/mo (Synthflow) to $299+/mo (Bland AI). Magpipe\'s pay-per-use model ($0.07/min, $0.01/SMS) has no monthly fees — ideal for agents with variable lead flow.',
+        answer: 'Basic call answering starts at $19/mo (Goodcall). Feature-rich options range from $29/mo (Synthflow) to $299+/mo (Bland AI). Magpipe\'s pay-per-use model (from $0.05/min, $0.01/SMS) has no monthly fees — ideal for agents with variable lead flow.',
       },
       {
         question: 'Can AI schedule property showings?',

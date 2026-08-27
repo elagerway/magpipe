@@ -8,29 +8,35 @@ Search for available phone numbers to add to your account. Filter by area code, 
 
 ## Request Body
 
-<ParamField body="area_code" type="string">
+Send one of `areaCode`, `state`, `city`, or `query`. If none provided with just `numberType`, returns default US numbers.
+
+<ParamField body="areaCode" type="string">
   3-digit area code to search in.
 
   **Example:** `604`
 </ParamField>
 
-<ParamField body="contains" type="string">
-  Pattern the number should contain. Useful for vanity numbers.
+<ParamField body="state" type="string">
+  2-letter US state or Canadian province code. Auto-detects Canadian provinces.
 
-  **Example:** `555` or `CAFE`
+  **Example:** `CA`, `NY`, `BC`, `ON`
 </ParamField>
 
-<ParamField body="country" type="string" default="US">
-  Country code. Currently supports `US` (United States) and `CA` (Canada).
+<ParamField body="city" type="string">
+  City name. Supports 40+ major US and Canadian cities.
+
+  **Example:** `vancouver`, `san francisco`, `new york`
 </ParamField>
 
-<ParamField body="type" type="string" default="local">
-  Number type: `local` or `toll_free`.
+<ParamField body="numberType" type="string" default="local">
+  Number type: `local` or `tollFree`.
 </ParamField>
 
-<ParamField body="limit" type="integer" default={10}>
-  Maximum numbers to return. Max: 50.
+<ParamField body="query" type="string">
+  Legacy free-text search. Accepts area codes, city names, state codes, or `canada`/`usa`.
 </ParamField>
+
+Returns up to **75 numbers** per search (3 pages of 25 in the UI).
 
 ## Response
 

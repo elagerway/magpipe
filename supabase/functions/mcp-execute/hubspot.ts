@@ -62,6 +62,9 @@ export async function handleHubSpotTool(
     case 'hubspot_create_note':
       return await handleHubSpotCreateNote(integration.access_token, args);
 
+    case 'hubspot_list_contact_properties':
+      return await handleHubSpotListContactProperties(integration.access_token);
+
     default:
       return {
         success: false,
@@ -471,6 +474,48 @@ export async function handleHubSpotCreateNote(accessToken: string, args: any): P
     return {
       success: false,
       message: 'Failed to create note in HubSpot. Please try again.',
+    };
+  }
+}
+
+export async function handleHubSpotListContactProperties(accessToken: string): Promise<McpExecuteResponse> {
+  try {
+    const response = await fetch('https://api.hubapi.com/crm/v3/properties/contacts', {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+      },
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      return {
+        success: false,
+        message: `Failed to fetch HubSpot properties: ${result.message || 'Unknown error'}`,
+      };
+    }
+
+    // Return only writable, non-hidden properties relevant for contact mapping
+    const properties = (result.results || [])
+      .filter((p: any) => !p.hidden && !p.calculated && p.modificationMetadata?.readOnlyValue !== true)
+      .map((p: any) => ({
+        name: p.name,
+        label: p.label,
+        type: p.type,
+        group: p.groupName,
+      }))
+      .sort((a: any, b: any) => a.label.localeCompare(b.label));
+
+    return {
+      success: true,
+      message: `Found ${properties.length} contact properties.`,
+      result: { properties },
+    };
+  } catch (error) {
+    console.error('HubSpot list properties error:', error);
+    return {
+      success: false,
+      message: 'Failed to fetch HubSpot contact properties.',
     };
   }
 }

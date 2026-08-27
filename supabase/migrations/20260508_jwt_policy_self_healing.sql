@@ -73,7 +73,7 @@ BEGIN
   SELECT * INTO response
   FROM http((
     'POST',
-    'https://YOUR_PROJECT_REF.supabase.co/functions/v1/enforce-jwt-policy',
+    'https://mtxbiyilvgwhbdptysex.supabase.co/functions/v1/enforce-jwt-policy',
     ARRAY[
       http_header('Content-Type', 'application/json'),
       http_header('Authorization', 'Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY')

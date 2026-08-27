@@ -7,6 +7,7 @@ node_modules/
 .env.local
 .env.*.local
 .npmrc
+.mcpregistry_*
 
 # Build output
 dist/
@@ -35,6 +36,13 @@ yarn-error.log*
 
 # Supabase
 .supabase/
+supabase/.temp/
+
+# Playwright MCP
+.playwright-mcp/
+
+# Generated version file
+public/version.json
 
 # Temporary files
 *.tmp
@@ -54,9 +62,6 @@ CLAUDE.md
 .claude/settings.local.json
 .claude/commands/whats-new.md
 
-# Internal docs
-docs/
-
 # Specify (internal planning docs)
 .specify/
 
@@ -65,9 +70,9 @@ docs/
 !docs/images/*.png
 !docs/logo/*.png
 !public/magpipe-logo.png
+!public/images/magpipe-helpdesk-logo*.png
 tests/screenshots/
-supabase/migrations/20260226_rls_security_hardening 2.sql
-
-# Local Vercel OIDC token (never commit)
-.env.vercel
-.playwright-mcp/
+docs/jwt-rotation-plan.md
+casa-ready.yml
+casa-ready.config.js
+scan-output/

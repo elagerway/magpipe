@@ -163,7 +163,7 @@ Deno.serve(async (req) => {
 
           const { data: rec } = await supabase
             .from('call_records')
-            .select('user_id, agent_id, caller_number, contact_phone')
+            .select('user_id, agent_id, caller_number, contact_phone, service_number, direction')
             .eq('id', callRecordId)
             .single();
 
@@ -186,7 +186,13 @@ Deno.serve(async (req) => {
               duration: durationSeconds,
               successful: true,
               agentName,
+              serviceNumber: rec.service_number,
+              direction: rec.direction || 'inbound',
               sessionId: callRecordId,
+              // Forwarded calls never reach the AI agent, so there is no
+              // transcript to summarise — say that rather than letting the
+              // generic "no caller speech" fallback imply a silent caller.
+              summary: 'Call was forwarded to your phone and answered — no AI transcript or summary for forwarded calls.',
               recordingUrl,
             },
           };

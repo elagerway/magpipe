@@ -1,5 +1,6 @@
 import { showToast } from '../../lib/toast.js';
-import { COUNTRY_CODES } from '../verify-phone.js';
+import { COUNTRY_CODES } from '../../components/PhoneInput.js';
+import { REQUIRE_PHONE_VERIFICATION } from '../../lib/feature-flags.js';
 
 export const usersTabMethods = {
   async renderUsersTab() {
@@ -17,7 +18,7 @@ export const usersTabMethods = {
               </svg>
               <input type="text" id="search-input" placeholder="Search users..." class="form-input" value="${this.filters.search || ''}" />
             </div>
-            <div class="filter-row">
+            <div class="filter-row" style="display: flex; align-items: center; gap: 0.5rem;">
               <select id="filter-status" class="form-input form-select">
                 <option value="all">All Status</option>
                 <option value="active">Active</option>
@@ -33,7 +34,48 @@ export const usersTabMethods = {
                 <option value="admin">Admin</option>
                 <option value="god">God</option>
               </select>
+              <button class="btn btn-sm btn-primary" id="btn-new-user" style="white-space: nowrap; margin-left: auto;">+ New User</button>
             </div>
+          </div>
+
+          <!-- New User Form (hidden by default) -->
+          <div id="new-user-form" style="display: none; padding: 0.75rem; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); margin-bottom: 0.75rem;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.5rem;">
+              <div>
+                <label style="display: block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.25rem;">Email *</label>
+                <input type="email" id="new-user-email" class="form-input" placeholder="user@example.com" autocomplete="off" />
+              </div>
+              <div>
+                <label style="display: block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.25rem;">Name *</label>
+                <input type="text" id="new-user-name" class="form-input" placeholder="Jane Doe" autocomplete="off" />
+              </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 0.5rem; margin-bottom: 0.5rem;">
+              <div>
+                <label style="display: block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.25rem;">Password * (min 8 chars)</label>
+                <div style="display: flex; gap: 0.25rem;">
+                  <input type="password" id="new-user-password" class="form-input" placeholder="Password" autocomplete="new-password" style="flex: 1; font-family: monospace;" />
+                  <button type="button" class="btn btn-sm btn-secondary" id="btn-toggle-password" style="white-space: nowrap;">Show</button>
+                  <button type="button" class="btn btn-sm btn-secondary" id="btn-generate-password" style="white-space: nowrap;">Generate</button>
+                </div>
+              </div>
+              <div>
+                <label style="display: block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.25rem;">Role</label>
+                <select id="new-user-role" class="form-input form-select">
+                  <option value="user" selected>User</option>
+                  <option value="viewer">Viewer</option>
+                  <option value="editor">Editor</option>
+                  <option value="support">Support</option>
+                  <option value="admin">Admin</option>
+                  <option value="god">God</option>
+                </select>
+              </div>
+            </div>
+            <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.5rem;">
+              <button class="btn btn-sm btn-secondary" id="btn-new-user-cancel">Cancel</button>
+              <button class="btn btn-sm btn-primary" id="btn-new-user-submit">Create User</button>
+            </div>
+            <p style="font-size: 0.72rem; color: var(--text-muted); margin: 0.5rem 0 0;">Account is active immediately — the user can sign in with the password you set.</p>
           </div>
 
           <!-- User List -->
@@ -87,6 +129,113 @@ export const usersTabMethods = {
       this.pagination.page = 1;
       this.loadUsers();
     });
+
+    // New user form toggle
+    document.getElementById('btn-new-user')?.addEventListener('click', () => {
+      const form = document.getElementById('new-user-form');
+      const isHidden = form.style.display === 'none';
+      form.style.display = isHidden ? 'block' : 'none';
+      if (isHidden) document.getElementById('new-user-email')?.focus();
+    });
+
+    document.getElementById('btn-new-user-cancel')?.addEventListener('click', () => {
+      this.resetNewUserForm();
+    });
+
+    document.getElementById('btn-generate-password')?.addEventListener('click', () => {
+      document.getElementById('new-user-password').value = this.generatePassword();
+    });
+
+    document.getElementById('btn-toggle-password')?.addEventListener('click', () => {
+      const input = document.getElementById('new-user-password');
+      const btn = document.getElementById('btn-toggle-password');
+      const showing = input.type === 'text';
+      input.type = showing ? 'password' : 'text';
+      btn.textContent = showing ? 'Show' : 'Hide';
+    });
+
+    document.getElementById('btn-new-user-submit')?.addEventListener('click', () => {
+      this.createUser();
+    });
+  },
+
+  generatePassword() {
+    const chars = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, b => chars[b % chars.length]).join('');
+  },
+
+  resetNewUserForm() {
+    const form = document.getElementById('new-user-form');
+    if (!form) return;
+    form.style.display = 'none';
+    document.getElementById('new-user-email').value = '';
+    document.getElementById('new-user-name').value = '';
+    const pwInput = document.getElementById('new-user-password');
+    pwInput.value = '';
+    pwInput.type = 'password';
+    const toggleBtn = document.getElementById('btn-toggle-password');
+    if (toggleBtn) toggleBtn.textContent = 'Show';
+    document.getElementById('new-user-role').value = 'user';
+  },
+
+  async createUser() {
+    const email = document.getElementById('new-user-email').value.trim();
+    const name = document.getElementById('new-user-name').value.trim();
+    const password = document.getElementById('new-user-password').value;
+    const role = document.getElementById('new-user-role').value;
+    const submitBtn = document.getElementById('btn-new-user-submit');
+
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      showToast('Valid email is required', 'error');
+      return;
+    }
+    if (!name) {
+      showToast('Name is required', 'error');
+      return;
+    }
+    if (!password || password.length < 8) {
+      showToast('Password must be at least 8 characters', 'error');
+      return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Creating...';
+
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-create-user`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.session.access_token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ email, name, password, role })
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create user');
+      }
+
+      showToast(`User ${email} created`, 'success');
+      this.resetNewUserForm();
+      this.pagination.page = 1;
+      await this.loadUsers();
+      if (data.user?.id) {
+        this.selectUser(data.user.id);
+      }
+    } catch (error) {
+      console.error('Error creating user:', error);
+      showToast('Error: ' + error.message, 'error');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Create User';
+    }
   },
 
   async loadUsers() {
@@ -111,7 +260,8 @@ export const usersTabMethods = {
           headers: {
             'Authorization': `Bearer ${this.session.access_token}`,
             'Content-Type': 'application/json'
-          }
+          },
+          signal: AbortSignal.timeout(5000),
         }
       );
 
@@ -150,7 +300,7 @@ export const usersTabMethods = {
           <div class="user-email">${user.email}</div>
         </div>
         <div class="user-badges">
-          <span class="badge badge-${user.account_status}">${user.account_status}</span>
+          <span class="badge badge-${REQUIRE_PHONE_VERIFICATION && user.account_status === 'active' && !user.phone_verified ? 'pending' : user.account_status}">${REQUIRE_PHONE_VERIFICATION && user.account_status === 'active' && !user.phone_verified ? 'pending' : user.account_status}</span>
         </div>
       </div>
     `).join('');
@@ -205,7 +355,8 @@ export const usersTabMethods = {
           headers: {
             'Authorization': `Bearer ${this.session.access_token}`,
             'Content-Type': 'application/json'
-          }
+          },
+          signal: AbortSignal.timeout(5000),
         }
       );
 
@@ -236,7 +387,7 @@ export const usersTabMethods = {
           <div class="user-email">${user.email}</div>
           <div class="user-badges" style="margin-top: 0.5rem;">
             <span class="badge badge-${user.role}">${user.role}</span>
-            <span class="badge badge-${user.account_status}">${user.account_status}</span>
+            <span class="badge badge-${REQUIRE_PHONE_VERIFICATION && user.account_status === 'active' && !user.phone_verified ? 'pending' : user.account_status}">${REQUIRE_PHONE_VERIFICATION && user.account_status === 'active' && !user.phone_verified ? 'pending' : user.account_status}</span>
           </div>
         </div>
       </div>
@@ -286,7 +437,16 @@ export const usersTabMethods = {
             <span id="phone-display-value">${user.phone_number || 'Not set'}</span>
             <span id="phone-verified-badge" style="font-size: 0.7rem; padding: 0.1rem 0.4rem; border-radius: 8px; ${user.phone_verified ? 'background: rgba(16,185,129,0.1); color: #10b981;' : 'background: rgba(128,128,128,0.1); color: var(--text-muted);'}">${user.phone_verified ? 'verified' : 'unverified'}</span>
             <button id="btn-edit-phone" style="background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 0.75rem; padding: 0; text-decoration: underline;">edit</button>
-            ${user.phone_verified ? `<button id="btn-send-welcome-email" style="background: none; border: 1px solid var(--primary-color); color: var(--primary-color); border-radius: 4px; cursor: pointer; font-size: 0.72rem; padding: 0.15rem 0.5rem; white-space: nowrap;">✉ Welcome Email</button>` : ''}
+          </span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Welcome Email</span>
+          <span class="detail-value" style="display: flex; align-items: center; gap: 0.5rem;">
+            ${user.welcome_email_sent_at
+              ? `<span id="welcome-email-status" style="font-size: 0.75rem; padding: 0.15rem 0.5rem; border-radius: 8px; background: rgba(16,185,129,0.1); color: #10b981; font-weight: 500;">✓ Sent ${new Date(user.welcome_email_sent_at).toLocaleDateString()}</span>`
+              : `<span style="font-size: 0.75rem; padding: 0.15rem 0.5rem; border-radius: 8px; background: rgba(128,128,128,0.08); color: var(--text-muted);">✗ Not sent</span>
+                 <button id="btn-send-welcome-email" style="background: none; border: 1px solid var(--primary-color); color: var(--primary-color); border-radius: 4px; cursor: pointer; font-size: 0.72rem; padding: 0.15rem 0.5rem; white-space: nowrap;">Send</button>`
+            }
           </span>
         </div>
         <div id="phone-edit-form" style="display: none; padding: 0.5rem 0 0.25rem;">
@@ -389,6 +549,24 @@ export const usersTabMethods = {
           </button>
         </div>
 
+        <!-- Password -->
+        <div class="action-group">
+          <label>Password</label>
+          ${this.userRole === 'admin' || this.userRole === 'god' ? `
+            <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem;">
+              <input type="password" id="admin-set-password" class="form-input" placeholder="New password (8+ chars)" autocomplete="new-password" style="flex: 1; font-family: monospace;" />
+              <button type="button" class="btn btn-sm btn-secondary" id="btn-toggle-set-password" style="white-space: nowrap;">Show</button>
+              <button type="button" class="btn btn-sm btn-secondary" id="btn-generate-set-password" style="white-space: nowrap;">Generate</button>
+            </div>
+          ` : ''}
+          <div class="detail-actions">
+            ${this.userRole === 'admin' || this.userRole === 'god' ? `
+              <button class="btn btn-sm btn-primary" id="btn-set-password">Set Password</button>
+            ` : ''}
+            <button class="btn btn-sm btn-secondary" id="btn-send-reset-email">Send Reset Email</button>
+          </div>
+        </div>
+
         <!-- Role -->
         <div class="action-group">
           <label>Role</label>
@@ -425,6 +603,36 @@ export const usersTabMethods = {
     // Impersonate
     document.getElementById('btn-impersonate')?.addEventListener('click', () => {
       this.impersonateUser(user.id);
+    });
+
+    // Password — Show/Hide toggle
+    document.getElementById('btn-toggle-set-password')?.addEventListener('click', () => {
+      const input = document.getElementById('admin-set-password');
+      const btn = document.getElementById('btn-toggle-set-password');
+      if (!input || !btn) return;
+      const showing = input.type === 'text';
+      input.type = showing ? 'password' : 'text';
+      btn.textContent = showing ? 'Show' : 'Hide';
+    });
+
+    // Password — Generate
+    document.getElementById('btn-generate-set-password')?.addEventListener('click', () => {
+      const input = document.getElementById('admin-set-password');
+      if (!input) return;
+      input.value = this.generatePassword();
+      input.type = 'text';
+      const btn = document.getElementById('btn-toggle-set-password');
+      if (btn) btn.textContent = 'Hide';
+    });
+
+    // Password — Set Password
+    document.getElementById('btn-set-password')?.addEventListener('click', async () => {
+      await this.setUserPassword(user);
+    });
+
+    // Password — Send Reset Email
+    document.getElementById('btn-send-reset-email')?.addEventListener('click', async () => {
+      await this.sendUserPasswordReset(user);
     });
 
     // Save Role
@@ -573,7 +781,12 @@ export const usersTabMethods = {
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || 'Failed to send');
         showToast('Welcome email sent', 'success');
-        btn.textContent = '✓ Sent';
+        // Replace the "not sent" state with the sent badge
+        const sentDate = new Date().toLocaleDateString();
+        const valueEl = btn.closest('.detail-value');
+        if (valueEl) {
+          valueEl.innerHTML = `<span id="welcome-email-status" style="font-size: 0.75rem; padding: 0.15rem 0.5rem; border-radius: 8px; background: rgba(16,185,129,0.1); color: #10b981; font-weight: 500;">✓ Sent ${sentDate}</span>`;
+        }
       } catch (err) {
         showToast('Error: ' + err.message, 'error');
         btn.disabled = false;
@@ -665,6 +878,83 @@ export const usersTabMethods = {
     } catch (error) {
       console.error('Error updating user:', error);
       showToast('Error: ' + error.message, 'error');
+    }
+  },
+
+  async setUserPassword(user) {
+    const input = document.getElementById('admin-set-password');
+    const password = input?.value || '';
+    if (!password || password.length < 8) {
+      showToast('Password must be at least 8 characters', 'error');
+      return;
+    }
+    if (!confirm(`Set a new password for ${user.email}? They'll be able to sign in with it immediately.`)) return;
+
+    const btn = document.getElementById('btn-set-password');
+    if (btn) { btn.disabled = true; btn.textContent = 'Setting...'; }
+
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-set-password`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.session.access_token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ user_id: user.id, password })
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to set password');
+      }
+
+      showToast(`Password updated for ${user.email}`, 'success');
+      if (input) { input.value = ''; input.type = 'password'; }
+      const toggleBtn = document.getElementById('btn-toggle-set-password');
+      if (toggleBtn) toggleBtn.textContent = 'Show';
+    } catch (error) {
+      console.error('Error setting password:', error);
+      showToast('Error: ' + error.message, 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Set Password'; }
+    }
+  },
+
+  async sendUserPasswordReset(user) {
+    if (!confirm(`Send a password reset email to ${user.email}?`)) return;
+
+    const btn = document.getElementById('btn-send-reset-email');
+    if (btn) { btn.disabled = true; btn.textContent = 'Sending...'; }
+
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-password-reset`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.session.access_token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ email: user.email, type: 'recovery' })
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to send reset email');
+      }
+
+      showToast(`Reset email sent to ${user.email}`, 'success');
+    } catch (error) {
+      console.error('Error sending reset email:', error);
+      showToast('Error: ' + error.message, 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Send Reset Email'; }
     }
   },
 

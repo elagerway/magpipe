@@ -57,7 +57,7 @@ Deno.serve(async (req) => {
     }
 
     const userName = user.name || user.email.split('@')[0]
-    const appUrl = APP_URL || 'https://app.snapsonic.com'
+    const appUrl = APP_URL || 'https://magpipe.ai'
     const appName = APP_NAME
 
     const subject = `Welcome to ${appName} — you're all set!`
@@ -106,6 +106,11 @@ Deno.serve(async (req) => {
       console.error('Postmark error:', emailResult)
       return errorResponse(`Failed to send email: ${emailResult.Message || 'Unknown error'}`, 500)
     }
+
+    await supabase
+      .from('users')
+      .update({ welcome_email_sent_at: new Date().toISOString() })
+      .eq('id', userId)
 
     await logAdminAction(supabase, {
       adminUserId: adminUser.id,

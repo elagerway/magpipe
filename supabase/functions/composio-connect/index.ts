@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { corsHeaders, handleCors } from '../_shared/cors.ts'
 import { API_URL } from '../_shared/config.ts'
+import { reportError } from '../_shared/error-reporter.ts'
 
 // Initiates a Composio-managed Gmail (or other toolkit) connection for the
 // authenticated Magpipe user. Returns a redirect_url the frontend opens to
@@ -94,10 +95,14 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Insert pending row up-front so the callback has something to update
+    // Upsert pending row up-front so the callback has something to update.
+    // MUST be an upsert (not insert): there's a UNIQUE (user_id, provider_id)
+    // constraint, so a leftover row from a previous attempt — e.g. one a prior
+    // failure flipped to status='error' — would make a plain insert 500 on every
+    // retry, permanently wedging reconnect. Upsert resets the row to 'pending'.
     const { data: integrationRow, error: insertError } = await supabase
       .from('user_integrations')
-      .insert({
+      .upsert({
         user_id: user.id,
         provider_id: providerData.id,
         status: 'pending',
@@ -106,11 +111,18 @@ Deno.serve(async (req) => {
           auth_config_id: resolved.authConfigId,
           toolkit
         }
-      })
+      }, { onConflict: 'user_id,provider_id' })
       .select('id')
       .single()
 
     if (insertError || !integrationRow) {
+      await reportError(supabase, {
+        error_type: 'composio_connect_error',
+        error_message: `Failed to upsert integration row: ${insertError?.message || 'unknown'}`,
+        error_code: 'composio-connect:upsert',
+        source: 'composio',
+        user_id: user.id,
+      })
       return new Response(JSON.stringify({ error: `Failed to create integration row: ${insertError?.message || 'unknown'}` }), {
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
@@ -142,6 +154,14 @@ Deno.serve(async (req) => {
       const errText = await composioRes.text()
       console.error('Composio /connected_accounts error:', composioRes.status, errText)
       await supabase.from('user_integrations').update({ status: 'error' }).eq('id', integrationRow.id)
+      await reportError(supabase, {
+        error_type: 'composio_connect_error',
+        error_message: `Composio rejected /connected_accounts: ${errText}`,
+        error_code: `composio-connect:${composioRes.status}`,
+        source: 'composio',
+        user_id: user.id,
+        metadata: { status: composioRes.status, auth_config_id: resolved.authConfigId },
+      })
       return new Response(JSON.stringify({ error: `Composio rejected the link request: ${errText}` }), {
         status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
@@ -154,6 +174,13 @@ Deno.serve(async (req) => {
     if (!connectionId || !redirectUrl) {
       console.error('Composio response missing connection_id or redirect_url:', result)
       await supabase.from('user_integrations').update({ status: 'error' }).eq('id', integrationRow.id)
+      await reportError(supabase, {
+        error_type: 'composio_connect_error',
+        error_message: `Composio response missing connection_id/redirect_url: ${JSON.stringify(result).substring(0, 500)}`,
+        error_code: 'composio-connect:incomplete-response',
+        source: 'composio',
+        user_id: user.id,
+      })
       return new Response(JSON.stringify({ error: 'Composio response was incomplete' }), {
         status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
@@ -182,6 +209,13 @@ Deno.serve(async (req) => {
 
   } catch (error) {
     console.error('Error in composio-connect:', error)
+    const _sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+    await reportError(_sb, {
+      error_type: 'composio_connect_error',
+      error_message: error instanceof Error ? error.message : String(error),
+      error_code: 'composio-connect:catch',
+      source: 'composio',
+    })
     return new Response(JSON.stringify({ error: error instanceof Error ? error.message : 'Internal server error' }), {
       status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })

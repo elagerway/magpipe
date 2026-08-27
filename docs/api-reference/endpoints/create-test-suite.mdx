@@ -1,0 +1,60 @@
+---
+title: "Create Test Suite"
+api: "POST /test-cases"
+description: "Create a new test suite to group related test cases"
+---
+
+Creates a new test suite. Suites are containers for test cases — group them by agent, feature, or workflow.
+
+## Body Parameters
+
+<ParamField body="action" type="string" required>
+  Must be `create_suite`
+</ParamField>
+
+<ParamField body="name" type="string" required>
+  Display name for the test suite.
+
+  **Example:** `"Reception Agent — Core Flows"`
+</ParamField>
+
+<ParamField body="description" type="string">
+  Optional description of what this suite tests.
+</ParamField>
+
+## Response
+
+<ResponseField name="suite" type="object">
+  <Expandable title="Suite object">
+    <ResponseField name="id" type="string">Unique identifier (UUID)</ResponseField>
+    <ResponseField name="name" type="string">Suite display name</ResponseField>
+    <ResponseField name="description" type="string">Suite description</ResponseField>
+    <ResponseField name="created_at" type="string">ISO 8601 creation timestamp</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl -X POST "https://api.magpipe.ai/functions/v1/test-cases" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "create_suite",
+    "name": "Reception Agent — Core Flows",
+    "description": "Validates greeting, booking, and transfer flows"
+  }'
+```
+</RequestExample>
+
+<ResponseExample>
+```json
+{
+  "suite": {
+    "id": "a1b2c3d4-1234-5678-9abc-def012345678",
+    "name": "Reception Agent — Core Flows",
+    "description": "Validates greeting, booking, and transfer flows",
+    "created_at": "2024-01-15T10:00:00.000Z"
+  }
+}
+```
+</ResponseExample>

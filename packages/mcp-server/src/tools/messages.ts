@@ -6,13 +6,12 @@ import { formatToolResponse, formatError } from "../types.js";
 export function registerMessageTools(server: McpServer, client: MagpipeClient) {
   server.tool(
     "list_messages",
-    "List SMS messages with optional filters for thread, direction, and date range",
+    "List SMS messages with optional filters for direction, phone number, and date range",
     {
       limit: z.number().optional().describe("Max results (default 50)"),
       offset: z.number().optional().describe("Pagination offset"),
-      thread_id: z.string().optional().describe("Filter by conversation thread UUID"),
       direction: z.string().optional().describe("Filter: inbound or outbound"),
-      phone_number: z.string().optional().describe("Filter by phone number"),
+      phone_number: z.string().optional().describe("Filter by phone number (matches sender or recipient)"),
       from_date: z.string().optional().describe("Start date (ISO 8601)"),
       to_date: z.string().optional().describe("End date (ISO 8601)"),
     },

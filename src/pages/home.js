@@ -10,9 +10,11 @@ import { supabase } from '../lib/supabase.js';
 // Store the install prompt for later use
 let deferredPrompt = null;
 
-// Listen for the beforeinstallprompt event (Chrome/Android)
+// Listen for the beforeinstallprompt event (mobile only)
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  if (!isMobile) return;
   deferredPrompt = e;
   // Show install button if it exists
   const installBtn = document.getElementById('install-app-btn');
@@ -45,57 +47,9 @@ export default class HomePage {
   async render() {
     const appElement = document.getElementById('app');
 
-    // Fetch recent blog posts for "From the Blog" section
-    const { data: recentPosts } = await supabase
-      .from('blog_posts')
-      .select('slug, title, excerpt, published_at, tags')
-      .eq('status', 'published')
-      .order('published_at', { ascending: false })
-      .limit(3);
-
-    const blogPreviewHtml = (() => {
-      if (!recentPosts || recentPosts.length === 0) return '';
-      const esc = (str) => {
-        if (!str) return '';
-        const d = document.createElement('div');
-        d.textContent = str;
-        return d.innerHTML;
-      };
-      const cards = recentPosts.map(post => {
-        const tag = esc(post.tags?.[0] || '');
-        const title = esc(post.title);
-        const excerpt = post.excerpt ? esc(post.excerpt) : '';
-        const date = post.published_at
-          ? new Date(post.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-          : '';
-        const slug = (post.slug || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-        return `
-          <article class="bp-card" onclick="navigateTo('/blog/${slug}')">
-            ${tag ? `<div class="bp-card-tag">${tag}</div>` : ''}
-            <h3>${title}</h3>
-            ${excerpt ? `<p>${excerpt}</p>` : ''}
-            ${date ? `<span class="bp-card-date">${date}</span>` : ''}
-          </article>
-        `;
-      }).join('');
-      return `
-        <section class="blog-preview-section">
-          <div class="blog-preview-inner">
-            <div class="blog-preview-header">
-              <h2>From the Blog</h2>
-              <a href="/blog" onclick="event.preventDefault(); navigateTo('/blog');">View all posts &rarr;</a>
-            </div>
-            <div class="blog-preview-grid">
-              ${cards}
-            </div>
-          </div>
-        </section>
-      `;
-    })();
-
     injectSEO({
-      title: 'Magpipe — AI Voice, Email & SMS for Business',
-      description: 'AI-powered communications platform that handles calls, texts, and emails 24/7. Smart call handling, intelligent SMS, email AI, and more.',
+      title: 'Omni-channel AI Communications Platform',
+      description: 'Omni-channel AI communications platform. Voice, SMS, email, and chat — handled by intelligent AI agents 24/7.',
       url: 'https://magpipe.ai',
       jsonLd: [
         buildOrganizationSchema(),
@@ -131,7 +85,7 @@ export default class HomePage {
                 View Pricing
               </button>
             </div>
-            ${!isStandalone ? `
+            ${!isStandalone && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? `
               <button class="btn btn-install-app" id="install-app-btn" onclick="window._installApp()">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -314,8 +268,8 @@ export default class HomePage {
             <p>Pay only for what you use. Start with $20 in free credits on signup.</p>
             <div class="pricing-highlights">
               <div class="pricing-highlight">
-                <span class="highlight-price">$0.07</span>
-                <span class="highlight-label">per voice minute</span>
+                <span class="highlight-price">$0.05</span>
+                <span class="highlight-label">from, per voice minute</span>
               </div>
               <div class="pricing-highlight">
                 <span class="highlight-price">$0.01</span>
@@ -332,7 +286,7 @@ export default class HomePage {
           </div>
         </section>
 
-        ${blogPreviewHtml}
+        <div id="blog-preview-placeholder"></div>
 
         <!-- CTA Section -->
         <section class="landing-cta">
@@ -1149,6 +1103,68 @@ export default class HomePage {
     `;
 
     this.attachEventListeners();
+
+    // Load blog posts async — non-blocking so they never delay page render
+    this.loadBlogPreview();
+  }
+
+  async loadBlogPreview() {
+    try {
+      const { data: recentPosts } = await Promise.race([
+        supabase
+          .from('blog_posts')
+          .select('slug, title, excerpt, published_at, tags')
+          .eq('status', 'published')
+          .order('published_at', { ascending: false })
+          .limit(3),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
+      ]);
+
+      if (!recentPosts || recentPosts.length === 0) return;
+
+      const esc = (str) => {
+        if (!str) return '';
+        const d = document.createElement('div');
+        d.textContent = str;
+        return d.innerHTML;
+      };
+      const cards = recentPosts.map(post => {
+        const tag = esc(post.tags?.[0] || '');
+        const title = esc(post.title);
+        const excerpt = post.excerpt ? esc(post.excerpt) : '';
+        const date = post.published_at
+          ? new Date(post.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+          : '';
+        const slug = (post.slug || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+        return `
+          <article class="bp-card" onclick="navigateTo('/blog/${slug}')">
+            ${tag ? `<div class="bp-card-tag">${tag}</div>` : ''}
+            <h3>${title}</h3>
+            ${excerpt ? `<p>${excerpt}</p>` : ''}
+            ${date ? `<span class="bp-card-date">${date}</span>` : ''}
+          </article>
+        `;
+      }).join('');
+
+      const placeholder = document.getElementById('blog-preview-placeholder');
+      if (placeholder) {
+        placeholder.outerHTML = `
+          <section class="blog-preview-section">
+            <div class="blog-preview-inner">
+              <div class="blog-preview-header">
+                <h2>From the Blog</h2>
+                <a href="/blog" onclick="event.preventDefault(); navigateTo('/blog');">View all posts &rarr;</a>
+              </div>
+              <div class="blog-preview-grid">
+                ${cards}
+              </div>
+            </div>
+          </section>
+        `;
+      }
+    } catch {
+      // Blog posts failed or timed out — page already rendered, just skip the section
+    }
   }
 
   cleanup() {

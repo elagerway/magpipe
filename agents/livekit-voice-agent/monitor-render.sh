@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SERVICE_ID="srv-d3g2gvmr433s738si3j0"
-RENDER_API_KEY="rnd_HxZhDCm9rC3ewtydyCmPZqSBZngT"
+RENDER_API_KEY="${RENDER_API_KEY:?Set RENDER_API_KEY in .env}"
 
 echo "Monitoring Render deployment status..."
 echo "Service: https://dashboard.render.com/web/$SERVICE_ID"

@@ -75,6 +75,32 @@ async function handleEventTrigger(
   eventType: string,
   triggerContext: Record<string, unknown>
 ) {
+  // Idempotency for call_ends: the inbound voice path fires this event TWICE for
+  // one call — once from agent.py at session end and once from webhook-call-status
+  // on the SignalWire 'completed' callback — which delivered duplicate Slack/skill
+  // notifications (with different durations). Atomically claim the call so only the
+  // first caller delivers; the second is suppressed. The two callers pass the call
+  // record id under different keys (call_record_id vs session_id). Fail-open: if the
+  // claim errors (e.g. column missing), proceed with delivery rather than drop it. (#102)
+  if (eventType === 'call_ends') {
+    const callId = (triggerContext.call_record_id || triggerContext.session_id) as string | undefined
+    if (callId) {
+      const { data: claimed, error: claimErr } = await supabase
+        .from('call_records')
+        .update({ call_ends_delivered_at: new Date().toISOString() })
+        .eq('id', callId)
+        .is('call_ends_delivered_at', null)
+        .select('id')
+      if (!claimErr && (!claimed || claimed.length === 0)) {
+        console.log(`[execute-skill] call_ends already delivered for call ${callId} — suppressing duplicate`)
+        return new Response(JSON.stringify({ success: true, message: 'Duplicate call_ends suppressed', deduped: true }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        })
+      }
+    }
+  }
+
   // Find all enabled skills for this agent that listen for this event
   const { data: agentSkills, error } = await supabase
     .from('agent_skills')
@@ -418,6 +444,15 @@ async function deliverExtractDataFallback(
 
   if (Object.keys(filteredData).length === 0 && !triggerContext.call_summary) return deliveries
 
+  // A silent call used to fall out one line above — no extracted data and no
+  // summary. Now that a silent call HAS a summary, that guard alone would let
+  // instant hang-ups back into customer channels (the #152 regression). Slack
+  // only; SMS and email still report the call.
+  if (triggerContext.caller_spoke === false) {
+    console.log('[execute-skill] extract_data fallback: skipping Slack — caller never spoke')
+    return deliveries
+  }
+
   // Build rich Slack message (same format as skill delivery)
   const parts: string[] = []
   const tc = triggerContext
@@ -427,8 +462,7 @@ async function deliverExtractDataFallback(
       ? `${tc.contact_name} (${tc.caller_phone})`
       : String(tc.caller_phone)
     const direction = tc.direction === 'outbound' ? 'Outbound call to' : 'Inbound call from'
-    const emoji = tc.direction === 'outbound' ? '📱' : '📞'
-    parts.push(`${emoji} *${direction} ${callerDisplay}*`)
+    parts.push(`*${direction} ${callerDisplay}*`)
 
     const meta: string[] = []
     if (tc.call_duration_seconds) {
@@ -437,17 +471,14 @@ async function deliverExtractDataFallback(
       meta.push(`Duration: ${mins > 0 ? `${mins}m ${secs}s` : `${secs}s`}`)
     }
     if (tc.user_sentiment) {
-      const sentimentEmoji = tc.user_sentiment === 'positive' ? '😊'
-        : tc.user_sentiment === 'negative' ? '😠'
-        : tc.user_sentiment === 'neutral' ? '😐' : ''
-      meta.push(`Sentiment: ${sentimentEmoji} ${tc.user_sentiment}`)
+      meta.push(`Sentiment: ${tc.user_sentiment}`)
     }
     if (meta.length > 0) parts.push(meta.join(' • '))
   }
 
   if (tc.call_summary) {
     const summary = String(tc.call_summary)
-    parts.push(`📝 *Summary:* ${summary.length > 500 ? summary.substring(0, 500) + '...' : summary}`)
+    parts.push(`*Summary:* ${summary.length > 500 ? summary.substring(0, 500) + '...' : summary}`)
   }
 
   // Extracted data fields
@@ -458,13 +489,13 @@ async function deliverExtractDataFallback(
     const lines = dataEntries.map(([key, value]) => {
       const displayKey = key.replace(/_/g, ' ')
       let displayValue: string
-      if (value === true) displayValue = '✅ Yes'
-      else if (value === false) displayValue = '❌ No'
+      if (value === true) displayValue = 'Yes'
+      else if (value === false) displayValue = 'No'
       else if (typeof value === 'string' && value.length > 100) displayValue = value.substring(0, 100) + '...'
       else displayValue = String(value ?? '')
       return `• *${displayKey}:* ${displayValue}`
     })
-    parts.push(`📊 *Extracted Data*\n${lines.join('\n')}`)
+    parts.push(`*Extracted Data*\n${lines.join('\n')}`)
   }
 
   if (parts.length === 0) return deliveries
@@ -555,6 +586,16 @@ async function deliverResults(
         }
 
         case 'slack': {
+          // A caller who never spoke produces no work, and customers read their
+          // Slack channels as a work queue (see #152 — instant hang-ups used to
+          // spam them). Slack only: the SMS and email alerts still go out, so
+          // nothing is hidden from the owner.
+          if (triggerContext.caller_spoke === false) {
+            console.log('[execute-skill] skipping Slack delivery — caller never spoke')
+            deliveries.push({ channel: 'slack', status: 'skipped', error: 'caller_never_spoke' })
+            break
+          }
+
           // Build rich Slack message with extracted data from trigger context
           const parts: string[] = []
 
@@ -570,8 +611,7 @@ async function deliverResults(
               ? `${tc.contact_name} (${tc.caller_phone})`
               : String(tc.caller_phone)
             const direction = tc.direction === 'outbound' ? 'Outbound call to' : 'Inbound call from'
-            const emoji = tc.direction === 'outbound' ? '📱' : '📞'
-            parts.push(`${emoji} *${direction} ${callerDisplay}*`)
+            parts.push(`*${direction} ${callerDisplay}*`)
 
             const meta: string[] = []
             if (tc.call_duration_seconds) {
@@ -580,10 +620,7 @@ async function deliverResults(
               meta.push(`Duration: ${mins > 0 ? `${mins}m ${secs}s` : `${secs}s`}`)
             }
             if (tc.user_sentiment) {
-              const sentimentEmoji = tc.user_sentiment === 'positive' ? '😊'
-                : tc.user_sentiment === 'negative' ? '😠'
-                : tc.user_sentiment === 'neutral' ? '😐' : ''
-              meta.push(`Sentiment: ${sentimentEmoji} ${tc.user_sentiment}`)
+              meta.push(`Sentiment: ${tc.user_sentiment}`)
             }
             if (meta.length > 0) parts.push(meta.join(' • '))
           }
@@ -591,7 +628,7 @@ async function deliverResults(
           // Call summary
           if (tc.call_summary) {
             const summary = String(tc.call_summary)
-            parts.push(`📝 *Summary:* ${summary.length > 500 ? summary.substring(0, 500) + '...' : summary}`)
+            parts.push(`*Summary:* ${summary.length > 500 ? summary.substring(0, 500) + '...' : summary}`)
           }
 
           // Extracted data — filter by content_config.fields if specified
@@ -605,13 +642,13 @@ async function deliverResults(
             const lines = dataEntries.map(([key, value]) => {
               const displayKey = key.replace(/_/g, ' ')
               let displayValue: string
-              if (value === true) displayValue = '✅ Yes'
-              else if (value === false) displayValue = '❌ No'
+              if (value === true) displayValue = 'Yes'
+              else if (value === false) displayValue = 'No'
               else if (typeof value === 'string' && value.length > 100) displayValue = value.substring(0, 100) + '...'
               else displayValue = String(value ?? '')
               return `• *${displayKey}:* ${displayValue}`
             })
-            parts.push(`📊 *Extracted Data*\n${lines.join('\n')}`)
+            parts.push(`*Extracted Data*\n${lines.join('\n')}`)
           }
 
           // Fallback to skill result summary if no call context

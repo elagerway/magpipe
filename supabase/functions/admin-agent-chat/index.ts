@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders, handleCors } from '../_shared/cors.ts'
+import { fetchAllSlackChannels } from '../_shared/slack-channels.ts'
 
 interface ChatRequest {
   message: string;
@@ -825,17 +826,12 @@ async function mirrorConversationToSlack(
 
     if (!channelId) {
       // Find a suitable channel
-      const channelsResponse = await fetch(
-        'https://slack.com/api/conversations.list?types=public_channel&limit=10',
-        { headers: { 'Authorization': `Bearer ${integration.access_token}` } }
-      );
-      const channelsResult = await channelsResponse.json();
-
-      if (channelsResult.ok && channelsResult.channels?.length > 0) {
-        const magpipeChannel = channelsResult.channels.find((c: any) => c.name === 'magpipe-notifications');
-        const generalChannel = channelsResult.channels.find((c: any) => c.name === 'general');
-        channelId = magpipeChannel?.id || generalChannel?.id || channelsResult.channels[0].id;
-      }
+      try {
+        const channels = await fetchAllSlackChannels(integration.access_token);
+        const magpipeChannel = channels.find(c => c.name === 'magpipe-notifications');
+        const generalChannel = channels.find(c => c.name === 'general');
+        channelId = magpipeChannel?.id || generalChannel?.id || channels[0]?.id;
+      } catch { /* ignore */ }
     }
 
     if (!channelId) return;

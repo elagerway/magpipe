@@ -571,6 +571,33 @@ export const stylesMethods = {
 
       .voice-current {
         font-weight: 500;
+        flex: 1;
+      }
+
+      .voice-inline-preview {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        border: none;
+        background: var(--primary-color);
+        color: white;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0.8;
+        transition: opacity 0.2s;
+        padding: 0;
+        margin-right: 0.75rem;
+      }
+
+      .voice-inline-preview:hover {
+        opacity: 1;
+      }
+
+      .voice-inline-preview.playing {
+        background: #ef4444;
+        opacity: 1;
       }
 
       /* Voice Cloning Styles */
@@ -583,17 +610,15 @@ export const stylesMethods = {
         align-items: center;
         gap: 0.75rem;
         padding: 0.75rem;
-        border: 2px solid transparent;
-        background: linear-gradient(white, white) padding-box,
-                    linear-gradient(135deg, #6366f1, #8b5cf6) border-box;
+        border: 1px solid var(--border-color);
+        background: var(--bg-secondary);
         border-radius: var(--radius-md);
         cursor: pointer;
         transition: all 0.2s;
       }
 
       .voice-clone-toggle:hover {
-        background: linear-gradient(var(--bg-secondary), var(--bg-secondary)) padding-box,
-                    linear-gradient(135deg, #6366f1, #8b5cf6) border-box;
+        border-color: var(--primary-color);
       }
 
       .voice-clone-icon {
@@ -796,6 +821,24 @@ export const stylesMethods = {
         border-radius: var(--radius-sm);
         font-family: 'SF Mono', Monaco, Consolas, monospace;
         font-size: 0.75rem;
+      }
+
+      .rec-hint {
+        display: inline-block;
+        margin-left: 0.5rem;
+        font-size: 0.72rem;
+        padding: 0.05rem 0.4rem;
+        border-radius: var(--radius-sm);
+        white-space: nowrap;
+        vertical-align: baseline;
+      }
+      .rec-hint-match {
+        background: rgba(34, 197, 94, 0.10);
+        color: rgb(22, 130, 74);
+      }
+      .rec-hint-diff {
+        background: rgba(245, 158, 11, 0.10);
+        color: rgb(170, 100, 12);
       }
 
       .toggle-row {
@@ -1271,8 +1314,8 @@ export const stylesMethods = {
         background: white;
         border-radius: var(--radius-lg);
         width: 100%;
-        max-width: 500px;
-        max-height: 80vh;
+        max-width: 1100px;
+        max-height: 95vh;
         overflow: hidden;
         display: flex;
         flex-direction: column;
@@ -1322,18 +1365,19 @@ export const stylesMethods = {
 
       .voice-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-        gap: 0.5rem;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 0.75rem;
       }
 
       .voice-option {
         background: var(--bg-secondary);
-        border: 1px solid var(--border-color);
+        border: 2px solid var(--border-color);
         border-radius: var(--radius-md);
-        padding: 0.75rem;
+        padding: 1rem;
         cursor: pointer;
         text-align: left;
         transition: all 0.2s;
+        position: relative;
       }
 
       .voice-option:hover {
@@ -1345,17 +1389,123 @@ export const stylesMethods = {
         background: rgba(99, 102, 241, 0.1);
       }
 
-      .voice-option .voice-name {
-        display: block;
+      .voice-preview-btn .progress-ring {
+        position: absolute;
+        inset: -3px;
+        width: calc(100% + 6px);
+        height: calc(100% + 6px);
+        transform: rotate(-90deg);
+        pointer-events: none;
+      }
+
+      .voice-preview-btn .progress-ring circle {
+        fill: none;
+        stroke: var(--primary-color);
+        stroke-width: 2.5;
+        stroke-dasharray: 100;
+        stroke-dashoffset: 100;
+        stroke-linecap: round;
+        transition: stroke-dashoffset 0.1s linear;
+        opacity: 0;
+      }
+
+      .voice-preview-btn.playing .progress-ring circle {
+        opacity: 1;
+      }
+
+      .voice-option-top {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .voice-avatar {
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        object-fit: cover;
+        flex-shrink: 0;
+      }
+
+      .voice-avatar-placeholder {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        color: white;
         font-weight: 600;
         font-size: 0.85rem;
       }
 
-      .voice-option .voice-meta {
+      .voice-info {
+        min-width: 0;
+        flex: 1;
+        overflow: hidden;
+      }
+
+      .voice-option .voice-name {
         display: block;
-        font-size: 0.7rem;
-        color: var(--text-secondary);
+        font-weight: 600;
+        font-size: 1.05rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .voice-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.2rem;
         margin-top: 0.25rem;
+      }
+
+      .voice-tag {
+        font-size: 0.65rem;
+        padding: 0.1rem 0.35rem;
+        border-radius: 9999px;
+        background: var(--bg-tertiary, #f0f0f0);
+        color: var(--text-secondary);
+        white-space: nowrap;
+      }
+
+      .voice-tag-use {
+        color: var(--primary-color);
+        background: rgba(99, 102, 241, 0.1);
+      }
+
+      .voice-langs {
+        font-size: 0.6rem;
+        color: #059669;
+        margin-top: 0.2rem;
+        line-height: 1.4;
+      }
+
+      .voice-preview-btn {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        border: none;
+        background: var(--primary-color);
+        color: white;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0.7;
+        transition: opacity 0.2s;
+        padding: 0;
+        flex-shrink: 0;
+        margin-left: auto;
+        position: relative;
+      }
+
+      .voice-preview-btn:hover {
+        opacity: 1;
+      }
+
+      .voice-preview-btn.playing {
+        background: #ef4444;
+        opacity: 1;
       }
 
       /* Memory Tab Styles */

@@ -1,5 +1,6 @@
 import { SupabaseClient } from 'npm:@supabase/supabase-js@2'
 import { McpExecuteResponse } from './utils.ts'
+import { fetchAllSlackChannels, resolveSlackChannelId } from '../_shared/slack-channels.ts'
 
 export async function handleIntegrationTool(supabase: any, userId: string, toolName: string, args: any): Promise<McpExecuteResponse> {
   // Get user's integration for this tool
@@ -124,22 +125,14 @@ export async function handleSlackSendMessage(accessToken: string, args: any): Pr
 
   // If channel starts with #, look it up
   if (channel.startsWith('#')) {
-    const channelName = channel.slice(1).toLowerCase();
-    const channelsResult = await handleSlackListChannels(accessToken);
-
-    if (channelsResult.success && channelsResult.result?.channels) {
-      const foundChannel = channelsResult.result.channels.find(
-        (c: any) => c.name.toLowerCase() === channelName
-      );
-
-      if (foundChannel) {
-        channelId = foundChannel.id;
-      } else {
-        return {
-          success: false,
-          message: `I couldn't find a channel called "${channel}". Try "list Slack channels" to see available channels.`,
-        };
-      }
+    const resolved = await resolveSlackChannelId(accessToken, channel);
+    if (resolved) {
+      channelId = resolved;
+    } else {
+      return {
+        success: false,
+        message: `I couldn't find a channel called "${channel}". Try "list Slack channels" to see available channels.`,
+      };
     }
   }
 
@@ -210,28 +203,7 @@ export async function handleSlackSendMessage(accessToken: string, args: any): Pr
 
 export async function handleSlackListChannels(accessToken: string): Promise<McpExecuteResponse> {
   try {
-    const response = await fetch('https://slack.com/api/conversations.list?types=public_channel,private_channel&exclude_archived=true&limit=100', {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-      },
-    });
-
-    const result = await response.json();
-
-    if (!result.ok) {
-      return {
-        success: false,
-        message: `Failed to list channels: ${result.error}`,
-      };
-    }
-
-    const channels = (result.channels || []).map((c: any) => ({
-      id: c.id,
-      name: c.name,
-      is_private: c.is_private,
-      num_members: c.num_members,
-    }));
+    const channels = await fetchAllSlackChannels(accessToken);
 
     if (channels.length === 0) {
       return {
@@ -242,20 +214,20 @@ export async function handleSlackListChannels(accessToken: string): Promise<McpE
     }
 
     // Build a nice message
-    const publicChannels = channels.filter((c: any) => !c.is_private);
-    const privateChannels = channels.filter((c: any) => c.is_private);
+    const publicChannels = channels.filter((c) => !c.is_private);
+    const privateChannels = channels.filter((c) => c.is_private);
 
     let message = `Here are your Slack channels:\n\n`;
 
     if (publicChannels.length > 0) {
-      message += `Public channels:\n${publicChannels.slice(0, 10).map((c: any) => `• #${c.name}`).join('\n')}`;
+      message += `Public channels:\n${publicChannels.slice(0, 10).map((c) => `• #${c.name}`).join('\n')}`;
       if (publicChannels.length > 10) {
         message += `\n...and ${publicChannels.length - 10} more`;
       }
     }
 
     if (privateChannels.length > 0) {
-      message += `\n\nPrivate channels:\n${privateChannels.slice(0, 5).map((c: any) => `• 🔒 ${c.name}`).join('\n')}`;
+      message += `\n\nPrivate channels:\n${privateChannels.slice(0, 5).map((c) => `• 🔒 ${c.name}`).join('\n')}`;
       if (privateChannels.length > 5) {
         message += `\n...and ${privateChannels.length - 5} more`;
       }

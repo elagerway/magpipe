@@ -1,97 +1,109 @@
+/**
+ * cal-com-cancel-booking — cancel a Cal.com booking.
+ *
+ * Was calling `api.cal.com/v1/bookings/{id}/cancel`. **API v1 is decommissioned**
+ * — it now answers every request with `410 API v1 has been decommissioned`, so
+ * cancellation has been failing outright. v2 is `POST /v2/bookings/{uid}/cancel`.
+ *
+ * The `cal-api-version` header is mandatory. Without it the API doesn't take the
+ * authenticated host path at all — it falls through to the attendee flow and
+ * answers "Booking with UID=… does not exist" instead of checking the token,
+ * which makes an auth problem look like a missing booking.
+ *
+ * It also read tokens from a table called `integrations`, which does not exist
+ * in this database (it's `users.cal_com_*`), and never refreshed the token. Both
+ * now go through getCalAccessToken().
+ *
+ * POST { uid } | { booking_id }, optional { reason }
+ * Deploy: ./scripts/deploy-functions.sh cal-com-cancel-booking
+ */
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { resolveUser } from '../_shared/api-auth.ts'
 import { corsHeaders, handleCors } from '../_shared/cors.ts'
+import { CalTokenError, getCalAccessToken } from '../_shared/cal-com.ts'
+
+// Pinned like fetchCalEventTypes: the response shape is version-dependent, and
+// an unpinned call silently changes behaviour when Cal ships a new default.
+const CAL_BOOKINGS_API_VERSION = '2024-08-13'
+
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status, headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+function err(code: string, message: string, status = 400): Response {
+  return json({ error: { code, message } }, status);
+}
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return handleCors()
-  }
+  if (req.method === "OPTIONS") return handleCors()
 
   try {
-    const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-      {
-        global: {
-          headers: { Authorization: req.headers.get("Authorization")! },
-        },
-      }
-    );
-
-    // Resolve user from JWT or API key
-    const user = await resolveUser(req, supabaseClient);
-
-    if (!user) {
-      return new Response(
-        JSON.stringify({ error: { code: "unauthorized", message: "Unauthorized" } }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Use service role client for API key auth (no RLS context), anon client for JWT
-    const queryClient = user.authMethod === "api_key"
-      ? createClient(
-          Deno.env.get("SUPABASE_URL") ?? "",
-          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-        )
-      : supabaseClient;
-
-    const { booking_id, uid, reason } = await req.json();
-
-    if (!booking_id && !uid) {
-      return new Response(
-        JSON.stringify({ error: { code: "missing_param", message: "booking_id or uid is required" } }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Get user's Cal.com integration
-    const { data: integration, error: integrationError } = await queryClient
-      .from("integrations")
-      .select("access_token")
-      .eq("user_id", user.id)
-      .eq("provider", "cal_com")
-      .single();
-
-    if (integrationError || !integration?.access_token) {
-      return new Response(
-        JSON.stringify({ error: { code: "no_calendar", message: "No Cal.com calendar connected" } }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Cancel via Cal.com API
-    const cancelUrl = uid
-      ? `https://api.cal.com/v1/bookings/${uid}/cancel`
-      : `https://api.cal.com/v1/bookings/${booking_id}/cancel`;
-
-    const response = await fetch(cancelUrl, {
-      method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${integration.access_token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ reason: reason || "Cancelled via API" }),
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+    const anonClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY") ?? "", {
+      global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } },
     });
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error("Cal.com cancel error:", errorData);
-      return new Response(
-        JSON.stringify({ error: { code: "cancel_error", message: errorData.message || "Failed to cancel booking" } }),
-        { status: response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    const user = await resolveUser(req, anonClient);
+    if (!user) return err("unauthorized", "Unauthorized", 401);
+
+    const supabase = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
+
+    const { booking_id, uid, reason } = await req.json().catch(() => ({}));
+    // v2 identifies bookings by uid. A numeric id is accepted and passed through
+    // for callers that only have one, but Cal may not resolve it.
+    const identifier = uid || booking_id;
+    if (!identifier) return err("missing_param", "Provide the booking's uid (or booking_id).");
+
+    let accessToken: string | null;
+    try {
+      accessToken = await getCalAccessToken(supabase, user.id);
+    } catch (e) {
+      const reconnect = e instanceof CalTokenError && e.invalidGrant;
+      return err(
+        reconnect ? "reconnect_required" : "cal_auth_error",
+        reconnect
+          ? "Your Cal.com connection has expired. Reconnect Cal.com and try again."
+          : "Could not authenticate with Cal.com. Try again shortly.",
+        reconnect ? 401 : 502,
       );
     }
+    if (!accessToken) return err("no_calendar", "No Cal.com calendar connected");
 
-    return new Response(
-      JSON.stringify({ success: true, booking_id: booking_id || uid }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    const response = await fetch(
+      `https://api.cal.com/v2/bookings/${encodeURIComponent(identifier)}/cancel`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+          "cal-api-version": CAL_BOOKINGS_API_VERSION,
+        },
+        body: JSON.stringify({ cancellationReason: reason || "Cancelled via API" }),
+      },
     );
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      console.error(`Cal.com cancel error (${response.status}):`, detail.slice(0, 400));
+      let message = "Failed to cancel the booking";
+      try {
+        const parsed = JSON.parse(detail);
+        message = parsed?.error?.message || parsed?.message || message;
+      } catch { /* keep the default */ }
+      return err("cancel_error", message, response.status);
+    }
+
+    const result = await response.json().catch(() => ({}));
+    return json({
+      success: true,
+      booking_id: booking_id || uid,
+      uid: result?.data?.uid ?? uid ?? null,
+      status: result?.data?.status ?? "cancelled",
+    });
   } catch (error) {
     console.error("Error in cal-com-cancel-booking:", error);
-    return new Response(
-      JSON.stringify({ error: { code: "server_error", message: error.message } }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return err("server_error", String((error as Error).message || error), 500);
   }
 });

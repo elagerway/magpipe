@@ -1,0 +1,67 @@
+---
+title: "List Agent Skills"
+api: "GET /manage-skills"
+description: "List skills enabled for a specific agent"
+---
+
+Retrieve all skills configured for an agent, including their configuration and status.
+
+## Query Parameters
+
+<ParamField query="agent_id" type="string" required>
+  The agent ID to list skills for.
+</ParamField>
+
+## Response
+
+<ResponseField name="agent_skills" type="array">
+  Array of agent skill objects with joined skill definition data.
+
+  <Expandable title="Agent Skill">
+    <ResponseField name="id" type="string">Agent skill ID (UUID)</ResponseField>
+    <ResponseField name="agent_id" type="string">Agent this skill belongs to</ResponseField>
+    <ResponseField name="skill_definition_id" type="string">Reference to skill definition</ResponseField>
+    <ResponseField name="is_enabled" type="boolean">Whether the skill is active</ResponseField>
+    <ResponseField name="config" type="object">Skill-specific configuration</ResponseField>
+    <ResponseField name="trigger_type" type="string">How the skill fires: `event` or `schedule`</ResponseField>
+    <ResponseField name="schedule_config" type="object">Schedule settings (interval, time, etc.)</ResponseField>
+    <ResponseField name="delivery_channels" type="array">Where results are delivered</ResponseField>
+    <ResponseField name="execution_count" type="integer">Total times this skill has executed</ResponseField>
+    <ResponseField name="last_executed_at" type="string">ISO timestamp of last execution</ResponseField>
+    <ResponseField name="skill_definitions" type="object">Joined skill definition (id, slug, name, description, category, icon)</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl "https://api.magpipe.ai/functions/v1/manage-skills?agent_id=YOUR_AGENT_ID" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+</RequestExample>
+
+<ResponseExample>
+```json
+{
+  "agent_skills": [
+    {
+      "id": "7a99a0af-...",
+      "agent_id": "7f806f26-...",
+      "is_enabled": true,
+      "config": {
+        "keywords": ["AI voice agent", "magpipe"],
+        "platforms": ["reddit", "hackernews", "x", "linkedin", "google"]
+      },
+      "trigger_type": "schedule",
+      "delivery_channels": [
+        { "channel": "slack", "channel_name": "#general" }
+      ],
+      "execution_count": 5,
+      "skill_definitions": {
+        "slug": "social_media_monitoring",
+        "name": "Social Media Monitoring"
+      }
+    }
+  ]
+}
+```
+</ResponseExample>

@@ -30,3 +30,42 @@ services:
         sync: false
       - key: ELEVENLABS_API_KEY
         sync: false
+      - key: SENTRY_DSN
+        sync: false
+
+  - type: web
+    name: magpipe-claude-bot
+    env: node
+    region: oregon
+    plan: starter
+    rootDir: services/claude-debug-bot
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    envVars:
+      # Slack — SEPARATE app from customer Slack integration. Never reuse
+      # the customer-Slack OAuth client id, signing secret, or bot token.
+      - key: SLACK_DEBUG_BOT_TOKEN
+        sync: false
+      - key: SLACK_DEBUG_SIGNING_SECRET
+        sync: false
+      - key: SLACK_DEBUG_TEAM_ID
+        sync: false
+      - key: SLACK_DEBUG_USER_ID
+        sync: false
+      # Anthropic
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      # Supabase — same values used by the rest of the platform
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_ACCESS_TOKEN
+        sync: false
+      # Render — for log fetch + restart_service tool
+      - key: RENDER_API_KEY
+        sync: false
+      # GitHub — for `git push` from the bash tool so the bot can ship
+      # fixes (Render auto-deploys on push). PAT with repo scope.
+      - key: GITHUB_TOKEN
+        sync: false

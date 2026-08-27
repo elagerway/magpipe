@@ -29,10 +29,9 @@ Deno.serve(async (req) => {
     const dbStatus = statusMap[callStatus] || callStatus;
 
     // Update call record in database
-    const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    const supabaseClient = createClient(supabaseUrl, supabaseKey);
 
     const updateData: Record<string, any> = {
       status: dbStatus,
@@ -54,17 +53,30 @@ Deno.serve(async (req) => {
       updateData.disposition = "outbound_failed";
     }
 
-    // First get the call record to know user_id
+    // First get the call record to know user_id and phone info
     const { data: callRecord } = await supabaseClient
       .from("call_records")
-      .select("id, user_id")
+      .select("id, user_id, agent_id, caller_number, contact_phone, service_number, direction, call_summary, user_sentiment, recording_url")
       .eq("vendor_call_id", callSid)
-      .single();
+      .maybeSingle();
 
     const { error } = await supabaseClient
       .from("call_records")
       .update(updateData)
       .eq("vendor_call_id", callSid);
+
+    // Stamp pstn_joined_at the moment the callee picks up (PSTN leg answered/in-progress)
+    // so the voice agent greets immediately instead of waiting for the caller to speak.
+    // This is the reliable answer signal — replaces batch-conf-status's broken participant
+    // count (it keyed on a `CurrentParticipants` field SignalWire never sends). Guarded
+    // with `.is(null)` so it only stamps once (the first/answered event).
+    if (callStatus === "answered" || callStatus === "in-progress") {
+      await supabaseClient
+        .from("call_records")
+        .update({ pstn_joined_at: new Date().toISOString() })
+        .eq("vendor_call_id", callSid)
+        .is("pstn_joined_at", null);
+    }
 
     if (error) {
       console.error("Error updating call record:", error);
@@ -72,12 +84,14 @@ Deno.serve(async (req) => {
       console.log("Call record updated successfully:", updateData);
 
       // Update batch_call_recipients if this call is part of a batch
+      let batchRecipient: { id: string; batch_id: string } | null = null;
       if (callRecord) {
-        const { data: batchRecipient } = await supabaseClient
+        const { data: br } = await supabaseClient
           .from("batch_call_recipients")
           .select("id, batch_id")
           .eq("call_record_id", callRecord.id)
           .maybeSingle();
+        batchRecipient = br ?? null;
 
         if (batchRecipient) {
           const recipientUpdate: Record<string, any> = { status: dbStatus };
@@ -153,16 +167,148 @@ Deno.serve(async (req) => {
         }
       }
 
+      // Trigger test-log-collector for test runs
+      if (callRecord && ["completed", "busy", "failed", "no-answer"].includes(callStatus)) {
+        const { data: testRun } = await supabaseClient
+          .from("test_runs")
+          .select("id")
+          .eq("call_record_id", callRecord.id)
+          .maybeSingle();
+        if (testRun) {
+          const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+          const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+          const collectPromise = fetch(`${supabaseUrl}/functions/v1/test-log-collector`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${serviceKey}` },
+            body: JSON.stringify({ test_run_id: testRun.id }),
+          }).catch(err => console.error("Failed to trigger test-log-collector:", err));
+          // deno-lint-ignore no-explicit-any
+          (globalThis as any).EdgeRuntime?.waitUntil(collectPromise);
+          console.log(`Triggered test-log-collector for run ${testRun.id}`);
+        }
+      }
+
       // Deduct credits for completed calls with duration
       const durationSeconds = updateData.duration_seconds;
       if (callRecord && callStatus === "completed" && durationSeconds > 0) {
         deductCallCredits(
-          Deno.env.get("SUPABASE_URL") ?? "",
-          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+          supabaseUrl,
+          supabaseKey,
           callRecord.user_id,
+          callRecord.agent_id,
           durationSeconds,
           callRecord.id
         ).catch(err => console.error("Failed to deduct credits:", err));
+      }
+
+      // Send notifications for terminal outbound calls (skip batch calls — they have their own accounting)
+      const terminalStatuses = ["completed", "busy", "failed", "no-answer"];
+      if (callRecord && terminalStatuses.includes(callStatus) && !batchRecipient) {
+        const isMissed = callStatus !== "completed";
+        const durationSecs = updateData.duration_seconds || 0;
+
+        const backgroundWork = async () => {
+          let agentName: string | null = null;
+          let agentRecordingEnabled = true;
+          if (callRecord.agent_id) {
+            const { data: agentCfg } = await supabaseClient
+              .from("agent_configs")
+              .select("name, recording_enabled")
+              .eq("id", callRecord.agent_id)
+              .maybeSingle();
+            agentName = agentCfg?.name || null;
+            agentRecordingEnabled = agentCfg?.recording_enabled !== false;
+          }
+
+          // Whether the far end said anything — gates the Slack post only
+          // (SMS/email still go out). Transcript lines are "Agent: …" / "Caller: …".
+          let callerSpoke = true;
+          let enrichedSummary: string | null = callRecord.call_summary || null;
+          let enrichedSentiment: string | null = callRecord.user_sentiment || null;
+          let enrichedRecordingUrl: string | null = callRecord.recording_url || null;
+
+          const shouldWaitForRecording = !isMissed && agentRecordingEnabled && !enrichedRecordingUrl;
+          if (!isMissed && (!enrichedSummary || shouldWaitForRecording)) {
+            for (let attempt = 0; attempt < 12; attempt++) {
+              await new Promise(resolve => setTimeout(resolve, 5000));
+              const { data: freshRecord } = await supabaseClient
+                .from("call_records")
+                .select("call_summary, user_sentiment, recording_url, recordings, transcript")
+                .eq("id", callRecord.id)
+                .single();
+              enrichedSummary = freshRecord?.call_summary || null;
+              enrichedSentiment = freshRecord?.user_sentiment || null;
+              if (typeof freshRecord?.transcript === "string") {
+                callerSpoke = /^caller:\s*\S/im.test(freshRecord.transcript);
+              }
+              const recordingsArr: any[] = freshRecord?.recordings || [];
+              const firstRecordingUrl = recordingsArr.find((r: any) => r.url)?.url || null;
+              enrichedRecordingUrl = freshRecord?.recording_url || firstRecordingUrl || enrichedRecordingUrl;
+              const hasSummary = !!enrichedSummary;
+              const hasRecording = !agentRecordingEnabled || !!enrichedRecordingUrl;
+              if (hasSummary && hasRecording) {
+                console.log(`✅ Got summary${agentRecordingEnabled ? "+recording" : ""} after ${(attempt + 1) * 5}s`);
+                break;
+              }
+              console.log(`⏳ Waiting for summary/recording... attempt ${attempt + 1}/12`);
+            }
+          }
+
+          const phoneNumber = callRecord.contact_phone || callRecord.caller_number;
+          const notificationData = {
+            userId: callRecord.user_id,
+            agentId: callRecord.agent_id,
+            type: isMissed ? "missed_call" : "completed_call",
+            data: {
+              callerNumber: phoneNumber,
+              timestamp: new Date().toISOString(),
+              duration: durationSecs,
+              successful: callStatus === "completed",
+              agentName,
+              serviceNumber: callRecord.service_number,
+              direction: callRecord.direction || "outbound",
+              callerSpoke,
+              sessionId: callRecord.id,
+              summary: enrichedSummary,
+              sentiment: enrichedSentiment,
+              recordingUrl: enrichedRecordingUrl,
+            }
+          };
+
+          await Promise.allSettled([
+            fetch(`${supabaseUrl}/functions/v1/send-notification-email`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "Authorization": `Bearer ${supabaseKey}` },
+              body: JSON.stringify(notificationData),
+            }),
+            fetch(`${supabaseUrl}/functions/v1/send-notification-sms`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "Authorization": `Bearer ${supabaseKey}` },
+              body: JSON.stringify(notificationData),
+            }),
+            fetch(`${supabaseUrl}/functions/v1/send-notification-push`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "Authorization": `Bearer ${supabaseKey}` },
+              body: JSON.stringify(notificationData),
+            }),
+            // Slack is skipped entirely when the caller never spoke — those
+            // channels are a work queue, and a silent call isn't work.
+            callerSpoke
+              ? fetch(`${supabaseUrl}/functions/v1/send-notification-slack`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", "Authorization": `Bearer ${supabaseKey}` },
+                  body: JSON.stringify(notificationData),
+                })
+              : Promise.resolve(),
+          ]);
+        };
+
+        // @ts-ignore — EdgeRuntime is available in Supabase edge function environment
+        if (typeof EdgeRuntime !== "undefined") {
+          EdgeRuntime.waitUntil(backgroundWork());
+        } else {
+          backgroundWork().catch(err => console.error("Background notification error:", err));
+        }
       }
     }
 
@@ -186,18 +332,22 @@ async function deductCallCredits(
   supabaseUrl: string,
   supabaseKey: string,
   userId: string,
+  agentId: string | null,
   durationSeconds: number,
   callRecordId: string
 ) {
   try {
-    // Get user's agent config to determine voice, LLM, and add-on rates
+    // Resolve THIS call's agent to determine voice, LLM, and add-on rates.
+    // Users can own multiple agents in different languages, so a user-scoped
+    // .single() would error/pick wrong → mispriced voice/LLM + missed multilingual.
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { data: agentConfig } = await supabase
+    const agentSel = supabase
       .from("agent_configs")
-      .select("voice_id, ai_model, memory_enabled, semantic_memory_enabled, knowledge_source_ids, pii_storage")
-      .eq("user_id", userId)
-      .single();
+      .select("voice_id, llm_model, language, memory_enabled, semantic_memory_enabled, knowledge_source_ids, pii_storage");
+    const { data: agentConfig } = agentId
+      ? await agentSel.eq("id", agentId).maybeSingle()
+      : await agentSel.eq("user_id", userId).limit(1).maybeSingle();
 
     // Determine active add-ons
     const addons: string[] = [];
@@ -219,7 +369,8 @@ async function deductCallCredits(
         type: "voice",
         durationSeconds,
         voiceId: agentConfig?.voice_id,
-        aiModel: agentConfig?.ai_model,
+        aiModel: agentConfig?.llm_model,
+        agentLanguage: agentConfig?.language,
         addons: addons.length > 0 ? addons : undefined,
         referenceType: "call",
         referenceId: callRecordId,

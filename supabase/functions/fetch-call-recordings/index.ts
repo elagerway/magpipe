@@ -205,6 +205,13 @@ Deno.serve(async (req) => {
     )
 
     for (const swRec of allRecordings) {
+      // Skip conference recordings. The transferee call leg recording
+      // ('transferee_consult') is the canonical transfer recording and already
+      // captures the full 3-way; the conference recording merely duplicated it.
+      // Skipping here keeps the duplicate from being (re-)introduced on calls
+      // whose conference recording still exists on SignalWire.
+      if (swRec.conference_sid) continue;
+
       // First check if there's an existing entry with this SID (re-download case)
       const existingIndex = updatedRecordings.findIndex((r: any) => r.recording_sid === swRec.sid)
       let isUpdate = existingIndex >= 0

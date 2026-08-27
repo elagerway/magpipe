@@ -8,14 +8,14 @@ import { injectSEO, cleanupSEO, buildOrganizationSchema, buildProductSchema, bui
 
 export default class PricingPage {
   constructor() {
-    this.voiceRate = 0.07; // per minute
+    this.voiceRate = 0.05; // per minute (from; OpenAI voices)
     this.messageRate = 0.01; // per message
     this.freeCredits = 20; // $20/month free
     this.expandedFaqs = new Set();
     this.faqItems = [
       {
         question: 'How does billing work?',
-        answer: "You're billed monthly based on actual usage. Voice calls are $0.07/minute, SMS messages are $0.01 each, and emails are $0.01 each. Your first $20 of usage each month is free."
+        answer: "You're billed monthly based on actual usage. Voice calls start at $0.05/minute (low-cost OpenAI voices; ElevenLabs voices are $0.10/minute, or $0.20/minute for multilingual agents), SMS messages are $0.01 each, and emails are $0.01 each. Your first $20 of usage each month is free."
       },
       {
         question: 'What counts as a minute?',
@@ -40,8 +40,8 @@ export default class PricingPage {
     const appElement = document.getElementById('app');
 
     injectSEO({
-      title: 'Pricing — Magpipe',
-      description: 'Transparent, pay-as-you-go pricing for AI voice, SMS, and email. $0.07/min voice, $0.01/SMS. Start with $20 in free credits.',
+      title: 'Pricing | Magpipe — Omni-channel AI Communications Platform',
+      description: 'Transparent, pay-as-you-go pricing for AI voice, SMS, and email. From $0.05/min voice, $0.01/SMS. Start with $20 in free credits.',
       url: 'https://magpipe.ai/pricing',
       jsonLd: [
         buildOrganizationSchema(),
@@ -84,7 +84,7 @@ export default class PricingPage {
                     <svg class="feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <polyline points="20 6 9 17 4 12"></polyline>
                     </svg>
-                    <span><strong>$0.07</strong> per voice minute</span>
+                    <span>From <strong>$0.05</strong> per voice minute</span>
                   </li>
                   <li>
                     <svg class="feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -231,8 +231,8 @@ export default class PricingPage {
               <div class="calculator-option-group">
                 <label>Voice Engine</label>
                 <div class="pill-group" id="voice-pills">
-                  <button class="pill-btn active" data-value="0.07">Elevenlabs/Cartesia Voices</button>
-                  <button class="pill-btn" data-value="0.08">OpenAI Voices</button>
+                  <button class="pill-btn active" data-value="0.10">Elevenlabs/Cartesia Voices</button>
+                  <button class="pill-btn" data-value="0.03">OpenAI Voices</button>
                 </div>
               </div>
 
@@ -250,7 +250,7 @@ export default class PricingPage {
             <div class="calculator-cost-card">
               <div class="cost-per-minute-row">
                 <span class="cost-card-label">Cost Per Minute</span>
-                <span class="cost-card-value" id="per-minute-cost">$ 0.091</span>
+                <span class="cost-card-value" id="per-minute-cost">$ 0.121</span>
               </div>
               <div class="cost-breakdown-list">
                 <div class="cost-breakdown-item">
@@ -261,7 +261,7 @@ export default class PricingPage {
                 <div class="cost-breakdown-item">
                   <span class="breakdown-bullet"></span>
                   <span class="breakdown-label">Voice Engine Cost</span>
-                  <span class="breakdown-value" id="voice-cost">$ 0.070</span>
+                  <span class="breakdown-value" id="voice-cost">$ 0.100</span>
                 </div>
                 <div class="cost-breakdown-item">
                   <span class="breakdown-bullet"></span>
@@ -317,11 +317,11 @@ export default class PricingPage {
                     <tbody>
                       <tr>
                         <td>Elevenlabs / Cartesia voices</td>
-                        <td>$0.07/minute</td>
+                        <td>$0.10/minute</td>
                       </tr>
                       <tr>
                         <td>OpenAI voices</td>
-                        <td>$0.08/minute</td>
+                        <td>$0.03/minute</td>
                       </tr>
                     </tbody>
                   </table>
@@ -553,7 +553,7 @@ export default class PricingPage {
                 </svg>
               </div>
               <h3>Voice Calls</h3>
-              <div class="breakdown-price">$0.07<span>/minute</span></div>
+              <div class="breakdown-price">from $0.05<span>/minute</span></div>
               <p>AI-powered voice calls with natural conversation, call recording, and transcription included.</p>
             </div>
 
@@ -677,7 +677,7 @@ export default class PricingPage {
                 </tr>
                 <tr>
                   <td>Voice rate</td>
-                  <td>$0.07/min</td>
+                  <td>from $0.05/min</td>
                   <td>Volume discount</td>
                 </tr>
                 <tr>

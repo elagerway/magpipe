@@ -5,8 +5,8 @@
 
 const SITE_NAME = 'Magpipe';
 const SITE_URL = 'https://magpipe.ai';
-const DEFAULT_TITLE = 'MAGPIPE';
-const DEFAULT_DESCRIPTION = 'MAGPIPE - Your AI phone assistant';
+const DEFAULT_TITLE = 'Magpipe — Omni-channel AI Communications Platform';
+const DEFAULT_DESCRIPTION = 'Omni-channel AI communications platform. Voice, SMS, email, and chat — handled by intelligent AI agents 24/7.';
 const DEFAULT_OG_IMAGE = `${SITE_URL}/magpipe-bird.png`;
 
 // Track injected elements for cleanup
@@ -138,7 +138,7 @@ export function buildProductSchema() {
       {
         '@type': 'Offer',
         name: 'Voice Calls',
-        price: '0.07',
+        price: '0.05',
         priceCurrency: 'USD',
         description: 'Per voice minute',
       },

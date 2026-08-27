@@ -76,20 +76,6 @@ Deno.serve(async (req) => {
           }
         }
 
-        // Limit number of active keys per user
-        const { count } = await serviceClient
-          .from('api_keys')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', user.id)
-          .eq('is_active', true)
-
-        if ((count ?? 0) >= 10) {
-          return new Response(
-            JSON.stringify({ error: 'Maximum of 10 active API keys allowed' }),
-            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          )
-        }
-
         const fullKey = generateApiKey()
         const keyHash = await sha256(fullKey)
         const keyPrefix = fullKey.substring(0, 8) // "mgp_" + first 4 hex chars

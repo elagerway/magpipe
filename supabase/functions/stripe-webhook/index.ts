@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import Stripe from 'npm:stripe@14.10.0'
 import { corsHeaders, handleCors } from '../_shared/cors.ts'
+import { reportError } from '../_shared/error-reporter.ts'
 
 Deno.serve(async (req) => {
   // Handle CORS preflight
@@ -41,9 +42,15 @@ Deno.serve(async (req) => {
 
     if (webhookSecret && signature) {
       try {
-        event = stripe.webhooks.constructEvent(body, signature, webhookSecret)
+        // Use async verification with SubtleCryptoProvider for Deno compatibility
+        // (sync constructEvent uses Node.js crypto which fails in Deno)
+        const cryptoProvider = Stripe.createSubtleCryptoProvider()
+        event = await stripe.webhooks.constructEventAsync(
+          body, signature, webhookSecret, undefined, cryptoProvider
+        )
       } catch (err) {
         console.error('Webhook signature verification failed:', err.message)
+        await reportError(supabase, { error_type: 'edge_function_error', error_message: err.message, error_code: 'stripe-webhook:signature', source: 'supabase' })
         return new Response(JSON.stringify({ error: 'Invalid signature' }), {
           status: 400,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -139,6 +146,7 @@ Deno.serve(async (req) => {
                 cardLast4 = pm.card?.last4 || null
               } catch (e) {
                 console.error('Failed to retrieve payment method details:', e)
+                await reportError(supabase, { error_type: 'edge_function_error', error_message: String(e.message || e), error_code: 'stripe-webhook:payment-method-retrieve', source: 'supabase' })
               }
             }
 
@@ -347,6 +355,8 @@ Deno.serve(async (req) => {
 
   } catch (error) {
     console.error('Webhook error:', error)
+    const _sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+    await reportError(_sb, { error_type: 'edge_function_error', error_message: String(error.message || error), error_code: 'stripe-webhook:outer', source: 'supabase' })
     return new Response(JSON.stringify({ error: error.message || 'Webhook handler failed' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }

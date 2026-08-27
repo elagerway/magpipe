@@ -1,11 +1,73 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { isBulkOrAutomated, quarantineEmail } from '../_shared/gmail-helpers.ts'
 
 // No CORS needed — this is a Postmark inbound webhook (server-to-server)
-// Deploy with: npx supabase functions deploy webhook-inbound-email --no-verify-jwt
+// Deploy with: ./scripts/deploy-functions.sh webhook-inbound-email
+//   (already in the --no-verify-jwt list — external callers send no JWT)
+//
+// AUTH: Postmark does not HMAC-sign inbound webhooks, so we use a shared secret.
+// Set POSTMARK_INBOUND_SECRET and append ?token=<secret> to the webhook URL
+// configured in Postmark (Servers → <server> → Inbound). While the env var is
+// unset the endpoint stays open and logs a warning, so configuring the secret
+// and the URL can happen in either order without dropping mail.
+
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  return diff === 0
+}
+
+// Accepts the secret via ?token= or HTTP Basic auth (Postmark supports both).
+function isAuthorized(req: Request): boolean {
+  const secret = Deno.env.get('POSTMARK_INBOUND_SECRET')
+  if (!secret) {
+    console.warn('[inbound-email] POSTMARK_INBOUND_SECRET unset — endpoint is UNAUTHENTICATED')
+    return true
+  }
+
+  const token = new URL(req.url).searchParams.get('token')
+  if (token && timingSafeEqual(token, secret)) return true
+
+  const auth = req.headers.get('authorization') || ''
+  if (auth.startsWith('Basic ')) {
+    try {
+      const decoded = atob(auth.slice(6))
+      const pass = decoded.slice(decoded.indexOf(':') + 1)
+      if (timingSafeEqual(pass, secret)) return true
+    } catch { /* malformed header — fall through to reject */ }
+  }
+
+  return false
+}
+
+// Postmark sends Headers as [{Name, Value}]; gmail-helpers' filters expect
+// Gmail's [{name, value}] shape. Normalise once and reuse both.
+function toGmailHeaderShape(headers: any[]): { headers: Array<{ name: string; value: string }> } {
+  const list = Array.isArray(headers) ? headers : []
+  return { headers: list.map((h: any) => ({ name: h?.Name ?? '', value: h?.Value ?? '' })) }
+}
+
+function getHeader(headers: any[], name: string): string | null {
+  const list = Array.isArray(headers) ? headers : []
+  const hit = list.find((h: any) => (h?.Name || '').toLowerCase() === name.toLowerCase())
+  return hit?.Value ?? null
+}
+
+// Pull every <...> message-id out of a References/In-Reply-To header value.
+function parseMessageIds(value: string | null): string[] {
+  if (!value) return []
+  return (value.match(/<[^>]+>/g) || []).map(s => s.trim())
+}
 
 Deno.serve(async (req) => {
   if (req.method !== 'POST') {
     return new Response('Method not allowed', { status: 405 })
+  }
+
+  if (!isAuthorized(req)) {
+    console.error('[inbound-email] rejected: bad or missing token')
+    return new Response('Unauthorized', { status: 401 })
   }
 
   try {
@@ -13,7 +75,7 @@ Deno.serve(async (req) => {
 
     // Postmark inbound webhook payload fields:
     // From, FromName, To, Subject, TextBody, HtmlBody, MessageID, Headers, etc.
-    const { From, FromName, To, Subject, TextBody, HtmlBody, MessageID, Headers } = payload
+    const { From, FromName, To, Cc, Subject, TextBody, HtmlBody, MessageID, Headers, OriginalRecipient } = payload
 
     console.log(`Inbound email from: ${From}, subject: ${Subject}`)
 
@@ -36,13 +98,17 @@ Deno.serve(async (req) => {
         headers: Headers,
       })
     } else {
-      // Not a CNAM reply — forward to Erik for review
-      await forwardToAdmin(supabase, {
+      // Not a CNAM reply — create a support ticket
+      await createSupportTicket(supabase, {
         from: From,
         fromName: FromName,
+        to: OriginalRecipient || To,
+        cc: Cc,
         subject: Subject,
         textBody: TextBody,
         htmlBody: HtmlBody,
+        headers: Headers,
+        messageId: MessageID,
       })
     }
 
@@ -296,9 +362,9 @@ async function sendReply(
       'X-Postmark-Server-Token': postmarkApiKey
     },
     body: JSON.stringify({
-      From: 'support@snapsonic.com',
+      From: 'help@magpipe.ai',
       To: 'Support@signalwire.com',
-      ReplyTo: 'support@snapsonic.com',
+      ReplyTo: 'help@magpipe.ai',
       Subject: subject,
       TextBody: replyBody,
       HtmlBody: `<div style="font-family: sans-serif; white-space: pre-wrap;">${replyBody}</div>`,
@@ -318,7 +384,7 @@ async function sendReply(
   const emailThread = cnamRequest.email_thread || []
   emailThread.push({
     direction: 'outbound',
-    from: 'support@snapsonic.com',
+    from: 'help@magpipe.ai',
     to: 'Support@signalwire.com',
     subject: subject,
     body: replyBody,
@@ -334,6 +400,169 @@ async function sendReply(
     .eq('id', cnamRequest.id)
 
   console.log(`CNAM reply sent for request ${cnamRequest.id}`)
+}
+
+
+// Resolve which conversation this message belongs to.
+//
+// Mail clients thread on RFC5322 In-Reply-To / References, which carry the
+// Message-IDs of earlier messages in the chain. We store the RFC Message-ID in
+// support_tickets.gmail_message_id (legacy column name), so any referenced id
+// that we've already seen tells us the thread. Falls back to a new thread only
+// when nothing in the chain matches — otherwise every reply would open its own
+// orphan ticket.
+async function resolveThreadId(
+  supabase: any,
+  headers: any[],
+  ownMessageId: string | null
+): Promise<{ threadId: string; isNewThread: boolean }> {
+  const inReplyTo = parseMessageIds(getHeader(headers, 'In-Reply-To'))
+  const references = parseMessageIds(getHeader(headers, 'References'))
+  const referenced = [...new Set([...inReplyTo, ...references])]
+
+  if (referenced.length > 0) {
+    const { data: priors } = await supabase
+      .from('support_tickets')
+      .select('thread_id, gmail_message_id, received_at')
+      .in('gmail_message_id', referenced)
+      .order('received_at', { ascending: false })
+      .limit(1)
+
+    if (priors?.length && priors[0].thread_id) {
+      console.log(`[inbound-email] threading onto ${priors[0].thread_id} via ${priors[0].gmail_message_id}`)
+      return { threadId: priors[0].thread_id, isNewThread: false }
+    }
+
+    // Referenced ids we've never stored (e.g. the chain started before this
+    // webhook existed). Key on the ROOT of the chain so every later reply in
+    // the same conversation derives the same id instead of fanning out.
+    // RFC5322 orders References oldest-first, so the root is References[0];
+    // In-Reply-To (the immediate parent) is only a fallback.
+    const root = references[0] || inReplyTo[0]
+    console.log(`[inbound-email] no stored prior; keying thread on root ${root}`)
+    return { threadId: `email-${root}`, isNewThread: true }
+  }
+
+  // Genuinely new conversation — key on its own Message-ID when present so a
+  // reply to our reply can find it.
+  return {
+    threadId: ownMessageId ? `email-${ownMessageId}` : `email-${crypto.randomUUID()}`,
+    isNewThread: true,
+  }
+}
+
+async function createSupportTicket(
+  supabase: any,
+  email: {
+    from: string; fromName?: string; to?: string; cc?: string
+    subject: string; textBody: string; htmlBody?: string
+    messageId?: string; headers?: any[]
+  }
+) {
+  // Skip system/automated emails — don't create tickets for these
+  const fromLower = (email.from || '').toLowerCase()
+  if (fromLower.includes('mailer-daemon') ||
+      fromLower.includes('noreply') ||
+      fromLower.includes('no-reply') ||
+      fromLower.includes('postmaster') ||
+      fromLower.includes('notifications@') ||
+      fromLower.includes('notification@') ||
+      fromLower.includes('systemgenerated') ||
+      fromLower.includes('@magpipe.ai')) {
+    console.log(`Skipping system email from ${email.from}, not creating ticket`)
+    return
+  }
+
+  const headers = email.headers || []
+
+  // Prefer the RFC Message-ID over Postmark's GUID — it's what the sender's
+  // In-Reply-To will reference, so threading depends on storing this one.
+  const rfcMessageId = parseMessageIds(getHeader(headers, 'Message-ID'))[0] || null
+  const storedMessageId = rfcMessageId || email.messageId || null
+
+  // Dedup on whichever id we store
+  if (storedMessageId) {
+    const { data: existing } = await supabase
+      .from('support_tickets')
+      .select('id')
+      .eq('gmail_message_id', storedMessageId)
+      .maybeSingle()
+
+    if (existing) {
+      console.log(`Duplicate email ${storedMessageId}, ticket ${existing.id} already exists`)
+      return
+    }
+  }
+
+  const { threadId, isNewThread } = await resolveThreadId(supabase, headers, rfcMessageId)
+
+  // Bulk/automated filter — drop newsletters, marketing, list mail. Mirrors the
+  // Gmail path so behaviour is consistent across ingestion routes. Only applied
+  // to new threads: once a human conversation exists, keep appending to it even
+  // if a later message carries list headers.
+  if (isNewThread) {
+    const bulkCheck = isBulkOrAutomated(toGmailHeaderShape(headers))
+    if (bulkCheck.isBulk) {
+      console.log(`[inbound-email] quarantining ${storedMessageId} (${bulkCheck.reason})`)
+      await quarantineEmail(supabase, {
+        userId: null,
+        parsedMsg: {
+          gmail_message_id: storedMessageId,
+          thread_id: threadId,
+          from_email: email.from,
+          from_name: email.fromName || null,
+          to_email: email.to || null,
+          subject: email.subject,
+          body_text: email.textBody,
+          received_at: new Date().toISOString(),
+        },
+        reason: bulkCheck.reason!,
+        reasonDetail: { matchedHeader: bulkCheck.matchedHeader, matchedValue: bulkCheck.matchedValue },
+      })
+      return
+    }
+  }
+
+  // Ticket ref only for new threads — replies inherit the original's ref
+  let ticketRef: string | null = null
+  if (isNewThread) {
+    const { data: seqVal } = await supabase.rpc('nextval_ticket_ref')
+    ticketRef = seqVal ? `TKT-${String(seqVal).padStart(6, '0')}` : null
+  }
+
+  const { data: ticket, error: ticketError } = await supabase
+    .from('support_tickets')
+    .insert({
+      thread_id: threadId,
+      ticket_ref: ticketRef,
+      gmail_message_id: storedMessageId,
+      from_email: email.from,
+      from_name: email.fromName || null,
+      to_email: email.to || 'help@magpipe.ai',
+      cc_email: email.cc || null,
+      subject: email.subject,
+      body_text: email.textBody,
+      body_html: email.htmlBody || null,
+      direction: 'inbound',
+      status: 'open',
+      priority: 'medium',
+      tags: ['Email'],
+      received_at: new Date().toISOString(),
+    })
+    .select('id, ticket_ref')
+    .single()
+
+  if (ticketError) {
+    console.error('Failed to create support ticket:', ticketError)
+    // Fall back to forwarding so the email isn't lost
+    await forwardToAdmin(supabase, email)
+    return
+  }
+
+  console.log(
+    `Support ticket ${isNewThread ? 'created' : 'appended'} from inbound email: ` +
+    `${ticket.ticket_ref || threadId} from ${email.from}`
+  )
 }
 
 
@@ -356,8 +585,8 @@ async function forwardToAdmin(supabase: any, email: { from: string, fromName?: s
       'X-Postmark-Server-Token': postmarkApiKey
     },
     body: JSON.stringify({
-      From: 'support@snapsonic.com',
-      To: 'erik@snapsonic.com',
+      From: 'help@magpipe.ai',
+      To: 'help@magpipe.ai',
       ReplyTo: email.from,
       Subject: `[Fwd] ${email.subject}`,
       HtmlBody: htmlBody,
